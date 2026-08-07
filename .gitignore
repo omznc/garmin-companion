@@ -1,0 +1,8 @@
+/target
+node_modules
+dist
+.DS_Store
+
+# Personal coaching context: biometrics, baselines, where I live. Useful to
+# Claude Code locally, nobody else's business — keep it out of the repo.
+CLAUDE.md

@@ -1,0 +1,19 @@
+[package]
+name = "garmin-mcp"
+version = "0.1.0"
+edition = "2021"
+description = "MCP server exposing Garmin Connect training and recovery data"
+
+[[bin]]
+name = "garmin-mcp"
+path = "src/main.rs"
+
+[dependencies]
+garmin-core = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+rmcp = { version = "3.1.1", features = ["server", "transport-io", "macros"] }

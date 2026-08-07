@@ -1,0 +1,18 @@
+[package]
+name = "garmin-core"
+version = "0.1.0"
+edition = "2021"
+description = "Garmin Connect client, token storage, and local cache shared by the desktop app and the MCP server"
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+keyring = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }

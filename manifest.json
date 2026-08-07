@@ -1,0 +1,79 @@
+{
+  "manifest_version": "0.3",
+  "name": "garmin-mcp",
+  "display_name": "Garmin Connect",
+  "version": "0.1.0",
+  "description": "Your Garmin training and recovery data, served from a local cache with an emphasis on HR zone distribution.",
+  "long_description": "A native Rust MCP server over Garmin Connect, sharing its client, token store, and cache with the Garmin Coach desktop app.\n\n**Tools:**\n- `recent_activities` — activities with per-zone HR breakdown, pace, cadence, training effect\n- `activity_zones` — minutes and percent in each HR zone for one session\n- `zone_drift` — hard-effort drift across recent runs, plus the time-weighted easy/hard split\n- `cadence_trend` — cadence across recent runs\n- `recovery` — resting HR, HRV, training readiness, sleep, stress, body battery by day\n- `nutrition` — calories eaten against burned, plus hydration and sweat loss\n- `workouts` — saved Garmin workouts, the closest thing the account holds to a plan\n- `routes` — routes grouped from cached GPS traces\n- `cache_status` / `sync` — cache state and refresh\n\n**Design:** every tool except `sync` reads a local SQLite cache, so tool calls are instant and can't fail on a network hiccup mid-conversation.\n\n**Setup:** run `garmin-mcp import` once to adopt tokens from an existing `~/.garminconnect` file, or connect an account in the desktop app. Tokens live in the OS keyring.",
+  "author": {
+    "name": "Omar Žunić"
+  },
+  "license": "MIT",
+  "keywords": [
+    "garmin",
+    "fitness",
+    "health",
+    "running",
+    "training",
+    "heart-rate-zones",
+    "garmin-connect"
+  ],
+  "server": {
+    "type": "binary",
+    "entry_point": "target/release/garmin-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/target/release/garmin-mcp",
+      "args": []
+    }
+  },
+  "tools": [
+    {
+      "name": "recent_activities",
+      "description": "List recent activities with per-zone HR breakdown, pace, cadence and training effect"
+    },
+    {
+      "name": "activity_zones",
+      "description": "Full HR zone breakdown for one activity: minutes and percent in zones 1-5"
+    },
+    {
+      "name": "zone_drift",
+      "description": "Track hard-effort drift across recent runs and the overall easy/hard split"
+    },
+    {
+      "name": "cadence_trend",
+      "description": "Running cadence across recent runs"
+    },
+    {
+      "name": "recovery",
+      "description": "Resting HR, HRV, training readiness, sleep, stress and body battery by day"
+    },
+    {
+      "name": "nutrition",
+      "description": "Calories eaten against calories burned by day, plus hydration and sweat loss"
+    },
+    {
+      "name": "workouts",
+      "description": "The athlete's saved Garmin workouts — the closest thing the account holds to a plan"
+    },
+    {
+      "name": "routes",
+      "description": "Routes grouped from cached GPS traces, with how often each was covered"
+    },
+    {
+      "name": "cache_status",
+      "description": "What's in the local cache and when it was last refreshed"
+    },
+    {
+      "name": "sync",
+      "description": "Fetch new data from Garmin into the local cache"
+    }
+  ],
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ]
+  }
+}

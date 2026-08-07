@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = ["crates/garmin-core", "crates/garmin-mcp", "app/src-tauri"]
+
+# Shared across the Tauri app and the MCP server so the two can never drift
+# onto different versions of the Garmin client's dependencies.
+[workspace.dependencies]
+garmin-core = { path = "crates/garmin-core" }
+
+anyhow = "1.0.104"
+base64 = "0.23.1"
+chrono = "0.4.45"
+dirs = "6.0.0"
+keyring = "4.1.6"
+rusqlite = { version = "0.40.1", features = ["bundled", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2.0.19"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+
+# native-tls (OpenSSL on Linux, Schannel on Windows, Security.framework on
+# macOS) is deliberate: it matches the TLS stack verified to get past Garmin's
+# Cloudflare edge. rustls presents a different ClientHello and is untested here.
+reqwest = { version = "0.13.4", default-features = false, features = [
+    "json", "cookies", "native-tls", "gzip", "brotli", "deflate", "zstd",
+    "stream", "form", "query", "http2", "charset", "system-proxy",
+] }

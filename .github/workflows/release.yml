@@ -1,0 +1,104 @@
+# Builds installers for every desktop platform and attaches them to a GitHub
+# release, along with the `latest.json` the in-app updater reads.
+#
+# Triggered by pushing a tag: `git tag v0.2.0 && git push origin v0.2.0`.
+# The tag has to match the version in app/src-tauri/tauri.conf.json — the
+# updater compares against that, not against the tag.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # Useful for proving the matrix still builds without cutting a release.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon and Intel are separate bundles; a universal binary
+          # would double every download for the sake of one artifact.
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          # Pinned deliberately: the AppImage links against whatever glibc the
+          # runner has, so building on the newest Ubuntu would refuse to start
+          # on anything older.
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            build-essential \
+            file \
+            wget
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: ${{ matrix.target }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts. Without these the build still produces
+          # installers, but `latest.json` gets no signature and every client
+          # rejects the update.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Garmin Companion ${{ github.ref_name }}
+          releaseBody: |
+            Download the file for your platform below.
+
+            - **macOS** — `.dmg` (`aarch64` for Apple Silicon, `x64` for Intel)
+            - **Windows** — `.msi`
+            - **Linux** — `.AppImage`, `.deb` or `.rpm`
+
+            The app is unsigned, so macOS and Windows will both warn on first
+            open. Existing installs update themselves from Settings.
+          # Left as a draft so the release can be checked, and so the four
+          # matrix jobs can finish filling it in before anyone downloads.
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}

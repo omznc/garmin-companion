@@ -1,0 +1,20 @@
+<!--
+  Source artwork for the app icon. Everything under icons/ is generated from
+  this by `pnpm tauri icon src-tauri/icons/icon.svg`, so edit here, not there.
+
+  The mark is a training gauge: a 270° track with the lower zones filled in
+  accent. It says what the app is about (how much of a session sat in which
+  zone) and survives being shrunk to 32×32, which a wordmark or a five-segment
+  ladder would not. Colours are the app's own ink and terracotta.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#15140f"/>
+
+  <!-- Track: 135° → 405°, the unfilled remainder of the gauge. -->
+  <path d="M 299.87 724.13 A 300 300 0 1 1 724.13 724.13"
+        fill="none" stroke="#4a453c" stroke-width="96" stroke-linecap="round"/>
+
+  <!-- Fill: the same arc stopped at 62%, in accent. -->
+  <path d="M 299.87 724.13 A 300 300 0 0 1 672.70 258.70"
+        fill="none" stroke="#c97354" stroke-width="96" stroke-linecap="round"/>
+</svg>

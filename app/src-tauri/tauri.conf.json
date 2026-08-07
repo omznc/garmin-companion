@@ -1,0 +1,62 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Garmin Companion",
+  "mainBinaryName": "garmin-companion",
+  "version": "0.1.0",
+  "identifier": "no.omznc.garmincoach",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Garmin Companion",
+        "width": 1100,
+        "height": 780,
+        "minWidth": 720,
+        "minHeight": 540,
+        "resizable": true,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "shortDescription": "Your Garmin data, read by a coach that remembers.",
+    "longDescription": "Reads your Garmin Connect activities, heart-rate zones, cadence and recovery into a local cache, and answers questions about your training against them. Everything stays on your machine except the metrics a question needs.",
+    "category": "HealthcareFitness",
+    "copyright": "© Omar Žunić",
+    "licenseFile": "../../LICENSE",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/omznc/garmin-companion/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzRDgyNjA4RjUwNDlBMzcKUldRM21nVDFDQ2JZUSt1eDU2MHBOMEVLTG9zQXFkd0gzTy8xeW1tbnQ2RmFrdmtqc1pObU5JSnAK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

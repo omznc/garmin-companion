@@ -1,0 +1,472 @@
+/* Design tokens and shared primitives.
+ *
+ * Ported verbatim from the Garmin Companion design. The design expressed
+ * everything as inline styles; the repeated ones live here as classes so the
+ * components read as structure rather than as style soup. Anything used once
+ * stays inline in the component that uses it.
+ */
+
+@import "@fontsource/instrument-sans/400.css";
+@import "@fontsource/instrument-sans/500.css";
+@import "@fontsource/instrument-sans/600.css";
+@import "@fontsource/instrument-sans/400-italic.css";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+
+:root {
+  --bg: #faf9f6;
+  --fg: #1b1a17;
+  --mut: #79736a;
+  --faint: #a9a296;
+  /* Two hairlines, and only two. `--line` divides sections and outlines
+   * controls; `--line2` separates repeated rows inside one list. Anything that
+   * draws a border picks one of these by that rule, so the same job never
+   * shows up at two weights. */
+  --line: rgba(27, 26, 23, 0.11);
+  --line2: rgba(27, 26, 23, 0.055);
+  --acc: #b0563a;
+  --warn: #8a6a1f;
+  --sel: rgba(27, 26, 23, 0.045);
+}
+
+:root[data-theme="dark"] {
+  --bg: #15140f;
+  --fg: #ede8de;
+  --mut: #8f887c;
+  --faint: #6b6459;
+  --line: rgba(237, 232, 222, 0.13);
+  --line2: rgba(237, 232, 222, 0.06);
+  --acc: #c97354;
+  --warn: #c0a15a;
+  --sel: rgba(237, 232, 222, 0.05);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  /* Desktop chrome, not a web page: dragging the window or swiping across the
+   * nav shouldn't leave a trail of highlighted labels. Selection is handed
+   * back below to the places where copying the text is the point. */
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* Anything worth copying: model answers, file paths, figures. */
+.selectable,
+.selectable *,
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: auto;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: var(--acc);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--fg);
+}
+
+textarea,
+input,
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font-size: inherit;
+}
+
+::selection {
+  background: var(--sel);
+}
+
+/* The webview is the whole window; nothing outside the app should scroll. */
+#root {
+  min-height: 100vh;
+}
+
+/* ---------------------------------------------------------------- type --- */
+
+.serif {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+}
+
+.mono {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+/* Small caps-ish section marker. The design uses this everywhere a heading
+ * would otherwise be too loud. */
+.eyebrow {
+  font: 400 10.5px/1 "Instrument Sans", sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.eyebrow-lg {
+  font: 400 11px/1 "Instrument Sans", sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.h1 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: 38px;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.lede {
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: var(--mut);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------------- surfaces --- */
+
+/* The only full-width divider. There used to be a faint variant as well, which
+ * meant two weights doing the same job on the same screen — hierarchy comes
+ * from the space around a rule, not from fading it out. */
+.rule {
+  height: 1px;
+  background: var(--line);
+}
+
+/* A tappable list row. The hairline is an ::after so it sits inside the
+ * negative margin the hover background bleeds into. */
+.row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 15px 14px;
+  margin: 0 -14px;
+  border-radius: 3px;
+  font-size: 14.5px;
+  width: calc(100% + 28px);
+  transition: background 0.12s;
+}
+
+.row::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 1px;
+  background: var(--line2);
+}
+
+.row:hover:not(:disabled),
+.row:focus-visible {
+  background: var(--sel);
+  outline: none;
+}
+
+/* A row that can't be chosen shouldn't look like it can. */
+.row:disabled {
+  cursor: default;
+}
+
+.row-static {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line2);
+  font-size: 14.5px;
+}
+
+/* ------------------------------------------------------------- controls --- */
+
+.quiet {
+  color: var(--faint);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.quiet:hover {
+  color: var(--fg);
+}
+
+.underlined {
+  color: var(--mut);
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+  transition: color 0.15s;
+}
+
+.underlined:hover {
+  color: var(--fg);
+}
+
+/* The primary action on every screen: serif, accent, arrow. Never a box. */
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 22px;
+  color: var(--acc);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.cta:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.cta:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+/* Inputs used to be bare text with at most a hairline under them, which read
+ * as a label rather than as something you could type into. One box, one focus
+ * treatment, everywhere — the only thing that varies is the size. */
+.input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+
+.input:hover:not(:disabled):not(:focus) {
+  border-color: var(--mut);
+}
+
+/* Accent border plus a soft ring, rather than the platform focus outline —
+ * which lands as a hard blue rectangle on top of all this warm grey. */
+.input:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 16%, transparent);
+}
+
+.input:disabled {
+  color: var(--mut);
+  background: var(--sel);
+  cursor: default;
+}
+
+.input::placeholder {
+  color: var(--faint);
+}
+
+/* The keys and model ids on Settings and Setup: same box, editorial type. */
+.input-lg {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 21px;
+  padding: 12px 15px;
+}
+
+/* The Ask prompt, which is a headline you type into rather than a form field —
+ * a box around it would make the screen look like a search engine. It keeps
+ * the underline, but takes the same accent-on-focus as everything else. */
+.input-bare {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  outline: none;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 23px;
+  line-height: 1.5;
+  color: var(--fg);
+  padding: 6px 0;
+  transition: border-color 0.15s;
+}
+
+.input-bare:focus {
+  border-bottom-color: var(--acc);
+}
+
+.input-bare::placeholder {
+  color: var(--faint);
+}
+
+
+/* ---------------------------------------------------------------- bars --- */
+
+.bar {
+  height: 2px;
+  background: var(--line2);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--acc);
+}
+
+/* ------------------------------------------------------- window chrome --- */
+
+/* Drag handle for the undecorated window. Sits above the app but below the
+ * controls, and stays transparent so the sidebar reads as full-height. */
+.drag-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+}
+
+.win-controls {
+  position: fixed;
+  top: 0;
+  right: 0;
+  /* Above the resize handles, or the top-right corner handle would clip the
+   * close button. The container is pointer-events:none, so the gaps between
+   * buttons still fall through to the handle underneath. */
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+  gap: 2px;
+  /* Only the buttons should take clicks; the gaps belong to the drag strip. */
+  pointer-events: none;
+}
+
+.win-btn {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  color: var(--faint);
+  transition: background 0.12s, color 0.12s;
+}
+
+.win-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.win-btn:hover,
+.win-btn:focus-visible {
+  background: var(--sel);
+  color: var(--fg);
+  outline: none;
+}
+
+.win-btn-close:hover,
+.win-btn-close:focus-visible {
+  color: var(--acc);
+}
+
+/* ------------------------------------------------------------ markdown --- */
+
+/* Lists in model answers. The bullet is a hairline dot rather than a glyph, to
+ * match the `.row` markers used elsewhere. */
+.md-ul {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  list-style: none;
+}
+
+.md-ul > li {
+  position: relative;
+  margin: 0 0 7px;
+}
+
+.md-ul > li::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.md-ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.md-ol > li {
+  margin: 0 0 7px;
+}
+
+/* Nested lists shouldn't inherit the outer list's bottom gap. */
+.md-ul .md-ul,
+.md-ul .md-ol,
+.md-ol .md-ul,
+.md-ol .md-ol {
+  margin: 7px 0 0;
+}
+
+/* The last paragraph in an answer or a table cell shouldn't add trailing space. */
+.md-body > *:last-child,
+.md-body td > p:last-child,
+.md-body th > p:last-child,
+.md-body li > p:last-child {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------- misc --- */
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
