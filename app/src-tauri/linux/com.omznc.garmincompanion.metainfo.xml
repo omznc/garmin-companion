@@ -13,7 +13,7 @@
   in tauri.conf.json. The filename has to be the component id.
 -->
 <component type="desktop-application">
-  <id>no.omznc.garmincoach</id>
+  <id>com.omznc.garmincompanion</id>
 
   <name>Garmin Companion</name>
   <summary>Your Garmin data, read by a coach that remembers</summary>

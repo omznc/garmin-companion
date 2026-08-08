@@ -36,10 +36,10 @@ val hasKeystore = keystorePropertiesFile.exists()
 
 android {
     compileSdk = 36
-    namespace = "no.omznc.garmincoach"
+    namespace = "com.omznc.garmincompanion"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "no.omznc.garmincoach"
+        applicationId = "com.omznc.garmincompanion"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

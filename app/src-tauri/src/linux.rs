@@ -55,7 +55,7 @@ fn work_around_webkit_bugs() {
             std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".local/share"))
         });
     if let Some(dir) = data {
-        let cache = dir.join("no.omznc.garmincoach/WebKitCache");
+        let cache = dir.join("com.omznc.garmincompanion/WebKitCache");
         if !cache.is_file() {
             let _ = std::fs::remove_dir_all(&cache);
             if let Some(parent) = cache.parent() {

@@ -3,7 +3,7 @@
   "productName": "Garmin Companion",
   "mainBinaryName": "garmin-companion",
   "version": "0.2.0",
-  "identifier": "no.omznc.garmincoach",
+  "identifier": "com.omznc.garmincompanion",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -54,19 +54,19 @@
         "priority": "optional",
         "desktopTemplate": "linux/garmin-companion.desktop",
         "files": {
-          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+          "/usr/share/metainfo/com.omznc.garmincompanion.metainfo.xml": "linux/com.omznc.garmincompanion.metainfo.xml"
         }
       },
       "rpm": {
         "depends": ["webkit2gtk4.1", "gtk3"],
         "desktopTemplate": "linux/garmin-companion.desktop",
         "files": {
-          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+          "/usr/share/metainfo/com.omznc.garmincompanion.metainfo.xml": "linux/com.omznc.garmincompanion.metainfo.xml"
         }
       },
       "appimage": {
         "files": {
-          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+          "/usr/share/metainfo/com.omznc.garmincompanion.metainfo.xml": "linux/com.omznc.garmincompanion.metainfo.xml"
         }
       }
     }

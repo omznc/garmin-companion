@@ -45,7 +45,7 @@ pub const STORE: &str = "the app's encrypted store";
 mod imp {
     use anyhow::{Context, Result};
 
-    const SERVICE: &str = "no.omznc.garmincoach";
+    const SERVICE: &str = "com.omznc.garmincompanion";
 
     fn entry(account: &str) -> Result<keyring::Entry> {
         keyring::Entry::new(SERVICE, account).context("could not open the OS keyring")

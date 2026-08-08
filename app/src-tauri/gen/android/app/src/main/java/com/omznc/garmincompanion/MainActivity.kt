@@ -1,4 +1,4 @@
-package no.omznc.garmincoach
+package com.omznc.garmincompanion
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

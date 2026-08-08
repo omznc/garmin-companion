@@ -80,7 +80,7 @@ git tag v0.2.0
 git push origin master --tags
 ```
 
-One file has to move with it: `app/src-tauri/linux/no.omznc.garmincoach.metainfo.xml`
+One file has to move with it: `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml`
 needs a new `<release>` entry with the same version and its date. That is what
 GNOME Software and KDE Discover show as "what's new", and what they compare an
 installed copy against — a stale list there doesn't break the build, it just
