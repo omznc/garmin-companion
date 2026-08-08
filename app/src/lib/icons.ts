@@ -74,5 +74,7 @@ export { LightbulbIcon as NavInsights } from "@phosphor-icons/react/dist/csr/Lig
 export { CalendarBlankIcon as NavPlan } from "@phosphor-icons/react/dist/csr/CalendarBlank";
 export { MapTrifoldIcon as NavRoutes } from "@phosphor-icons/react/dist/csr/MapTrifold";
 export { BackpackIcon as NavGear } from "@phosphor-icons/react/dist/csr/Backpack";
+export { BarbellIcon as NavStrength } from "@phosphor-icons/react/dist/csr/Barbell";
+export { GaugeIcon as NavFitness } from "@phosphor-icons/react/dist/csr/Gauge";
 export { FileTextIcon as NavReports } from "@phosphor-icons/react/dist/csr/FileText";
 export { GearSixIcon as NavSettings } from "@phosphor-icons/react/dist/csr/GearSix";

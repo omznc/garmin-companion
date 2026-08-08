@@ -3,5 +3,10 @@
   "identifier": "default",
   "description": "What the main window may do on every platform",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:default", "os:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "os:default",
+    "notification:default"
+  ]
 }

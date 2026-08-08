@@ -8,6 +8,11 @@ import {
   clearOpenrouterKey,
   garminDisconnect,
   garminStatus,
+  goals,
+  setGoals,
+  notificationSettings,
+  setNotificationSettings,
+  scheduleNudges,
   openrouterModels,
   prepareCloudChat,
   resetChatUsage,
@@ -23,7 +28,9 @@ import {
   type AiUsage,
   type ChatProvider,
   type CustomTheme,
+  type Goals,
   type ModelInfo,
+  type NudgeSchedule,
 } from "../lib/api";
 import { ErrorNote, PageHeader, Swatch, Switch } from "../components/ui";
 import {
@@ -39,7 +46,7 @@ import {
 import { useContextMenu } from "../components/ContextMenu";
 import { FIELDS, blankTheme } from "../lib/customTheme";
 import { UpdateCheck } from "../components/UpdateCheck";
-import { since } from "../lib/format";
+import { DASH, longDate, parseLocal, since, timeOfDay } from "../lib/format";
 import { useTheme } from "../lib/useTheme";
 import { useTypeface } from "../lib/useTypeface";
 import { runSync } from "../lib/syncProgress";
@@ -319,6 +326,26 @@ export function Settings() {
           current={chat.data}
           onChanged={() => qc.invalidateQueries({ queryKey: ["chatConfig"] })}
         />
+      </Section>
+
+      {/* ----------------------------------------------------------- goals */}
+      {/* Above appearance rather than below it: these are the numbers the
+          coach argues from, so they belong nearer the data than the paint. */}
+      <Section
+        title="Goals"
+        lede="What the rings on Today measure, and what the coach is allowed to have an opinion about. Empty a field to switch that one off — it stops being a ring and stops producing nudges."
+      >
+        <GoalSettings />
+      </Section>
+
+      {/* --------------------------------------------------- notifications */}
+      {/* Directly under Goals, because the only thing that ever gets notified
+          is a nudge, and every nudge comes from a goal above. */}
+      <Section
+        title="Notifications"
+        lede="The coach's one interruption a day, and only when it has something to say — which is most weeks not at all."
+      >
+        <NotificationSettings />
       </Section>
 
       {/* ----------------------------------------------------------- usage */}
@@ -1722,4 +1749,262 @@ function price(m: ModelInfo): string {
   if (m.promptPerM === 0 && m.completionPerM === 0) return "free";
   const fmt = (n: number) => (n < 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(n < 10 ? 1 : 0)}`);
   return `${fmt(m.promptPerM)}/${fmt(m.completionPerM)}`;
+}
+
+/* ------------------------------------------------------------------ goals --- */
+
+/** The goals, and what each one means in a sentence. */
+const GOAL_FIELDS = [
+  {
+    key: "longRunMinutes" as const,
+    label: "Long easy run",
+    unit: "minutes",
+    note: "One run a week that goes long and stays easy. The target is duration — pace and distance are whatever they turn out to be.",
+  },
+  {
+    key: "easySharePct" as const,
+    label: "Easy share",
+    unit: "%",
+    note: "How much of the week's running should be Z1–Z2. The 80/20 model, measured over the week rather than per run.",
+  },
+  {
+    key: "cadenceSpm" as const,
+    label: "Cadence",
+    unit: "spm",
+    note: "Steps per minute to aim at. Quicker, lighter steps cut the load through the knee at the same speed.",
+  },
+  {
+    key: "weeklyMinutes" as const,
+    label: "Training time",
+    unit: "minutes",
+    note: "Total across every sport, per week. Off by default.",
+  },
+  {
+    key: "weeklySessions" as const,
+    label: "Sessions",
+    unit: "per week",
+    note: "How many sessions of any kind. Off by default.",
+  },
+];
+
+/**
+ * When the coach is allowed to interrupt.
+ *
+ * The panel is mostly an explanation, because the mechanism is surprising and
+ * matters: this app has no background execution, so a notification is not
+ * decided when it arrives — it is queued days ahead from a plan built the last
+ * time the app was open. Everything queued is shown, including how old the
+ * wording will be by the time each one fires.
+ *
+ * Mounting reschedules. That is the same work a launch does, it is idempotent,
+ * and it means what this screen lists is what the system actually holds rather
+ * than what it held earlier.
+ */
+function NotificationSettings() {
+  const qc = useQueryClient();
+  const current = useQuery({ queryKey: ["notifySettings"], queryFn: notificationSettings });
+  const schedule = useQuery({ queryKey: ["nudgeSchedule"], queryFn: scheduleNudges });
+
+  const save = useMutation({
+    mutationFn: setNotificationSettings,
+    onSuccess: async (next) => {
+      qc.setQueryData(["notifySettings"], next);
+      // Switching off has to silence what is already queued, and moving the
+      // hour has to move it — both of which only happen by re-laying the plan.
+      qc.setQueryData(["nudgeSchedule"], await scheduleNudges());
+    },
+  });
+
+  if (!current.data) return null;
+  const s = current.data;
+  const plan = schedule.data;
+
+  return (
+    <>
+      <Switch
+        on={s.enabled}
+        onChange={(enabled) => save.mutate({ ...s, enabled })}
+        label="Daily nudge"
+        note="One notification, only on days the coach has something worth saying. Turning this off also clears anything already queued."
+      />
+
+      <Setting
+        label="Time of day"
+        note="Local time. The default is early enough that “go tomorrow” is still a plan rather than a regret."
+        control={
+          <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <input
+              className="input"
+              inputMode="numeric"
+              disabled={!s.enabled}
+              style={{ width: 62, textAlign: "right" }}
+              defaultValue={s.hour}
+              onBlur={(e) => {
+                const parsed = Number(e.target.value.trim());
+                if (!Number.isFinite(parsed)) return;
+                const hour = Math.min(23, Math.max(0, Math.round(parsed)));
+                e.target.value = String(hour);
+                if (hour !== s.hour) save.mutate({ ...s, hour });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+            <span style={{ fontSize: "var(--fs-small)", color: "var(--faint)" }}>:00</span>
+          </span>
+        }
+      />
+
+      {plan && <NudgeQueue plan={plan} enabled={s.enabled} />}
+    </>
+  );
+}
+
+/** What the system is actually holding, and why it looks like that. */
+function NudgeQueue({ plan, enabled }: { plan: NudgeSchedule; enabled: boolean }) {
+  const note = (children: ReactNode) => (
+    <div
+      style={{
+        fontSize: "var(--fs-small)",
+        color: "var(--mut)",
+        lineHeight: 1.55,
+        margin: "18px 0 0",
+      }}
+    >
+      {children}
+    </div>
+  );
+
+  if (!enabled) return null;
+
+  if (!plan.permitted) {
+    return note(
+      <>
+        The system is refusing notifications for this app, so nothing is queued. That is a decision
+        made outside the app — it has to be reversed in the operating system's own notification
+        settings, and Android stops showing the request dialog after a couple of refusals.
+      </>,
+    );
+  }
+
+  if (!plan.supported) {
+    return note(
+      <>
+        On this machine a nudge can only be shown while the app is running — the platform has no way
+        to queue one for later. It arrives on launch, at most once a day. The phone is where a nudge
+        reaches you without the app being open.
+      </>,
+    );
+  }
+
+  if (!plan.planned.length) {
+    return note(
+      <>Nothing is queued: the coach has nothing to say right now, which is the usual state.</>,
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <Sub top={0}>Queued with the system</Sub>
+      {plan.planned.map((p) => {
+        const at = parseLocal(p.at);
+        return (
+          <div
+            key={p.at}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              gap: 16,
+              padding: "9px 0",
+              borderTop: "1px solid var(--line2)",
+            }}
+          >
+            <span style={{ fontSize: "var(--fs-small)", color: "var(--mut)", minWidth: 0 }}>
+              {p.title}
+              {p.day > 0 && (
+                <span style={{ color: "var(--faint)" }}> · marked as the last known reading</span>
+              )}
+            </span>
+            <span className="mono" style={{ fontSize: "var(--fs-caption)", flex: "none" }}>
+              {at ? `${longDate(at).split(",")[0]} ${timeOfDay(at)}` : DASH}
+            </span>
+          </div>
+        );
+      })}
+      <div
+        style={{
+          fontSize: "var(--fs-small)",
+          color: "var(--faint)",
+          lineHeight: 1.55,
+          marginTop: 14,
+        }}
+      >
+        These are handed to the system in advance, because nothing evaluates the coach while the app
+        is closed. Opening the app or syncing rebuilds the list from what the cache knows then; the
+        later ones say out loud that they were worked out today, and after these the phone goes
+        quiet until the app is next opened.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The training goals, and the rings and nudges they drive.
+ *
+ * Every field can be emptied, and an empty one is not a goal of zero — it means
+ * the app stops having an opinion about that number entirely. That is why the
+ * inputs are text rather than number-with-a-floor: clearing has to be as easy
+ * as setting.
+ */
+function GoalSettings() {
+  const qc = useQueryClient();
+  const current = useQuery({ queryKey: ["goals"], queryFn: goals });
+  const save = useMutation({
+    mutationFn: setGoals,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["goals"] });
+      // The rings and the nudges are computed from these, so they're stale the
+      // moment a target moves.
+      qc.invalidateQueries({ queryKey: ["coach"] });
+    },
+  });
+
+  if (!current.data) return null;
+  const g = current.data;
+
+  const set = (key: keyof Goals, raw: string) => {
+    const trimmed = raw.trim();
+    const parsed = trimmed === "" ? null : Number(trimmed);
+    if (parsed !== null && !Number.isFinite(parsed)) return;
+    save.mutate({ ...g, [key]: parsed !== null && parsed <= 0 ? null : parsed });
+  };
+
+  return (
+    <>
+      {GOAL_FIELDS.map((f) => (
+        <Setting
+          key={f.key}
+          label={f.label}
+          note={f.note}
+          control={
+            <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+              <input
+                className="input"
+                inputMode="numeric"
+                style={{ width: 76, textAlign: "right" }}
+                defaultValue={g[f.key] ?? ""}
+                placeholder="off"
+                onBlur={(e) => set(f.key, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+              <span style={{ fontSize: "var(--fs-small)", color: "var(--faint)" }}>{f.unit}</span>
+            </span>
+          }
+        />
+      ))}
+    </>
+  );
 }

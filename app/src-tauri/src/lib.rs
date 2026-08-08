@@ -229,6 +229,330 @@ fn set_weight_goal(target_kg: Option<f64>) -> CmdResult<()> {
     }
 }
 
+/* -------------------------------------------------------------- strength --- */
+
+/// Recent strength sessions, summarised from their sets.
+///
+/// There is no load in this data — see `garmin_core::strength` for why — so
+/// nothing here reports volume, and the screen must not imply one.
+#[tauri::command]
+fn strength_sessions(limit: Option<u32>) -> CmdResult<query::StrengthReport> {
+    let db = Db::open_default().map_err(to_msg)?;
+    query::strength_trend(&db, limit.unwrap_or(20)).map_err(to_msg)
+}
+
+/// One session with its sets in order, for the set-by-set timeline. `None` when
+/// the sets haven't been synced yet.
+#[tauri::command]
+fn strength_session(
+    activity_id: i64,
+) -> CmdResult<Option<(garmin_core::StrengthSession, Vec<garmin_core::ExerciseSet>)>> {
+    let db = Db::open_default().map_err(to_msg)?;
+    query::strength_session(&db, activity_id).map_err(to_msg)
+}
+
+/* --------------------------------------------------------------- fitness --- */
+
+#[tauri::command]
+fn personal_records() -> CmdResult<Vec<garmin_core::PersonalRecord>> {
+    let db = Db::open_default().map_err(to_msg)?;
+    query::personal_records(&db).map_err(to_msg)
+}
+
+/// Garmin's own verdict — status, acute/chronic load, load balance, VO2 max and
+/// race predictions — plus however much history the cache has accumulated.
+#[tauri::command]
+fn fitness(days: Option<u32>) -> CmdResult<query::FitnessReport> {
+    let db = Db::open_default().map_err(to_msg)?;
+    query::fitness(&db, days.unwrap_or(90)).map_err(to_msg)
+}
+
+/* ----------------------------------------------------------------- coach --- */
+
+#[tauri::command]
+fn goals() -> CmdResult<garmin_core::Goals> {
+    let db = Db::open_default().map_err(to_msg)?;
+    garmin_core::Goals::load(&db).map_err(to_msg)
+}
+
+#[tauri::command]
+fn set_goals(goals: garmin_core::Goals) -> CmdResult<garmin_core::Goals> {
+    let db = Db::open_default().map_err(to_msg)?;
+    goals.save(&db).map_err(to_msg)?;
+    Ok(goals)
+}
+
+/// The week against the goals, and anything the coach has to say about it.
+///
+/// Local date rather than UTC: a nudge about "this week" has to agree with the
+/// calendar on the wall, and at 01:00 in Europe/Paris those differ.
+#[tauri::command]
+fn coach() -> CmdResult<garmin_core::coach::CoachReport> {
+    let db = Db::open_default().map_err(to_msg)?;
+    garmin_core::coach::for_today(&db, chrono::Local::now().date_naive()).map_err(to_msg)
+}
+
+/// Put one nudge away for the day. It comes back tomorrow if the condition
+/// behind it hasn't cleared — dismissing is not disagreeing.
+#[tauri::command]
+fn dismiss_nudge(id: String) -> CmdResult<()> {
+    let db = Db::open_default().map_err(to_msg)?;
+    let today = chrono::Local::now()
+        .date_naive()
+        .format("%Y-%m-%d")
+        .to_string();
+    db.dismiss_nudge(&id, &today).map_err(to_msg)
+}
+
+/// Whether we may post a notification, asking for the right if we haven't yet.
+///
+/// Android 13 and up needs `POST_NOTIFICATIONS` granted at runtime, and without
+/// it `show()` succeeds and nothing appears — a silent failure, which is the
+/// worst shape for this to take.
+///
+/// The ask deliberately happens here, deep inside sending, rather than at
+/// launch. Android only shows the dialog once or twice before it starts
+/// refusing on the user's behalf for good, so the ask is worth spending well: by
+/// the time this runs there is a real nudge waiting, and the prompt arrives
+/// attached to a reason instead of on a cold first launch before the app has
+/// ever had anything to say.
+///
+/// Blocking — it waits on a dialog — so callers hand it to a blocking thread.
+/// On desktop there is no such permission and the plugin answers `Granted`.
+fn notifications_allowed(app: &tauri::AppHandle) -> bool {
+    use tauri::plugin::PermissionState;
+    use tauri_plugin_notification::NotificationExt;
+
+    match app.notification().permission_state() {
+        Ok(PermissionState::Granted) => true,
+        // What Android reports once it has stopped showing the dialog at all.
+        // Asking again is a round trip that can only return this same answer.
+        Ok(PermissionState::Denied) => false,
+        // `Prompt`, or `PromptWithRationale` after one refusal. The rationale
+        // is the nudge itself, which is why we only get here holding one.
+        Ok(_) => matches!(
+            app.notification().request_permission(),
+            Ok(PermissionState::Granted)
+        ),
+        // A launch is not worth failing over a permission we couldn't read.
+        Err(_) => false,
+    }
+}
+
+/// When the coach may interrupt, and whether it may at all.
+#[tauri::command]
+fn notification_settings() -> CmdResult<garmin_core::coach::NotifySettings> {
+    let db = Db::open_default().map_err(to_msg)?;
+    garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)
+}
+
+#[tauri::command]
+fn set_notification_settings(
+    settings: garmin_core::coach::NotifySettings,
+) -> CmdResult<garmin_core::coach::NotifySettings> {
+    let db = Db::open_default().map_err(to_msg)?;
+    settings.save(&db).map_err(to_msg)?;
+    Ok(settings)
+}
+
+/// What `schedule_nudges` left in place.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NudgeSchedule {
+    /// Everything now queued with the system, soonest first. Empty is the
+    /// common case and not an error.
+    planned: Vec<garmin_core::coach::PlannedNudge>,
+    /// False when the platform refused, so the frontend can say why nothing is
+    /// queued instead of showing an empty list that looks like a bug.
+    permitted: bool,
+    /// False on desktop, where the plugin has no scheduling at all.
+    supported: bool,
+}
+
+/// The id block the coach's scheduled notifications occupy.
+///
+/// Fixed and contiguous so rescheduling is cancel-then-schedule over a known
+/// range: the app cannot ask the system what it queued last run on every
+/// platform, but it can always cancel a range it chose itself.
+#[cfg(mobile)]
+const NUDGE_NOTIFICATION_IDS: std::ops::Range<i32> = 7100..7116;
+
+/// Hand the system the coach's next few days of nudges.
+///
+/// This is the whole proactive half of the coach, and it works the way it does
+/// because the app has no background execution: nothing evaluates the rules
+/// while the app is closed, so every notification has to be queued in advance
+/// from the last plan that was made. Called on launch and after every sync, and
+/// each call cancels the previous plan before laying down a new one — so the
+/// text is never older than the last time the app was open.
+///
+/// Desktop takes the other path. The plugin ignores `schedule` there, and a
+/// desktop app that is running is a desktop app whose Today screen is already
+/// on screen, so it keeps the immediate once-a-day notification instead.
+#[tauri::command]
+async fn schedule_nudges(app: tauri::AppHandle) -> CmdResult<NudgeSchedule> {
+    let now = chrono::Local::now().naive_local();
+
+    // Read first, and let the connection go before anything can block: what
+    // follows may sit on a permission dialog for as long as it takes someone to
+    // notice their phone.
+    let planned = {
+        let db = Db::open_default().map_err(to_msg)?;
+        let settings = garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)?;
+        let report = garmin_core::coach::for_today(&db, now.date()).map_err(to_msg)?;
+        garmin_core::coach::plan_notifications(&report, &settings, now)
+    };
+
+    deliver(app, planned).await
+}
+
+#[cfg(mobile)]
+async fn deliver(
+    app: tauri::AppHandle,
+    planned: Vec<garmin_core::coach::PlannedNudge>,
+) -> CmdResult<NudgeSchedule> {
+    use tauri_plugin_notification::{NotificationExt, Schedule};
+
+    // Clear the old plan first and unconditionally — including when there is
+    // nothing to replace it with. A nudge that has stopped being true has to
+    // stop being scheduled, and switching notifications off has to actually
+    // silence the ones already queued.
+    let ids: Vec<i32> = NUDGE_NOTIFICATION_IDS.collect();
+    let _ = app.notification().cancel(ids);
+
+    if planned.is_empty() {
+        return Ok(NudgeSchedule {
+            planned,
+            permitted: true,
+            supported: true,
+        });
+    }
+
+    // Asking only once there is something to say — see `notifications_allowed`.
+    let handle = app.clone();
+    let permitted = tauri::async_runtime::spawn_blocking(move || notifications_allowed(&handle))
+        .await
+        .unwrap_or(false);
+    if !permitted {
+        return Ok(NudgeSchedule {
+            planned: Vec::new(),
+            permitted: false,
+            supported: true,
+        });
+    }
+
+    let mut queued = Vec::new();
+    for (slot, nudge) in planned.into_iter().enumerate() {
+        let Some(id) = NUDGE_NOTIFICATION_IDS.start.checked_add(slot as i32) else {
+            break;
+        };
+        // A local wall-clock time is a instant only once the zone is applied,
+        // and the plugin wants it as one.
+        let Some(at) = local_instant(nudge.at) else {
+            continue;
+        };
+
+        let result = app
+            .notification()
+            .builder()
+            .id(id)
+            .title(&nudge.title)
+            .body(&nudge.body)
+            .schedule(Schedule::At {
+                date: at,
+                repeating: false,
+                // Doze can otherwise hold a nudge until the phone is next
+                // picked up, which for an evening notification often means the
+                // following morning — by which time it is about the wrong day.
+                allow_while_idle: true,
+            })
+            .show();
+        if result.is_ok() {
+            queued.push(nudge);
+        }
+    }
+
+    Ok(NudgeSchedule {
+        planned: queued,
+        permitted: true,
+        supported: true,
+    })
+}
+
+/// A local wall-clock time as the absolute instant the system schedules against.
+///
+/// `single()` is `None` twice a year: an hour that DST skipped never happens, and
+/// one it repeats happens twice. Taking the earliest of an ambiguous pair and
+/// giving up on an impossible one costs at most a single day's nudge, which is
+/// the right price for not guessing.
+#[cfg(mobile)]
+fn local_instant(at: chrono::NaiveDateTime) -> Option<time::OffsetDateTime> {
+    use chrono::TimeZone;
+
+    let local = chrono::Local
+        .from_local_datetime(&at)
+        .earliest()
+        .or_else(|| chrono::Local.from_local_datetime(&at).single())?;
+    time::OffsetDateTime::from_unix_timestamp(local.timestamp()).ok()
+}
+
+/// Desktop: no scheduling, so the first entry of the plan is shown now and the
+/// rest are dropped. The once-a-day claim is a compare-and-set in SQLite rather
+/// than a flag in the frontend, so opening the app twice still produces one
+/// notification a day.
+#[cfg(desktop)]
+async fn deliver(
+    app: tauri::AppHandle,
+    planned: Vec<garmin_core::coach::PlannedNudge>,
+) -> CmdResult<NudgeSchedule> {
+    use tauri_plugin_notification::NotificationExt;
+
+    let none = |permitted| NudgeSchedule {
+        planned: Vec::new(),
+        permitted,
+        supported: false,
+    };
+
+    let Some(nudge) = planned.into_iter().next() else {
+        return Ok(none(true));
+    };
+
+    let handle = app.clone();
+    let permitted = tauri::async_runtime::spawn_blocking(move || notifications_allowed(&handle))
+        .await
+        .unwrap_or(false);
+    if !permitted {
+        return Ok(none(false));
+    }
+
+    {
+        let db = Db::open_default().map_err(to_msg)?;
+        let today = chrono::Local::now()
+            .date_naive()
+            .format("%Y-%m-%d")
+            .to_string();
+        if !db
+            .claim_nudge_notification(&nudge.nudge_id, &today)
+            .map_err(to_msg)?
+        {
+            return Ok(none(true));
+        }
+    }
+
+    app.notification()
+        .builder()
+        .title(&nudge.title)
+        .body(&nudge.body)
+        .show()
+        .map_err(|e| format!("could not show the notification: {e}"))?;
+
+    Ok(NudgeSchedule {
+        planned: vec![nudge],
+        permitted: true,
+        supported: false,
+    })
+}
+
 /* ---------------------------------------------------------------- themes --- */
 
 /// Every custom theme in the folder. Read fresh each time rather than cached:
@@ -1039,6 +1363,7 @@ pub fn run() {
         // Feeds the frontend the target OS, which is what the window chrome
         // branches on — see `lib/platform.ts`.
         .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(surface_plugin());
 
     // `process` is what lets the app restart itself once an update is staged;
@@ -1136,6 +1461,17 @@ pub fn run() {
             garmin_login,
             garmin_login_error,
             download_apk,
+            strength_sessions,
+            strength_session,
+            personal_records,
+            fitness,
+            goals,
+            set_goals,
+            coach,
+            dismiss_nudge,
+            schedule_nudges,
+            notification_settings,
+            set_notification_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

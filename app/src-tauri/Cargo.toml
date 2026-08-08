@@ -30,6 +30,10 @@ tauri-plugin-opener = "2"
 # constant handed to the webview at startup rather than an IPC round-trip, so
 # the chrome never renders once and then flips sides.
 tauri-plugin-os = "2"
+# The coach's daily nudge. Cross-platform including Android, which is the one
+# that matters — a notification you get on the phone is the difference between
+# the coach speaking first and it waiting for you to open a desktop app.
+tauri-plugin-notification = "2"
 
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -52,6 +56,12 @@ futures-util = { version = "0.3.33", default-features = false, features = ["std"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+# The notification plugin hands `Schedule::At` a `time::OffsetDateTime`, and
+# everything else in this workspace keeps time in chrono. Mobile only: desktop
+# notifications cannot be scheduled at all, so nothing there ever builds one.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+time = "0.3"
 
 # An undecorated macOS window is drawn borderless, which loses the system's
 # rounded corner mask — the app would sit on screen as a hard rectangle. Getting

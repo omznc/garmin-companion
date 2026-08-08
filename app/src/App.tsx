@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { garminStatus } from "./lib/api";
+import { garminStatus, scheduleNudges } from "./lib/api";
 import { router } from "./router";
 import { Setup } from "./screens/Setup";
 import { useTypeface } from "./lib/useTypeface";
@@ -29,6 +29,22 @@ export function App() {
       localStorage.removeItem(SETUP_DONE);
       setDismissed(false);
     }
+  }, [status.data?.connected]);
+
+  // Re-lay the coach's notification plan, once there is a connected account to
+  // have data for.
+  //
+  // Launch is one of only two moments this can happen — the other is after a
+  // sync — because nothing evaluates the rules while the app is closed. So each
+  // launch replaces the queued days with a plan built from what the cache knows
+  // now, and the phone keeps nudging for a few days after this without the app
+  // ever running again.
+  useEffect(() => {
+    if (!status.data?.connected) return;
+    void scheduleNudges().catch(() => {
+      // A refused notification permission is not worth interrupting a launch
+      // over. The same nudge is on Today either way.
+    });
   }, [status.data?.connected]);
 
   // The window has no decorations, so the chrome renders on every branch below

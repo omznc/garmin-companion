@@ -9,6 +9,7 @@
 import {
   NavActivities,
   NavAsk,
+  NavFitness,
   NavFood,
   NavGear,
   NavHealth,
@@ -17,6 +18,7 @@ import {
   NavReports,
   NavRoutes,
   NavSettings,
+  NavStrength,
   NavToday,
   NavWeight,
 } from "./icons";
@@ -34,6 +36,8 @@ export const NAV = [
   { to: "/weight", label: "Weight", icon: NavWeight },
   { to: "/ask", label: "Ask", icon: NavAsk },
   { to: "/insights", label: "Insights", icon: NavInsights },
+  { to: "/strength", label: "Strength", icon: NavStrength },
+  { to: "/fitness", label: "Fitness", icon: NavFitness },
   { to: "/plan", label: "Plan", icon: NavPlan },
   { to: "/routes", label: "Routes", icon: NavRoutes },
   { to: "/gear", label: "Gear", icon: NavGear },

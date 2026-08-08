@@ -11,7 +11,7 @@
  * has to survive navigating between them.
  */
 import { listen } from "@tauri-apps/api/event";
-import { syncNow, type SyncReport } from "./api";
+import { scheduleNudges, syncNow, type SyncReport } from "./api";
 
 export interface SyncStep {
   /** `activities`, `wellness`, `workouts`, `tracks`, `done`. */
@@ -63,6 +63,16 @@ export function runSync(days: number, full: boolean): Promise<SyncReport> {
   if (inFlight) return inFlight;
   set({ running: true, full, step: null, startedAt: Date.now(), error: null });
   inFlight = syncNow(days, full)
+    .then((report) => {
+      // New data means the rules can have changed their mind, and what the
+      // system has queued was built from the old answer. This and app launch
+      // are the only two moments the plan can be rebuilt — nothing evaluates
+      // the coach while the app is closed — so a sync must not pass without it.
+      void scheduleNudges().catch(() => {
+        // Notifications being refused or unavailable is not a failed sync.
+      });
+      return report;
+    })
     .catch((e: unknown) => {
       const message = e instanceof Error ? e.message : String(e);
       set({ error: message });

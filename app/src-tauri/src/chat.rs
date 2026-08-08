@@ -807,6 +807,48 @@ fn tool_schemas() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "strength_sessions",
+                "description": "Strength sessions set by set: work sets, reps, time working, rest between sets and the work:rest ratio. There is NO load in this data — the watch cannot know the weight on the bar — so never discuss volume in kilograms or progression by weight. Exercise names are the watch guessing from wrist motion, are absent for most sets, and must be described as guesses.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "description": "How many sessions. Default 10, capped at 50." }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "personal_records",
+                "description": "Garmin's personal records across every sport: fastest distances, longest run, step records. A record with a null label is one the app doesn't recognise — skip it rather than guessing what it measures.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fitness",
+                "description": "Garmin's own verdict: training status, acute and chronic load, the acute:chronic ratio, the monthly aerobic/anaerobic load balance against Garmin's target ranges, VO2 max and race predictions. Use alongside zone_drift — this is Garmin answering 'is the balance right', and the zone numbers are a second opinion on the same question. A null VO2 max means no outdoor GPS run exists, not poor fitness.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "days": { "type": "integer", "description": "How many days of history. Default 30, capped at 365." }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "coach",
+                "description": "What the app's coach is saying unprompted today, and the week against the athlete's goals. Each nudge carries its numbers in evidence and how many days it has been standing. Empty means nothing is worth raising. Call this to find out what they have already been told, so a check-in builds on it rather than repeating it.",
+                "parameters": { "type": "object", "properties": {} }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "cache_status",
                 "description": "What's in the local cache and when it was last refreshed. Check if data looks stale.",
                 "parameters": { "type": "object", "properties": {} }
@@ -1038,6 +1080,10 @@ fn describe(name: &str, args: &Value) -> String {
         }
         "workouts" => "Reading your saved Garmin workouts".into(),
         "routes" => "Reading your cached GPS routes".into(),
+        "strength_sessions" => "Reading your strength sessions set by set".into(),
+        "personal_records" => "Reading your personal records".into(),
+        "fitness" => "Reading Garmin's training status and load balance".into(),
+        "coach" => "Checking what the coach is already saying".into(),
         "cache_status" => "Checking what's cached".into(),
         "draft_workout" => "Putting a session together".into(),
         "list_themes" => "Reading your saved themes".into(),
@@ -1485,6 +1531,18 @@ fn run_tool(name: &str, args: &Value) -> ToolOutput {
             },
             "workouts" => serde_json::to_value(db.workouts()?)?,
             "routes" => serde_json::to_value(query::route_summaries(&db)?)?,
+            "strength_sessions" => serde_json::to_value(query::strength_trend(
+                &db,
+                window(args, "limit", 10, MAX_ACTIVITIES),
+            )?)?,
+            "personal_records" => serde_json::to_value(query::personal_records(&db)?)?,
+            "fitness" => {
+                serde_json::to_value(query::fitness(&db, window(args, "days", 30, MAX_DAYS))?)?
+            }
+            "coach" => serde_json::to_value(garmin_core::coach::for_today(
+                &db,
+                chrono::Local::now().date_naive(),
+            )?)?,
             "cache_status" => serde_json::to_value(query::cache_status(&db)?)?,
             other => json!({ "error": format!("unknown tool {other}") }),
         })

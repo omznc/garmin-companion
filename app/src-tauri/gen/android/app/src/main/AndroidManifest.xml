@@ -10,6 +10,21 @@
     -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <!--
+      The coach's one notification a day.
+
+      The notification plugin's own manifest declares this too, so the merge
+      would produce it either way — it is repeated here because this file is
+      where someone looks to find out what the app asks the user for, and a
+      permission that prompts should not be discoverable only by reading a
+      dependency's AAR.
+
+      Declaring it is half the job on Android 13 and up: it also has to be
+      granted at runtime. That ask lives in `notify_today` rather than at
+      launch, so the dialog appears the first time there is actually something
+      to say. See the comment there.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
       Self-update. An installed app *is* allowed to hand the system a new APK
       of itself — what it can't do is install one silently, which needs to be a
       device owner. So the app downloads the new version and the system asks

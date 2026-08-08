@@ -26,6 +26,7 @@ import { mean } from "../lib/chart";
 import { ZoneBar } from "../components/ZoneBar";
 import { RefreshButton } from "../components/Refresh";
 import { WeightGlance } from "../components/WeightGlance";
+import { CoachPanel } from "../components/Coach";
 import { firstName, greeting } from "../lib/greeting";
 import { IS_MOBILE } from "../lib/platform";
 import {
@@ -154,6 +155,8 @@ export function Today() {
         lede={summary}
         action={<RefreshButton />}
       />
+
+      <CoachPanel />
 
       <MetricRow>
         <Metric

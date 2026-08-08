@@ -33,6 +33,8 @@ import { Food } from "./screens/Food";
 import { Weight } from "./screens/Weight";
 import { Plan } from "./screens/Plan";
 import { Routes } from "./screens/Routes";
+import { Strength } from "./screens/Strength";
+import { Fitness } from "./screens/Fitness";
 
 /**
  * On an ultrawide the sidebar would otherwise sit pinned to the far left with
@@ -183,6 +185,8 @@ const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute: () => rootRoute, path: "/weight", component: Weight }),
   createRoute({ getParentRoute: () => rootRoute, path: "/ask", component: Ask }),
   createRoute({ getParentRoute: () => rootRoute, path: "/insights", component: Insights }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/strength", component: Strength }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/fitness", component: Fitness }),
   createRoute({ getParentRoute: () => rootRoute, path: "/plan", component: Plan }),
   createRoute({ getParentRoute: () => rootRoute, path: "/routes", component: Routes }),
   createRoute({ getParentRoute: () => rootRoute, path: "/gear", component: Gear }),

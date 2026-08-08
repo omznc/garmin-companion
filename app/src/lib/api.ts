@@ -487,6 +487,241 @@ export interface TagCount {
 /** Every tag in use, commonest first. */
 export const allTags = () => invoke<TagCount[]>("all_tags");
 
+/* -------------------------------------------------------------- strength --- */
+
+/**
+ * One entry in a strength session — a work set, or the rest after one.
+ *
+ * What the watch records is narrower than a lifting log: reps, durations and
+ * order are real; `weightKg` is null on every set this account has, because the
+ * watch cannot know the load. Nothing built on this may imply a volume.
+ */
+export interface ExerciseSet {
+  activityId: number;
+  setIndex: number;
+  active: boolean;
+  durationS: number | null;
+  reps: number | null;
+  /** The watch's guess at the movement, and only when it was confident and
+   *  unambiguous. Null for most sets. Always present it as a guess. */
+  exercise: string | null;
+  exerciseConfidence: number | null;
+  weightKg: number | null;
+  startTime: string | null;
+}
+
+export interface ExerciseCount {
+  exercise: string;
+  sets: number;
+  reps: number;
+  confidence: number;
+}
+
+export interface StrengthSession {
+  activityId: number;
+  name: string | null;
+  date: string | null;
+  durationMin: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  calories: number | null;
+  workSets: number;
+  totalReps: number;
+  workS: number;
+  restS: number;
+  workRestRatio: number | null;
+  medianRestS: number | null;
+  avgRepsPerSet: number | null;
+  guessedExercises: ExerciseCount[];
+  unlabelledSets: number;
+}
+
+export interface StrengthReport {
+  sessions: StrengthSession[];
+  sessionsExamined: number;
+  avgWorkSets: number | null;
+  avgReps: number | null;
+  medianRestS: number | null;
+  unlabelledSets: number;
+  labelledSets: number;
+  noWeightsRecorded: boolean;
+}
+
+export const strengthSessions = (limit = 20) =>
+  invoke<StrengthReport>("strength_sessions", { limit });
+
+export const strengthSession = (activityId: number) =>
+  invoke<[StrengthSession, ExerciseSet[]] | null>("strength_session", { activityId });
+
+/* --------------------------------------------------------------- fitness --- */
+
+export type RecordUnit = "seconds" | "metres" | "count" | "days";
+
+export interface PersonalRecord {
+  recordId: number;
+  typeId: number;
+  /** Null for a record type this build doesn't recognise — don't render those,
+   *  the number alone says nothing. */
+  label: string | null;
+  unit: RecordUnit | null;
+  value: number;
+  activityId: number | null;
+  activityName: string | null;
+  activityType: string | null;
+  setOn: string | null;
+}
+
+export const personalRecords = () => invoke<PersonalRecord[]>("personal_records");
+
+export interface TrainingStatus {
+  date: string | null;
+  status: number | null;
+  statusPhrase: string | null;
+  acuteLoad: number | null;
+  chronicLoad: number | null;
+  acwr: number | null;
+  acwrStatus: string | null;
+  aerobicLow: number | null;
+  aerobicLowTargetMin: number | null;
+  aerobicLowTargetMax: number | null;
+  aerobicHigh: number | null;
+  aerobicHighTargetMin: number | null;
+  aerobicHighTargetMax: number | null;
+  anaerobic: number | null;
+  anaerobicTargetMin: number | null;
+  anaerobicTargetMax: number | null;
+  balancePhrase: string | null;
+  /** Null until an outdoor GPS run exists. A treadmill never populates it. */
+  vo2max: number | null;
+}
+
+export interface RacePredictions {
+  date: string | null;
+  time5kS: number | null;
+  time10kS: number | null;
+  timeHalfS: number | null;
+  timeMarathonS: number | null;
+}
+
+export interface FitnessDay {
+  date: string;
+  status: TrainingStatus;
+  predictions: RacePredictions;
+}
+
+export interface FitnessReport {
+  latest: FitnessDay | null;
+  days: FitnessDay[];
+  vo2maxMissing: boolean;
+  anaerobicOverTarget: boolean;
+}
+
+export const fitness = (days = 90) => invoke<FitnessReport>("fitness", { days });
+
+/* ----------------------------------------------------------------- coach --- */
+
+export interface Goals {
+  weeklyMinutes: number | null;
+  weeklySessions: number | null;
+  longRunMinutes: number | null;
+  easySharePct: number | null;
+  cadenceSpm: number | null;
+}
+
+export interface GoalRing {
+  id: string;
+  label: string;
+  target: number;
+  actual: number;
+  /** `actual / target`, already clamped to 1 for drawing. */
+  fraction: number;
+  met: boolean;
+  unit: "minutes" | "sessions" | "percent" | "spm";
+  /** The figure rests on too little to mean much — say so rather than hiding it. */
+  thin: boolean;
+}
+
+export interface WeekProgress {
+  weekStart: string;
+  rings: GoalRing[];
+  sessions: number;
+  minutes: number;
+  longestRunMinutes: number;
+  easySharePct: number | null;
+  avgCadence: number | null;
+}
+
+export type NudgeTone = "good" | "neutral" | "watch";
+
+export interface Nudge {
+  kind: string;
+  id: string;
+  title: string;
+  body: string;
+  tone: NudgeTone;
+  priority: number;
+  /** The numbers behind it. Never empty — a nudge that can't show its working
+   *  doesn't fire. */
+  evidence: string[];
+  /** Days running that this has been saying the same thing. 1 means new today. */
+  daysRunning: number;
+  firstSeen: string;
+  dismissed: boolean;
+}
+
+export interface CoachReport {
+  date: string;
+  week: WeekProgress;
+  /** Usually empty, which is the intended resting state rather than a fault. */
+  nudges: Nudge[];
+}
+
+export const goals = () => invoke<Goals>("goals");
+export const setGoals = (goals: Goals) => invoke<Goals>("set_goals", { goals });
+export const coach = () => invoke<CoachReport>("coach");
+export const dismissNudge = (id: string) => invoke<void>("dismiss_nudge", { id });
+
+export interface NotifySettings {
+  enabled: boolean;
+  /** Local hour, 0–23. */
+  hour: number;
+}
+
+export interface PlannedNudge {
+  nudgeId: string;
+  title: string;
+  body: string;
+  /** Local wall-clock time it fires, `YYYY-MM-DDTHH:MM:SS`. */
+  at: string;
+  /** 0 for the next one due, counting up from there. */
+  day: number;
+}
+
+export interface NudgeSchedule {
+  /** Everything now queued with the system. Empty is the common case. */
+  planned: PlannedNudge[];
+  /** False when the platform refused the notification permission. */
+  permitted: boolean;
+  /** False on desktop, where notifications can only be shown, never queued. */
+  supported: boolean;
+}
+
+export const notificationSettings = () => invoke<NotifySettings>("notification_settings");
+export const setNotificationSettings = (settings: NotifySettings) =>
+  invoke<NotifySettings>("set_notification_settings", { settings });
+
+/**
+ * Hand the system the coach's next few days of nudges, replacing whatever was
+ * queued before.
+ *
+ * Worth calling on every launch and after every sync, and cheap to: the whole
+ * plan is recomputed and re-laid each time, so the queued text is never older
+ * than the last time the app was open. On desktop, where the platform can't
+ * queue anything, this shows today's nudge immediately instead — at most once a
+ * day, decided in SQLite rather than here.
+ */
+export const scheduleNudges = () => invoke<NudgeSchedule>("schedule_nudges");
+
 /* ------------------------------------------------------------------ live --- */
 
 export const activitySplits = (activityId: number) =>
