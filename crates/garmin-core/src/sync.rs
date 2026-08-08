@@ -52,6 +52,9 @@ pub struct SyncReport {
     pub workouts_written: usize,
     pub tracks_written: usize,
     pub weigh_ins_written: usize,
+    pub sets_written: usize,
+    pub records_written: usize,
+    pub fitness_days_written: usize,
     /// Non-fatal problems — one endpoint 404ing shouldn't abort the whole sync.
     pub warnings: Vec<String>,
 }
@@ -361,6 +364,100 @@ pub async fn sync_weight(
     Ok(())
 }
 
+/// Pull the set-by-set record for strength sessions that don't have one.
+///
+/// One request per session, so it walks newest-first and stops at `limit` like
+/// the track sync does. A session that comes back with no sets is still marked
+/// fetched — otherwise every future sync would ask about it again forever.
+pub async fn sync_strength(
+    client: &GarminClient,
+    db: &Db,
+    limit: usize,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    let pending = db.activities_missing_sets()?;
+    let planned = pending.len().min(limit) as u32;
+
+    for (i, id) in pending.into_iter().take(limit).enumerate() {
+        on(SyncProgress {
+            phase: "strength",
+            detail: String::new(),
+            done: i as u32,
+            total: Some(planned),
+        });
+
+        match client.activity_exercise_sets(id).await {
+            Ok(v) => {
+                let sets = crate::strength::parse_sets(id, &v);
+                report.sets_written += sets.len();
+                db.save_exercise_sets(id, &sets)?;
+            }
+            Err(e) => report.warnings.push(format!("exercise sets {id}: {e}")),
+        }
+    }
+
+    Ok(())
+}
+
+/// Pull the personal records, and today's training status and race predictions.
+///
+/// Three requests for the whole account, not per day: Garmin only serves the
+/// current value of each. History accumulates because this writes one row per
+/// day it runs — which is the only way to get a picture of how they moved.
+pub async fn sync_fitness(
+    client: &GarminClient,
+    db: &Db,
+    display_name: &str,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    on(SyncProgress {
+        phase: "fitness",
+        detail: String::new(),
+        done: 0,
+        total: None,
+    });
+
+    match client.personal_records(display_name).await {
+        Ok(rows) => {
+            for r in crate::records::parse_records(&rows) {
+                db.upsert_personal_record(&r)?;
+                report.records_written += 1;
+            }
+        }
+        Err(e) => report.warnings.push(format!("personal records: {e}")),
+    }
+
+    let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
+
+    let status = match client.training_status(&today).await {
+        Ok(v) => crate::records::parse_training_status(&v),
+        Err(e) => {
+            report.warnings.push(format!("training status: {e}"));
+            Default::default()
+        }
+    };
+    let predictions = match client.race_predictions(display_name).await {
+        Ok(v) => crate::records::parse_race_predictions(&v),
+        Err(e) => {
+            report.warnings.push(format!("race predictions: {e}"));
+            Default::default()
+        }
+    };
+
+    // Garmin dates the status itself; trust that over today's date, which can
+    // differ if the watch hasn't synced. Nothing is written when both requests
+    // came back empty — an all-null row would look like a recorded day.
+    if status.has_data() || predictions.has_data() {
+        let date = status.date.clone().unwrap_or(today);
+        db.upsert_fitness_day(&date, &status, &predictions)?;
+        report.fitness_days_written += 1;
+    }
+
+    Ok(())
+}
+
 /// How many points to keep per trace. Enough to draw a recognisable shape at
 /// screen size without storing a survey of every ride.
 const TRACK_POINTS: usize = 400;
@@ -474,10 +571,15 @@ pub async fn sync_all_with(
     };
     let dates = wellness_dates(db, days, full)?;
 
+    // The display name is in the path of the wellness, record and prediction
+    // endpoints alike, so one failure here costs all of them.
     match client.profile().await {
-        Ok(p) => sync_daily(client, db, &p.display_name, &dates, full, &mut report, on).await?,
+        Ok(p) => {
+            sync_daily(client, db, &p.display_name, &dates, full, &mut report, on).await?;
+            sync_fitness(client, db, &p.display_name, &mut report, on).await?;
+        }
         Err(e) => report.warnings.push(format!(
-            "could not resolve profile, skipped wellness data: {e}"
+            "could not resolve profile, skipped wellness and fitness data: {e}"
         )),
     }
 
@@ -499,6 +601,10 @@ pub async fn sync_all_with(
     // One request per trace, so a full sync takes the backlog in bites. An
     // incremental sync only ever has the handful of new ones to fetch.
     sync_tracks(client, db, if full { 200 } else { 25 }, &mut report, on).await?;
+
+    // Same shape, and a smaller backlog — strength sessions are a fraction of
+    // the activities that carry GPS.
+    sync_strength(client, db, if full { 200 } else { 25 }, &mut report, on).await?;
 
     db.set_sync_state("last_sync", &Utc::now().to_rfc3339())?;
     on(SyncProgress {

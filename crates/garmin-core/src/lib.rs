@@ -6,11 +6,15 @@
 pub mod analysis;
 pub mod auth;
 pub mod client;
+pub mod coach;
 pub mod db;
+pub mod goals;
 pub mod paths;
 pub mod query;
+pub mod records;
 pub mod secrets;
 pub mod store;
+pub mod strength;
 pub mod sync;
 pub mod theme;
 pub mod workout;
@@ -18,7 +22,11 @@ pub mod workout;
 pub use analysis::ActivityAnalysis;
 pub use auth::Tokens;
 pub use client::{ActivitySummary, GarminClient, Profile};
+pub use coach::{Nudge, NudgeKind};
 pub use db::{CachedActivity, DailyMetrics, Db, WeighIn};
+pub use goals::{Goals, WeekProgress};
+pub use records::{PersonalRecord, RacePredictions, TrainingStatus};
+pub use strength::{ExerciseSet, StrengthSession};
 pub use workout::WorkoutDraft;
 
 use anyhow::{Context, Result};

@@ -952,6 +952,140 @@ pub fn route_summaries(db: &Db) -> Result<Vec<RouteSummary>> {
         .collect())
 }
 
+/* ----------------------------------------------------------------- strength --- */
+
+/// Recent strength sessions, each summarised from its sets.
+///
+/// Read the field docs on [`crate::StrengthSession`] before building anything on
+/// this: the watch records reps, durations and order, and does not record load.
+pub fn strength_sessions(db: &Db, limit: u32) -> Result<Vec<crate::StrengthSession>> {
+    let mut out = Vec::new();
+    for a in db.strength_activities(limit)? {
+        let sets = db.exercise_sets(a.activity_id)?;
+        out.push(session_of(&a, &sets));
+    }
+    Ok(out)
+}
+
+/// One session, with its sets in order. `None` when the activity has no cached
+/// sets — which includes every strength session recorded before this feature
+/// existed, until the next sync fetches them.
+pub fn strength_session(
+    db: &Db,
+    activity_id: i64,
+) -> Result<Option<(crate::StrengthSession, Vec<crate::ExerciseSet>)>> {
+    let Some(a) = db.activity(activity_id)? else {
+        return Ok(None);
+    };
+    let sets = db.exercise_sets(activity_id)?;
+    if sets.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some((session_of(&a, &sets), sets)))
+}
+
+/// Attach the activity's own summary fields to a set-derived summary.
+fn session_of(a: &CachedActivity, sets: &[crate::ExerciseSet]) -> crate::StrengthSession {
+    crate::StrengthSession {
+        activity_id: a.activity_id,
+        name: a.name.clone(),
+        date: a.local_date.clone(),
+        duration_min: a.duration_s.map(|s| round1(s / 60.0)),
+        avg_hr: a.avg_hr,
+        max_hr: a.max_hr,
+        calories: a.calories,
+        ..crate::strength::summarise(sets)
+    }
+}
+
+/// How a run of strength sessions compares, oldest last.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrengthReport {
+    pub sessions: Vec<crate::StrengthSession>,
+    pub sessions_examined: usize,
+    pub avg_work_sets: Option<f64>,
+    pub avg_reps: Option<f64>,
+    /// Median of the per-session median rests. The number that says whether the
+    /// sessions are paced as strength work or as a circuit.
+    pub median_rest_s: Option<f64>,
+    /// How many work sets across the window carried no usable exercise guess.
+    /// Shown so the exercise breakdown is read with the right scepticism.
+    pub unlabelled_sets: usize,
+    pub labelled_sets: usize,
+    /// True when no session in the window carried a load figure — which is the
+    /// expected state, and the reason there is no volume anywhere here.
+    pub no_weights_recorded: bool,
+}
+
+pub fn strength_trend(db: &Db, limit: u32) -> Result<StrengthReport> {
+    let sessions = strength_sessions(db, limit)?;
+    let n = sessions.len();
+
+    let mean =
+        |xs: Vec<f64>| (!xs.is_empty()).then(|| round1(xs.iter().sum::<f64>() / xs.len() as f64));
+
+    let mut rests: Vec<f64> = sessions.iter().filter_map(|s| s.median_rest_s).collect();
+    rests.sort_by(f64::total_cmp);
+
+    let labelled: usize = sessions
+        .iter()
+        .map(|s| s.guessed_exercises.iter().map(|e| e.sets).sum::<usize>())
+        .sum();
+
+    Ok(StrengthReport {
+        avg_work_sets: mean(sessions.iter().map(|s| s.work_sets as f64).collect()),
+        avg_reps: mean(sessions.iter().map(|s| s.total_reps as f64).collect()),
+        median_rest_s: (!rests.is_empty()).then(|| round1(rests[rests.len() / 2])),
+        unlabelled_sets: sessions.iter().map(|s| s.unlabelled_sets).sum(),
+        labelled_sets: labelled,
+        no_weights_recorded: true,
+        sessions_examined: n,
+        sessions,
+    })
+}
+
+/* ------------------------------------------------------------------ records --- */
+
+/// Every personal record, best-known first.
+///
+/// Records whose `type_id` this build doesn't recognise are kept but carry no
+/// label — a caller showing these to a human should skip them rather than
+/// print a number with no idea what it measures.
+pub fn personal_records(db: &Db) -> Result<Vec<crate::PersonalRecord>> {
+    db.personal_records()
+}
+
+/* ------------------------------------------------------------------ fitness --- */
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitnessReport {
+    /// Garmin's most recent verdict, or `None` if it has never been synced.
+    pub latest: Option<crate::db::FitnessDay>,
+    /// The window, newest first, for drawing the acute/chronic curve.
+    pub days: Vec<crate::db::FitnessDay>,
+    /// True when the account has no VO2 max — which for a treadmill-only runner
+    /// is expected, not a fault, and is the cue to suggest an outdoor GPS run.
+    pub vo2max_missing: bool,
+    /// Set when the month's anaerobic load has gone past the top of Garmin's
+    /// own target range.
+    pub anaerobic_over_target: bool,
+}
+
+pub fn fitness(db: &Db, days: u32) -> Result<FitnessReport> {
+    let rows = db.recent_fitness(days)?;
+    let latest = rows.first().cloned();
+    Ok(FitnessReport {
+        vo2max_missing: latest.as_ref().is_none_or(|d| d.status.vo2max.is_none()),
+        anaerobic_over_target: latest
+            .as_ref()
+            .is_some_and(|d| d.status.anaerobic_over_target()),
+        latest,
+        days: rows,
+    })
+}
+
 pub fn cache_status(db: &Db) -> Result<CacheStatus> {
     Ok(CacheStatus {
         activities_cached: db.activity_count()?,

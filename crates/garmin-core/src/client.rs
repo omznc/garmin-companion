@@ -198,6 +198,61 @@ impl GarminClient {
             .await
     }
 
+    /// Set-by-set record of a strength session.
+    ///
+    /// Worth knowing what this does and doesn't carry, because it decides what
+    /// can honestly be built on it. Reliable: `repetitionCount`, `duration`,
+    /// `setType` (`ACTIVE` or `REST`) and the order. Not reliable: `weight`,
+    /// which is null unless the load was typed into Garmin Connect by hand, and
+    /// `exercises`, which is the watch guessing from wrist motion — it returns
+    /// several candidates with probabilities, and `UNKNOWN` usually wins.
+    pub async fn activity_exercise_sets(&self, id: i64) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/activity-service/activity/{id}/exerciseSets"),
+            &[],
+        )
+        .await
+    }
+
+    /// Every personal record on the account. One flat list across all sports,
+    /// each row identified by a `typeId` — see [`crate::records`] for what those
+    /// mean.
+    pub async fn personal_records(&self, display_name: &str) -> Result<Vec<serde_json::Value>> {
+        self.get_json(
+            &format!("/personalrecord-service/personalrecord/prs/{display_name}"),
+            &[],
+        )
+        .await
+    }
+
+    /// Garmin's own verdict on the training: status, acute and chronic load,
+    /// the acute:chronic ratio, and the aerobic/anaerobic load balance against
+    /// the targets it sets. Also where VO2 max actually lives — the `maxmet`
+    /// endpoint answers with nulls for an account that has never run outdoors.
+    ///
+    /// Everything is nested under the watch's device id, since an account can
+    /// have several and only one is primary.
+    pub async fn training_status(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/metrics-service/metrics/trainingstatus/aggregated/{date}"),
+            &[],
+        )
+        .await
+    }
+
+    /// Predicted finishing times for 5K, 10K, half and marathon, in seconds.
+    ///
+    /// Garmin produces these from HR and pace, so they exist even on an account
+    /// with no VO2 max and no outdoor run — which makes them worth showing, and
+    /// worth labelling as extrapolated from treadmill work.
+    pub async fn race_predictions(&self, display_name: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/metrics-service/metrics/racepredictions/latest/{display_name}"),
+            &[],
+        )
+        .await
+    }
+
     /// Time-in-zone breakdown — the number this app exists to show.
     pub async fn hr_time_in_zones(&self, id: i64) -> Result<Vec<HrZoneBucket>> {
         self.get_json(

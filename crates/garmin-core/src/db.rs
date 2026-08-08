@@ -233,6 +233,93 @@ impl Db {
             CREATE INDEX IF NOT EXISTS idx_activity_tags_tag
                 ON activity_tags(tag);
 
+            -- Set-by-set record of a strength session. One row per entry
+            -- Garmin sent, rest periods included, because the rest between
+            -- sets is half of what distinguishes one session from another and
+            -- dropping it would make the ordering unreconstructable.
+            --
+            -- `weight_kg` is here for completeness and is null on every row
+            -- this account has: the watch cannot know the load. Nothing
+            -- downstream may require it.
+            CREATE TABLE IF NOT EXISTS exercise_sets (
+                activity_id  INTEGER NOT NULL,
+                set_index    INTEGER NOT NULL,
+                active       INTEGER NOT NULL,
+                duration_s   REAL,
+                reps         INTEGER,
+                -- The watch's guess at the movement, kept only when it was
+                -- confident and unambiguous. Null is the common case.
+                exercise     TEXT,
+                exercise_confidence REAL,
+                weight_kg    REAL,
+                start_time   TEXT,
+                PRIMARY KEY (activity_id, set_index)
+            );
+
+            -- Garmin's personal records, keyed by its own row id so a re-sync
+            -- updates a beaten record rather than accumulating both.
+            CREATE TABLE IF NOT EXISTS personal_records (
+                record_id     INTEGER PRIMARY KEY,
+                type_id       INTEGER NOT NULL,
+                value         REAL NOT NULL,
+                activity_id   INTEGER,
+                activity_name TEXT,
+                activity_type TEXT,
+                set_on        TEXT
+            );
+
+            -- Garmin's own verdict for one day: training status, acute and
+            -- chronic load, the acute:chronic ratio, the monthly load balance
+            -- against its targets, VO2 max, and the race predictions.
+            --
+            -- One row per day rather than latest-only, so a picture of how
+            -- these moved builds up over time. Garmin only serves the current
+            -- value, so history here is whatever the app was around to record.
+            CREATE TABLE IF NOT EXISTS fitness_days (
+                date              TEXT PRIMARY KEY,
+                status            INTEGER,
+                status_phrase     TEXT,
+                acute_load        REAL,
+                chronic_load      REAL,
+                acwr              REAL,
+                acwr_status       TEXT,
+                aerobic_low       REAL,
+                aerobic_low_min   REAL,
+                aerobic_low_max   REAL,
+                aerobic_high      REAL,
+                aerobic_high_min  REAL,
+                aerobic_high_max  REAL,
+                anaerobic         REAL,
+                anaerobic_min     REAL,
+                anaerobic_max     REAL,
+                balance_phrase    TEXT,
+                vo2max            REAL,
+                race_5k_s         REAL,
+                race_10k_s        REAL,
+                race_half_s       REAL,
+                race_marathon_s   REAL
+            );
+
+            -- Nudges the coach has already made, so the same one can be
+            -- recognised rather than repeated as though it were news.
+            --
+            -- `times_seen` is what lets a nudge say "third week running", and
+            -- `dismissed_on` is what stops a dismissed one coming back the same
+            -- day. Neither is derivable from the rules, which are stateless by
+            -- design — the state lives here.
+            CREATE TABLE IF NOT EXISTS nudges (
+                id           TEXT PRIMARY KEY,
+                first_seen   TEXT NOT NULL,
+                last_seen    TEXT NOT NULL,
+                times_seen   INTEGER NOT NULL DEFAULT 1,
+                -- The date it was dismissed on, or null. A dismissal is for the
+                -- day, not forever: the condition either clears or it doesn't.
+                dismissed_on TEXT,
+                -- The date a system notification last went out for it, so a
+                -- day's notification fires once however often the app opens.
+                notified_on  TEXT
+            );
+
             -- The computed analysis for one session, kept because building it
             -- costs three Garmin requests and the samples behind a finished
             -- session never change. `key` is what it was computed from, so a
@@ -278,6 +365,11 @@ impl Db {
             "ALTER TABLE daily_metrics ADD COLUMN hydration_ml REAL",
             "ALTER TABLE daily_metrics ADD COLUMN hydration_goal_ml REAL",
             "ALTER TABLE daily_metrics ADD COLUMN sweat_loss_ml REAL",
+            // Whether the exercise-set fetch has been attempted for this
+            // activity. A marker rather than "are there rows", because a
+            // session can legitimately have no sets and asking Garmin again on
+            // every sync forever is the alternative.
+            "ALTER TABLE activities ADD COLUMN sets_synced INTEGER",
         ] {
             match self.conn.execute(ddl, []) {
                 Ok(_) => {}
@@ -906,6 +998,344 @@ impl Db {
         Ok(out)
     }
 
+    /* ------------------------------------------------------------ strength --- */
+
+    /// Replace the whole set list for one activity, and mark it fetched.
+    ///
+    /// Set-at-a-time and in a transaction: a session's sets only make sense as
+    /// an ordered whole, and a half-written one would report a work:rest ratio
+    /// computed from part of a workout.
+    pub fn save_exercise_sets(&self, activity_id: i64, sets: &[crate::ExerciseSet]) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM exercise_sets WHERE activity_id = ?1",
+            params![activity_id],
+        )?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO exercise_sets (
+                     activity_id, set_index, active, duration_s, reps,
+                     exercise, exercise_confidence, weight_kg, start_time
+                 ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            )?;
+            for s in sets {
+                stmt.execute(params![
+                    s.activity_id,
+                    s.set_index,
+                    s.active,
+                    s.duration_s,
+                    s.reps,
+                    s.exercise,
+                    s.exercise_confidence,
+                    s.weight_kg,
+                    s.start_time,
+                ])?;
+            }
+        }
+        tx.execute(
+            "UPDATE activities SET sets_synced = 1 WHERE activity_id = ?1",
+            params![activity_id],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// One session's sets, in the order they happened.
+    pub fn exercise_sets(&self, activity_id: i64) -> Result<Vec<crate::ExerciseSet>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT activity_id, set_index, active, duration_s, reps,
+                    exercise, exercise_confidence, weight_kg, start_time
+             FROM exercise_sets WHERE activity_id = ?1 ORDER BY set_index",
+        )?;
+        let rows = stmt
+            .query_map(params![activity_id], |r| {
+                Ok(crate::ExerciseSet {
+                    activity_id: r.get(0)?,
+                    set_index: r.get(1)?,
+                    active: r.get(2)?,
+                    duration_s: r.get(3)?,
+                    reps: r.get(4)?,
+                    exercise: r.get(5)?,
+                    exercise_confidence: r.get(6)?,
+                    weight_kg: r.get(7)?,
+                    start_time: r.get(8)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Strength activities whose sets haven't been fetched yet, newest first.
+    ///
+    /// The type filter is SQL rather than a walk in Rust because the alternative
+    /// is loading every activity on the account to find the handful that lift.
+    pub fn activities_missing_sets(&self) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT activity_id FROM activities
+             WHERE COALESCE(sets_synced, 0) = 0
+               AND (type_key LIKE '%strength%' OR type_key LIKE '%pilates%'
+                    OR type_key LIKE '%yoga%' OR type_key = 'indoor_climbing')
+             ORDER BY start_time_local DESC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Every activity with cached sets, newest first, with the summary fields a
+    /// session list needs.
+    pub fn strength_activities(&self, limit: u32) -> Result<Vec<CachedActivity>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {ACTIVITY_COLS} FROM activities
+             WHERE activity_id IN (SELECT DISTINCT activity_id FROM exercise_sets)
+             ORDER BY start_time_local DESC LIMIT ?1"
+        ))?;
+        let rows = stmt
+            .query_map(params![limit], map_activity)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /* ------------------------------------------------------------- records --- */
+
+    pub fn upsert_personal_record(&self, r: &crate::PersonalRecord) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO personal_records (
+                 record_id, type_id, value, activity_id, activity_name,
+                 activity_type, set_on
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7)
+             ON CONFLICT(record_id) DO UPDATE SET
+                 type_id=excluded.type_id, value=excluded.value,
+                 activity_id=excluded.activity_id,
+                 activity_name=excluded.activity_name,
+                 activity_type=excluded.activity_type, set_on=excluded.set_on",
+            params![
+                r.record_id,
+                r.type_id,
+                r.value,
+                r.activity_id,
+                r.activity_name,
+                r.activity_type,
+                r.set_on,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Every stored record, newest first. Labels are re-derived on read rather
+    /// than stored, so recognising a new `type_id` is a code change and not a
+    /// re-sync.
+    pub fn personal_records(&self) -> Result<Vec<crate::PersonalRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT record_id, type_id, value, activity_id, activity_name,
+                    activity_type, set_on
+             FROM personal_records ORDER BY set_on DESC, type_id",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                let type_id: i64 = r.get(1)?;
+                let labelled = crate::records::record_label(type_id);
+                Ok(crate::PersonalRecord {
+                    record_id: r.get(0)?,
+                    type_id,
+                    label: labelled.map(|(l, _)| l.to_string()),
+                    unit: labelled.map(|(_, u)| u),
+                    value: r.get(2)?,
+                    activity_id: r.get(3)?,
+                    activity_name: r.get(4)?,
+                    activity_type: r.get(5)?,
+                    set_on: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /* ------------------------------------------------------------- fitness --- */
+
+    /// Write one day's training status and race predictions.
+    ///
+    /// Every column coalesces, because the two halves arrive from different
+    /// endpoints and either can fail on its own — a race prediction that came
+    /// back shouldn't be wiped by a training-status request that didn't.
+    pub fn upsert_fitness_day(
+        &self,
+        date: &str,
+        s: &crate::TrainingStatus,
+        p: &crate::RacePredictions,
+    ) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT INTO fitness_days (
+                date, status, status_phrase, acute_load, chronic_load, acwr,
+                acwr_status, aerobic_low, aerobic_low_min, aerobic_low_max,
+                aerobic_high, aerobic_high_min, aerobic_high_max,
+                anaerobic, anaerobic_min, anaerobic_max, balance_phrase, vo2max,
+                race_5k_s, race_10k_s, race_half_s, race_marathon_s
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,
+                      ?17,?18,?19,?20,?21,?22)
+            ON CONFLICT(date) DO UPDATE SET
+                status=COALESCE(excluded.status, status),
+                status_phrase=COALESCE(excluded.status_phrase, status_phrase),
+                acute_load=COALESCE(excluded.acute_load, acute_load),
+                chronic_load=COALESCE(excluded.chronic_load, chronic_load),
+                acwr=COALESCE(excluded.acwr, acwr),
+                acwr_status=COALESCE(excluded.acwr_status, acwr_status),
+                aerobic_low=COALESCE(excluded.aerobic_low, aerobic_low),
+                aerobic_low_min=COALESCE(excluded.aerobic_low_min, aerobic_low_min),
+                aerobic_low_max=COALESCE(excluded.aerobic_low_max, aerobic_low_max),
+                aerobic_high=COALESCE(excluded.aerobic_high, aerobic_high),
+                aerobic_high_min=COALESCE(excluded.aerobic_high_min, aerobic_high_min),
+                aerobic_high_max=COALESCE(excluded.aerobic_high_max, aerobic_high_max),
+                anaerobic=COALESCE(excluded.anaerobic, anaerobic),
+                anaerobic_min=COALESCE(excluded.anaerobic_min, anaerobic_min),
+                anaerobic_max=COALESCE(excluded.anaerobic_max, anaerobic_max),
+                balance_phrase=COALESCE(excluded.balance_phrase, balance_phrase),
+                vo2max=COALESCE(excluded.vo2max, vo2max),
+                race_5k_s=COALESCE(excluded.race_5k_s, race_5k_s),
+                race_10k_s=COALESCE(excluded.race_10k_s, race_10k_s),
+                race_half_s=COALESCE(excluded.race_half_s, race_half_s),
+                race_marathon_s=COALESCE(excluded.race_marathon_s, race_marathon_s)
+            "#,
+            params![
+                date,
+                s.status,
+                s.status_phrase,
+                s.acute_load,
+                s.chronic_load,
+                s.acwr,
+                s.acwr_status,
+                s.aerobic_low,
+                s.aerobic_low_target_min,
+                s.aerobic_low_target_max,
+                s.aerobic_high,
+                s.aerobic_high_target_min,
+                s.aerobic_high_target_max,
+                s.anaerobic,
+                s.anaerobic_target_min,
+                s.anaerobic_target_max,
+                s.balance_phrase,
+                s.vo2max,
+                p.time_5k_s,
+                p.time_10k_s,
+                p.time_half_s,
+                p.time_marathon_s,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The last `days` of fitness rows, newest first.
+    pub fn recent_fitness(&self, days: u32) -> Result<Vec<FitnessDay>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT date, status, status_phrase, acute_load, chronic_load, acwr,
+                    acwr_status, aerobic_low, aerobic_low_min, aerobic_low_max,
+                    aerobic_high, aerobic_high_min, aerobic_high_max,
+                    anaerobic, anaerobic_min, anaerobic_max, balance_phrase,
+                    vo2max, race_5k_s, race_10k_s, race_half_s, race_marathon_s
+             FROM fitness_days ORDER BY date DESC LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map(params![days], |r| {
+                Ok(FitnessDay {
+                    date: r.get(0)?,
+                    status: crate::TrainingStatus {
+                        date: r.get(0)?,
+                        status: r.get(1)?,
+                        status_phrase: r.get(2)?,
+                        acute_load: r.get(3)?,
+                        chronic_load: r.get(4)?,
+                        acwr: r.get(5)?,
+                        acwr_status: r.get(6)?,
+                        aerobic_low: r.get(7)?,
+                        aerobic_low_target_min: r.get(8)?,
+                        aerobic_low_target_max: r.get(9)?,
+                        aerobic_high: r.get(10)?,
+                        aerobic_high_target_min: r.get(11)?,
+                        aerobic_high_target_max: r.get(12)?,
+                        anaerobic: r.get(13)?,
+                        anaerobic_target_min: r.get(14)?,
+                        anaerobic_target_max: r.get(15)?,
+                        balance_phrase: r.get(16)?,
+                        vo2max: r.get(17)?,
+                    },
+                    predictions: crate::RacePredictions {
+                        date: r.get(0)?,
+                        time_5k_s: r.get(18)?,
+                        time_10k_s: r.get(19)?,
+                        time_half_s: r.get(20)?,
+                        time_marathon_s: r.get(21)?,
+                    },
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /* -------------------------------------------------------------- nudges --- */
+
+    /// Record that a nudge fired today, returning how it has fared so far.
+    ///
+    /// `times_seen` only advances once per day. The coach is evaluated whenever
+    /// a screen opens, and a nudge that said "third day running" after three
+    /// refreshes would be lying about the thing it exists to count.
+    pub fn saw_nudge(&self, id: &str, today: &str) -> Result<NudgeState> {
+        self.conn.execute(
+            "INSERT INTO nudges (id, first_seen, last_seen, times_seen)
+             VALUES (?1, ?2, ?2, 1)
+             ON CONFLICT(id) DO UPDATE SET
+                 times_seen = times_seen + (last_seen <> excluded.last_seen),
+                 last_seen = excluded.last_seen",
+            params![id, today],
+        )?;
+        self.nudge_state(id)?
+            .context("nudge row vanished immediately after being written")
+    }
+
+    pub fn nudge_state(&self, id: &str) -> Result<Option<NudgeState>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, first_seen, last_seen, times_seen, dismissed_on, notified_on
+                 FROM nudges WHERE id = ?1",
+                params![id],
+                |r| {
+                    Ok(NudgeState {
+                        id: r.get(0)?,
+                        first_seen: r.get(1)?,
+                        last_seen: r.get(2)?,
+                        times_seen: r.get(3)?,
+                        dismissed_on: r.get(4)?,
+                        notified_on: r.get(5)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn dismiss_nudge(&self, id: &str, today: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE nudges SET dismissed_on = ?2 WHERE id = ?1",
+            params![id, today],
+        )?;
+        Ok(())
+    }
+
+    /// Claim today's notification for one nudge.
+    ///
+    /// Returns true only for the caller that actually claimed it — the `WHERE`
+    /// makes this a compare-and-set, so two windows opening at once can't both
+    /// decide they were the one to notify.
+    pub fn claim_nudge_notification(&self, id: &str, today: &str) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE nudges SET notified_on = ?2
+             WHERE id = ?1 AND COALESCE(notified_on, '') <> ?2",
+            params![id, today],
+        )?;
+        Ok(changed > 0)
+    }
+
     /* ------------------------------------------------------------ analysis --- */
 
     /// The stored analysis for one activity, if it was computed from `key`.
@@ -1245,6 +1675,29 @@ impl DailyMetrics {
             || self.hydration_ml.is_some()
             || self.sweat_loss_ml.is_some()
     }
+}
+
+/// How a nudge has fared: when it first appeared, how many days it has been
+/// saying the same thing, and whether it has been dismissed or notified today.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NudgeState {
+    pub id: String,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub times_seen: i64,
+    pub dismissed_on: Option<String>,
+    pub notified_on: Option<String>,
+}
+
+/// One day of Garmin's own verdict: its training status and its race
+/// predictions, which arrive from two endpoints and are stored as one row.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FitnessDay {
+    pub date: String,
+    pub status: crate::TrainingStatus,
+    pub predictions: crate::RacePredictions,
 }
 
 /// A saved Ask conversation. `messages` is opaque JSON here — the shape is the
