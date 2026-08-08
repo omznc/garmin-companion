@@ -92,6 +92,25 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.5.0" date="2026-08-08">
+      <description>
+        <p>
+          The daily nudge now arrives on a desktop at the hour you set it for,
+          not whenever you next open the app. Turning it on keeps the app in the
+          tray after you close the window, where it syncs on its own and works
+          the nudge out from numbers taken minutes before it speaks.
+        </p>
+        <p>
+          It can start at login, into the tray, without a window. A desktop with
+          no tray to sit in is detected rather than assumed, and there the app
+          quits with its window as it always did.
+        </p>
+        <p>
+          Release notes shown after an update are rendered as text rather than
+          as the characters used to write it, and Android shows them at all.
+        </p>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-08-08">
       <description>
         <p>
