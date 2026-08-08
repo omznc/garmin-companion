@@ -1,72 +1,67 @@
 # Releasing
 
-## Before the first release — four things only you can do
+## Setup — done, and what losing it costs
 
-**1. Pick the GitHub repo and make the URL match.** The updater endpoint is
-hardcoded and I had to guess at it. It is currently
+None of this needs doing again. It's written down because each piece is
+unrecoverable in a way that only surfaces months later.
+
+**The updater endpoint.** Hardcoded to
 
 ```
 https://github.com/omznc/garmin-companion/releases/latest/download/latest.json
 ```
 
-in `app/src-tauri/tauri.conf.json` under `plugins.updater.endpoints`. If the
-repo ends up at a different owner or name, change that one string. Nothing else
-refers to the slug. Getting it wrong doesn't break the build — it breaks update
-checks silently, months later.
+in `app/src-tauri/tauri.conf.json` under `plugins.updater.endpoints`. Nothing
+else refers to the slug, so if the repo ever moves, that one string is the
+edit. Getting it wrong doesn't break the build — it breaks update checks
+silently.
 
-**2. Add the signing key to GitHub.** The updater refuses any bundle it can't
-verify against the public key baked into the app, so CI has to sign with the
-matching private key. One was generated for you at:
+**The updater key**, which proves a bundle came from you. The app refuses any
+update it can't verify against the public half baked into it.
 
-- private: `~/.tauri/garmin-companion.key`
-- public: `~/.tauri/garmin-companion.key.pub` (already pasted into
-  `tauri.conf.json` as `plugins.updater.pubkey`)
+- private: `~/.tauri/garmin-companion.key`, held by CI as
+  `TAURI_SIGNING_PRIVATE_KEY` (its password is empty — the key was generated
+  without one)
+- public: `~/.tauri/garmin-companion.key.pub`, pasted into `tauri.conf.json` as
+  `plugins.updater.pubkey`
 
-Add the private key as a repository secret:
+**If the private key is gone, every installed copy stops being able to update**,
+and the only fix is shipping a new key in a build people install by hand.
+
+**The Android key**, which is not interchangeable with the one above: it decides
+identity rather than authenticity. Android installs a new APK over an old one
+only when both carry the same signature, so **if it's lost, every existing
+install has to be uninstalled by hand before it can take another update**. No
+recovery, no override.
+
+- keystore: `~/.tauri/garmin-companion.jks` — RSA 2048, alias
+  `garmin-companion`, valid 10,000 days
+- password: `~/.tauri/garmin-companion.jks.password`, mode 600, one string for
+  both the store and the key
+
+Back both up somewhere that isn't this machine. If the secrets ever need
+setting again:
 
 ```sh
 gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/garmin-companion.key
 gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --body ""
-```
-
-The password is empty because the key was generated without one. Back the
-private key up somewhere you won't lose it: **if it's gone, every installed
-copy of the app stops being able to update**, and the only fix is shipping a
-new key in a build people have to install by hand.
-
-**3. Generate the Android signing key.** Separate from the updater key above and
-not interchangeable — this one is Android's own, and it decides identity rather
-than authenticity. Android will only install a new APK over an old one when both
-carry the same signature, so **if this key is lost, every existing install has
-to be uninstalled by hand before it can take another update**. There is no
-recovery and no override.
-
-```sh
-keytool -genkey -v -keystore ~/.tauri/garmin-companion.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias garmin-companion
-```
-
-Then hand CI the keystore and the three strings that open it:
-
-```sh
 base64 -w0 ~/.tauri/garmin-companion.jks | gh secret set ANDROID_KEYSTORE
-gh secret set ANDROID_KEYSTORE_PASSWORD --body '<store password>'
-gh secret set ANDROID_KEY_PASSWORD      --body '<key password>'
+gh secret set ANDROID_KEYSTORE_PASSWORD < ~/.tauri/garmin-companion.jks.password
+gh secret set ANDROID_KEY_PASSWORD      < ~/.tauri/garmin-companion.jks.password
 gh secret set ANDROID_KEY_ALIAS         --body 'garmin-companion'
 ```
 
-Skipping this is survivable: the `android` job still runs and still proves the
-target compiles, it just produces an unsigned APK and doesn't attach it to the
-release. Back the `.jks` up somewhere you won't lose it.
+The password file ends without a newline on purpose. `gh secret set` sends
+stdin verbatim, so a trailing `\n` lands inside the secret, and Gradle then
+fails to open a keystore whose password looks correct everywhere you'd check
+it.
 
-**4. Push the repo.** It currently has no commits and no remote.
+Losing the Android secrets is survivable in the short term: the `android` job
+still runs and still proves the target compiles, it just produces an unsigned
+APK and doesn't attach it to the release.
 
-```sh
-git add -A && git commit -m "Initial commit"
-gh repo create omznc/garmin-companion --private --source=. --push
-```
-
-**5. Decide about code signing** (or decide not to care). See below.
+**Code signing with an OS vendor certificate** is the one thing still not done,
+and the only one that's a decision rather than a task. See below.
 
 ## Cutting a release
 
