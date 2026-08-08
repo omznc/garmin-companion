@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icon layer, used when the launcher is set to tint every icon with the
+  wallpaper palette (Android 13+). The system throws the colours away and keeps
+  the alpha, so the gauge's two tones survive as opaque fill against a faded
+  track — the same reading as the full-colour mark, one hue down.
+
+  Same geometry and same group transform as `ic_launcher_foreground.xml`; if
+  one moves, move both.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:scaleX="0.7356"
+        android:scaleY="0.7356"
+        android:translateX="135.4"
+        android:translateY="135.4">
+        <path
+            android:pathData="M 299.87 724.13 A 300 300 0 1 1 724.13 724.13"
+            android:strokeColor="#ffffff"
+            android:strokeAlpha="0.38"
+            android:strokeWidth="96"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M 299.87 724.13 A 300 300 0 0 1 672.70 258.70"
+            android:strokeColor="#ffffff"
+            android:strokeWidth="96"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

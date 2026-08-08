@@ -1,13 +1,19 @@
 //! Token persistence. Tokens live in the OS keyring (kwallet/gnome-keyring,
 //! Keychain, Credential Manager) — never in the app's own config files, and
 //! never anywhere the webview can reach them.
+//!
+//! Android has no keyring, so there the same secrets go to an encrypted file in
+//! the app's private directory. `secrets` is where that choice is made and is
+//! the only module that knows which platform it is on; everything below reads
+//! the same on both. `secrets::STORE` names whichever one is in play, so a
+//! failure message doesn't tell an Android user to go and unlock a keyring.
 
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 
 use crate::auth::Tokens;
+use crate::secrets::{self, STORE};
 
-const SERVICE: &str = "no.omznc.garmincoach";
 const ACCOUNT_GARMIN: &str = "garmin-di-tokens";
 const ACCOUNT_OPENROUTER: &str = "openrouter-api-key";
 /// Renamed when ids stopped being minted here and started being issued by the
@@ -16,53 +22,38 @@ const ACCOUNT_OPENROUTER: &str = "openrouter-api-key";
 /// server has never heard of and being refused for it.
 const ACCOUNT_DEVICE: &str = "cloud-install-id";
 
-fn entry(account: &str) -> Result<keyring::Entry> {
-    keyring::Entry::new(SERVICE, account).context("could not open the OS keyring")
-}
-
 pub fn save_tokens(tokens: &Tokens) -> Result<()> {
     let json = serde_json::to_string(tokens)?;
-    entry(ACCOUNT_GARMIN)?
-        .set_password(&json)
-        .context("could not write Garmin tokens to the keyring")
+    secrets::set(ACCOUNT_GARMIN, &json)
+        .with_context(|| format!("could not write Garmin tokens to {STORE}"))
 }
 
 pub fn load_tokens() -> Result<Option<Tokens>> {
-    match entry(ACCOUNT_GARMIN)?.get_password() {
-        Ok(json) => Ok(Some(
-            serde_json::from_str(&json).context("stored Garmin tokens are corrupt")?,
-        )),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(e).context("could not read Garmin tokens from the keyring"),
-    }
+    let Some(json) = secrets::get(ACCOUNT_GARMIN)
+        .with_context(|| format!("could not read Garmin tokens from {STORE}"))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(
+        serde_json::from_str(&json).context("stored Garmin tokens are corrupt")?,
+    ))
 }
 
 pub fn clear_tokens() -> Result<()> {
-    match entry(ACCOUNT_GARMIN)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e).context("could not clear Garmin tokens"),
-    }
+    secrets::delete(ACCOUNT_GARMIN).context("could not clear Garmin tokens")
 }
 
 pub fn save_openrouter_key(key: &str) -> Result<()> {
-    entry(ACCOUNT_OPENROUTER)?
-        .set_password(key)
-        .context("could not write the OpenRouter key to the keyring")
+    secrets::set(ACCOUNT_OPENROUTER, key)
+        .with_context(|| format!("could not write the OpenRouter key to {STORE}"))
 }
 
 pub fn load_openrouter_key() -> Result<Option<String>> {
-    match entry(ACCOUNT_OPENROUTER)?.get_password() {
-        Ok(key) => Ok(Some(key)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(e).context("could not read the OpenRouter key"),
-    }
+    secrets::get(ACCOUNT_OPENROUTER).context("could not read the OpenRouter key")
 }
 
 pub fn clear_openrouter_key() -> Result<()> {
-    match entry(ACCOUNT_OPENROUTER)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e).context("could not clear the OpenRouter key"),
-    }
+    secrets::delete(ACCOUNT_OPENROUTER).context("could not clear the OpenRouter key")
 }
 
 /// This install's identifier for the hosted proxy, issued by it on first use.
@@ -78,26 +69,22 @@ pub fn clear_openrouter_key() -> Result<()> {
 /// server now (`POST /v1/install`), and this module only stores what it is
 /// given — see `chat::enroll` for the asking.
 ///
-/// It lives in the keyring beside the Garmin tokens rather than in the cache,
-/// for the same reason they do: the webview can read the database.
+/// It lives beside the Garmin tokens rather than in the cache, for the same
+/// reason they do: the webview can read the database.
 pub fn stored_install_id() -> Result<Option<String>> {
-    match entry(ACCOUNT_DEVICE)?.get_password() {
-        Ok(id) if is_install_id(&id) => Ok(Some(id)),
-        // A keyring entry someone hand-edited is not an id. Enrol again rather
-        // than send the proxy something it will only refuse.
-        Ok(_) => Ok(None),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(e).context("could not read the install id from the keyring"),
-    }
+    let stored = secrets::get(ACCOUNT_DEVICE)
+        .with_context(|| format!("could not read the install id from {STORE}"))?;
+    // An entry someone hand-edited is not an id. Enrol again rather than send
+    // the proxy something it will only refuse.
+    Ok(stored.filter(|id| is_install_id(id)))
 }
 
 pub fn save_install_id(id: &str) -> Result<()> {
     if !is_install_id(id) {
         bail!("the coach issued an id in a shape this build doesn't recognise");
     }
-    entry(ACCOUNT_DEVICE)?
-        .set_password(id)
-        .context("could not write the install id to the keyring")
+    secrets::set(ACCOUNT_DEVICE, id)
+        .with_context(|| format!("could not write the install id to {STORE}"))
 }
 
 /// Forget the id, so the next hosted request asks for a new one.
@@ -109,10 +96,7 @@ pub fn save_install_id(id: &str) -> Result<()> {
 /// question. Issuing is rate-limited on the server, so this costs a slot rather
 /// than handing out a fresh quota.
 pub fn forget_install_id() -> Result<()> {
-    match entry(ACCOUNT_DEVICE)?.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(e).context("could not clear the install id"),
-    }
+    secrets::delete(ACCOUNT_DEVICE).context("could not clear the install id")
 }
 
 /// The shape the proxy issues and the only shape it accepts.

@@ -9,10 +9,32 @@ anyhow = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 dirs = { workspace = true }
-keyring = { workspace = true }
 reqwest = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+# The keyring is the secret store everywhere it exists. Android has no backend
+# for it, so that target gets the encrypted-file implementation in `secrets`
+# instead — and pulling the crate in there anyway would only compile a keyring
+# that refuses every call.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+keyring = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+aes-gcm = { workspace = true }
+getrandom = { workspace = true }
+
+# Not used from Rust — pulled in purely so the `vendored` feature reaches the
+# single `openssl-sys` in the graph and OpenSSL gets built from source with the
+# NDK. Android ships no libssl for an app to link against, and `native-tls` is
+# OpenSSL on that platform.
+#
+# Swapping the whole stack to rustls would delete this, and was not done on
+# purpose: the workspace's `reqwest` comment records that native-tls's
+# ClientHello is the one verified to get past Garmin's Cloudflare edge. Changing
+# TLS libraries to make a build easier is how you find out at runtime, on a
+# phone, that sign-in now 403s.
+openssl = { workspace = true }

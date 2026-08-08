@@ -84,6 +84,59 @@ export function saveNavOrder(order: readonly NavEntry[]): void {
   localStorage.setItem(KEY, JSON.stringify(order.map((n) => n.to)));
 }
 
+/* ------------------------------------------------------------ phone tabs --- */
+
+/**
+ * How many screens get a tab on the phone. Four slots fit across the narrowest
+ * phone worth supporting before the labels truncate, and the fourth is More —
+ * so three are destinations.
+ */
+export const TAB_SLOTS = 3;
+
+/**
+ * The three the tab bar ships with.
+ *
+ * Deliberately not the top of `loadNavOrder()`, which is what the first version
+ * used. The sidebar's order is a desktop preference and its top three come out
+ * as Today / Activities / Health — but Activities on a phone is a list you open
+ * *from* Today, whereas Ask is the screen a phone is actually better at than a
+ * desktop, because the question usually occurs to you away from the machine.
+ * So the phone gets its own default, and its own stored order below.
+ */
+const TAB_DEFAULT: readonly string[] = ["/today", "/ask", "/health"];
+
+const TABS_KEY = "garmin-companion:phone-tabs";
+
+/**
+ * The three tabs, reconciled the same way the sidebar order is: unknown paths
+ * drop out, duplicates collapse, and a short list is topped up — first from the
+ * shipped three, then from the nav at large, so the bar always has exactly
+ * `TAB_SLOTS` entries no matter what is in storage.
+ */
+export function loadTabs(): NavEntry[] {
+  let stored: unknown = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(TABS_KEY) ?? "null");
+  } catch {
+    // Corrupt is the same as absent.
+  }
+
+  const tabs: NavEntry[] = [];
+  const add = (to: unknown) => {
+    const found = typeof to === "string" ? entry(to) : undefined;
+    if (found && !tabs.includes(found) && tabs.length < TAB_SLOTS) tabs.push(found);
+  };
+
+  if (Array.isArray(stored)) for (const to of stored) add(to);
+  for (const to of TAB_DEFAULT) add(to);
+  for (const n of NAV) add(n.to);
+  return tabs;
+}
+
+export function saveTabs(tabs: readonly NavEntry[]): void {
+  localStorage.setItem(TABS_KEY, JSON.stringify(tabs.map((n) => n.to)));
+}
+
 /** The screen the app opens on: whatever sits at the top of the nav. */
 export function defaultRoute(): NavPath {
   return loadNavOrder()[0].to;

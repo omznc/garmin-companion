@@ -8,7 +8,8 @@
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "frontendDist": "../dist",
+    "removeUnusedCommands": true
   },
   "app": {
     "windows": [
@@ -30,21 +31,43 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "publisher": "Omar Žunić",
+    "homepage": "https://github.com/omznc/garmin-companion",
     "shortDescription": "Your Garmin data, read by a coach that remembers.",
     "longDescription": "Reads your Garmin Connect activities, heart-rate zones, cadence and recovery into a local cache, and answers questions about your training against them. Everything stays on your machine except the metrics a question needs.",
     "category": "HealthcareFitness",
     "copyright": "© Omar Žunić",
+    "license": "MIT",
     "licenseFile": "../../LICENSE",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"],
+        "section": "utils",
+        "priority": "optional",
+        "desktopTemplate": "linux/garmin-companion.desktop",
+        "files": {
+          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+        }
+      },
+      "rpm": {
+        "depends": ["webkit2gtk4.1", "gtk3"],
+        "desktopTemplate": "linux/garmin-companion.desktop",
+        "files": {
+          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/share/metainfo/no.omznc.garmincoach.metainfo.xml": "linux/no.omznc.garmincoach.metainfo.xml"
+        }
       }
     }
   },

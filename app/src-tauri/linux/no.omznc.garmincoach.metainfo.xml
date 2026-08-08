@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata. Nothing in the app reads this; software centres do —
+  GNOME Software, KDE Discover, AppImageHub and the like — and without it an
+  installed build shows up as a bare name and icon with no description, no
+  author and no link back to the project.
+
+  The .desktop entry can't carry any of that: it is a launcher, and its Comment
+  field is one line. This is the file that holds the paragraph, the licence, the
+  developer and the URLs.
+
+  Installed to /usr/share/metainfo/ by every Linux target — see `bundle.linux`
+  in tauri.conf.json. The filename has to be the component id.
+-->
+<component type="desktop-application">
+  <id>no.omznc.garmincoach</id>
+
+  <name>Garmin Companion</name>
+  <summary>Your Garmin data, read by a coach that remembers</summary>
+
+  <developer id="no.omznc">
+    <name>Omar Žunić</name>
+  </developer>
+
+  <!-- The licence of this file, then of the software it describes. -->
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+
+  <!-- Has to match the installed .desktop filename, which Tauri names after
+       `productName` — spaces and all. -->
+  <launchable type="desktop-id">Garmin Companion.desktop</launchable>
+
+  <description>
+    <p>
+      Pulls your Garmin Connect history onto your own machine and answers
+      questions about it, with an emphasis on where your heart rate actually
+      spent the session — the thing Garmin's own app buries.
+    </p>
+    <p>
+      Everything is read from a local SQLite cache rather than from Garmin, so
+      the screens open instantly and a question can't stall on a network hiccup
+      mid-conversation. Sync is the only thing that talks to Garmin.
+    </p>
+    <p>What it shows:</p>
+    <ul>
+      <li>Today — recovery numbers, the last session in full with its zone breakdown, and hard-effort drift across recent runs</li>
+      <li>Activities — the history, with per-lap splits and charts for one session</li>
+      <li>Health — resting heart rate, HRV, sleep, stress and body battery over time</li>
+      <li>Food — calories in against out, and hydration</li>
+      <li>Ask — questions answered by a model you choose, given only the metrics the question needs</li>
+      <li>Insights and Reports — correlations mined from the cache, each stating its sample size, and weekly summaries</li>
+      <li>Plan, Routes and Gear — saved workouts, routes grouped from GPS traces, and shoe and bike mileage</li>
+    </ul>
+    <p>
+      Garmin credentials live in your OS keyring, never in the database. The
+      only data that leaves the machine is the metrics a question needs, and
+      only when you ask one.
+    </p>
+  </description>
+
+  <!-- Kept in step with Categories in the .desktop template, which explains why
+       a training log ends up filed under Utility. -->
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>Garmin</keyword>
+    <keyword>Fitness</keyword>
+    <keyword>Health</keyword>
+    <keyword>Running</keyword>
+    <keyword>Cycling</keyword>
+    <keyword>Training</keyword>
+    <keyword>Heart Rate</keyword>
+    <keyword>HRV</keyword>
+    <keyword>Recovery</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/omznc/garmin-companion</url>
+  <url type="bugtracker">https://github.com/omznc/garmin-companion/issues</url>
+  <url type="vcs-browser">https://github.com/omznc/garmin-companion</url>
+
+  <content_rating type="oars-1.1" />
+
+  <!-- Lets a software centre match an already-installed copy to this component
+       rather than offering it as something new. -->
+  <provides>
+    <binary>garmin-companion</binary>
+  </provides>
+
+  <!-- Software centres read this as "what changed" and as the version they
+       compare an installed copy against, so it has to be bumped alongside
+       `version` in tauri.conf.json — see RELEASING.md. -->
+  <releases>
+    <release version="0.2.0" date="2026-08-08">
+      <description>
+        <p>
+          Android builds, and a phone layout to go with them — the navigation
+          moves to a tab bar and sign-in opens in the system browser.
+        </p>
+        <p>
+          Linux packages now install a desktop entry and this metadata, so the
+          app shows up properly in software centres. Windows ships an NSIS
+          installer instead of an MSI.
+        </p>
+        <p>
+          Garmin credentials moved to the OS keyring, with an encrypted store
+          on Android, which has none.
+        </p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-08-08">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

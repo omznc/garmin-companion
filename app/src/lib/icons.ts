@@ -45,6 +45,13 @@ export { SunIcon as LightIcon } from "@phosphor-icons/react/dist/csr/Sun";
 export { MoonIcon as DarkIcon } from "@phosphor-icons/react/dist/csr/Moon";
 export { PencilSimpleIcon as EditIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 export { FolderOpenIcon as FolderIcon } from "@phosphor-icons/react/dist/csr/FolderOpen";
+/* The phone tab bar's fourth tab, opening the sheet with the screens that
+ * didn't get one. Dots rather than a hamburger: the bar's other three are
+ * destinations, and a hamburger promises a drawer sliding in from the side.
+ * Circled, because the other three tabs are all closed shapes at 21px and a
+ * bare row of dots read as an ellipsis dropped into the bar rather than as the
+ * fourth member of a set. */
+export { DotsThreeCircleIcon as MoreIcon } from "@phosphor-icons/react/dist/csr/DotsThreeCircle";
 
 /* ---------------------------------------------------------------- states --- */
 

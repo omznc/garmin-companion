@@ -1,0 +1,32 @@
+# Handlebars template for the .desktop entry, shared by the deb, the rpm and
+# the AppImage (which is built from the deb's data). Tauri's built-in template
+# writes Name, Comment, Icon, Exec, Terminal, Categories and StartupWMClass and
+# nothing else; everything past those is why this file exists.
+#
+# Categories is written out rather than taken from the template's own categories
+# variable, because that variable is whatever `bundle.category` maps to, and the
+# Apple category the rest of the config needs — HealthcareFitness — maps to a
+# bare "Science;", which files a training log with the astronomy software.
+# freedesktop has no health or fitness category to move it to, and listing a
+# second main category makes the app show up twice in the menu, so it lands in
+# Utility and the subject matter goes in Keywords instead — which is what desktop
+# search actually reads.
+#
+# Handlebars substitutes inside these comment lines too, so don't name a variable
+# in one unless you want its value printed in the installed file.
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Training Log
+{{#if comment}}Comment={{comment}}
+{{/if}}Icon={{icon}}
+Exec={{exec}}
+Terminal=false
+Categories=Utility;
+Keywords=Garmin;Connect;Fitness;Health;Running;Cycling;Training;Workout;Activity;Heart Rate;HR Zones;Cadence;HRV;Recovery;Sleep;
+# Tells the shell to show a launch spinner and, more importantly, to hand the
+# window the launcher's icon and identity instead of treating it as an unrelated
+# stray. StartupWMClass has to match the WM_CLASS the window actually sets, which
+# is the binary name — see `mainBinaryName` in tauri.conf.json.
+StartupNotify=true
+StartupWMClass={{exec}}

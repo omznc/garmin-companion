@@ -43,6 +43,7 @@ import { since } from "../lib/format";
 import { useTheme } from "../lib/useTheme";
 import { useTypeface } from "../lib/useTypeface";
 import { runSync } from "../lib/syncProgress";
+import { IS_MOBILE, STORE } from "../lib/platform";
 import {
   BUILT_IN,
   PRESETS,
@@ -226,7 +227,7 @@ export function Settings() {
           />
           <span>
             {status.data?.connected
-              ? "Connected. Tokens are held in your OS keyring, never in the database."
+              ? `Connected. Tokens are held in ${STORE}, never in the database.`
               : "Not connected."}
             {cache.data && (
               <span style={{ color: "var(--mut)" }}>
@@ -338,8 +339,8 @@ export function Settings() {
       <Section title="What leaves this machine">
         <div style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", maxWidth: "62ch", textWrap: "pretty" }}>
           <p style={{ margin: "0 0 12px" }}>
-            Garmin requests go straight from this app to Garmin, using tokens in
-            your keyring — never through a server of ours.
+            Garmin requests go straight from this app to Garmin, using tokens in{" "}
+            {STORE} — never through a server of ours.
           </p>
           <p style={{ margin: 0 }}>
             Chat sends your question plus whatever a tool returned for it — a
@@ -358,9 +359,15 @@ export function Settings() {
       </Section>
 
       {/* --------------------------------------------------------- version */}
-      <Section title="Version">
-        <UpdateCheck />
-      </Section>
+      {/* Nothing to offer on Android: the app can't replace its own package, so
+          the updater isn't compiled in and this section would be a button that
+          reports a failure every time it's pressed. Updates arrive as a new APK
+          from the release page instead. */}
+      {!IS_MOBILE && (
+        <Section title="Version">
+          <UpdateCheck />
+        </Section>
+      )}
 
       {/* ----------------------------------------------------------- about */}
       <Section title="About">

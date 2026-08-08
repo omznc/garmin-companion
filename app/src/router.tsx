@@ -16,7 +16,9 @@ import {
 } from "@tanstack/react-router";
 import { defaultRoute } from "./lib/nav";
 import { scroller } from "./lib/scroller";
+import { IS_MOBILE } from "./lib/platform";
 import { Sidebar, SIDEBAR_W } from "./components/Sidebar";
+import { TabBar } from "./components/TabBar";
 import { ScrollFade } from "./components/ScrollFade";
 import { Today } from "./screens/Today";
 import { Activities } from "./screens/Activities";
@@ -41,6 +43,10 @@ import { Routes } from "./screens/Routes";
 const SHELL_MAX = 1240;
 
 function Shell() {
+  return IS_MOBILE ? <MobileShell /> : <DesktopShell />;
+}
+
+function DesktopShell() {
   return (
     <div
       style={{
@@ -66,6 +72,29 @@ function Shell() {
           </div>
         </main>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One column, and the nav along the bottom.
+ *
+ * No `ScrollFade`: it exists to soften content passing under the window's top
+ * strip, and there is no strip here — the status bar is the system's and draws
+ * over nothing. Fading the top of a phone screen would just look like the
+ * heading was broken.
+ *
+ * The padding is in CSS rather than inline like the desktop shell's, because it
+ * has to compose with `env(safe-area-inset-*)` — a notch, a punch-hole, the
+ * gesture bar — and those are only readable from a stylesheet.
+ */
+function MobileShell() {
+  return (
+    <div className="shell-mobile">
+      <main>
+        <Page />
+      </main>
+      <TabBar />
     </div>
   );
 }

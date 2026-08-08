@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  What the launcher actually draws on Android 8 and up. Without this file the
+  system falls back to `mipmap-*/ic_launcher.png` as a legacy icon, which means
+  our dark plate gets shrunk and dropped onto a white circle of the launcher's
+  own making — the icon every other platform shows, wearing a border.
+
+  The rasters stay for API 24–25, which predate adaptive icons.
+
+  One thing to sweep up if you re-run `pnpm tauri icon`: it drops a
+  `values/ic_launcher_background.xml` defining a white `@color` of that name,
+  which nothing here references and which shares a name with our background
+  drawable. Delete it rather than leave two answers to the same question.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

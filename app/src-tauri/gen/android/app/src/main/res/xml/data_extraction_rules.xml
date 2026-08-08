@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ half of the pair declared in AndroidManifest.xml; `allowBackup`
+  is the other. Both paths out of the app's private directory are refused.
+
+  cloud-backup    — Google Drive / Auto Backup
+  device-transfer — the copy made when someone sets up a new phone
+
+  Excluding the whole root rather than naming secrets.bin: the SQLite cache
+  beside it holds a full training history, which is health data and no more
+  worth uploading than the token is. Nothing here can't be rebuilt by signing
+  in and syncing.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

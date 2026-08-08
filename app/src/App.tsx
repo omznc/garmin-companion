@@ -5,6 +5,7 @@ import { garminStatus } from "./lib/api";
 import { router } from "./router";
 import { Setup } from "./screens/Setup";
 import { useTypeface } from "./lib/useTypeface";
+import { IS_MOBILE } from "./lib/platform";
 import { WindowChrome } from "./components/WindowChrome";
 import { SyncBar } from "./components/SyncBar";
 import { AiBar } from "./components/AiBar";
@@ -38,7 +39,10 @@ export function App() {
 
   return (
     <>
-      <WindowChrome />
+      {/* Nothing to draw on a phone: the window is the screen, it has no title
+          bar, and it cannot be moved, resized or closed from inside the app.
+          The status bar above it belongs to Android. */}
+      {!IS_MOBILE && <WindowChrome />}
       {/* Above the router, so a sync started in Settings keeps narrating
           itself while you go and read Today. It draws into the window strip
           the chrome above reserves, so the two belong side by side here. */}

@@ -61,10 +61,37 @@ Grab the installer for your platform from
   info** → **Run anyway**.
 - **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` / `.rpm`. Needs
   `webkit2gtk-4.1` from your package manager.
+- **Android** — `.apk`, Android 7 or newer. Not on Play, so your phone will ask
+  you to allow installing from wherever you downloaded it.
 
 Nothing is signed with an OS vendor certificate, which is what both warnings are
 about. Updates are signed with the updater's own key and work either way, so
 after the first install the app updates itself from Settings.
+
+Android is the exception: an installed Android app can't replace its own
+package, so there is no in-app update there. A new version means downloading the
+new APK and installing it over the old one.
+
+### What's different on a phone
+
+The same app and the same data, with three things worth knowing:
+
+- **Sign-in hands over to Garmin's page and comes back.** On desktop that
+  happens in a second window; a Tauri mobile app only has one, so the app itself
+  navigates there and returns once Garmin issues its token. It looks like the
+  app closed for a moment. It didn't.
+- **Credentials are kept differently.** Desktop uses the OS keyring. Android has
+  none, so the Garmin token and the OpenRouter key go into an encrypted file in
+  the app's private directory, and backups are switched off so neither can be
+  copied off the device by Google Drive or a phone-to-phone transfer. That is
+  weaker than a keyring against a rooted device — the encryption key has to live
+  beside the data, because reaching the Android Keystore needs native code this
+  build doesn't have. `crates/garmin-core/src/secrets.rs` is honest about the
+  details.
+- **The nav is a bottom bar.** Today, Ask and Health get tabs; everything else
+  is behind **More**. Press and hold a screen in that sheet and drop it on the
+  tab it should replace — the phone keeps its own three, so rearranging them
+  doesn't disturb the sidebar on the desktop.
 
 ## Building from source
 
@@ -75,6 +102,17 @@ cd app
 pnpm install
 pnpm tauri dev
 ```
+
+For Android, add the SDK, NDK 28, and a JDK no newer than 21, then:
+
+```sh
+source scripts/android-env.sh
+cd app && pnpm tauri android build --apk --debug
+```
+
+The env script explains what it sets and why — see
+[RELEASING.md](RELEASING.md#android) for the sharp edges, of which there are
+three.
 
 Connect an account in Settings, or adopt tokens from an existing
 [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) install in
@@ -116,8 +154,8 @@ different versions of the Garmin client.
 ## Releases
 
 See [RELEASING.md](RELEASING.md). Tagging `v*` builds installers for macOS
-(Apple Silicon and Intel), Windows and Linux, and the app updates itself from
-Settings.
+(Apple Silicon and Intel), Windows, Linux and Android, and the desktop app
+updates itself from Settings.
 
 ## Licence
 

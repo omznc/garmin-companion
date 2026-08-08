@@ -67,8 +67,13 @@ fn map_weigh_in(r: &rusqlite::Row) -> rusqlite::Result<WeighIn> {
 }
 
 /// Default on-disk location, alongside the other app data for this user.
+///
+/// `None` means there was nowhere to put it — see `paths::base_dir`, which on
+/// Android is whatever the host set at startup rather than a derived path.
 pub fn default_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("garmin-coach").join("cache.sqlite3"))
+    crate::paths::base_dir()
+        .ok()
+        .map(|d| d.join("cache.sqlite3"))
 }
 
 impl Db {

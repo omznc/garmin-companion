@@ -311,8 +311,19 @@ a {
   text-decoration: none;
 }
 
-a:hover {
-  color: var(--fg);
+/* Every `:hover` in this file is gated on the pointer actually having one.
+ *
+ * A touchscreen reports `hover: none`, and a WebView left to itself applies
+ * `:hover` on tap and then leaves it applied — so on a phone the last thing you
+ * pressed stays lit until you press something else, which reads as a selection
+ * that isn't there. The media query is the fix rather than a
+ * `:not([data-mobile])` prefix because it costs no specificity, and these rules
+ * are overridden by others further down the file that would otherwise start
+ * losing ties they used to win. */
+@media (hover: hover) {
+  a:hover {
+    color: var(--fg);
+  }
 }
 
 textarea,
@@ -441,10 +452,16 @@ button {
   background: var(--line2);
 }
 
-.row:hover:not(:disabled),
 .row:focus-visible {
   background: var(--sel);
   outline: none;
+}
+
+@media (hover: hover) {
+  .row:hover:not(:disabled) {
+    background: var(--sel);
+    outline: none;
+  }
 }
 
 /* A row that can't be chosen shouldn't look like it can. */
@@ -468,11 +485,16 @@ button {
   transition: background var(--dur-fast);
 }
 
-.row-group:hover,
 /* The inner button is what takes focus, so the group has to read its state to
  * keep keyboard navigation as visible as the pointer's. */
 .row-group:has(> .row:focus-visible) {
   background: var(--sel);
+}
+
+@media (hover: hover) {
+  .row-group:hover {
+    background: var(--sel);
+  }
 }
 
 .row-group::after {
@@ -498,9 +520,14 @@ button {
   display: none;
 }
 
-.row-group > .row:hover:not(:disabled),
 .row-group > .row:focus-visible {
   background: transparent;
+}
+
+@media (hover: hover) {
+  .row-group > .row:hover:not(:disabled) {
+    background: transparent;
+  }
 }
 
 .row-static {
@@ -521,14 +548,27 @@ button {
   transition: color var(--dur-base);
 }
 
-.quiet:hover {
+@media (hover: hover) {
+  .quiet:hover {
+    color: var(--fg);
+  }
+
+  /* The one action in a row that can't be undone. It sits at the same weight as
+   * its neighbours at rest — shouting before you've reached for it is noise —
+   * and takes the accent under the pointer instead of the usual darkening. */
+  .quiet.danger:hover {
+    color: var(--acc);
+  }
+}
+
+/* Touch has no hover to darken on approach, so the same two say it on contact
+ * instead. `:active` is honest on a touchscreen in a way `:hover` isn't — it
+ * lasts exactly as long as the finger is down. */
+.quiet:active {
   color: var(--fg);
 }
 
-/* The one action in a row that can't be undone. It sits at the same weight as
- * its neighbours at rest — shouting before you've reached for it is noise — and
- * takes the accent under the pointer instead of the usual darkening. */
-.quiet.danger:hover {
+.quiet.danger:active {
   color: var(--acc);
 }
 
@@ -574,7 +614,13 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   transition: color var(--dur-base);
 }
 
-.underlined:hover {
+@media (hover: hover) {
+  .underlined:hover {
+    color: var(--fg);
+  }
+}
+
+.underlined:active {
   color: var(--fg);
 }
 
@@ -1005,10 +1051,23 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   transition: background var(--dur-fast);
 }
 
-.switch-row:hover,
 .switch-row:focus-visible {
   background: var(--sel);
   outline: none;
+}
+
+@media (hover: hover) {
+  .switch-row:hover {
+    background: var(--sel);
+    outline: none;
+  }
+}
+
+/* A switch is the one control on a phone worth acknowledging on contact: the
+ * thing it toggles is often off-screen, so without this the only feedback is
+ * the knob moving 16px. */
+.switch-row:active {
+  background: var(--sel);
 }
 
 /* The primary action on every screen: serif, accent, arrow. Never a box. */
@@ -1023,8 +1082,10 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   transition: color var(--dur-base), transform var(--dur-fast) var(--ease-out);
 }
 
-.cta:hover:not(:disabled) {
-  color: var(--fg);
+@media (hover: hover) {
+  .cta:hover:not(:disabled) {
+    color: var(--fg);
+  }
 }
 
 /* The one press the app acknowledges. Deliberately shallow: this is 22px serif
@@ -1059,8 +1120,10 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
     background var(--dur-base);
 }
 
-.input:hover:not(:disabled):not(:focus) {
-  border-color: var(--mut);
+@media (hover: hover) {
+  .input:hover:not(:disabled):not(:focus) {
+    border-color: var(--mut);
+  }
 }
 
 /* Accent border plus a soft ring, rather than the platform focus outline —
@@ -1103,10 +1166,16 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   transition: border-color var(--dur-base), color var(--dur-base);
 }
 
-.input-hex:hover,
 .input-hex:focus {
   color: var(--fg);
   border-color: var(--line);
+}
+
+@media (hover: hover) {
+  .input-hex:hover {
+    color: var(--fg);
+    border-color: var(--line);
+  }
 }
 
 /* The browser draws this as a bevelled button by default, which is the one
@@ -1281,6 +1350,15 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
 
 :root[data-os="linux"] {
   --win-radius: 12px;
+}
+
+/* Unless nothing is going to composite what's behind the cut, in which case the
+ * corners come out as undefined pixels rather than as desktop and the window is
+ * better off square. `lib/platform.ts` sets the attribute; `linux.rs` decides.
+ * Equal specificity to the two rules above and written after them, so it wins
+ * the tie the same way the maximised rule below does. */
+:root:not([data-composited]) {
+  --win-radius: 0;
 }
 
 /* Maximised, the window is flush with the screen edges on every platform, and a
@@ -1882,5 +1960,357 @@ body::-webkit-scrollbar {
 @media (prefers-reduced-motion: reduce) {
   .spin {
     animation-duration: 1.8s;
+  }
+}
+
+/* ================================================================ mobile === */
+
+/* Everything below applies only when `lib/platform.ts` has decided this is a
+ * phone. Keyed on the attribute rather than on a width breakpoint on purpose:
+ * a narrow desktop window is still a desktop window — it has a pointer, a title
+ * bar to draw and a draggable nav — and none of the rules here would be right
+ * for it. See the note on `IS_MOBILE`. */
+
+:root[data-mobile] {
+  /* The window is the screen. There is no surface behind it to round against,
+   * and a radius here would cut four notches of black out of the display. */
+  --win-radius: 0;
+}
+
+:root[data-mobile] body {
+  /* WebView paints a grey flash on every tap of anything clickable, on top of
+   * the app's own press states. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-mobile] #root {
+  /* No chaining outwards: the page rubber-banding is the platform's, and worth
+   * keeping, but it should stop at the app rather than continue into whatever
+   * the WebView would do with it.
+   *
+   * What it does *not* do is keep the fixed chrome still — Android's overscroll
+   * is a stretch of the whole scrolling layer, and anything `position: fixed`
+   * inside the scroller stretches with it. The tab bar and the sync bar portal
+   * out to `document.body` for that; see the note at the top of `TabBar.tsx`. */
+  overscroll-behavior-y: none;
+}
+
+/* The phone shell: one column, nav along the bottom. `min-height: 100dvh`
+ * rather than `100vh` — `vh` on Android is the viewport with the URL bar
+ * *hidden*, which in a WebView with no URL bar is simply too tall, and leaves
+ * the tab bar a browser-chrome's height below the fold. */
+.shell-mobile {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.shell-mobile > main {
+  flex: 1;
+  min-width: 0;
+  /* 20px against 56px on the desktop. A phone has no nav column to sit clear
+   * of, and the reading measure is the whole screen, so the gutter only has to
+   * keep text off the curve of the glass. */
+  padding: 0 20px;
+  /* Top: clear of the status bar, which draws over the webview rather than
+   * above it. Bottom: clear of the tab bar, which is fixed and therefore out of
+   * the flow, plus the gesture bar under it. Both sides of the sum are needed —
+   * `env()` alone leaves content under the tab bar on a phone with no notch. */
+  padding-top: calc(env(safe-area-inset-top, 0px) + 26px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h) + 28px);
+}
+
+/* --------------------------------------------------------------- tabs --- */
+
+:root[data-mobile] {
+  --tabbar-h: 58px;
+}
+
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  /* The bar itself is one height for every phone; the inset below it is the
+   * gesture area, which is padding rather than more bar — the icons should sit
+   * where the thumb expects them, not float above a band of empty colour. */
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--bg);
+  /* A hairline, not a shadow. The app has exactly two of these and this is a
+   * divider between sections, which is what `--line` is for. */
+  border-top: 1px solid var(--line);
+}
+
+.tab {
+  flex: 1;
+  /* For the drop indicator, which is drawn inside the slot rather than around
+   * it — the bar is four slots wide with no gaps, so an outline on the box
+   * itself would sit against its neighbours. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  /* Whatever a quarter of the screen is, it is wider than the 44px minimum;
+   * the height is what needed stating. */
+  min-height: 44px;
+  color: var(--faint);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.01em;
+  transition: color var(--dur-fast);
+}
+
+.tab[data-active] {
+  color: var(--fg);
+}
+
+/* No background, no pill. The active tab is said in colour alone, the same way
+ * the sidebar says it — a filled shape here would be the only one in the app. */
+.tab:active {
+  color: var(--fg);
+}
+
+/* -------------------------------------------------------------- sheet --- */
+
+/* Position and opacity here are written by the spring in `TabBar.tsx`, every
+ * frame, from the drag's own value — there is deliberately no `transition` and
+ * no `@keyframes` on either surface. A timed animation can't be caught halfway
+ * and reversed, and this one can. */
+
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  /* Flat black, not `--fg` at low alpha. A scrim's job is to push the screen
+   * behind it back, and `--fg` inverts with the palette — in a dark theme it is
+   * a near-white, so mixing it over the page lit everything up instead of
+   * dimming it and the app behind the sheet went white. Shade is shade in both
+   * appearances; this is the one place in the stylesheet where a raw colour is
+   * more correct than a token. */
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+}
+
+.sheet {
+  width: 100%;
+  max-height: 76dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: var(--lift);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4px);
+  outline: none;
+  will-change: transform;
+}
+
+/* The strip you can drag, rather than the whole sheet. The list under it
+ * scrolls, and a sheet that reads every downward drag as a dismissal makes a
+ * scrollable list unusable — so the two gestures get separate ground instead of
+ * a guess. 40px of it, which is a target in its own right.
+ *
+ * `touch-action: none` is what stops the browser panning while the drag is
+ * being tracked by hand. */
+.sheet-handle {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+/* The handle every bottom sheet on the platform has, and here it is not
+ * decoration: it marks the part of the sheet that answers a drag. */
+.sheet-grip {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.sheet-list {
+  padding: 0 8px 2px;
+  min-height: 0;
+  overflow-y: auto;
+  /* The sheet is the surface now; a list that hands its overscroll upwards
+   * would drag the page behind it. */
+  overscroll-behavior: contain;
+}
+
+.sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  /* 46px of row: above the 44px floor, and tall enough that the list reads as
+   * a set of destinations rather than a dense menu. */
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 7px;
+  color: var(--fg);
+  font-size: var(--fs-md);
+  /* The row can be lifted out of the list, so it must not also be selectable
+   * text or draggable as a link — a hold would otherwise raise the platform's
+   * own text-selection handles over the top of ours. */
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.sheet-item:active {
+  background: var(--sel);
+}
+
+/* Press-and-hold has no visible affordance, so it gets a sentence. Quiet, at
+ * the bottom, where it is out of the way of the list it describes. */
+.sheet-hint {
+  flex: none;
+  margin: 4px 0 0;
+  padding: 0 22px 8px;
+  color: var(--faint);
+  font-size: var(--fs-caption);
+}
+
+/* ------------------------------------------------------ sheet: promotion --- */
+
+/* The row in hand. Fixed and transform-positioned, because it tracks a finger
+ * every frame and nothing else about the page should move while it does.
+ *
+ * It is a chip rather than a full-width row: the thing it is being dropped on
+ * is a quarter of the bar's width, and something the shape of its destination
+ * says where it is going better than a caption could. */
+.lift-chip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px;
+  border-radius: 999px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
+  color: var(--fg);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* The bar has to be visible and above the scrim for the length of a drop —
+ * it is the target. Every other moment the sheet is allowed to cover it. */
+.tabbar[data-lifting] {
+  z-index: 90;
+}
+
+/* The slot under the finger, saying what letting go would do. Announced by the
+ * accent, which is the app's one colour for "this is the live thing". */
+.tab[data-drop] {
+  color: var(--acc);
+  /* A stacking context of its own, so the marker below can be sent behind the
+   * icon and the label with `z-index: -1` and still land in front of the bar's
+   * background rather than underneath it. */
+  isolation: isolate;
+}
+
+.tab[data-drop]::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  /* Inset, so the marker is plainly one slot of four rather than a band that
+   * runs into its neighbours. */
+  inset: 5px 7px;
+  border-radius: 9px;
+  background: var(--sel);
+  outline: 1px dashed var(--acc);
+  outline-offset: -1px;
+}
+
+/* Nothing behind the sheet scrolls while it is open. `#root` is the scroller
+ * (see `lib/scroller.ts`), and `overflow: hidden` on it keeps the position it
+ * was at — so dismissing the sheet returns you to the page you left, rather
+ * than to the top of it. */
+:root[data-sheet] #root {
+  overflow: hidden;
+}
+
+/* Reduced motion is handled in `lib/spring.ts`, which sets the value instead of
+ * travelling to it — so the sheet still appears and still dismisses, it just
+ * doesn't cross the distance. Nothing to override here. */
+
+/* ------------------------------------------------------- mobile: setup --- */
+
+/* The primary action and its escape hatch. Side by side with the pair pushed to
+ * opposite ends on a desktop, which is the arrangement the design asks for and
+ * the one that survives a 720px window. */
+.setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 44px;
+}
+
+/* At phone width there isn't room for both on one line: "Open Companion" wraps
+ * mid-phrase and the arrow ends up under the word. Stacked instead, primary
+ * action first and full width, with the skip beneath it — where it stays
+ * findable without competing for the same line. */
+:root[data-mobile] .setup-actions {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+:root[data-mobile] .setup-actions .cta {
+  /* Nothing to wrap against once it owns the line, but the phrase is two words
+   * and a glyph — saying so is cheaper than finding out on a narrower phone. */
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------- mobile: sync bar --- */
+
+/* Above the tab bar rather than in the window strip there isn't one of. See the
+ * note at the top of `SyncBar.tsx` for why it moved ends.
+ *
+ * A card, not a line of text: at the top it sat over reserved chrome and could
+ * be bare, but down here the page scrolls underneath it, and faint grey type on
+ * whatever happens to be behind it is unreadable. */
+.sync-bar[data-mobile] {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h) + 10px);
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
+  pointer-events: none;
+  /* It rises into place, where the desktop one drops — it enters from the
+   * bottom edge now, and travelling back towards where it came from is what
+   * reads as arriving rather than as a twitch. Overrides the -4px above. */
+  transform: translateY(6px);
+}
+
+.sync-bar[data-mobile][data-running="true"] {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-bar[data-mobile] {
+    transform: none;
   }
 }

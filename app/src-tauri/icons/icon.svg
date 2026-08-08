@@ -2,6 +2,10 @@
   Source artwork for the app icon. Everything under icons/ is generated from
   this by `pnpm tauri icon src-tauri/icons/icon.svg`, so edit here, not there.
 
+  The exception is Android's adaptive icon, which no tool generates: the two
+  arcs below are copied into `gen/android/.../res/drawable/ic_launcher_*.xml`
+  by hand, so a change here needs the same change there. RELEASING.md says why.
+
   The mark is a training gauge: a 270° track with the lower zones filled in
   accent. It says what the app is about (how much of a session sat in which
   zone) and survives being shrunk to 32×32, which a wordmark or a five-segment

@@ -25,10 +25,7 @@ use std::path::{Path, PathBuf};
 
 /// Where themes live: alongside the cache, not inside it.
 pub fn themes_dir() -> Result<PathBuf> {
-    let dir = dirs::data_dir()
-        .context("could not locate a data directory")?
-        .join("garmin-coach")
-        .join("themes");
+    let dir = crate::paths::base_dir()?.join("themes");
     std::fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
     Ok(dir)
 }

@@ -1,8 +1,13 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "Garmin Coach desktop app"
+# The bundlers fall back to these when the equivalent isn't set in
+# tauri.conf.json — `description` becomes the deb/rpm Summary and `authors` the
+# Maintainer, so a stale value here ships in the package metadata.
+description = "Your Garmin data, read by a coach that remembers."
 authors = ["Omar Žunić"]
+homepage = "https://github.com/omznc/garmin-companion"
+license = "MIT"
 edition = "2021"
 
 [lib]

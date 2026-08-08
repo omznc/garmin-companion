@@ -11,6 +11,7 @@
  * app closes itself out from under you. Restarting is offered, never taken.
  */
 import { check } from "@tauri-apps/plugin-updater";
+import { IS_MOBILE } from "./platform";
 
 export type UpdateState =
   | { at: "idle" }
@@ -50,6 +51,11 @@ export function runUpdate(): Promise<void> {
   // Nothing to gain from checking again once a version is staged; the restart
   // is the only thing left to do.
   if (state.at === "ready") return Promise.resolve();
+  // The updater swaps out the whole app bundle, which an installed Android app
+  // may not do — so the plugin isn't compiled in on mobile (see `Cargo.toml`)
+  // and `check()` would reject with an unrecognised-command error. Staying
+  // `idle` is the truthful state: nothing was checked, and nothing failed.
+  if (IS_MOBILE) return Promise.resolve();
 
   inFlight = (async () => {
     set({ at: "checking" });

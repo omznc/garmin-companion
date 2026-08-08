@@ -16,6 +16,7 @@ import {
   chatConfig,
   garminImportTokens,
   garminLogin,
+  garminLoginError,
   garminStatus,
   prepareCloudChat,
   setChatProvider,
@@ -25,6 +26,7 @@ import {
   type ChatProvider,
 } from "../lib/api";
 import { runSync } from "../lib/syncProgress";
+import { IS_MOBILE, STORE } from "../lib/platform";
 import { ArrowRight, BackLink, ErrorNote } from "../components/ui";
 import { ScrollFade } from "../components/ScrollFade";
 import { useTheme } from "../lib/useTheme";
@@ -85,6 +87,17 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
     };
   }, []);
 
+  // On a phone this screen is a fresh mount after the webview came back from
+  // Garmin: the previous one was destroyed mid-sign-in, taking the mutation's
+  // rejection with it. So a failure is asked for rather than caught. Reading it
+  // clears it, which is why this runs once rather than on every render.
+  useEffect(() => {
+    if (!IS_MOBILE) return;
+    void garminLoginError().then((e) => {
+      if (e) setError(e);
+    });
+  }, []);
+
   const login = useMutation({
     mutationFn: garminLogin,
     onMutate: () => setError(null),
@@ -120,8 +133,13 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
       </h1>
       <p className="lede" style={{ margin: "0 0 36px", maxWidth: "52ch" }}>
         {connected
-          ? "A session is already stored in your keyring. You can carry on, or sign in again to replace it."
-          : "You'll sign in on Garmin's own page, in its own window. This app never sees your password — it only keeps the token Garmin issues afterwards, in your OS keyring."}
+          ? `A session is already stored in ${STORE}. You can carry on, or sign in again to replace it.`
+          : IS_MOBILE
+            ? // Worth saying in advance: this app is about to disappear and be
+              // replaced by Garmin's website, which without warning looks like
+              // a crash rather than a sign-in.
+              "This screen will hand over to Garmin's own sign-in page, and come back here once you're done. This app never sees your password — it only keeps the token Garmin issues afterwards."
+              : `You'll sign in on Garmin's own page, in its own window. This app never sees your password — it only keeps the token Garmin issues afterwards, in ${STORE}.`}
       </p>
 
       {importable && !connected && (
@@ -334,15 +352,7 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
 
       {error && <ErrorNote error={error} />}
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 24,
-          marginTop: 40,
-        }}
-      >
+      <div className="setup-actions" style={{ marginTop: 40 }}>
         <button className="cta" onClick={() => save.mutate()} disabled={!picked || save.isPending}>
           Continue
           <ArrowRight />
@@ -441,15 +451,10 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
 
       {error && <ErrorNote error={error} />}
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 24,
-          marginTop: 44,
-        }}
-      >
+      {/* Side by side on a desktop, stacked on a phone — see `.setup-actions`.
+          At 20px gutters "Open Companion" and "Skip the first sync" can't share
+          a line without the primary action wrapping mid-phrase. */}
+      <div className="setup-actions">
         <button className="cta" style={{ fontSize: 25 }} onClick={() => sync.mutate()} disabled={sync.isPending}>
           {sync.isPending ? "Importing your history…" : "Open Companion"}
           <ArrowRight />

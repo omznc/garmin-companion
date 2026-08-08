@@ -129,3 +129,20 @@ export class Spring {
 export function rubberband(over: number, dimension: number, constant = 0.55): number {
   return (over * dimension * constant) / (dimension + constant * Math.abs(over));
 }
+
+/**
+ * How much further a flick would have carried, given the speed it was released
+ * at. Add it to the release position to get where the gesture was *going*, and
+ * decide against that rather than against where the finger happened to stop.
+ *
+ * That difference is what makes a flick feel thrown: a short, fast swipe and a
+ * long, slow drag end in the same place, and only one of them meant to let go.
+ * The exponential-decay form is the one scroll deceleration actually uses — the
+ * textbook `v²/2a` is a different curve and lands short.
+ *
+ * @param velocity  px per second at release.
+ * @param decel     0.998 for scroll's own feel, lower for something snappier.
+ */
+export function project(velocity: number, decel = 0.998): number {
+  return ((velocity / 1000) * decel) / (1 - decel);
+}

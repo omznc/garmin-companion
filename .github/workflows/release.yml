@@ -111,9 +111,15 @@ jobs:
             **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` /
             `.rpm`. Needs `webkit2gtk-4.1` from your package manager.
 
+            **Android** — `.apk`. Not on Play, so your phone will ask you to
+            allow installing from wherever you downloaded it. The `.aab` beside
+            it is for the Play Console and is not installable directly.
+
             Nothing here is signed with an OS vendor certificate, which is what
             both warnings are about. Updates are signed, and those work either
-            way — existing installs update themselves from Settings.
+            way — existing desktop installs update themselves from Settings.
+            Android does not: an installed app can't replace its own package, so
+            a new version there means downloading the new APK over the old one.
           # Left as a draft so the release can be checked, and so the four
           # matrix jobs can finish filling it in before anyone downloads.
           releaseDraft: true
@@ -129,4 +135,130 @@ jobs:
         with:
           name: bundle-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
+
+  # Its own job rather than a row in the matrix above. `tauri-action` builds
+  # desktop bundles and writes the `latest.json` the updater reads; an Android
+  # build produces neither, and adding it there would have the action either
+  # fail or publish a `latest.json` an APK can't be an update for. Android is
+  # not self-updating (see `Cargo.toml`) — a new version is a new APK.
+  android:
+    runs-on: ubuntu-24.04
+    # Job level, not step level: `secrets` isn't readable from an `if:`, and
+    # step-level `env` isn't in scope for that step's own `if:` either. Lifting
+    # it here is what lets the signing steps below ask whether they have a key.
+    env:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Gradle rejects anything newer, and the runner's default has moved past
+      # it before now.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+
+      # OpenSSL is built from source for every Android ABI (see the `openssl`
+      # dependency in `crates/garmin-core/Cargo.toml`), and its ./Configure is a
+      # Perl program. The runner has these already; installing them explicitly
+      # so a change to the base image surfaces here rather than as an
+      # openssl-sys build failure four minutes in.
+      - name: Install OpenSSL's build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: android
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # The APK is signed with a key that has to stay the same for the life of
+      # the app: Android identifies an upgrade by signature, so a rebuilt
+      # keystore means every existing install has to be uninstalled by hand
+      # before it can take an update. Keep the base64 of it somewhere you won't
+      # lose it — see RELEASING.md.
+      #
+      # Missing secrets are not an error here. The build still runs and still
+      # proves the Android target compiles; it just produces an unsigned APK
+      # that the publish step below skips.
+      - name: Write the signing key
+        if: env.ANDROID_KEYSTORE != ''
+        run: |
+          cd app/src-tauri/gen/android
+          echo "$ANDROID_KEYSTORE" | base64 --decode > release.jks
+          cat > keystore.properties <<EOF
+          storeFile=$(pwd)/release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build
+        working-directory: app
+        run: pnpm tauri android build --apk --aab
+
+      # Renamed on the way out. Gradle calls both outputs `app-universal-release`
+      # whatever the app is, which on a release page next to four desktop
+      # installers says nothing about what it is or which version.
+      - name: Name the artifacts
+        id: artifacts
+        run: |
+          VERSION=$(node -p "require('$GITHUB_WORKSPACE/app/src-tauri/tauri.conf.json').version")
+          OUT=app/src-tauri/gen/android/app/build/outputs
+          mkdir -p android-out
+          cp "$OUT"/apk/universal/release/*.apk \
+             "android-out/garmin-companion_${VERSION}.apk"
+          cp "$OUT"/bundle/universalRelease/*.aab \
+             "android-out/garmin-companion_${VERSION}.aab"
+          ls -la android-out
+
+      # Attached to the same draft release the desktop matrix is filling in.
+      # `gh release upload` rather than a second `tauri-action`, which would
+      # want to manage the release itself and rewrite `latest.json`.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/') && env.ANDROID_KEYSTORE != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The desktop jobs may not have created the draft yet, and whichever
+          # gets here first has to make it.
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
+            || gh release create "${{ github.ref_name }}" --draft \
+                 --title "Garmin Companion ${{ github.ref_name }}" --notes ""
+          gh release upload "${{ github.ref_name }}" android-out/* --clobber
+
+      - name: Upload for inspection
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: bundle-android
+          path: android-out/
           if-no-files-found: error

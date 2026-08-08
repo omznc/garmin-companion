@@ -1,6 +1,11 @@
 mod chat;
 mod login;
 
+/// Public because `main` has to call into it before `run()` — see the module
+/// docs for why that ordering is the whole point.
+#[cfg(target_os = "linux")]
+pub mod linux;
+
 use anyhow::Result;
 use garmin_core::{db, db::Db, query, store, CachedActivity, GarminClient};
 use serde::Serialize;
@@ -824,6 +829,48 @@ async fn garmin_login(app: tauri::AppHandle, state: tauri::State<'_, AppState>) 
     Ok(())
 }
 
+/// Why the last sign-in failed, for a frontend that wasn't running when it did.
+///
+/// Only mobile can be in that position: signing in there navigates the one
+/// webview to Garmin and back, so the page that called `garmin_login` is gone
+/// before there is anything to tell it. Desktop gets the error as the command's
+/// own `Err` and this always answers `None` — the setup screen calls it either
+/// way rather than branching on the platform for one string.
+#[tauri::command]
+fn garmin_login_error() -> CmdResult<Option<String>> {
+    #[cfg(mobile)]
+    {
+        Ok(login::take_last_error())
+    }
+    #[cfg(desktop)]
+    {
+        Ok(None)
+    }
+}
+
+/// Publishes whether a transparent pixel in this window shows the desktop
+/// behind it, which decides whether the app cuts its own rounded corners.
+///
+/// A plugin with an init script rather than a command, for the same reason
+/// `tauri-plugin-os` is one: the corner radius has to be right on the first
+/// paint, and an IPC round-trip would round the window a frame after it was
+/// already on screen. Read by `lib/platform.ts`.
+///
+/// Only Linux has anything to decide — see `linux::composites_alpha`. macOS
+/// has `macos-private-api` on and Windows never cuts corners in CSS at all.
+fn surface_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    #[cfg(target_os = "linux")]
+    let composites = linux::composites_alpha();
+    #[cfg(not(target_os = "linux"))]
+    let composites = true;
+
+    tauri::plugin::Builder::new("surface")
+        .js_init_script(format!(
+            "Object.defineProperty(window,'__GARMIN_COMPOSITES_ALPHA__',{{value:{composites}}});"
+        ))
+        .build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
@@ -831,7 +878,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // Feeds the frontend the target OS, which is what the window chrome
         // branches on — see `lib/platform.ts`.
-        .plugin(tauri_plugin_os::init());
+        .plugin(tauri_plugin_os::init())
+        .plugin(surface_plugin());
 
     // `process` is what lets the app restart itself once an update is staged;
     // without it the user would have to quit and reopen by hand.
@@ -840,6 +888,38 @@ pub fn run() {
         builder = builder
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init());
+    }
+
+    // Android hands an app its private directory at runtime; there is no
+    // convention to derive one from, and `dirs::data_dir()` there answers
+    // `None`. `garmin-core` would have nowhere to put the cache or the themes,
+    // so it is told before anything opens either.
+    //
+    // Also where the main window gets built on mobile, rather than being
+    // created from the config: it needs a navigation handler for the sign-in
+    // flow, and that can only be attached to a window as it is made. See
+    // `login`, and `tauri.android.conf.json`, which leaves `windows` empty so
+    // there is no second one.
+    #[cfg(mobile)]
+    {
+        builder = builder.setup(|app| {
+            use tauri::Manager;
+
+            let dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&dir)?;
+            garmin_core::paths::set_base_dir(dir);
+
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Garmin Companion")
+            .on_navigation(login::intercept)
+            .build()?;
+
+            Ok(())
+        });
     }
 
     builder
@@ -894,6 +974,7 @@ pub fn run() {
             delete_chat_session,
             chat_followups,
             garmin_login,
+            garmin_login_error,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

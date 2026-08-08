@@ -11,8 +11,22 @@
  * readout costs the page nothing: no row is covered and no layout moves when a
  * sync starts. It takes no pointer events either, so the whole width of it
  * stays a drag handle for the window.
+ *
+ * # On a phone it goes to the other end
+ *
+ * There is no strip to draw in: the window has no title bar, and the band where
+ * one would be is underneath Android's status bar — so the first version of
+ * this put a sync readout behind the clock and the battery icon, in the app's
+ * own faint grey, which is close to invisible.
+ *
+ * So it moves to the bottom, above the tab bar, and stops being a bare line of
+ * text: down there it has the page behind it rather than empty chrome, so it
+ * needs a surface of its own to be legible against. That makes it a card rather
+ * than a strip, which is what a phone would have done with a background task in
+ * the first place.
  */
 import { useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import {
   describe,
   fraction,
@@ -20,6 +34,7 @@ import {
   subscribe,
   type SyncStep,
 } from "../lib/syncProgress";
+import { IS_MOBILE } from "../lib/platform";
 import { CONTROLS_SIDE, CONTROLS_W, STRIP } from "./WindowChrome";
 
 export function useSyncState() {
@@ -40,7 +55,7 @@ export function SyncBar() {
   const { title, detail } = describe(step);
   const pct = fraction(step);
 
-  return (
+  const bar = (
     <div
       role="status"
       // Hidden from the tree while faded out — it is still on the page, and a
@@ -48,26 +63,34 @@ export function SyncBar() {
       aria-hidden={!sync.running}
       className="sync-bar"
       data-running={sync.running}
-      style={{
-        position: "fixed",
-        top: 0,
-        // Clear of the controls, and never so wide that it reaches the drag
-        // strip's grab bar in the middle of a narrow window. On macOS the
-        // controls are at the other end, so this end only needs the inset it
-        // would have had anyway.
-        right: CONTROLS_SIDE === "right" ? CONTROLS_W : 12,
-        maxWidth: "min(42vw, 460px)",
-        height: STRIP,
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        // Over the drag strip and the corner resize handle, under the window
-        // controls — the same order the controls themselves keep.
-        zIndex: 60,
-        // The readout is text, not a control. Handing the events straight
-        // through keeps this part of the strip draggable.
-        pointerEvents: "none",
-      }}
+      data-mobile={IS_MOBILE || undefined}
+      style={
+        IS_MOBILE
+          ? // Position and surface are in `styles.css` — it sits above the tab
+            // bar, which means composing with `env(safe-area-inset-bottom)`,
+            // and that is only readable from a stylesheet.
+            undefined
+          : {
+              position: "fixed",
+              top: 0,
+              // Clear of the controls, and never so wide that it reaches the drag
+              // strip's grab bar in the middle of a narrow window. On macOS the
+              // controls are at the other end, so this end only needs the inset it
+              // would have had anyway.
+              right: CONTROLS_SIDE === "right" ? CONTROLS_W : 12,
+              maxWidth: "min(42vw, 460px)",
+              height: STRIP,
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              // Over the drag strip and the corner resize handle, under the window
+              // controls — the same order the controls themselves keep.
+              zIndex: 60,
+              // The readout is text, not a control. Handing the events straight
+              // through keeps this part of the strip draggable.
+              pointerEvents: "none",
+            }
+      }
     >
       <span className="pulse-dot" style={{ flex: "none" }} />
 
@@ -142,4 +165,11 @@ export function SyncBar() {
       )}
     </div>
   );
+
+  // On a phone this floats over content that rubber-bands at the ends of a
+  // scroll, and Android applies that stretch to the whole scrolling layer —
+  // `position: fixed` inside it included. Out of `#root` it can't be caught by
+  // it. Same reason `TabBar` portals; see the note there. On a desktop it draws
+  // into the window strip and there is nothing to escape.
+  return IS_MOBILE ? createPortal(bar, document.body) : bar;
 }

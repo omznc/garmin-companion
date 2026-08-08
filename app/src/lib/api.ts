@@ -770,3 +770,13 @@ export const themesOpen = () => invoke<void>("themes_open");
 /* ------------------------------------------------------------------ auth --- */
 
 export const garminLogin = () => invoke<void>("garmin_login");
+
+/**
+ * Why the last sign-in failed, if the screen that asked wasn't there to be told.
+ *
+ * Only ever non-null on a phone. Signing in there navigates the one webview to
+ * Garmin and back, so the page that called `garminLogin` is destroyed before the
+ * command resolves and the rejection has nowhere to land. Reading this clears
+ * it, so it reports once.
+ */
+export const garminLoginError = () => invoke<string | null>("garmin_login_error");

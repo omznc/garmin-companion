@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Background layer of the adaptive launcher icon: the same ink the mark sits on
+  everywhere else (#15140f, `icons/icon.svg`). Flat on purpose — the launcher
+  parallaxes this layer against the foreground, and anything with detail in it
+  smears when it moves.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#15140f"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>
