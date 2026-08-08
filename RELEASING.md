@@ -66,10 +66,25 @@ Artifacts:
 | Platform | Installer | Updater artifact |
 |---|---|---|
 | macOS | `.dmg` | `.app.tar.gz` + `.sig` |
-| Windows | `.msi` | `.msi.zip` + `.sig` |
+| Windows | `-setup.exe` (NSIS) | `.nsis.zip` + `.sig` |
 | Linux | `.AppImage`, `.deb`, `.rpm` | `.AppImage.tar.gz` + `.sig` |
 
 `latest.json` is generated alongside them and is the file the app fetches.
+
+### Why Windows is NSIS and not MSI
+
+`bundle.targets` is `"all"` everywhere except Windows, which
+`tauri.windows.conf.json` narrows to `["nsis"]`. JSON can't hold the reason, so
+it lives here: the MSI bundler drives WiX v3, whose `light.exe` runs its
+validation through **VBSCRIPT**, and Microsoft is removing VBScript from
+Windows. `windows-latest` is now Windows Server 2025, where it's no longer
+reliably present, and the build dies with `failed to run light.exe` after the
+Rust compile has already succeeded — which is how v0.1.0's Windows job failed.
+
+Pinning `windows-2022` would also have fixed it, and was rejected: it keeps a
+deprecated runner alive to feed a deprecated Windows feature, and breaks again
+when either goes. NSIS needs neither. If you ever want the `.msi` back, that
+tradeoff is the thing to re-read.
 
 ## Building locally
 

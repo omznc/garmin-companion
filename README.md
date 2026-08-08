@@ -44,7 +44,29 @@ mid-conversation. Sync is the only thing that talks to Garmin.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.
 
-## Running it
+## Installing
+
+Grab the installer for your platform from
+[Releases](https://github.com/omznc/garmin-companion/releases/latest).
+
+- **macOS** — `.dmg`, `aarch64` for Apple Silicon or `x64` for Intel. Drag the
+  app to Applications, then clear the quarantine flag once, or macOS refuses to
+  open it — right-click → Open is not enough on recent versions:
+
+  ```sh
+  xattr -dr com.apple.quarantine "/Applications/Garmin Companion.app"
+  ```
+
+- **Windows** — `-setup.exe`. SmartScreen calls it an unrecognised app: **More
+  info** → **Run anyway**.
+- **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` / `.rpm`. Needs
+  `webkit2gtk-4.1` from your package manager.
+
+Nothing is signed with an OS vendor certificate, which is what both warnings are
+about. Updates are signed with the updater's own key and work either way, so
+after the first install the app updates itself from Settings.
+
+## Building from source
 
 Requires Rust, Node 22+, pnpm, and on Linux `webkit2gtk-4.1`.
 

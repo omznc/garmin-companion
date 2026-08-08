@@ -37,7 +37,7 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -62,11 +62,11 @@ jobs:
           workspaces: . -> target
           key: ${{ matrix.target }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -96,12 +96,24 @@ jobs:
           releaseBody: |
             Download the file for your platform below.
 
-            - **macOS** — `.dmg` (`aarch64` for Apple Silicon, `x64` for Intel)
-            - **Windows** — `.msi`
-            - **Linux** — `.AppImage`, `.deb` or `.rpm`
+            **macOS** — `.dmg`, `aarch64` for Apple Silicon or `x64` for Intel.
+            Drag the app to Applications, then run this once. The app is
+            unsigned, and without it macOS refuses to open it at all — the
+            right-click → Open trick is not enough on recent versions.
 
-            The app is unsigned, so macOS and Windows will both warn on first
-            open. Existing installs update themselves from Settings.
+            ```sh
+            xattr -dr com.apple.quarantine "/Applications/Garmin Companion.app"
+            ```
+
+            **Windows** — `-setup.exe`. SmartScreen calls it an unrecognised
+            app: **More info** → **Run anyway**.
+
+            **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` /
+            `.rpm`. Needs `webkit2gtk-4.1` from your package manager.
+
+            Nothing here is signed with an OS vendor certificate, which is what
+            both warnings are about. Updates are signed, and those work either
+            way — existing installs update themselves from Settings.
           # Left as a draft so the release can be checked, and so the four
           # matrix jobs can finish filling it in before anyone downloads.
           releaseDraft: true
@@ -113,7 +125,7 @@ jobs:
       # starts on a platform you don't own, before committing to a tag.
       - name: Upload bundles for inspection
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bundle-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/bundle/
