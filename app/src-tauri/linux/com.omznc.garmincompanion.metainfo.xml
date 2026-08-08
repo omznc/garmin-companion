@@ -92,6 +92,25 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.3.0" date="2026-08-08">
+      <description>
+        <p>
+          The app updates itself on Android now. It fetches the new version in
+          the background and Android asks before replacing it — the first time,
+          it will send you to allow installs from this app.
+        </p>
+        <p>
+          Android also wears the wallpaper's colours where the system offers
+          them, draws to the edges of the screen, and answers the back gesture
+          instead of closing.
+        </p>
+        <p>
+          Insights goes deeper: comparisons that control for effort, sessions
+          paired against the morning after, and the shape of a training block
+          rather than its size.
+        </p>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-08-08">
       <description>
         <p>
