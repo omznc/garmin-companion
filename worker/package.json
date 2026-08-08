@@ -7,9 +7,12 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "types": "wrangler types"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.7",
     "@cloudflare/workers-types": "^5.20260801.1",
     "typescript": "^5.9.2",
     "vitest": "^4.1.10",

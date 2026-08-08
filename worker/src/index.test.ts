@@ -219,7 +219,10 @@ describe("sanitize", () => {
     // rather than quietly rewritten — a caller asking for Opus should be told
     // no, not billed for something else and left wondering.
     expect(
-      sanitize({ model: "anthropic/claude-opus-4", messages: [{ role: "user", content: "hi" }] }, MODEL),
+      sanitize(
+        { model: "anthropic/claude-opus-4", messages: [{ role: "user", content: "hi" }] },
+        MODEL,
+      ),
     ).toContain(MODEL);
   });
 

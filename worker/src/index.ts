@@ -308,9 +308,13 @@ async function issue(request: Request, env: Env, ctx: ExecutionContext): Promise
     });
   }
   if (Number(total ?? 0) >= INSTALLS_PER_DAY) {
-    return fail(429, "the coach has taken on all the new installs it can today — tomorrow, or use your own OpenRouter key", {
-      "Retry-After": String(secondsUntilUtcMidnight()),
-    });
+    return fail(
+      429,
+      "the coach has taken on all the new installs it can today — tomorrow, or use your own OpenRouter key",
+      {
+        "Retry-After": String(secondsUntilUtcMidnight()),
+      },
+    );
   }
 
   // Awaited rather than trailed: the app's next act is to use this, and an id
@@ -433,7 +437,11 @@ async function spentToday(env: Env, day: string): Promise<number> {
  * request, which is a small amount of money; throwing would mean a broken
  * answer, which is the thing the athlete actually notices.
  */
-function meter(env: Env, ctx: ExecutionContext, day: string): TransformStream<Uint8Array, Uint8Array> {
+function meter(
+  env: Env,
+  ctx: ExecutionContext,
+  day: string,
+): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
   let tail = "";
   let cost = 0;

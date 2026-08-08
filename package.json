@@ -1,0 +1,9 @@
+{
+  "name": "garmin-companion",
+  "private": true,
+  "//": "No dependencies and no lockfile — this exists only so one command reaches the three formatters. `app` and `worker` install separately, as CI does.",
+  "scripts": {
+    "format": "pnpm -C app run format && pnpm -C worker run format && cargo fmt --all",
+    "format:check": "pnpm -C app run format:check && pnpm -C worker run format:check && cargo fmt --all --check"
+  }
+}
