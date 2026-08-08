@@ -1,7 +1,13 @@
 //! Authenticated Garmin Connect data client.
 //!
-//! Everything here goes through `get_json`, which refreshes the access token on
-//! demand and retries once on a 401. Callers never think about token lifetime.
+//! Everything here goes through `send_json`, which refreshes the access token
+//! on demand and retries once on a 401. Callers never think about token
+//! lifetime.
+//!
+//! Almost all of it reads. The one method that writes to the Garmin account is
+//! [`GarminClient::create_workout`], and it is called from exactly one place —
+//! a command the athlete triggers by pressing a button. Nothing that runs on a
+//! timer, on a sync, or on a model's say-so reaches it.
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -63,19 +69,41 @@ impl GarminClient {
         path: &str,
         query: &[(&str, String)],
     ) -> Result<T> {
+        self.send_json(reqwest::Method::GET, path, query, None)
+            .await
+    }
+
+    /// One request, with the token refreshed up front if it has expired and
+    /// once more if Garmin rejects it anyway.
+    ///
+    /// The retry is safe for the write here because Garmin assigns the workout
+    /// id: a 401 means the request was refused before it created anything, so
+    /// the second attempt cannot leave a duplicate behind.
+    async fn send_json<T: serde::de::DeserializeOwned>(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<&serde_json::Value>,
+    ) -> Result<T> {
         let url = format!("{CONNECT_API}{path}");
 
         let mut token = self.access_token().await?;
         let mut attempted_refresh = false;
 
         loop {
-            let resp = self
+            let mut req = self
                 .http
-                .get(&url)
+                .request(method.clone(), &url)
                 .headers(auth::native_headers())
                 .header("Authorization", format!("Bearer {token}"))
                 .header("Accept", "application/json")
-                .query(query)
+                .query(query);
+            if let Some(b) = body {
+                req = req.json(b);
+            }
+
+            let resp = req
                 .send()
                 .await
                 .with_context(|| format!("request to {path} failed"))?;
@@ -98,6 +126,15 @@ impl GarminClient {
             }
 
             let body = resp.text().await.context("failed to read response body")?;
+            // A 200 with an empty body is how Garmin says "nothing recorded" —
+            // HRV does it for every night the watch wasn't worn. Parsing that
+            // as a failure filled the sync report with warnings about days that
+            // were simply uneventful.
+            if body.trim().is_empty() {
+                return serde_json::from_value(serde_json::Value::Null).with_context(|| {
+                    format!("{path} returned an empty body where data was required")
+                });
+            }
             return serde_json::from_str(&body).with_context(|| {
                 format!(
                     "{path} returned unexpected shape: {}",
@@ -199,6 +236,30 @@ impl GarminClient {
         .await
     }
 
+    /// Save a new structured workout to the account, returning its id.
+    ///
+    /// The only write this client performs. It takes a validated
+    /// [`WorkoutDraft`](crate::workout::WorkoutDraft) rather than free JSON so
+    /// there is no way to reach the endpoint with a body nothing checked.
+    ///
+    /// Garmin answers with the workout it stored, which is far more than the id
+    /// — but the id is the only part worth returning, since the caller's next
+    /// move is to re-sync and read the stored version back like any other.
+    pub async fn create_workout(&self, draft: &crate::workout::WorkoutDraft) -> Result<i64> {
+        let created: serde_json::Value = self
+            .send_json(
+                reqwest::Method::POST,
+                "/workout-service/workout",
+                &[],
+                Some(&draft.payload()),
+            )
+            .await?;
+
+        created["workoutId"]
+            .as_i64()
+            .ok_or_else(|| anyhow!("Garmin accepted the workout but returned no id"))
+    }
+
     /// One calendar month. Garmin numbers months from zero here, unlike every
     /// other date in this API, so callers pass what Garmin expects.
     pub async fn calendar(&self, year: i32, month_zero_based: u32) -> Result<serde_json::Value> {
@@ -243,12 +304,76 @@ impl GarminClient {
         .await
     }
 
+    /// Every weigh-in between two dates, inclusive.
+    ///
+    /// One request for the whole window rather than one per day: weigh-ins are
+    /// sparse and irregular — this account has forty across eleven months, with
+    /// gaps of months — so walking day by day would be hundreds of requests to
+    /// learn that almost every day has nothing.
+    pub async fn weight_range(&self, start: &str, end: &str) -> Result<WeightRange> {
+        self.get_json(
+            "/weight-service/weight/dateRange",
+            &[
+                ("startDate", start.to_string()),
+                ("endDate", end.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// Account settings, read here only for `height`, which BMI needs and which
+    /// no weigh-in carries. Garmin returns body-composition fields on the
+    /// weigh-ins themselves, but they're null unless a smart scale wrote them.
+    pub async fn user_settings(&self) -> Result<serde_json::Value> {
+        self.get_json("/userprofile-service/userprofile/user-settings", &[])
+            .await
+    }
+
     /// The account's `displayName`, which several wellness endpoints need in
     /// their path.
     pub async fn profile(&self) -> Result<Profile> {
         self.get_json("/userprofile-service/socialProfile", &[])
             .await
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeightRange {
+    /// Newest first, as Garmin returns it.
+    #[serde(default)]
+    pub date_weight_list: Vec<WeightSample>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeightSample {
+    /// Garmin's own id for the entry. Stable across syncs, and the only way to
+    /// tell a corrected weigh-in from a second one on the same day.
+    pub sample_pk: i64,
+    /// "YYYY-MM-DD". The day the weigh-in is filed under, which is what a chart
+    /// plots against — `timestampGMT` is when it was typed in, often later.
+    #[serde(default)]
+    pub calendar_date: Option<String>,
+    /// Grams. Garmin sends this as a float even though it's whole grams.
+    #[serde(default)]
+    pub weight: Option<f64>,
+    // Body composition, all null unless a smart scale wrote the entry. A phone
+    // app or a manual entry leaves every one of these empty, which is the case
+    // for every sample on this account — so nothing downstream may require them.
+    #[serde(default)]
+    pub bmi: Option<f64>,
+    #[serde(default)]
+    pub body_fat: Option<f64>,
+    #[serde(default)]
+    pub body_water: Option<f64>,
+    #[serde(default)]
+    pub bone_mass: Option<f64>,
+    #[serde(default)]
+    pub muscle_mass: Option<f64>,
+    /// Where the entry came from: `MFP`, `MANUAL`, `USER_SETTING`, or a scale.
+    #[serde(default)]
+    pub source_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

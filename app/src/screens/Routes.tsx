@@ -10,23 +10,43 @@
  * rather than quietly presenting rides as running routes.
  */
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { routes, type Route, type RouteOuting } from "../lib/api";
+import {
+  routes,
+  type Route,
+  type RouteOuting,
+  type RouteSort,
+} from "../lib/api";
 import {
   Empty,
   ErrorNote,
   Loading,
   Metric,
   MetricRow,
-  PageTitle,
+  PageHeader,
   Rule,
 } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import { DASH, duration, isRun, km, longDate, parseLocal, sportLabel } from "../lib/format";
 
 export function Routes() {
-  const { data, isLoading, error } = useQuery({ queryKey: ["routes"], queryFn: routes });
+  const [sort, setSort] = useState<RouteSort>("recent");
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["routes", sort],
+    queryFn: () => routes(sort),
+    // Changing the order is a re-query, since the traces come with it. Holding
+    // the previous list keeps the page from collapsing to a spinner each time.
+    placeholderData: keepPreviousData,
+  });
   const [shown, setShown] = useState(PAGE);
+
+  function reorder(next: RouteSort) {
+    setSort(next);
+    // A new order makes the old scroll depth meaningless — showing 60 routes
+    // by recency and then switching to longest-first would open on the tail.
+    setShown(PAGE);
+  }
 
   if (isLoading) return <Loading />;
   if (error) return <ErrorNote error={error} />;
@@ -36,8 +56,7 @@ export function Routes() {
   if (!all.length) {
     return (
       <div>
-        <PageTitle>Routes</PageTitle>
-        <Lede />
+        <Header />
         <Empty
           title="No GPS traces cached."
           body={
@@ -62,9 +81,8 @@ export function Routes() {
   const anyRuns = all.some((r) => isRun(r.typeKey));
 
   return (
-    <div>
-      <PageTitle>Routes</PageTitle>
-      <Lede />
+    <div className="screen">
+      <Header />
 
       <MetricRow style={{ marginBottom: 10 }}>
         <Metric value={all.length} label="Distinct routes" />
@@ -73,7 +91,7 @@ export function Routes() {
       </MetricRow>
 
       {repeated.length === 0 && (
-        <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
+        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
           Nothing repeats yet — every trace you have starts or finishes
           somewhere different, or covers a different distance. These are one-off
           journeys rather than a route you keep coming back to.
@@ -81,7 +99,7 @@ export function Routes() {
       )}
 
       {!anyRuns && (
-        <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
+        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
           None of these are runs — every trace here is a ride or a walk. A
           treadmill records no position at all, so those sessions can never
           appear. An outdoor run would show up here, and would start VO2 max
@@ -89,7 +107,8 @@ export function Routes() {
         </p>
       )}
 
-      <Rule m="46px 0 26px" />
+      <Rule m="46px 0 18px" />
+      <SortTabs sort={sort} onChange={reorder} />
       <div>
         {all.slice(0, shown).map((r) => (
           <RouteCard key={r.outings[0].activityId} route={r} />
@@ -98,7 +117,7 @@ export function Routes() {
       {shown < all.length && (
         <button
           className="underlined"
-          style={{ marginTop: 26, fontSize: 13 }}
+          style={{ marginTop: 26, fontSize: "var(--fs-small)" }}
           onClick={() => setShown((n) => n + PAGE)}
         >
           Show {Math.min(PAGE, all.length - shown)} more
@@ -107,21 +126,72 @@ export function Routes() {
       {/* Traces are only loaded for the most-repeated routes, so say so rather
           than leave a run of empty thumbnails unexplained. */}
       {all.slice(0, shown).some((r) => r.outings[0].points.length < 2) && (
-        <p style={{ fontSize: 12.5, color: "var(--faint)", marginTop: 22, maxWidth: "58ch" }}>
-          Routes past the 40 most-repeated are listed without a drawn trace —
-          loading every one at once is what used to take the window down.
+        <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 22, maxWidth: "58ch" }}>
+          Only the first 40 routes in this order carry a drawn trace — loading
+          every one at once is what used to take the window down. Re-sorting
+          re-picks which 40 those are.
         </p>
       )}
     </div>
   );
 }
 
-function Lede() {
+const SORTS: { key: RouteSort; label: string }[] = [
+  { key: "recent", label: "Latest" },
+  { key: "repeats", label: "Most repeated" },
+  { key: "distance", label: "Longest" },
+];
+
+/**
+ * Plain text, no boxes — the same restraint the rest of the app shows. The
+ * active order is the only one at full contrast, which is enough to read as
+ * selected without a control drawn around it.
+ */
+function SortTabs({
+  sort,
+  onChange,
+}: {
+  sort: RouteSort;
+  onChange: (sort: RouteSort) => void;
+}) {
   return (
-    <p style={{ fontSize: 14.5, color: "var(--mut)", margin: "0 0 46px", maxWidth: "62ch" }}>
-      Every route you have a GPS trace for. Outings that start and finish in the
-      same place and cover a similar distance are folded into one route.
-    </p>
+    <div style={{ display: "flex", gap: 18, alignItems: "baseline", marginBottom: 8 }}>
+      <span className="eyebrow" style={{ marginRight: 2 }}>
+        Sort
+      </span>
+      {SORTS.map((s) => {
+        const on = s.key === sort;
+        return (
+          <button
+            key={s.key}
+            aria-pressed={on}
+            onClick={() => onChange(s.key)}
+            style={{
+              fontSize: "var(--fs-small)",
+              cursor: "pointer",
+              color: on ? "var(--fg)" : "var(--faint)",
+              borderBottom: `1px solid ${on ? "var(--acc)" : "transparent"}`,
+              paddingBottom: 3,
+              transition: "color var(--dur-base)",
+            }}
+          >
+            {s.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Header() {
+  return (
+    <PageHeader
+      eyebrow="All cached traces"
+      title="Routes"
+      lede="Every route you have a GPS trace for. Outings that start and finish in the same place and cover a similar distance are folded into one route."
+      action={<RefreshButton />}
+      space={46}
+    />
   );
 }
 
@@ -133,13 +203,13 @@ function RouteCard({ route: r }: { route: Route }) {
 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "baseline" }}>
-          <span style={{ fontSize: 15.5 }}>{first.name ?? "Untitled"}</span>
+          <span style={{ fontSize: "var(--fs-lg)" }}>{first.name ?? "Untitled"}</span>
           <span className="mono" style={{ flex: "none" }}>
             {r.avgDistanceM ? km(r.avgDistanceM) : DASH}
           </span>
         </div>
 
-        <div style={{ fontSize: 12.5, color: "var(--faint)", marginTop: 5 }}>
+        <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 5 }}>
           {sportLabel(r.typeKey)}
           {" · "}
           {r.times === 1 ? "once" : `${r.times} times`}
@@ -169,7 +239,7 @@ function OutingRow({ outing: o }: { outing: RouteOuting }) {
         display: "flex",
         justifyContent: "space-between",
         gap: 14,
-        fontSize: 13,
+        fontSize: "var(--fs-small)",
         color: "var(--mut)",
         padding: "4px 0",
       }}

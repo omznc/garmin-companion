@@ -8,6 +8,7 @@
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::client::ActivitySummary;
@@ -22,6 +23,12 @@ const ACTIVITY_COLS: &str = "activity_id, name, type_key, start_time_local, loca
      distance_m, duration_s, moving_duration_s, avg_hr, max_hr, avg_cadence,
      calories, elevation_gain, steps, aerobic_te, anaerobic_te,
      z1_secs, z2_secs, z3_secs, z4_secs, z5_secs";
+
+/// Ceilings on tagging. Neither is a data-integrity rule — they exist so that a
+/// paste accident can't put a paragraph, or four hundred labels, into a column
+/// the activity screen renders as chips.
+const MAX_TAG_CHARS: usize = 32;
+const MAX_TAGS_PER_ACTIVITY: usize = 12;
 
 fn map_activity(r: &rusqlite::Row) -> rusqlite::Result<CachedActivity> {
     Ok(CachedActivity {
@@ -42,6 +49,20 @@ fn map_activity(r: &rusqlite::Row) -> rusqlite::Result<CachedActivity> {
         aerobic_te: r.get(14)?,
         anaerobic_te: r.get(15)?,
         zone_secs: [r.get(16)?, r.get(17)?, r.get(18)?, r.get(19)?, r.get(20)?],
+    })
+}
+
+fn map_weigh_in(r: &rusqlite::Row) -> rusqlite::Result<WeighIn> {
+    Ok(WeighIn {
+        sample_pk: r.get(0)?,
+        calendar_date: r.get(1)?,
+        weight_g: r.get(2)?,
+        bmi: r.get(3)?,
+        body_fat: r.get(4)?,
+        body_water: r.get(5)?,
+        bone_mass: r.get(6)?,
+        muscle_mass: r.get(7)?,
+        source_type: r.get(8)?,
     })
 }
 
@@ -138,6 +159,24 @@ impl Db {
                 raw          TEXT
             );
 
+            -- Saved Ask conversations. Kept in the cache rather than in
+            -- localStorage because they're a record of your own history, and
+            -- the frontend's storage is disposable by design.
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id  TEXT PRIMARY KEY,
+                started_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                -- First question asked, so a list can be read without loading
+                -- every message body.
+                title       TEXT NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                -- The whole conversation as JSON. These are a few KB each and
+                -- are only ever read whole.
+                messages    TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated
+                ON chat_sessions(updated_at DESC);
+
             -- One row per activity that actually carries GPS. Kept apart from
             -- `activities` because the trace is orders of magnitude larger than
             -- the summary and only a fraction of activities have one.
@@ -150,6 +189,67 @@ impl Db {
                 min_lon      REAL, max_lon   REAL,
                 -- Downsampled [[lat,lon],…] for drawing; not survey-grade.
                 points       TEXT NOT NULL
+            );
+
+            -- Body weight. Its own table rather than a column on
+            -- `daily_metrics` because weigh-ins don't line up with days: most
+            -- days have none, and a day can have two if one was a correction.
+            -- Keyed by Garmin's `samplePk` so a re-weighed day updates its
+            -- entry instead of adding a second one.
+            CREATE TABLE IF NOT EXISTS weigh_ins (
+                sample_pk     INTEGER PRIMARY KEY,
+                calendar_date TEXT NOT NULL,
+                weight_g      REAL NOT NULL,
+                -- Body composition. Populated only by a smart scale; a phone
+                -- app or a hand-typed entry leaves every one of these null.
+                bmi           REAL,
+                body_fat      REAL,
+                body_water    REAL,
+                bone_mass     REAL,
+                muscle_mass   REAL,
+                source_type   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_weigh_ins_date
+                ON weigh_ins(calendar_date DESC);
+
+            -- Labels the athlete puts on their own sessions. Garmin has no tag
+            -- concept to sync with, so these are local and stay local; they
+            -- exist so a question like "how do my tempo sessions compare" has
+            -- something to mean.
+            --
+            -- One row per tag rather than a delimited column: the interesting
+            -- read is "every activity tagged X", and that shouldn't be a LIKE
+            -- over a joined string that matches 'tempo' inside 'tempo-fail'.
+            CREATE TABLE IF NOT EXISTS activity_tags (
+                activity_id INTEGER NOT NULL,
+                tag         TEXT NOT NULL,
+                PRIMARY KEY (activity_id, tag)
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_tags_tag
+                ON activity_tags(tag);
+
+            -- The computed analysis for one session, kept because building it
+            -- costs three Garmin requests and the samples behind a finished
+            -- session never change. `key` is what it was computed from, so a
+            -- re-sync that corrects a duration — or a newly written tag —
+            -- invalidates it and merely reopening the screen does not.
+            CREATE TABLE IF NOT EXISTS activity_analysis (
+                activity_id INTEGER PRIMARY KEY,
+                key         TEXT NOT NULL,
+                computed_at TEXT NOT NULL,
+                json        TEXT NOT NULL
+            );
+
+            -- The written critique of one session, kept under its original
+            -- table name. Separate from the analysis above because it is
+            -- invalidated by different things: the analysis survives a model
+            -- change, the prose does not survive the numbers moving underneath
+            -- it — or the prompt that wrote it changing, which `key` carries.
+            CREATE TABLE IF NOT EXISTS activity_summaries (
+                activity_id  INTEGER PRIMARY KEY,
+                key          TEXT NOT NULL,
+                generated_at TEXT NOT NULL,
+                text         TEXT NOT NULL
             );
             "#,
         )?;
@@ -264,6 +364,18 @@ impl Db {
         Ok(self
             .conn
             .query_row("SELECT COUNT(*) FROM activities", [], |r| r.get(0))?)
+    }
+
+    /// The local start time of the oldest cached activity, `YYYY-MM-DD…`.
+    ///
+    /// A full sync uses this to decide how far back the wellness walk has to
+    /// go, rather than trusting a fixed number of days to cover everything.
+    pub fn earliest_activity_date(&self) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT MIN(start_time_local) FROM activities", [], |r| {
+                r.get::<_, Option<String>>(0)
+            })?)
     }
 
     /// Recent activities, newest first. `type_key` filters to one sport
@@ -421,6 +533,22 @@ impl Db {
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// The dates on or after `from` that already have a row.
+    ///
+    /// A row is only written for a day that came back with something in it, so
+    /// a date missing from this set is one the cache has never had data for —
+    /// either it was never fetched, or it was fetched before the watch had
+    /// uploaded it. Both are worth asking about again.
+    pub fn daily_dates_since(&self, from: &str) -> Result<HashSet<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT date FROM daily_metrics WHERE date >= ?1")?;
+        let rows = stmt
+            .query_map(params![from], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<HashSet<_>>>()?;
         Ok(rows)
     }
 
@@ -610,11 +738,324 @@ impl Db {
         Ok(rows)
     }
 
+    pub fn upsert_weigh_in(&self, w: &WeighIn) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT INTO weigh_ins (
+                sample_pk, calendar_date, weight_g,
+                bmi, body_fat, body_water, bone_mass, muscle_mass, source_type
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+            ON CONFLICT(sample_pk) DO UPDATE SET
+                calendar_date=excluded.calendar_date, weight_g=excluded.weight_g,
+                bmi=excluded.bmi, body_fat=excluded.body_fat,
+                body_water=excluded.body_water, bone_mass=excluded.bone_mass,
+                muscle_mass=excluded.muscle_mass, source_type=excluded.source_type
+            "#,
+            params![
+                w.sample_pk,
+                w.calendar_date,
+                w.weight_g,
+                w.bmi,
+                w.body_fat,
+                w.body_water,
+                w.bone_mass,
+                w.muscle_mass,
+                w.source_type,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Weigh-ins on or after `from`, oldest first.
+    ///
+    /// Ordered ascending because everything downstream — the smoothed trend,
+    /// the rate of change, the chart — reads left to right in time, and one
+    /// reversal here saves every caller doing its own.
+    ///
+    /// Days with two entries keep both. Which one to believe is a judgement the
+    /// query layer makes; the cache's job is to not lose either.
+    pub fn weigh_ins_since(&self, from: &str) -> Result<Vec<WeighIn>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
+                    body_water, bone_mass, muscle_mass, source_type
+             FROM weigh_ins WHERE calendar_date >= ?1
+             ORDER BY calendar_date ASC, sample_pk ASC",
+        )?;
+        let rows = stmt
+            .query_map(params![from], map_weigh_in)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// The most recent weigh-in of all, however far back it is.
+    ///
+    /// Separate from `weigh_ins_since` so a screen can say "last weighed in
+    /// four months ago" rather than showing nothing because the window it asked
+    /// for happened to be empty.
+    pub fn latest_weigh_in(&self) -> Result<Option<WeighIn>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
+                        body_water, bone_mass, muscle_mass, source_type
+                 FROM weigh_ins ORDER BY calendar_date DESC, sample_pk DESC LIMIT 1",
+                [],
+                map_weigh_in,
+            )
+            .optional()?)
+    }
+
+    pub fn weigh_in_count(&self) -> Result<i64> {
+        Ok(self
+            .conn
+            .query_row("SELECT COUNT(*) FROM weigh_ins", [], |r| r.get(0))?)
+    }
+
+    /* ---------------------------------------------------------------- tags --- */
+
+    /// The tags on one activity, alphabetically.
+    pub fn activity_tags(&self, activity_id: i64) -> Result<Vec<String>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT tag FROM activity_tags WHERE activity_id = ?1 ORDER BY tag")?;
+        let rows = stmt.query_map(params![activity_id], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<Vec<String>, _>>()?)
+    }
+
+    /// Replace the whole tag set for one activity.
+    ///
+    /// Set-at-a-time rather than add/remove: the editor on the activity screen
+    /// holds the complete list either way, and two calls to keep in step is one
+    /// more chance for a half-applied edit.
+    ///
+    /// Tags are trimmed, lowercased and deduplicated on the way in. A tag is a
+    /// label for grouping, and `Tempo`, `tempo ` and `tempo` being three
+    /// different groups is a bug people find by accident a month later.
+    pub fn set_activity_tags(&self, activity_id: i64, tags: &[String]) -> Result<Vec<String>> {
+        let mut clean: Vec<String> = tags
+            .iter()
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| !t.is_empty() && t.chars().count() <= MAX_TAG_CHARS)
+            .collect();
+        clean.sort();
+        clean.dedup();
+        clean.truncate(MAX_TAGS_PER_ACTIVITY);
+
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM activity_tags WHERE activity_id = ?1",
+            params![activity_id],
+        )?;
+        {
+            let mut stmt =
+                tx.prepare("INSERT INTO activity_tags (activity_id, tag) VALUES (?1, ?2)")?;
+            for tag in &clean {
+                stmt.execute(params![activity_id, tag])?;
+            }
+        }
+        tx.commit()?;
+        Ok(clean)
+    }
+
+    /// Every tag in use, with how many activities carry it, commonest first.
+    pub fn all_tags(&self) -> Result<Vec<(String, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT tag, COUNT(*) AS n FROM activity_tags
+             GROUP BY tag ORDER BY n DESC, tag",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// Activities carrying a tag, newest first.
+    pub fn activities_with_tag(&self, tag: &str, limit: u32) -> Result<Vec<CachedActivity>> {
+        // A subquery rather than a join: `ACTIVITY_COLS` names its columns
+        // unqualified, and a join would make `activity_id` ambiguous.
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {ACTIVITY_COLS} FROM activities
+             WHERE activity_id IN (SELECT activity_id FROM activity_tags WHERE tag = ?1)
+             ORDER BY start_time_local DESC LIMIT ?2"
+        ))?;
+        let rows = stmt.query_map(params![tag.trim().to_lowercase(), limit], map_activity)?;
+        Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+    }
+
+    /// Tags for several activities at once, so a list screen isn't one query
+    /// per row.
+    pub fn tags_for(&self, activity_ids: &[i64]) -> Result<HashMap<i64, Vec<String>>> {
+        let mut out: HashMap<i64, Vec<String>> = HashMap::new();
+        if activity_ids.is_empty() {
+            return Ok(out);
+        }
+        let mut stmt = self
+            .conn
+            .prepare("SELECT activity_id, tag FROM activity_tags ORDER BY activity_id, tag")?;
+        let wanted: std::collections::HashSet<i64> = activity_ids.iter().copied().collect();
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        for row in rows {
+            let (id, tag) = row?;
+            if wanted.contains(&id) {
+                out.entry(id).or_default().push(tag);
+            }
+        }
+        Ok(out)
+    }
+
+    /* ------------------------------------------------------------ analysis --- */
+
+    /// The stored analysis for one activity, if it was computed from `key`.
+    ///
+    /// A mismatched key returns `None` rather than the stale row: the caller
+    /// wants an analysis of the data as it is now, and being handed one built
+    /// from an earlier version of it would be worse than recomputing.
+    pub fn activity_analysis(&self, activity_id: i64, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT json FROM activity_analysis WHERE activity_id = ?1 AND key = ?2",
+                params![activity_id, key],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    pub fn save_activity_analysis(
+        &self,
+        activity_id: i64,
+        key: &str,
+        computed_at: &str,
+        json: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO activity_analysis (activity_id, key, computed_at, json)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(activity_id) DO UPDATE SET
+                 key = excluded.key,
+                 computed_at = excluded.computed_at,
+                 json = excluded.json",
+            params![activity_id, key, computed_at, json],
+        )?;
+        Ok(())
+    }
+
+    /// The written critique of one activity: `(text, generated_at)`, and only
+    /// when it was written about `key`.
+    pub fn activity_critique(
+        &self,
+        activity_id: i64,
+        key: &str,
+    ) -> Result<Option<(String, String)>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT text, generated_at FROM activity_summaries
+                 WHERE activity_id = ?1 AND key = ?2",
+                params![activity_id, key],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
+
+    pub fn save_activity_critique(
+        &self,
+        activity_id: i64,
+        key: &str,
+        generated_at: &str,
+        text: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO activity_summaries (activity_id, key, generated_at, text)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(activity_id) DO UPDATE SET
+                 key = excluded.key,
+                 generated_at = excluded.generated_at,
+                 text = excluded.text",
+            params![activity_id, key, generated_at, text],
+        )?;
+        Ok(())
+    }
+
     pub fn set_sync_state(&self, key: &str, value: &str) -> Result<()> {
         self.conn.execute(
             "INSERT INTO sync_state (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             params![key, value],
+        )?;
+        Ok(())
+    }
+
+    /// Insert or replace a saved conversation.
+    pub fn save_chat_session(&self, s: &ChatSession) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO chat_sessions
+                 (session_id, started_at, updated_at, title, message_count, messages)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(session_id) DO UPDATE SET
+                 updated_at = excluded.updated_at,
+                 title = excluded.title,
+                 message_count = excluded.message_count,
+                 messages = excluded.messages",
+            params![
+                s.session_id,
+                s.started_at,
+                s.updated_at,
+                s.title,
+                s.message_count,
+                s.messages,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// A page of saved conversations, newest first, without their bodies —
+    /// the list only needs titles, and the bodies are the expensive part.
+    pub fn chat_sessions(&self, limit: u32, offset: u32) -> Result<Vec<ChatSessionMeta>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT session_id, started_at, updated_at, title, message_count
+             FROM chat_sessions
+             ORDER BY updated_at DESC
+             LIMIT ?1 OFFSET ?2",
+        )?;
+        let rows = stmt
+            .query_map(params![limit, offset], |r| {
+                Ok(ChatSessionMeta {
+                    session_id: r.get(0)?,
+                    started_at: r.get(1)?,
+                    updated_at: r.get(2)?,
+                    title: r.get(3)?,
+                    message_count: r.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    /// One conversation, bodies and all.
+    pub fn chat_session(&self, session_id: &str) -> Result<Option<ChatSession>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT session_id, started_at, updated_at, title, message_count, messages
+                 FROM chat_sessions WHERE session_id = ?1",
+                params![session_id],
+                |r| {
+                    Ok(ChatSession {
+                        session_id: r.get(0)?,
+                        started_at: r.get(1)?,
+                        updated_at: r.get(2)?,
+                        title: r.get(3)?,
+                        message_count: r.get(4)?,
+                        messages: r.get(5)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    pub fn delete_chat_session(&self, session_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM chat_sessions WHERE session_id = ?1",
+            params![session_id],
         )?;
         Ok(())
     }
@@ -678,6 +1119,25 @@ impl CachedActivity {
         }
         Some((t / 60.0) / (d / 1000.0))
     }
+}
+
+/// One weigh-in, as Garmin holds it.
+///
+/// Grams, not kilograms, because that is the unit Garmin sends and converting
+/// at the boundary is one more place for a factor of a thousand to go wrong.
+/// The query layer converts once, on the way out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeighIn {
+    pub sample_pk: i64,
+    pub calendar_date: String,
+    pub weight_g: f64,
+    pub bmi: Option<f64>,
+    pub body_fat: Option<f64>,
+    pub body_water: Option<f64>,
+    pub bone_mass: Option<f64>,
+    pub muscle_mass: Option<f64>,
+    pub source_type: Option<String>,
 }
 
 /// A structured session saved on the Garmin account.
@@ -756,4 +1216,53 @@ impl DailyMetrics {
     pub fn calorie_balance(&self) -> Option<f64> {
         Some(self.consumed_kcal? - self.total_burn_kcal?)
     }
+
+    /// Whether any figure was actually recorded for this day.
+    ///
+    /// Garmin answers 200 for dates before you owned the watch, with every
+    /// field null — so a successful request is no evidence that a day happened,
+    /// and the sync needs to be able to tell the difference.
+    pub fn has_data(&self) -> bool {
+        self.resting_hr.is_some()
+            || self.hrv_last_night.is_some()
+            || self.hrv_weekly_avg.is_some()
+            || self.training_readiness.is_some()
+            || self.sleep_secs.is_some()
+            || self.sleep_score.is_some()
+            || self.steps.is_some()
+            || self.stress_avg.is_some()
+            || self.body_battery_high.is_some()
+            || self.body_battery_low.is_some()
+            || self.consumed_kcal.is_some()
+            || self.total_burn_kcal.is_some()
+            || self.active_kcal.is_some()
+            || self.bmr_kcal.is_some()
+            || self.hydration_ml.is_some()
+            || self.sweat_loss_ml.is_some()
+    }
+}
+
+/// A saved Ask conversation. `messages` is opaque JSON here — the shape is the
+/// frontend's `ChatMessage[]`, and the cache has no reason to care what's in
+/// it beyond storing and returning it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSession {
+    pub session_id: String,
+    pub started_at: String,
+    pub updated_at: String,
+    pub title: String,
+    pub message_count: i64,
+    pub messages: String,
+}
+
+/// A conversation's headline, for listing without loading bodies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSessionMeta {
+    pub session_id: String,
+    pub started_at: String,
+    pub updated_at: String,
+    pub title: String,
+    pub message_count: i64,
 }

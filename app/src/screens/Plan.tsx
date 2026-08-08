@@ -17,9 +17,9 @@ import {
   Loading,
   Metric,
   MetricRow,
-  PageTitle,
-  Rule,
+  PageHeader,
 } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import { DASH, duration, isRun, km, sportLabel } from "../lib/format";
 
 /** Window used to ask "is this workout actually being run?". */
@@ -41,8 +41,7 @@ export function Plan() {
   if (!saved.length) {
     return (
       <div>
-        <PageTitle>Plan</PageTitle>
-        <Lede />
+        <Header />
         <Empty
           title="No workouts saved on your Garmin account."
           body={
@@ -75,9 +74,8 @@ export function Plan() {
   );
 
   return (
-    <div>
-      <PageTitle>Plan</PageTitle>
-      <Lede />
+    <div className="screen">
+      <Header />
 
       <MetricRow style={{ marginBottom: 10 }}>
         <Metric value={saved.length} label="Saved workouts" />
@@ -89,7 +87,7 @@ export function Plan() {
       </MetricRow>
 
       {target > 0 && (
-        <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
+        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
           Your longest running workout asks for {duration(target)}.{" "}
           {longestRun >= target ? (
             <>
@@ -108,8 +106,7 @@ export function Plan() {
         </p>
       )}
 
-      <Rule m="46px 0 20px" />
-      <div className="eyebrow" style={{ marginBottom: 6 }}>
+      <div className="eyebrow" style={{ margin: "66px 0 6px" }}>
         Saved workouts
       </div>
       <div>
@@ -118,11 +115,10 @@ export function Plan() {
         ))}
       </div>
 
-      <Rule m="46px 0 20px" />
-      <div className="eyebrow" style={{ marginBottom: 14 }}>
+      <div className="eyebrow" style={{ margin: "66px 0 14px" }}>
         What Garmin doesn't have
       </div>
-      <p style={{ fontSize: 14.5, lineHeight: 1.7, color: "var(--mut)", margin: 0, maxWidth: "62ch", textWrap: "pretty" }}>
+      <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: 0, maxWidth: "62ch", textWrap: "pretty" }}>
         No goal race and no structured week are stored on your account — the
         training-plan and goal endpoints both return nothing. Those are
         decisions rather than data, so the app won't invent them. Everything
@@ -134,12 +130,15 @@ export function Plan() {
   );
 }
 
-function Lede() {
+function Header() {
   return (
-    <p style={{ fontSize: 14.5, color: "var(--mut)", margin: "0 0 46px", maxWidth: "62ch" }}>
-      The workouts you've built, and whether your running is keeping up with
-      them.
-    </p>
+    <PageHeader
+      eyebrow={`Last ${LOOKBACK} days`}
+      title="Plan"
+      lede="The workouts you've built, and whether your running is keeping up with them."
+      action={<RefreshButton />}
+      space={46}
+    />
   );
 }
 
@@ -149,15 +148,15 @@ function WorkoutRow({ workout: w }: { workout: Workout }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block" }}>{w.name ?? "Untitled workout"}</span>
         {w.description && (
-          <span style={{ display: "block", fontSize: 13, color: "var(--faint)", marginTop: 3 }}>
+          <span style={{ display: "block", fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 3 }}>
             {w.description}
           </span>
         )}
       </span>
-      <span style={{ width: 108, flex: "none", color: "var(--mut)", fontSize: 13 }}>
+      <span style={{ width: 118, flex: "none", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
         {sportLabel(w.sportType)}
       </span>
-      <span className="mono" style={{ width: 74, flex: "none", textAlign: "right" }}>
+      <span className="mono" style={{ width: 82, flex: "none", textAlign: "right" }}>
         {/* Strength workouts carry a zero estimate rather than a real one. */}
         {w.estDurationS ? duration(w.estDurationS) : w.estDistanceM ? km(w.estDistanceM) : DASH}
       </span>

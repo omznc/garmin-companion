@@ -17,12 +17,16 @@ import {
   garminImportTokens,
   garminLogin,
   garminStatus,
+  prepareCloudChat,
   setChatProvider,
+  CLOUD_MODEL,
+  DEFAULT_MODEL,
   setOpenrouterKey,
-  syncNow,
   type ChatProvider,
 } from "../lib/api";
+import { runSync } from "../lib/syncProgress";
 import { ArrowRight, BackLink, ErrorNote } from "../components/ui";
+import { ScrollFade } from "../components/ScrollFade";
 import { useTheme } from "../lib/useTheme";
 import type { Theme } from "../lib/theme";
 
@@ -40,6 +44,8 @@ export function Setup({ onDone }: { onDone: () => void }) {
         padding: "0 56px",
       }}
     >
+      {/* Full width here: setup has no nav to stop short of. */}
+      <ScrollFade left="0" />
       <div style={{ width: "100%", maxWidth: step === 1 ? 460 : 520, padding: "150px 0 120px" }}>
         {step === 1 && <StepGarmin onNext={() => setStep(2)} />}
         {step === 2 && <StepModel onBack={() => setStep(1)} onNext={() => setStep(3)} />}
@@ -121,7 +127,7 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
       {importable && !connected && (
         <div
           style={{
-            fontSize: 13.5,
+            fontSize: "var(--fs-base)",
             lineHeight: 1.65,
             color: "var(--mut)",
             paddingLeft: 16,
@@ -131,14 +137,14 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
           }}
         >
           Found an existing token file at{" "}
-          <span className="mono" style={{ fontSize: 12 }}>
+          <span className="mono" style={{ fontSize: "var(--fs-caption)" }}>
             {importable}
           </span>
           . Importing it skips the sign-in entirely.
           <div style={{ marginTop: 12 }}>
             <button
               className="underlined"
-              style={{ fontSize: 13 }}
+              style={{ fontSize: "var(--fs-small)" }}
               onClick={() => importTokens.mutate()}
               disabled={busy}
             >
@@ -149,7 +155,7 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
       )}
 
       {progress && (
-        <div style={{ fontSize: 13.5, color: "var(--mut)", marginBottom: 24 }}>{progress}</div>
+        <div style={{ fontSize: "var(--fs-base)", color: "var(--mut)", marginBottom: 24 }}>{progress}</div>
       )}
       {error && <ErrorNote error={error} />}
 
@@ -174,7 +180,7 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
           </button>
         )}
         {connected && (
-          <button className="quiet" style={{ fontSize: 12.5 }} onClick={() => login.mutate()} disabled={busy}>
+          <button className="quiet" style={{ fontSize: "var(--fs-small)" }} onClick={() => login.mutate()} disabled={busy}>
             Sign in again
           </button>
         )}
@@ -188,25 +194,40 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
 function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void }) {
   const qc = useQueryClient();
   const config = useQuery({ queryKey: ["chatConfig"], queryFn: chatConfig });
-  const [picked, setPicked] = useState<ChatProvider | null>(null);
+  /**
+   * Preselected rather than blank. The hosted coach needs nothing from anyone —
+   * no key, no account, no model pulled — so leaving this unset would be asking
+   * a question whose answer is already right for almost everyone. The other two
+   * are one click away and the copy below says what each one means.
+   */
+  const [picked, setPicked] = useState<ChatProvider | null>("cloud");
   const [key, setKey] = useState("");
-  const [model, setModel] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const save = useMutation({
     mutationFn: async () => {
       if (!picked) throw new Error("Pick a provider.");
+      // No model field on first run: the hosted coach has exactly one, and
+      // OpenRouter gets the default. Choosing between 300 models is a Settings
+      // job, not something to put between someone and their own data.
       const chosen =
-        model.trim() ||
-        (picked === "openrouter"
-          ? "anthropic/claude-sonnet-4.5"
-          : (config.data?.ollamaModels[0] ?? ""));
+        picked === "cloud"
+          ? CLOUD_MODEL
+          : picked === "openrouter"
+            ? DEFAULT_MODEL
+            : (config.data?.ollamaModels[0] ?? "");
       if (!chosen) throw new Error("No model available — pull one in Ollama first.");
       if (picked === "openrouter") {
         if (!key.trim() && !config.data?.hasKey) throw new Error("An OpenRouter key is needed.");
         if (key.trim()) await setOpenrouterKey(key.trim());
       }
       await setChatProvider(picked, chosen);
+      // The id the hosted coach counts against its budget, fetched here so the
+      // first question is a question rather than an introduction. Swallowed on
+      // purpose: a coach that can't be reached during setup is not a reason to
+      // hold someone on step 2, and asking again is what the first question
+      // already does.
+      if (picked === "cloud") await prepareCloudChat().catch(() => {});
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["chatConfig"] });
@@ -216,6 +237,13 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
   });
 
   const providers = [
+    {
+      id: "cloud" as const,
+      name: "Built-in coach",
+      note: "Nothing to set up",
+      tag: "Hosted",
+      available: true,
+    },
     {
       id: "openrouter" as const,
       name: "OpenRouter",
@@ -268,14 +296,14 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 15,
+              fontSize: "var(--fs-md)",
               color: picked === p.id ? "var(--fg)" : "var(--mut)",
             }}
           >
             {p.name}
-            <span style={{ color: "var(--faint)", fontSize: 12.5, marginLeft: 10 }}>{p.note}</span>
+            <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>{p.note}</span>
           </span>
-          <span style={{ fontSize: 12, color: "var(--faint)", flex: "none" }}>{p.tag}</span>
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>{p.tag}</span>
         </button>
       ))}
 
@@ -288,28 +316,19 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
             onChange={(e) => setKey(e.target.value)}
             placeholder={config.data?.hasKey ? "Key already stored" : "sk-or-v1-…"}
           />
-          <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 9 }}>
+          <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 9 }}>
             Stored in your system keychain, never in the database.
           </div>
         </div>
       )}
 
       {picked && (
-        <div style={{ marginTop: 26 }}>
-          <input
-            className="input input-lg"
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={
-              picked === "openrouter"
-                ? "anthropic/claude-sonnet-4.5"
-                : (config.data?.ollamaModels[0] ?? "model id")
-            }
-          />
-          <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 9 }}>
-            The model must support tool calls — every answer here comes from one.
-            Leave it blank to take the default.
-          </div>
+        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 26, lineHeight: 1.6 }}>
+          {picked === "cloud"
+            ? "Questions go to a small server this project runs, which forwards them to a model and pays for the answer. It sees the metrics a question needs — heart rates, sleep, weight — and keeps none of them. Settings can move you to your own key or a local model at any point."
+            : picked === "openrouter"
+              ? `Starts on ${DEFAULT_MODEL} — cheap, fast, and it calls tools, which every answer here needs. Settings has the full list.`
+              : "Uses the first model you've pulled. It must support tool calls. Settings has the rest."}
         </div>
       )}
 
@@ -328,7 +347,7 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
           Continue
           <ArrowRight />
         </button>
-        <button className="quiet" style={{ fontSize: 12.5 }} onClick={onNext}>
+        <button className="quiet" style={{ fontSize: "var(--fs-small)" }} onClick={onNext}>
           {picked ? "" : "Skip — set this up later"}
         </button>
       </div>
@@ -344,7 +363,10 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
   const [error, setError] = useState<string | null>(null);
 
   const sync = useMutation({
-    mutationFn: () => syncNow(60, false),
+    // Full, not a 60-day sample: this is the one chance to pull the whole
+    // history, and `sync_all` widens the window to however far the watch goes
+    // back. It's slow, which is what the progress bar is for.
+    mutationFn: () => runSync(365, true),
     onMutate: () => setError(null),
     onSuccess: async () => {
       await qc.invalidateQueries();
@@ -363,7 +385,7 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
       <div className="eyebrow" style={{ marginBottom: 14 }}>
         Appearance
       </div>
-      <div style={{ display: "flex", gap: 26, fontSize: 15, marginBottom: 40 }}>
+      <div style={{ display: "flex", gap: 26, fontSize: "var(--fs-md)", marginBottom: 40 }}>
         {(["light", "dark", "system"] as Theme[]).map((t) => (
           <button
             key={t}
@@ -393,12 +415,12 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
       ].map(([label, note, state]) => (
         <div key={label} className="row-static" style={{ alignItems: "center" }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15 }}>{label}</div>
-            <div style={{ fontSize: 12.5, color: "var(--faint)", marginTop: 4 }}>{note}</div>
+            <div style={{ fontSize: "var(--fs-md)" }}>{label}</div>
+            <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 4 }}>{note}</div>
           </div>
           <div
             style={{
-              fontSize: 12.5,
+              fontSize: "var(--fs-small)",
               color: state === "On" ? "var(--fg)" : "var(--faint)",
               width: 44,
               textAlign: "right",
@@ -411,7 +433,7 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
       ))}
       {/* These describe what the sync actually does rather than offering
           switches that wouldn't be wired to anything. */}
-      <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 14, maxWidth: "52ch", lineHeight: 1.6 }}>
+      <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 14, maxWidth: "52ch", lineHeight: 1.6 }}>
         This is what the sync fetches today, not a set of toggles — per-category
         opt-outs aren't implemented yet, and a switch that did nothing would be
         worse than saying so.
@@ -428,11 +450,11 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
           marginTop: 44,
         }}
       >
-        <button className="cta" style={{ fontSize: 23 }} onClick={() => sync.mutate()} disabled={sync.isPending}>
+        <button className="cta" style={{ fontSize: 25 }} onClick={() => sync.mutate()} disabled={sync.isPending}>
           {sync.isPending ? "Importing your history…" : "Open Companion"}
           <ArrowRight />
         </button>
-        <button className="quiet" style={{ fontSize: 12.5 }} onClick={onDone}>
+        <button className="quiet" style={{ fontSize: "var(--fs-small)" }} onClick={onDone}>
           Skip the first sync
         </button>
       </div>

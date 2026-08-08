@@ -1,31 +1,48 @@
-import { useCallback, useEffect, useState } from "react";
-import { applyTheme, loadTheme, watchSystemTheme, type Theme } from "./theme";
-
-const ORDER: Theme[] = ["light", "dark", "system"];
-
-/** The label names the theme you'd get by clicking, not the one you're on. */
-const NEXT_LABEL: Record<Theme, string> = {
-  light: "Dark mode",
-  dark: "Match system",
-  system: "Light mode",
-};
+import { useCallback, useSyncExternalStore } from "react";
+import { getThemeState, setPalette, setTheme, subscribe, type Mode } from "./theme";
 
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(loadTheme);
+  const { theme, palette, mode, preset, custom, customs } = useSyncExternalStore(
+    subscribe,
+    getThemeState,
+  );
 
-  useEffect(() => {
-    applyTheme(theme);
-  }, [theme]);
+  /**
+   * The sidebar's toggle: light and dark only.
+   *
+   * "Match system" belongs in Settings — it's a preference you set once, not
+   * something you want to land on halfway through flipping the lights. From
+   * "system" this picks whichever of the two you aren't currently looking at,
+   * so the click always visibly does something.
+   *
+   * It reads `mode` rather than `theme`, so under a palette it would flip away
+   * from what's on screen — but the sidebar doesn't offer it there. A palette
+   * is a fixed appearance, and a control that silently threw one away to change
+   * the lighting would be the wrong trade to make on someone's behalf.
+   */
+  const toggle = useCallback(() => {
+    setTheme(mode === "dark" ? "light" : "dark");
+  }, [mode]);
 
-  // Only "system" needs to react to the OS flipping.
-  useEffect(() => {
-    if (theme !== "system") return;
-    return watchSystemTheme(() => applyTheme("system"));
-  }, [theme]);
+  /** The theme you'd get by clicking, not the one you're on. */
+  const next: Mode = mode === "dark" ? "light" : "dark";
+  const label = next === "light" ? "Light mode" : "Dark mode";
 
-  const cycle = useCallback(() => {
-    setTheme((t) => ORDER[(ORDER.indexOf(t) + 1) % ORDER.length]);
-  }, []);
-
-  return { theme, setTheme, cycle, label: NEXT_LABEL[theme] };
+  return {
+    theme,
+    setTheme,
+    palette,
+    setPalette,
+    /** Whichever kind of palette is in force. Both null means the built-in. */
+    preset,
+    custom,
+    /** Everything in the themes folder. */
+    customs,
+    /** What to call the palette in force, if there is one. */
+    paletteName: preset?.name ?? custom?.name ?? null,
+    mode,
+    toggle,
+    next,
+    label,
+  };
 }

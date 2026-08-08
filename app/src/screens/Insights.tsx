@@ -12,9 +12,9 @@ import {
   LineChart,
   Loading,
   Metric,
-  PageTitle,
-  Rule,
+  PageHeader,
 } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import { daysAgo, isRun, num } from "../lib/format";
 
 export function Insights() {
@@ -37,12 +37,14 @@ export function Insights() {
   const nothing = !found.length && !load && !flags.length;
 
   return (
-    <div>
-      <PageTitle>Insights</PageTitle>
-      <p style={{ fontSize: 14.5, color: "var(--mut)", margin: "0 0 54px" }}>
-        Correlations found in your own cached data. Correlations, not causes —
-        each states its sample size so you can judge how much to believe it.
-      </p>
+    <div className="screen">
+      <PageHeader
+        eyebrow="Last 365 days"
+        title="Insights"
+        lede="Correlations found in your own cached data. Correlations, not causes — each states its sample size so you can judge how much to believe it."
+        action={<RefreshButton />}
+        space={54}
+      />
 
       {nothing && (
         <Empty
@@ -67,15 +69,15 @@ export function Insights() {
           </div>
           <div style={{ display: "flex", gap: 32, alignItems: "flex-end" }}>
             <div
-              style={{ flex: 1, fontSize: 14.5, lineHeight: 1.65, color: "var(--mut)", textWrap: "pretty" }}
+              style={{ flex: 1, fontSize: "var(--fs-md)", lineHeight: 1.65, color: "var(--mut)", textWrap: "pretty" }}
             >
               {i.detail}
             </div>
             <div style={{ width: 260, flex: "none" }}>
               <LineChart
                 series={[
-                  { values: i.a, stroke: "var(--acc)" },
-                  { values: i.b, stroke: "var(--faint)", width: 1, dashed: true },
+                  { ...i.a, stroke: "var(--acc)" },
+                  { ...i.b, stroke: "var(--faint)", width: 1, dashed: true },
                 ]}
                 height={70}
                 viewWidth={260}
@@ -83,7 +85,7 @@ export function Insights() {
               />
             </div>
           </div>
-          <div style={{ fontSize: 11.5, color: "var(--faint)", marginTop: 10 }}>
+          <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
             {i.basis}
           </div>
         </div>
@@ -91,7 +93,6 @@ export function Insights() {
 
       {load && (
         <>
-          <Rule m="0 0 30px" />
           <div className="eyebrow" style={{ marginBottom: 20 }}>
             Training load
           </div>
@@ -108,7 +109,7 @@ export function Insights() {
               </div>
               <div
                 style={{
-                  font: "400 10px/1 'Instrument Sans', sans-serif",
+                  font: "400 var(--fs-micro)/1 'Instrument Sans', sans-serif",
                   letterSpacing: "0.1em",
                   textTransform: "uppercase",
                   color: "var(--mut)",
@@ -119,7 +120,7 @@ export function Insights() {
               </div>
             </div>
           </div>
-          <div style={{ fontSize: 13.5, color: "var(--mut)", lineHeight: 1.6 }}>
+          <div style={{ fontSize: "var(--fs-base)", color: "var(--mut)", lineHeight: 1.6 }}>
             {load.acute.toFixed(1)} h of training in the last seven days against a
             28-day weekly average of {load.chronic.toFixed(1)} h.{" "}
             {load.ratio > 1.5
@@ -133,8 +134,7 @@ export function Insights() {
 
       {flags.length > 0 && (
         <>
-          <Rule m="44px 0 22px" />
-          <div className="eyebrow" style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ margin: "60px 0 16px" }}>
             Risk flags
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>

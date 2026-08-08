@@ -1,0 +1,50 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "coach",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-06-01",
+	// No `observability` block on purpose. Workers Logs would persist request
+	// metadata for a service whose requests carry someone's resting heart rate,
+	// and the counters this needs are in KV already.
+	"vars": {
+		// Both readable in the dashboard and neither secret. The key is a secret:
+		//   wrangler secret put OPENROUTER_KEY
+		"MODEL": "inclusionai/ling-3.0-flash",
+		// USD across all users per UTC day. When the day's spend passes this the
+		// worker stops forwarding until midnight. Set it to what you are actually
+		// willing to lose in a bad week, not to what you expect to spend.
+		"DAILY_BUDGET_USD": "5"
+	},
+	// Per-day request counts and the running spend. Eventually consistent, which
+	// is fine for both: the budget is a ceiling with a soft edge, not a ledger.
+	"kv_namespaces": [
+		{
+			"binding": "COUNTERS",
+			"id": "b34d6d482b4e43e9afa0864c9faac10e",
+			"remote": true
+		}
+	],
+	// The burst limits. Counted at each Cloudflare location, which is looser than
+	// it reads — someone determined can get a multiple of either by spreading
+	// over locations. The daily budget is what actually bounds the damage; BURST
+	// is here so one stuck client can't spin, and ISSUE so a script can't sit on
+	// /v1/install and collect ids faster than the daily caps are read.
+	"ratelimits": [
+		{
+			"name": "BURST",
+			"namespace_id": "1001",
+			"simple": {
+				"limit": 30,
+				"period": 60
+			}
+		},
+		{
+			"name": "ISSUE",
+			"namespace_id": "1002",
+			"simple": {
+				"limit": 3,
+				"period": 60
+			}
+		}
+	]
+}

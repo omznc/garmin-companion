@@ -1,105 +1,68 @@
 /**
- * The updater surface: a version line, a manual check, and a download that
- * ends in a restart.
- *
- * Deliberately not automatic. The app is a coaching notebook you open to look
- * something up, and having it swap itself out underneath you mid-question
- * would be worse than being a version behind. It checks once on mount so you
- * find out an update exists, and then waits to be told.
+ * The Settings read-out for the updater. All it does is display state and
+ * offer the restart — the work itself runs from `lib/updater`, started at
+ * launch, so it keeps going when you navigate away from this screen.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getUpdateState, runUpdate, subscribe, type UpdateState } from "../lib/updater";
+import { SyncIcon, UpdateIcon } from "../lib/icons";
 
-type Phase =
-  | { at: "checking" }
-  | { at: "current" }
-  | { at: "available"; update: Update }
-  | { at: "downloading"; pct: number | null }
-  | { at: "ready" }
-  | { at: "failed"; message: string };
+export function useUpdateState(): UpdateState {
+  return useSyncExternalStore(subscribe, getUpdateState);
+}
 
 export function UpdateCheck() {
   const [version, setVersion] = useState<string | null>(null);
-  const [phase, setPhase] = useState<Phase>({ at: "checking" });
+  const state = useUpdateState();
 
   useEffect(() => {
     void getVersion().then(setVersion);
-    void runCheck();
+    // Opening Settings is as good a moment as any to retry a check that
+    // failed earlier, or to run the first one if the launch check hasn't
+    // fired yet. `runUpdate` is idempotent.
+    void runUpdate();
   }, []);
 
-  async function runCheck() {
-    setPhase({ at: "checking" });
-    try {
-      const update = await check();
-      setPhase(update ? { at: "available", update } : { at: "current" });
-    } catch (e) {
-      setPhase({ at: "failed", message: describe(e) });
-    }
-  }
-
-  async function install(update: Update) {
-    setPhase({ at: "downloading", pct: null });
-    try {
-      // The event stream reports a total up front only when the server sends a
-      // content-length, so the bar has to cope with never knowing the size.
-      let total = 0;
-      let got = 0;
-      await update.downloadAndInstall((e) => {
-        if (e.event === "Started") total = e.data.contentLength ?? 0;
-        else if (e.event === "Progress") {
-          got += e.data.chunkLength;
-          setPhase({ at: "downloading", pct: total ? got / total : null });
-        } else if (e.event === "Finished") setPhase({ at: "ready" });
-      });
-      setPhase({ at: "ready" });
-    } catch (e) {
-      setPhase({ at: "failed", message: describe(e) });
-    }
-  }
-
   return (
-    <div style={{ marginBottom: 44 }}>
-      <div className="eyebrow" style={{ marginBottom: 14 }}>
-        Version
-      </div>
-      <div style={{ fontSize: 15, lineHeight: 1.6 }}>
-        <span className="mono" style={{ fontSize: 13.5 }}>
+    // No heading of its own: Settings puts this in a section like any other,
+    // and it used to render one from inside the model settings, which stacked
+    // "Version" under "Model" as if it were part of choosing one.
+    <div>
+      <div style={{ fontSize: "var(--fs-md)", lineHeight: 1.6 }}>
+        <span className="mono" style={{ fontSize: "var(--fs-base)" }}>
           {version ?? "—"}
         </span>
-        <span style={{ color: "var(--mut)" }}> · {caption(phase)}</span>
+        <span style={{ color: "var(--mut)" }}> · {caption(state)}</span>
       </div>
 
-      {phase.at === "downloading" && phase.pct != null && (
-        <div className="bar" style={{ marginTop: 12, maxWidth: 260 }}>
-          <span style={{ width: `${Math.round(phase.pct * 100)}%` }} />
+      {state.at === "downloading" && state.pct != null && (
+        <div className="bar bar-live" style={{ marginTop: 12, maxWidth: 260 }}>
+          <span style={{ transform: `scaleX(${state.pct})` }} />
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 22, marginTop: 14, fontSize: 13 }}>
-        {phase.at === "available" && (
-          <button className="underlined" onClick={() => void install(phase.update)}>
-            Download {phase.update.version}
+      <div style={{ display: "flex", gap: 22, marginTop: 14, fontSize: "var(--fs-small)" }}>
+        {state.at === "ready" && (
+          <button className="underlined action" onClick={() => void relaunch()}>
+            <UpdateIcon size={13} aria-hidden />
+            Restart now
           </button>
         )}
-        {phase.at === "ready" && (
-          <button className="underlined" onClick={() => void relaunch()}>
-            Restart to finish
-          </button>
-        )}
-        {(phase.at === "current" || phase.at === "failed") && (
-          <button className="quiet" onClick={() => void runCheck()}>
+        {(state.at === "current" || state.at === "failed") && (
+          <button className="quiet action" onClick={() => void runUpdate()}>
+            <SyncIcon size={13} aria-hidden />
             Check again
           </button>
         )}
       </div>
 
-      {phase.at === "available" && phase.update.body && (
+      {state.at === "ready" && state.notes && (
         <div
           className="selectable"
           style={{
-            fontSize: 13.5,
+            fontSize: "var(--fs-base)",
             lineHeight: 1.65,
             color: "var(--mut)",
             marginTop: 14,
@@ -107,34 +70,29 @@ export function UpdateCheck() {
             whiteSpace: "pre-wrap",
           }}
         >
-          {phase.update.body}
+          {state.notes}
         </div>
       )}
     </div>
   );
 }
 
-function caption(p: Phase): string {
-  switch (p.at) {
+function caption(s: UpdateState): string {
+  switch (s.at) {
+    case "idle":
     case "checking":
       return "checking for updates…";
     case "current":
       return "up to date";
-    case "available":
-      return `${p.update.version} is available`;
     case "downloading":
-      return p.pct == null ? "downloading…" : `downloading ${Math.round(p.pct * 100)}%`;
+      return s.pct == null
+        ? `downloading ${s.version}…`
+        : `downloading ${s.version} — ${Math.round(s.pct * 100)}%`;
     case "ready":
-      return "update installed";
+      // States what already happened and what's left, so the button reads as a
+      // shortcut rather than a chore you're being asked to complete.
+      return `${s.version} installed — starts next time you open the app`;
     case "failed":
-      return p.message;
+      return s.message;
   }
-}
-
-/** A failed check is worth a line, not a red box — being offline is normal. */
-function describe(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e);
-  return /network|dns|connect|timed? out|resolve/i.test(raw)
-    ? "couldn't reach the update server"
-    : `update check failed — ${raw}`;
 }

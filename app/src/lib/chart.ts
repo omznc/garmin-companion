@@ -2,7 +2,8 @@
  * Polyline geometry for the SVG charts.
  *
  * The design's charts are all the same shape: a baseline rule and one or two
- * unfilled polylines, auto-scaled to whatever the series happens to contain.
+ * polylines — some over a gradient wash, most not — auto-scaled to whatever
+ * the series happens to contain.
  * Real data has gaps — a day with no watch data, a run with no HR — so unlike
  * the design's synthetic series these helpers have to break the line rather
  * than draw through a hole.
@@ -20,20 +21,42 @@ export interface PolyOpts {
   max?: number;
 }
 
+export interface Scale {
+  /** Index to horizontal position, in viewBox units. */
+  x: (i: number) => number;
+  /** Value to vertical position, in viewBox units. */
+  y: (v: number) => number;
+}
+
+/**
+ * The mapping `polylines` draws with, exposed so an overlay — the hover dot and
+ * its guide — can land on the line rather than near it. Null when the series
+ * has nothing to scale against.
+ */
+export function scaleFor(values: Point[], opts: PolyOpts): Scale | null {
+  const { width, height, pad = 4 } = opts;
+  const present = values.filter((v): v is number => v != null && isFinite(v));
+  if (present.length === 0) return null;
+
+  const min = opts.min ?? Math.min(...present);
+  const max = opts.max ?? Math.max(...present);
+  const range = max - min || 1;
+  const lastIndex = Math.max(values.length - 1, 1);
+
+  return {
+    x: (i) => (i / lastIndex) * width,
+    y: (v) => height - pad - ((v - min) / range) * (height - pad * 2),
+  };
+}
+
 /**
  * One `points` string per unbroken run of data. Render each as its own
  * `<polyline>`; a gap in the input becomes a gap on the chart instead of a
  * straight line across the missing days.
  */
 export function polylines(values: Point[], opts: PolyOpts): string[] {
-  const { width, height, pad = 4 } = opts;
-  const present = values.filter((v): v is number => v != null && isFinite(v));
-  if (present.length === 0) return [];
-
-  const min = opts.min ?? Math.min(...present);
-  const max = opts.max ?? Math.max(...present);
-  const range = max - min || 1;
-  const lastIndex = Math.max(values.length - 1, 1);
+  const scale = scaleFor(values, opts);
+  if (!scale) return [];
 
   const segments: string[] = [];
   let current: string[] = [];
@@ -44,15 +67,49 @@ export function polylines(values: Point[], opts: PolyOpts): string[] {
       current = [];
       return;
     }
-    const x = (i / lastIndex) * width;
-    const y = height - pad - ((v - min) / range) * (height - pad * 2);
-    current.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+    current.push(`${scale.x(i).toFixed(1)},${scale.y(v).toFixed(1)}`);
   });
   if (current.length) segments.push(current.join(" "));
 
   // A single isolated sample has no line to draw. Give it a hairline so the
   // chart isn't silently blank when only one day has data.
   return segments.map((s) => (s.includes(" ") ? s : `${s} ${s}`));
+}
+
+/**
+ * One `d` per unbroken run, closed down to the foot of the viewBox — the shape
+ * the gradient wash under a line is painted into. Runs of a single sample are
+ * dropped: an area with no width paints nothing, and `polylines` already gives
+ * that sample a hairline to be seen by.
+ */
+export function areas(values: Point[], opts: PolyOpts): string[] {
+  const scale = scaleFor(values, opts);
+  if (!scale) return [];
+
+  const { height } = opts;
+  const paths: string[] = [];
+  let current: Array<[string, string]> = [];
+
+  const close = () => {
+    if (current.length > 1) {
+      const first = current[0][0];
+      const last = current[current.length - 1][0];
+      const line = current.map(([x, y]) => `L${x},${y}`).join(" ");
+      paths.push(`M${first},${height} ${line} L${last},${height} Z`);
+    }
+    current = [];
+  };
+
+  values.forEach((v, i) => {
+    if (v == null || !isFinite(v)) {
+      close();
+      return;
+    }
+    current.push([scale.x(i).toFixed(1), scale.y(v).toFixed(1)]);
+  });
+  close();
+
+  return paths;
 }
 
 /** Convenience for the common case of one continuous series. */

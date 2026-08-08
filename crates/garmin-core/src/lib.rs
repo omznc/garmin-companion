@@ -3,16 +3,21 @@
 //! Both the desktop app and the MCP server build on this crate so there is only
 //! ever one implementation of the auth dance to keep working.
 
+pub mod analysis;
 pub mod auth;
 pub mod client;
 pub mod db;
 pub mod query;
 pub mod store;
 pub mod sync;
+pub mod theme;
+pub mod workout;
 
+pub use analysis::ActivityAnalysis;
 pub use auth::Tokens;
 pub use client::{ActivitySummary, GarminClient, Profile};
-pub use db::{CachedActivity, DailyMetrics, Db};
+pub use db::{CachedActivity, DailyMetrics, Db, WeighIn};
+pub use workout::WorkoutDraft;
 
 use anyhow::{Context, Result};
 use std::sync::Arc;

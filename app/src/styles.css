@@ -15,11 +15,26 @@
 @import "@fontsource/geist-mono/400.css";
 @import "@fontsource/geist-mono/500.css";
 
-:root {
+/* The built-in palette, and the handle a swatch previews it by.
+ *
+ * `[data-palette="paper"]` is not a theme anyone can select — it's the same
+ * declarations reachable from a nested element, so a 26px rectangle in Settings
+ * can show what "Default" looks like while the page is wearing something else.
+ * The presets below are written the same way, for the same reason. */
+:root,
+[data-palette="paper"] {
   --bg: #faf9f6;
+  /* The nav's ground: one step recessed from the page, close enough that it
+   * reads as the same paper in a different light rather than as a second
+   * surface. Only the shell's nav side uses it. */
+  --bg2: #f4f2ed;
   --fg: #1b1a17;
   --mut: #79736a;
   --faint: #a9a296;
+  /* The display face, as a variable so Settings can swap it in one place.
+   * Every serif rule below reads this rather than naming the family. */
+  --serif: "Instrument Serif", Georgia, serif;
+
   /* Two hairlines, and only two. `--line` divides sections and outlines
    * controls; `--line2` separates repeated rows inside one list. Anything that
    * draws a border picks one of these by that rule, so the same job never
@@ -29,10 +44,64 @@
   --acc: #b0563a;
   --warn: #8a6a1f;
   --sel: rgba(27, 26, 23, 0.045);
+
+  /* The one elevation in the app: what something looks like while you're
+   * holding it. Nothing is raised because it is important — only because it is
+   * currently off the page and in your hand. */
+  --lift: 0 8px 22px rgba(27, 26, 23, 0.14);
+
+  /* The duotone icons' back layer. Phosphor draws it as the glyph's own colour
+   * at 20% — a grey smudge behind a grey line. Painting it accent instead is
+   * the one place the orange appears without being asked for, and it reads as
+   * a tint rather than a second icon. `--icon2-a` because accent is a mid-tone
+   * where the greys were dark: 20% of it disappears. */
+  --icon2: var(--acc);
+  --icon2-a: 0.3;
+
+  /* Motion. Three speeds, because the app only ever does three things: tint a
+   * surface under the pointer, move a control between two states, and narrate
+   * something slow. The built-in curves are too weak to read as deliberate at
+   * these durations, so entrances and exits take `--ease-out` and anything
+   * travelling across the screen takes `--ease-in-out`. Plain hover colour
+   * changes keep the browser default `ease` — they have no direction to
+   * express. */
+  --dur-fast: 120ms;
+  --dur-base: 150ms;
+  --dur-slow: 180ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* The type scale. Every size below display comes from these six steps.
+   *
+   * There used to be fourteen distinct sizes between 9px and 17px, which isn't
+   * a scale — it's a shrug. Half a pixel of difference between two labels is
+   * invisible as hierarchy and only shows up as text that looks slightly wrong
+   * next to its neighbour, and the bottom of that range was small enough to be
+   * genuinely hard to read on a laptop.
+   *
+   * The floor is 12px, and only uppercase tracked-out captions go there —
+   * those read a size larger than their number. Everything you actually read a
+   * sentence of starts at `--fs-base`. Six steps rather than three because the
+   * app really does have that many jobs; fewer, and the compression lands on
+   * the reading sizes, which is where it hurts most.
+   *
+   * Display sizes stay written out at the point of use: there are a dozen of
+   * them, each chosen against a specific headline, and they were never the
+   * thing that was too small. */
+  --fs-micro: 12px;
+  --fs-caption: 13px;
+  --fs-small: 14px;
+  --fs-base: 15px;
+  --fs-md: 16px;
+  --fs-lg: 17.5px;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark"],
+[data-palette="ink"] {
   --bg: #15140f;
+  /* Raised rather than recessed in the dark palette — a step down from #15140f
+   * is nearly black and would read as a hole. */
+  --bg2: #1c1b15;
   --fg: #ede8de;
   --mut: #8f887c;
   --faint: #6b6459;
@@ -41,13 +110,174 @@
   --acc: #c97354;
   --warn: #c0a15a;
   --sel: rgba(237, 232, 222, 0.05);
+  /* The ground is dark enough that a tinted shadow disappears into it; only a
+   * near-black one still reads as a gap between the row and the page. */
+  --lift: 0 8px 22px rgba(0, 0, 0, 0.5);
+  /* The tint has to travel the other way here. On paper, 30% of a mid-tone
+   * accent lands *above* the ground as light peach; on #15140f the same mix
+   * lands below it as a brown the eye skips over — same lightness step, but a
+   * dark tint on a dark page reads as a smudge rather than as colour. So the
+   * accent gets lifted toward the foreground before it's laid down, and given a
+   * little more of itself, which puts it back where the light theme has it:
+   * clearly behind the line, clearly orange. */
+  --icon2: color-mix(in srgb, var(--acc) 74%, var(--fg));
+  --icon2-a: 0.42;
+}
+
+/* ------------------------------------------------------------- palettes --- */
+
+/* The premade palettes. `lib/theme.ts` lists their ids and names; the colours
+ * are only here, so adding one is a block below plus a line there.
+ *
+ * Each is a full replacement, not a tweak: every token the two blocks above set
+ * gets set again, because a palette that inherited half of `--bg` from paper
+ * and half from ink would be neither. The two exceptions are deliberate —
+ * `--icon2` and, in the light palettes, `--icon2-a` are written once above in
+ * terms of `--acc` and `--fg`, so they follow whichever palette is on without
+ * being restated. A dark palette still tunes `--icon2-a` down, because these
+ * accents are lighter than ember and carry further at the same alpha.
+ *
+ * Position matters. `:root[data-palette="x"]` and `:root[data-theme="dark"]`
+ * have identical specificity, so these blocks win on source order alone and
+ * have to stay below that one. The bare `[data-palette="x"]` half of each
+ * selector is what a nested swatch matches; on the root element it loses to the
+ * `:root` form and never decides anything. */
+
+:root[data-palette="nocturne"],
+[data-palette="nocturne"] {
+  --bg: #10141a;
+  --bg2: #171d25;
+  --fg: #dde5ef;
+  --mut: #8695a6;
+  --faint: #5d6a79;
+  --line: rgba(221, 229, 239, 0.13);
+  --line2: rgba(221, 229, 239, 0.06);
+  --acc: #6aa9d9;
+  --warn: #cfa45e;
+  --sel: rgba(221, 229, 239, 0.05);
+  --lift: 0 8px 22px rgba(0, 0, 0, 0.55);
+  --icon2-a: 0.36;
+}
+
+:root[data-palette="moss"],
+[data-palette="moss"] {
+  --bg: #0f1411;
+  --bg2: #161d18;
+  --fg: #e1e8dd;
+  --mut: #869184;
+  --faint: #606b5e;
+  --line: rgba(225, 232, 221, 0.13);
+  --line2: rgba(225, 232, 221, 0.06);
+  --acc: #93bb7c;
+  --warn: #cbab61;
+  --sel: rgba(225, 232, 221, 0.05);
+  --lift: 0 8px 22px rgba(0, 0, 0, 0.55);
+  --icon2-a: 0.34;
+}
+
+:root[data-palette="newsprint"],
+[data-palette="newsprint"] {
+  --bg: #f7f7f8;
+  --bg2: #efeff2;
+  --fg: #17181c;
+  --mut: #6d6f76;
+  --faint: #9b9da5;
+  --line: rgba(23, 24, 28, 0.12);
+  --line2: rgba(23, 24, 28, 0.06);
+  --acc: #2f5d8c;
+  --warn: #7a6420;
+  --sel: rgba(23, 24, 28, 0.05);
+  --lift: 0 8px 22px rgba(23, 24, 28, 0.13);
+  /* A dark accent, where ember is a mid-tone: the tint reaches the same step
+   * off the page with less of it. */
+  --icon2-a: 0.24;
+}
+
+:root[data-palette="linen"],
+[data-palette="linen"] {
+  --bg: #fbf7f0;
+  --bg2: #f4efe4;
+  --fg: #201b1d;
+  --mut: #7c7069;
+  --faint: #ada298;
+  --line: rgba(32, 27, 29, 0.11);
+  --line2: rgba(32, 27, 29, 0.055);
+  --acc: #8a4a63;
+  --warn: #8a6a1f;
+  --sel: rgba(32, 27, 29, 0.045);
+  --lift: 0 8px 22px rgba(32, 27, 29, 0.14);
+  --icon2-a: 0.26;
+}
+
+/* A palette, at 26px: its page, its accent, its ink.
+ *
+ * Whatever wears this also wears a `data-palette`, so the three colours are
+ * read from the palette being shown rather than passed in — which is what keeps
+ * the hexes above from needing a copy in TypeScript. */
+.swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: none;
+  /* `.row` aligns on the baseline, and an empty inline-flex box has one at its
+   * bottom edge — which would hang the swatch a few pixels low. */
+  align-self: center;
+  width: 26px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--bg);
+  /* Inset, so the outline doesn't add to the 26 and misalign the column. */
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.swatch > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+
+/* The sidebar's, sized to sit in the same column as the 14px icons above it
+ * rather than to be read closely — down there it's an identifier, and the name
+ * beside it is doing the identifying. */
+.swatch-sm {
+  width: 18px;
+  height: 12px;
+  gap: 3px;
+  border-radius: 2px;
+}
+
+.swatch-sm > span {
+  width: 3px;
+  height: 3px;
+}
+
+/* "Remove hopes and dreams." Instrument Sans stands in for the serif at the
+ * same sizes, so the display type needs pulling back a little — the sans is
+ * much heavier at 44px than the serif it replaces. */
+:root[data-serif="off"] {
+  --serif: "Instrument Sans", system-ui, sans-serif;
+}
+
+:root[data-serif="off"] .h1,
+:root[data-serif="off"] .serif,
+:root[data-serif="off"] .cta {
+  letter-spacing: -0.025em;
 }
 
 html,
 body {
+  height: 100%;
+}
+
+body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
+  /* Transparent rather than `--bg`, because on the platforms that round their
+   * own window corners the surface behind this is transparent and a background
+   * here would paint straight back over the corners we just cut. `#root` holds
+   * the app's ground instead — see `lib/scroller.ts`. */
+  background: transparent;
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
 }
@@ -105,15 +335,36 @@ button {
   background: var(--sel);
 }
 
-/* The webview is the whole window; nothing outside the app should scroll. */
+/* The webview is the whole window; nothing outside the app should scroll.
+ *
+ * This is also the scroll container, rather than the document. The window's
+ * corner radius has to clip what scrolls underneath it, and neither `html` nor
+ * `body` can carry that radius: the root element's background propagates to the
+ * whole canvas, corners included, so the clip simply wouldn't happen. A plain
+ * element has no such rule, so the background, the radius and the overflow all
+ * live here — and this is therefore what scrolls. `lib/scroller.ts` is how the
+ * rest of the app reaches it. */
 #root {
-  min-height: 100vh;
+  height: 100%;
+  /* Longhand: `overflow-y: auto` on its own forces `overflow-x` to `auto` too,
+   * which would give the shell a horizontal scrollbar it never needs. */
+  overflow: hidden auto;
+  background: var(--bg);
+  border-radius: var(--win-radius);
+  /* Same reason the document's scrollbar is hidden below — a scrollbar sits
+   * over the right-edge resize handle and swallows the gesture. */
+  scrollbar-width: none;
+}
+
+#root::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 /* ---------------------------------------------------------------- type --- */
 
 .serif {
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--serif);
   font-weight: 400;
 }
 
@@ -126,21 +377,21 @@ button {
 /* Small caps-ish section marker. The design uses this everywhere a heading
  * would otherwise be too loud. */
 .eyebrow {
-  font: 400 10.5px/1 "Instrument Sans", sans-serif;
+  font: 400 var(--fs-micro)/1 "Instrument Sans", sans-serif;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--faint);
 }
 
 .eyebrow-lg {
-  font: 400 11px/1 "Instrument Sans", sans-serif;
+  font: 400 var(--fs-caption)/1 "Instrument Sans", sans-serif;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faint);
 }
 
 .h1 {
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--serif);
   font-weight: 400;
   font-size: 38px;
   line-height: 1.1;
@@ -148,7 +399,7 @@ button {
 }
 
 .lede {
-  font-size: 14.5px;
+  font-size: var(--fs-md);
   line-height: 1.65;
   color: var(--mut);
   margin: 0;
@@ -175,9 +426,9 @@ button {
   padding: 15px 14px;
   margin: 0 -14px;
   border-radius: 3px;
-  font-size: 14.5px;
+  font-size: var(--fs-md);
   width: calc(100% + 28px);
-  transition: background 0.12s;
+  transition: background var(--dur-fast);
 }
 
 .row::after {
@@ -201,6 +452,57 @@ button {
   cursor: default;
 }
 
+/* A row with a trailing control — a delete, say — beside it.
+ *
+ * The highlight and the divider move up here from the `.row` inside, because a
+ * `.row` only spans as far as its own box: the trailing control sat outside the
+ * highlight and got half-covered by the 14px the row bleeds sideways. Owning
+ * both at this level makes the whole strip, control included, one row. */
+.row-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 -14px;
+  padding: 0 14px;
+  border-radius: 3px;
+  transition: background var(--dur-fast);
+}
+
+.row-group:hover,
+/* The inner button is what takes focus, so the group has to read its state to
+ * keep keyboard navigation as visible as the pointer's. */
+.row-group:has(> .row:focus-visible) {
+  background: var(--sel);
+}
+
+.row-group::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 1px;
+  background: var(--line2);
+}
+
+/* Inside a group the row is just the label: no side bleed, no divider, and no
+ * highlight of its own to sit inside the group's. */
+.row-group > .row {
+  margin: 0;
+  width: 100%;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.row-group > .row::after {
+  display: none;
+}
+
+.row-group > .row:hover:not(:disabled),
+.row-group > .row:focus-visible {
+  background: transparent;
+}
+
 .row-static {
   position: relative;
   display: flex;
@@ -208,7 +510,7 @@ button {
   gap: 18px;
   padding: 14px 0;
   border-bottom: 1px solid var(--line2);
-  font-size: 14.5px;
+  font-size: var(--fs-md);
 }
 
 /* ------------------------------------------------------------- controls --- */
@@ -216,11 +518,52 @@ button {
 .quiet {
   color: var(--faint);
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--dur-base);
 }
 
 .quiet:hover {
   color: var(--fg);
+}
+
+/* The one action in a row that can't be undone. It sits at the same weight as
+ * its neighbours at rest — shouting before you've reached for it is noise — and
+ * takes the accent under the pointer instead of the usual darkening. */
+.quiet.danger:hover {
+  color: var(--acc);
+}
+
+/* A text button with an icon in front of it. Only the arrangement — colour and
+ * hover come from whatever else the button carries, usually `.quiet`, so the
+ * icon takes the label's colour through `currentColor`. */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Icons never shrink to make room for a label, and never take the pointer away
+ * from the control they sit in. */
+.action > svg {
+  flex: none;
+}
+
+/* Phosphor's duotone back layer, recoloured to the accent.
+ *
+ * The library emits it as a bare `<path opacity="0.2">` that inherits `fill`
+ * from the `<svg>` — which `main.tsx` sets to `currentColor`, so the tone is
+ * always a washed-out copy of the line. A `fill` here beats inheritance and
+ * nothing else changes: the front layer still takes the text's colour, so an
+ * icon in a hovered or faint row still moves with its label.
+ *
+ * Matched on the 256-unit viewBox and the 0.2 opacity together, which is the
+ * only pair of attributes unique to a Phosphor duotone glyph — charts and any
+ * hand-written SVG go untouched.
+ *
+ * `.no-tint` on an icon opts out: used where the icon is already accent (the
+ * back layer would be orange-on-orange) or deliberately another colour. */
+svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
+  fill: var(--icon2);
+  opacity: var(--icon2-a);
 }
 
 .underlined {
@@ -228,11 +571,444 @@ button {
   cursor: pointer;
   border-bottom: 1px solid var(--line);
   padding-bottom: 2px;
-  transition: color 0.15s;
+  transition: color var(--dur-base);
 }
 
 .underlined:hover {
   color: var(--fg);
+}
+
+/* For text that only a screen reader needs — a live region narrating something
+ * the sighted user can already see happen. Clipped rather than hidden: anything
+ * that actually removes it from the layout removes it from the accessibility
+ * tree too, which is the one thing it exists for. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The nav's rows, and the one surface they share.
+ *
+ * The list is two layers per entry on purpose. The row owns the transform that
+ * dragging and reordering write to it, straight to the node from a spring; the
+ * link owns the press and the hover. On one element those two would be writing
+ * `transform` over each other several times a frame. */
+.nav-list {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Room for the lift shadow a held row casts, since a scroller clips whatever
+   * leaves it. The negative margin puts the list back on the sidebar's own
+   * margins, so nothing moves. */
+  margin: 0 -22px;
+  padding: 0 22px;
+
+  /* The two switches the pinned entry runs on. It only pins when there is
+   * something scrolling under it, and it only needs a ground while it's
+   * pinned — see the rules below. */
+  --pin: static;
+  --ground: transparent;
+}
+
+/* Only when it has to. Scrolling means clipping, and a list that fits has
+ * nothing to clip but the shadow of the row you're holding.
+ *
+ * When it does scroll, it scrolls in whole entries and never part of one. Two
+ * halves to that: `Sidebar.tsx` quantises the height to land on some row's
+ * bottom edge, so the box itself can't cut one, and mandatory snapping means a
+ * scroll can't come to rest between two either. `scroll-padding-top` comes from
+ * the same measurement — without it a snapped row would settle underneath the
+ * entry that never scrolls. */
+.nav-list[data-scrolls="true"] {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  /* The nav is its own list; a flick at either end of it isn't a request to
+   * scroll the page behind it. */
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+  --pin: sticky;
+  --ground: var(--bg2);
+}
+
+.nav-row {
+  flex: none;
+  /* Vertical drags are the list's, not the scroller's behind it. */
+  touch-action: none;
+  scroll-snap-align: start;
+}
+
+/* The default entry doesn't scroll. It's the screen the app opens on and the
+ * slot the whole reorder gesture aims at, so it stays where it always is and
+ * the rest of the list runs beneath it.
+ *
+ * Sticky rather than a box of its own: the rows have to stay siblings for a
+ * drag to move them past each other, and for React to keep the focused row's
+ * node across a reorder. The divider pins with it, at its own resting offset —
+ * `--nav-pin`, measured in `Sidebar.tsx` — so the hairline stays under the
+ * pinned entry instead of sliding away with the first row that scrolls.
+ *
+ * z-index 2 for the same reason the held row needs 3: the labels sit at 1, and
+ * a ground that lost to them would have text showing through it. */
+.nav-row:first-child,
+.nav-divide {
+  position: var(--pin);
+  z-index: 2;
+  /* Neither box covers the 2px of flex gap beneath it, and a row scrolling
+   * under the pair would show through the two slots — one of them right across
+   * its own label. A shadow with no blur hands each of them that strip, and
+   * costs nothing at all while the ground is transparent. */
+  box-shadow: 0 2px 0 var(--ground);
+}
+
+.nav-row:first-child {
+  top: 0;
+  background: var(--ground);
+  /* It never scrolls, so it is not somewhere a scroll can land. */
+  scroll-snap-align: none;
+}
+
+/* While rows are travelling, both go back to being transparent: a row on its
+ * way past the top slot would otherwise vanish behind a ground that only
+ * exists for the scrolling case. */
+.nav-list[data-dragging="true"] {
+  --ground: transparent;
+}
+
+/* Held. Above its neighbours, and lifted enough to read as loose — the rows
+ * sliding out of its way say the rest, so this doesn't have to shout.
+ *
+ * The z-index has to clear `.nav-label`'s, not just the rows': the labels are
+ * positioned at 1 so the pill can sit behind them, and the nav-list isn't a
+ * stacking context, so at 1 the held row tied with every other row's text and
+ * lost the tie to tree order — its opaque background slid *under* the label of
+ * whatever it was passing. */
+.nav-row[data-dragging="true"] {
+  position: relative;
+  z-index: 3;
+}
+
+.nav-row[data-dragging="true"] .nav-link,
+.nav-row[data-dragging="true"] .nav-link * {
+  cursor: grabbing;
+}
+
+.nav-row[data-dragging="true"] .nav-link {
+  color: var(--fg);
+  transform: scale(1.03);
+  background: var(--bg);
+  box-shadow: var(--lift);
+}
+
+/* A sidebar nav entry. The active entry and a hovered one land on the same
+ * colour, which is the point: hovering shows you what picking it would look
+ * like. Written as a class rather than as two mouse handlers because the
+ * active state and the hover state were otherwise both writing `color` — one
+ * through React, one straight to the node — and had to undo each other. */
+.nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: var(--fs-md);
+  line-height: 1.2;
+  /* The horizontal padding is the pill's, not the label's — the negative
+   * margin puts the text back on the sidebar's own left margin. */
+  padding: 7px 10px;
+  margin: 0 -10px;
+  border-radius: 8px;
+  color: var(--mut);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: color var(--dur-slow), transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast), box-shadow var(--dur-base) var(--ease-out);
+}
+
+.nav-link:hover,
+.nav-link:focus-visible {
+  color: var(--fg);
+  outline: none;
+}
+
+/* Colour alone is the hover state, and a keyboard user has no pointer to
+ * explain where it came from, so focus gets a mark of its own. */
+.nav-link:focus-visible {
+  box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3.5px var(--acc);
+}
+
+.nav-link[data-active="true"] {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* On the press, not on the release: an entry that waits for the click to
+ * acknowledge you is where directness falls off a cliff. The tint carries the
+ * same message as the scale, which is what reduced motion is left with. */
+.nav-link[data-pressed="true"] {
+  transform: scale(0.975);
+  background: var(--sel);
+}
+
+/* The lit entry's ground: the page's own paper laid on the nav's recessed
+ * ground. It says "this row is the screen you're looking at" by being made of
+ * the same thing that screen is made of.
+ *
+ * Fades in on arrival; getting from the old row to the new one is a spring in
+ * `Sidebar.tsx`, writing `transform` here — so nothing in CSS may animate that
+ * property on this element or it would win and the slide would vanish. */
+.nav-pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgba(27, 26, 23, 0.04);
+  animation: nav-pill-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes nav-pill-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The reading column arriving on a route change.
+ *
+ * Only the incoming screen animates. An outgoing one that faded away first
+ * would put its whole duration between the click and anything new appearing,
+ * and that latency is the thing you'd actually feel — so the swap is instant
+ * and the new column resolves in place.
+ *
+ * It also covers the gap the swap opens: a screen mounts with its query still
+ * in flight and has nothing to show for two or three frames, which is the pop
+ * this is here to remove. Content lands early in the fade and rides the rest
+ * of it in, so there is no moment where the column is visibly empty and no
+ * second entrance when the data turns up.
+ *
+ * No travel. A distance small enough not to read as movement still reads as a
+ * snap into position, so a few pixels buys the jolt of an entrance without any
+ * of the continuity — the column lands rather than appears. Either commit to a
+ * real slide or move nothing, and 720px of text is far too big a plane to
+ * slide without the whole app lurching.
+ *
+ * The screen assembles rather than appears. Every earlier attempt animated the
+ * column as one rigid plane, and that is what read as teleporting: a single
+ * 720px object with no internal order, which can only ever cut, slide or
+ * dissolve as a unit. Moving its blocks a beat apart instead gives the page a
+ * reading order in time — header, then figures, then the body — so it arrives
+ * the way you were going to read it anyway.
+ *
+ * That also earns back the small rise. 5px on the whole column read as a snap
+ * into position, because a rigid plane travelling a distance too short to be
+ * movement is just a jolt. 6px on a block that starts after its neighbour has
+ * somewhere to have come from, and the offsets between blocks are what you
+ * read rather than the distance itself. `--ease-out` is right again for the
+ * same reason — there is travel here to decelerate into.
+ *
+ * Transform and opacity only. Both composite without touching the raster, so
+ * this costs roughly nothing per frame, unlike the filter it replaces.
+ *
+ * The cascade is capped at the fifth block. Health renders eleven, nine of
+ * them charts below the fold, and an uncapped 28ms step would spend a third of
+ * a second animating things nobody has scrolled to yet — while the tail of the
+ * cascade is still running by the time you've started reading the top. Past
+ * the fifth everything shares the fifth's delay, so the effect stays a short
+ * cascade at the top of the page rather than a wave travelling down it.
+ *
+ * Keyframes rather than a `Spring`: a route change is a discrete commit with
+ * nothing to interrupt it and no velocity to inherit. Springs earn their cost
+ * where a finger is involved; here CSS starts on the compositor for free.
+ *
+ * `.screen` is the opt-in, and screens apply it only on the branch that
+ * renders an actual page. A spinner or a one-line error has no internal order
+ * to stagger, and cascading a spinner against its own label would be nonsense.
+ *
+ * Reduced motion collapses the whole thing to one fade on the container. The
+ * cascade is itself motion — a sequence of things moving is not made gentler
+ * by each piece being small — so it goes rather than being shortened. */
+.screen > * {
+  animation: block-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+/* The header is the exception, and only because of what sits in it.
+ *
+ * `PageHeader`'s action is the refresh button on twelve of the thirteen
+ * screens, pinned to the same spot by the row's `space-between` and reading
+ * the same sync state the sidebar's Sync button does. It is chrome that
+ * happens to be rendered per screen rather than content belonging to one — so
+ * animating it means travelling 6px to arrive exactly where it already was,
+ * and re-introducing a control that is mid-way through narrating a sync
+ * started on a different screen.
+ *
+ * An animating ancestor applies its opacity and transform to its whole
+ * subtree, so there is no exempting a descendant. The block animation moves
+ * down a level instead: the header itself stays put and its words enter, all
+ * three on the same beat, since eyebrow, title and lede read as one thing
+ * rather than as a cascade of their own. The action, being neither, is left
+ * out and simply persists across the navigation. */
+.screen > .page-header {
+  animation: none;
+}
+
+.screen > .page-header .eyebrow-lg,
+.screen > .page-header > h1,
+.screen > .page-header > p {
+  animation: block-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+.screen > :nth-child(2) {
+  animation-delay: 28ms;
+}
+.screen > :nth-child(3) {
+  animation-delay: 56ms;
+}
+.screen > :nth-child(4) {
+  animation-delay: 84ms;
+}
+.screen > :nth-child(n + 5) {
+  animation-delay: 112ms;
+}
+
+@keyframes block-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen > *,
+  .screen > :nth-child(n + 2),
+  .screen > .page-header .eyebrow-lg,
+  .screen > .page-header > h1,
+  .screen > .page-header > p {
+    animation: none;
+  }
+
+  .page {
+    animation: page-in-reduced 260ms linear;
+  }
+}
+
+@keyframes page-in-reduced {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Everything the pill sits behind. */
+.nav-link > svg,
+.nav-label,
+.nav-default {
+  position: relative;
+  z-index: 1;
+}
+
+.nav-label {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The top entry is the screen the app opens on. The word shows up only while
+ * you're rearranging, or on the entry under the pointer: the state it names
+ * never changes on its own, so a permanent tag is a word you read once and
+ * then look past forever — but mid-drag it's the only thing that says what
+ * dropping something at the top would actually do. */
+.nav-default {
+  flex: none;
+  font: 400 9px/1 "Instrument Sans", sans-serif;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--faint);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.nav-list[data-dragging="true"] .nav-default,
+.nav-row:hover .nav-default,
+.nav-link:focus-visible .nav-default {
+  opacity: 1;
+}
+
+/* A row in hand keeps the cursor closed wherever the pointer has got to. The
+ * pointer is captured, so the drag carries on past the ends of the list and out
+ * of the sidebar entirely — and a cursor that flips back to an arrow out there
+ * reads as the row having been dropped. `!important` because this has to beat
+ * every cursor the pointer might pass over, and it only exists for the length
+ * of the gesture. */
+:root[data-grabbing] * {
+  cursor: grabbing !important;
+}
+
+/* The hairline the word sits over, and the only mark the default keeps when
+ * nobody is rearranging. */
+.nav-divide {
+  flex: none;
+  top: var(--nav-pin, 0);
+  /* Padding where the margin used to be, and the line drawn into the content
+   * box. Same 1px in the same place, but margins don't paint, and this band
+   * has to be opaque now that scrolled rows pass under it.
+   *
+   * Two layers rather than a layer over a background colour: `content-box` in
+   * the shorthand sets the clip as well as the origin, and a colour takes the
+   * clip of the last layer — so the ground was being painted into the same 1px
+   * the line occupies, and the 15px around it stayed see-through. */
+  box-sizing: content-box;
+  height: 1px;
+  padding: 7px 0 8px;
+  background: linear-gradient(var(--line), var(--line)) content-box no-repeat,
+    linear-gradient(var(--ground), var(--ground)) border-box;
+}
+
+/* The list still rearranges, still lifts, still lights up — it just stops
+ * travelling and stops changing size. `Spring` reads the same setting and
+ * jumps to its target rather than integrating toward it, so the two halves of
+ * this stay in agreement. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-link,
+  .nav-link[data-pressed="true"],
+  .nav-row[data-dragging="true"] .nav-link {
+    transform: none;
+  }
+
+  .nav-pill {
+    animation: none;
+  }
+}
+
+/* The Switch's row. Same strip as `.row`, but a switch owns its whole line and
+ * has a control at the end rather than a value, so it keeps its own rule
+ * instead of overriding half of that one. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  /* Wide enough to cover the 14px it bleeds into *both* gutters. A plain 100%
+   * is the parent's width, which the negative margins then shift left — so the
+   * highlight overhangs on one side and falls short on the other, and the row
+   * reads as narrower than the settings above it. */
+  width: calc(100% + 28px);
+  padding: 14px;
+  margin: 0 -14px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+
+.switch-row:hover,
+.switch-row:focus-visible {
+  background: var(--sel);
+  outline: none;
 }
 
 /* The primary action on every screen: serif, accent, arrow. Never a box. */
@@ -240,15 +1016,24 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: 22px;
+  font-family: var(--serif);
+  font-size: 24px;
   color: var(--acc);
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--dur-base), transform var(--dur-fast) var(--ease-out);
 }
 
 .cta:hover:not(:disabled) {
   color: var(--fg);
+}
+
+/* The one press the app acknowledges. Deliberately shallow: this is 22px serif
+ * type with an arrow, not a filled button, and anything deeper than a couple of
+ * percent reads as the line wobbling rather than as the word being pressed.
+ * Everything else — nav entries, list rows, window controls — is pressed far too
+ * often in a session to earn feedback of its own. */
+.cta:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .cta:disabled {
@@ -262,7 +1047,7 @@ button {
 .input {
   width: 100%;
   font-family: inherit;
-  font-size: 14.5px;
+  font-size: var(--fs-md);
   line-height: 1.5;
   color: var(--fg);
   background: var(--bg);
@@ -270,7 +1055,8 @@ button {
   border-radius: 5px;
   padding: 10px 13px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+  transition: border-color var(--dur-base), box-shadow var(--dur-base),
+    background var(--dur-base);
 }
 
 .input:hover:not(:disabled):not(:focus) {
@@ -294,10 +1080,76 @@ button {
   color: var(--faint);
 }
 
+/* ------------------------------------------------------------ colour well --- */
+
+/* The theme editor's seven rows: a hex you can paste into, and a swatch that
+ * opens the system colour picker.
+ *
+ * Both, rather than either. The picker is how you find a colour — dragging
+ * around a wheel is the whole reason to have an editor at all — and the text is
+ * how you move one that already exists, from a screenshot or from another
+ * theme's file. Neither replaces the other. */
+.input-hex {
+  flex: none;
+  width: 9ch;
+  font-size: var(--fs-caption);
+  color: var(--mut);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 6px;
+  outline: none;
+  text-align: right;
+  transition: border-color var(--dur-base), color var(--dur-base);
+}
+
+.input-hex:hover,
+.input-hex:focus {
+  color: var(--fg);
+  border-color: var(--line);
+}
+
+/* The browser draws this as a bevelled button by default, which is the one
+ * widget in the app that would look like it came from somewhere else. Stripped
+ * back to the same rectangle `.swatch` uses, so the editor's rows and the
+ * palette list's rows agree on what a colour looks like. */
+.well {
+  flex: none;
+  align-self: center;
+  width: 26px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+.well::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.well::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+/* Gecko's spelling of the same thing. The three desktop webviews here are all
+ * WebKit or Chromium, so this one never matches — it's here because a browser
+ * is where this gets developed, and a rule that only applies in `pnpm dev`
+ * still has to not look broken. Its own block: one unknown pseudo-element in a
+ * selector list drops the whole list. */
+.well::-moz-color-swatch {
+  border: none;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
 /* The keys and model ids on Settings and Setup: same box, editorial type. */
 .input-lg {
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: 21px;
+  font-family: var(--serif);
+  font-size: 23px;
   padding: 12px 15px;
 }
 
@@ -311,12 +1163,12 @@ button {
   border-bottom: 1px solid var(--line);
   border-radius: 0;
   outline: none;
-  font-family: "Instrument Serif", Georgia, serif;
-  font-size: 23px;
+  font-family: var(--serif);
+  font-size: 25px;
   line-height: 1.5;
   color: var(--fg);
   padding: 6px 0;
-  transition: border-color 0.15s;
+  transition: border-color var(--dur-base);
 }
 
 .input-bare:focus {
@@ -343,7 +1195,100 @@ button {
   background: var(--acc);
 }
 
+/* The one bar whose value arrives over time rather than being measured once.
+ * Download progress lands in chunks, and a fill that jumps between them reads
+ * as stalling — so this variant eases between values, and only this variant:
+ * the zone, lap and gear bars are static readings, and sliding them to a new
+ * number every time a screen opens would animate data at the reader.
+ *
+ * `scaleX` rather than `width`, so the fill is composited rather than relaying
+ * out the rail on every chunk. `linear` because a progress bar reports a rate
+ * and easing it would misreport that rate. */
+.bar-live > span {
+  width: 100%;
+  transform-origin: left;
+  transition: transform 300ms linear;
+}
+
+/* -------------------------------------------------------------- shell --- */
+
+/* The nav's recessed ground. Painted by a pseudo-element that bleeds left to
+ * the window edge — the shell is centred and capped, so a background on the nav
+ * box alone would end in a floating stripe on a wide window. Only leftward:
+ * the reading side keeps the page tone. */
+.sidebar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  /* Wide enough for any left gutter. Overflow past the left edge of the page
+   * isn't scrollable, so this costs nothing. */
+  left: -100vw;
+  background: var(--bg2);
+  z-index: -1;
+}
+
+/* A short window is the case the nav has to survive: the column is a fixed
+ * 100vh, so on a laptop with the window half-height the last entries simply
+ * ran off the bottom and were gone — no scrollbar, nothing to reach them with.
+ *
+ * The list is the one part of the column that gives. Everything else holds its
+ * size, so the name stays at the top and Sync and the theme toggle stay
+ * reachable at the bottom, and the entries between them scroll.
+ *
+ * `.nav-fit` is the room that's left over between the two. It's a box of its
+ * own rather than the list itself because the list's height is measured from
+ * it: a wrapper that doesn't move is something the measurement can't perturb,
+ * where measuring the list would have been measuring the answer. `min-height:
+ * 0` is what makes it shrink at all — a flex item won't go below its content
+ * without it, which is how the overflow got out of the box to begin with. */
+.sidebar > * {
+  flex: none;
+}
+
+.sidebar > .nav-fit {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ------------------------------------------------------- window chrome --- */
+
+/* The window's own corner radius.
+ *
+ * The window is undecorated on every platform, so wherever the compositor won't
+ * round an undecorated window the app cuts the corners itself: the window
+ * surface is marked transparent in `tauri.<platform>.conf.json` and `#root`
+ * clips to this radius.
+ *
+ * Windows is the exception and stays opaque with a radius of 0. Tauri's
+ * `shadow` option — on by default — already has DWM round undecorated windows
+ * on Windows 11, and leaving it to the system is what keeps Windows 10, which
+ * has square windows, correctly square.
+ *
+ * The other two values are each platform's own: 10px is the macOS window radius
+ * since Big Sur, 12px is what GNOME and KDE draw on their client-side
+ * decorations. Set from `lib/platform.ts` before the first paint. */
+:root {
+  --win-radius: 0;
+}
+
+:root[data-os="macos"] {
+  --win-radius: 10px;
+}
+
+:root[data-os="linux"] {
+  --win-radius: 12px;
+}
+
+/* Maximised, the window is flush with the screen edges on every platform, and a
+ * rounded corner there cuts a notch of desktop out of the app. Last, so it wins
+ * the tie against the per-platform rules above at equal specificity. */
+:root[data-maximized] {
+  --win-radius: 0;
+}
 
 /* Drag handle for the undecorated window. Sits above the app but below the
  * controls, and stays transparent so the sidebar reads as full-height. */
@@ -353,6 +1298,67 @@ button {
   left: 0;
   right: 0;
   z-index: 50;
+  cursor: grab;
+}
+
+.drag-strip:active {
+  cursor: grabbing;
+}
+
+/* The only mark the strip makes: a short grab bar, centred, at the weight of a
+ * row divider. It says "this edge is a handle" without drawing the title bar
+ * band the strip exists to avoid. It firms up on hover so the strip's extent is
+ * discoverable by pointing at it. */
+.drag-strip::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 46px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line2);
+  transition: background var(--dur-base);
+}
+
+.drag-strip:hover::after {
+  background: var(--line);
+}
+
+/* The bottom-right resize corner, drawn as a corner bracket. The handle itself
+ * is transparent and larger than the mark, so the mark is an aiming point
+ * rather than the whole target. */
+.resize-grip::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 10px;
+  height: 10px;
+  border-right: 1.5px solid var(--line);
+  border-bottom: 1.5px solid var(--line);
+  border-bottom-right-radius: 4px;
+  transition: border-color var(--dur-base);
+}
+
+.resize-grip:hover::after {
+  border-color: var(--faint);
+}
+
+/* Both of the above only work if nothing else claims the window edges. A native
+ * document scrollbar does: it sits between the fixed handles and the true
+ * window edge and hit-tests over the corner, which is what made the bottom-right
+ * corner nearly ungrabbable. Scoped to the document — inner scrollers (code
+ * blocks and the like) keep their scrollbars. */
+html {
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .win-controls {
@@ -379,14 +1385,14 @@ button {
   height: 26px;
   border-radius: 3px;
   color: var(--faint);
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
+/* The control glyphs are Phosphor icons, which paint with `fill` — the old
+ * hand-drawn paths were strokes, and the rule that made them visible would make
+ * these invisible. Colour comes from `.win-btn` through `currentColor`. */
 .win-btn svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.1;
-  stroke-linecap: round;
+  display: block;
 }
 
 .win-btn:hover,
@@ -399,6 +1405,156 @@ button {
 .win-btn-close:hover,
 .win-btn-close:focus-visible {
   color: var(--acc);
+}
+
+/* --- the same controls, macOS ---
+ *
+ * Same buttons, same handlers, mac's arrangement: pinned to the left end in
+ * close / minimise / zoom order, as three 12px dots on 8px centres, 20px in from
+ * the edge. `WindowChrome` reorders the elements themselves rather than reading
+ * them backwards with `row-reverse`, so the DOM order the keyboard and a screen
+ * reader walk is the order they're drawn in.
+ *
+ * They're the app's own greys rather than the system's red/amber/green. Every
+ * other surface here is cream and hairlines with a single accent — three
+ * saturated dots would be the loudest thing in the window, and the shape and
+ * the position are what make it read as mac, not the colour. */
+:root[data-os="macos"] .win-controls {
+  right: auto;
+  left: 0;
+  padding-right: 0;
+  padding-left: 20px;
+  gap: 8px;
+}
+
+:root[data-os="macos"] .win-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  /* `--faint` rather than one of the hairlines: those are 6–11% opacity, which
+   * is right for a line and vanishes as a 12px disc. This is roughly the weight
+   * macOS gives the lights on an unfocused window. */
+  background: var(--faint);
+  /* The glyphs stay hidden until the group is hovered, exactly as the system's
+   * do — a title bar at rest is three plain dots. */
+  color: transparent;
+}
+
+/* Hovering any one dot lights all three, which is what lets you find the glyphs
+ * without having to land on the right one first. The container is
+ * `pointer-events: none` so its gaps stay draggable, but `:hover` still reaches
+ * it through whichever dot the pointer is actually over. */
+:root[data-os="macos"] .win-controls:hover .win-btn {
+  background: var(--mut);
+  color: var(--bg);
+}
+
+/* Overrides the shared rule above, which fills the button with `--sel` and is
+ * sized for a 26px square. */
+:root[data-os="macos"] .win-btn:hover,
+:root[data-os="macos"] .win-btn:focus-visible {
+  background: var(--fg);
+  color: var(--bg);
+  outline: none;
+}
+
+:root[data-os="macos"] .win-btn-close:hover,
+:root[data-os="macos"] .win-btn-close:focus-visible {
+  background: var(--acc);
+  color: var(--bg);
+}
+
+/* Two marks the app draws because no compositor is drawing them for it — a grab
+ * bar in the drag strip and a bracket in the resize corner. macOS has never
+ * drawn either, and its windows are resizable from every edge without being
+ * told so, which is the convention the resize handles already follow. */
+:root[data-os="macos"] .drag-strip::after,
+:root[data-os="macos"] .resize-grip::after {
+  display: none;
+}
+
+/* ------------------------------------------------------------ sync bar --- */
+
+/* The narrated sync fades rather than appearing and vanishing: it arrives on
+ * its own schedule and leaves mid-sentence, which is the exact case a bridge
+ * exists for. Kept mounted and driven by the attribute, because an unmount
+ * cannot animate — returning `null` gave the exit no chance to happen at all.
+ * No height or width here: the strip is space the window chrome already
+ * reserves, so nothing on the page moves either way. */
+.sync-bar {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+
+.sync-bar[data-running="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* The fade alone still says "this arrived and this left"; the 4px drop is the
+ * part that reads as travel. */
+@media (prefers-reduced-motion: reduce) {
+  .sync-bar {
+    transform: none;
+  }
+}
+
+/* -------------------------------------------------------- scroll fades --- */
+
+/* The page dissolving into the window's top and bottom edges. See
+ * `ScrollFade.tsx` for why these are overlays rather than a mask, and for what
+ * drives the opacity — the component owns that and starts both ends hidden.
+ *
+ * Under the chrome (z 50–70) and transparent to the pointer, so the sync
+ * readout stays legible over the top one and the bottom one doesn't take the
+ * resize corner away. */
+.scroll-fade {
+  position: fixed;
+  right: 0;
+  height: 88px;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  will-change: opacity;
+}
+
+/* Stopped in the middle rather than run linearly: a straight ramp to
+ * transparent reads as a grey wash across its whole height, where this holds
+ * the page's colour only near the edge and is essentially gone by two-thirds,
+ * which is what makes it a fade instead of a scrim. */
+/* The radius is repeated on both fades because they are `position: fixed` and
+ * so escape `#root`'s clip — without it they'd paint the page's own colour back
+ * into the rounded corner they sit in. Only the right corner of each: the shell
+ * passes a `left` that always clears the sidebar, so neither reaches the left
+ * edge of the window. */
+.scroll-fade-top {
+  top: 0;
+  border-top-right-radius: var(--win-radius);
+  background: linear-gradient(
+    to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 88%, transparent) 20%,
+    color-mix(in srgb, var(--bg) 62%, transparent) 42%,
+    color-mix(in srgb, var(--bg) 30%, transparent) 66%,
+    color-mix(in srgb, var(--bg) 9%, transparent) 85%,
+    transparent 100%
+  );
+}
+
+.scroll-fade-bottom {
+  bottom: 0;
+  border-bottom-right-radius: var(--win-radius);
+  background: linear-gradient(
+    to top,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 88%, transparent) 20%,
+    color-mix(in srgb, var(--bg) 62%, transparent) 42%,
+    color-mix(in srgb, var(--bg) 30%, transparent) 66%,
+    color-mix(in srgb, var(--bg) 9%, transparent) 85%,
+    transparent 100%
+  );
 }
 
 /* ------------------------------------------------------------ markdown --- */
@@ -452,6 +1608,261 @@ button {
   margin-bottom: 0;
 }
 
+/* --------------------------------------------------------- tool loader --- */
+
+/* A highlight travelling across the text while the model works. The gradient
+ * is painted into the glyphs themselves rather than behind them, so it reads
+ * as the words lighting up rather than as a bar sliding past. */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--mut) 0%,
+    var(--mut) 35%,
+    var(--fg) 50%,
+    var(--mut) 65%,
+    var(--mut) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.1s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -120% 0;
+  }
+}
+
+.pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--acc);
+  display: inline-block;
+  animation: pulse-dot 1.15s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-dot-reduced {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Reduced motion still needs to say "working", so the text stops travelling
+ * but the dots keep a gentle opacity beat rather than freezing solid, and the
+ * spinner keeps turning at half speed rather than stopping dead. Nothing here
+ * is a blanket rule: an animation that moves declares its own gentler variant,
+ * because a global `animation-duration: 0` freezes the loading indicators that
+ * are the whole reason the user is waiting. */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: none;
+    color: var(--mut);
+  }
+
+  /* Opacity only — the size change is the part that reads as movement. */
+  .pulse-dot {
+    animation: pulse-dot-reduced 2s ease-in-out infinite;
+    transform: none;
+  }
+
+  /* Solid rather than blinking. The caret's job is to mark where the text has
+   * got to, and it does that standing still. */
+  .caret {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------- caret --- */
+
+/* Where an answer has got to while it streams.
+ *
+ * A drawn rule rather than a character: `▍` is a glyph with its own font
+ * metrics, so it sat as a fat grey block that changed weight with the typeface
+ * and never lined up with the text baseline. This is 1px of the accent, sized
+ * from the line it sits in, which is the same caret the input fields draw.
+ *
+ * `steps(2)` because a caret snaps between on and off — easing it makes a
+ * pulsing smudge, which is a different thing that draws the eye continuously
+ * instead of just marking a position. */
+.caret {
+  display: inline-block;
+  width: 1px;
+  height: 1.05em;
+  margin-left: 2px;
+  /* Sits on the text baseline rather than the line box, so it doesn't ride up
+   * over ascenders at the end of a paragraph. */
+  vertical-align: text-bottom;
+  background: var(--acc);
+  animation: caret-blink 1.06s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  to {
+    opacity: 0;
+  }
+}
+
+/* -------------------------------------------------------- context menu --- */
+
+/* The app's one floating surface, and so the one place a shadow appears. It's
+ * kept shallow deliberately: enough to lift the card clear of the page, not
+ * enough to read as a second material sitting on top of the paper. Above the
+ * window chrome (z 50–70), because a menu opened near the top edge must not
+ * end up underneath the close button. */
+.menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 178px;
+  padding: 5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
+  outline: none;
+  /* Hidden until measured: the card renders at the raw click point so it can
+   * be sized, then moves inside the window edge. `data-placed` is the second
+   * of those, so the entrance can't start before the position is final. */
+  opacity: 0;
+  transform: scale(0.97);
+  transform-origin: top left;
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.menu[data-placed="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* Black on a near-black ground is invisible, so the dark palette leans on a
+ * deeper, wider shadow and lets the border do most of the separating. */
+:root[data-theme="dark"] .menu {
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 4px;
+  font-size: var(--fs-small);
+  line-height: 1.25;
+  color: var(--fg);
+  transition: background var(--dur-fast);
+}
+
+/* One highlight for both the pointer and the arrow keys — the menu tracks a
+ * single active item rather than letting hover and focus light two rows. */
+.menu-item[data-active="true"]:not([aria-disabled="true"]) {
+  background: var(--sel);
+}
+
+.menu-item[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: default;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 5px 9px;
+  background: var(--line2);
+}
+
+/* ------------------------------------------------------------- chart hover --- */
+
+/* The charts are trend shapes with no gridlines, so the only way to read a
+ * figure off one is to point at it. Nothing here takes the pointer — the
+ * readout must never sit between the cursor and the chart it's reading. */
+.chart-guide,
+.chart-dot,
+.chart-tip {
+  position: absolute;
+  pointer-events: none;
+}
+
+.chart-guide {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+  transform: translateX(-0.5px);
+}
+
+.chart-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  margin: -2.5px 0 0 -2.5px;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.chart-tip {
+  bottom: calc(100% + 9px);
+  z-index: 40;
+  white-space: nowrap;
+  padding: 6px 9px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 20px -10px rgba(0, 0, 0, 0.22);
+  font-size: var(--fs-caption);
+  line-height: 1.35;
+  color: var(--fg);
+}
+
+:root[data-theme="dark"] .chart-tip {
+  box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.6);
+}
+
+.chart-tip-when {
+  color: var(--faint);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.chart-tip-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* The series name is the legend, so it carries the line's own colour. */
+.chart-tip-key {
+  color: var(--mut);
+}
+
+/* The card still fades in; only the travel goes. */
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    transform: none;
+  }
+}
+
 /* --------------------------------------------------------------- misc --- */
 
 .spin {
@@ -464,9 +1875,12 @@ button {
   }
 }
 
+/* A rotation in place is not travel, and it is the app's only proof that a sync
+ * or a model call is still running. Slowed, not stopped. Placed after `.spin`
+ * on purpose: the shorthand above resets `animation-duration`, so an override
+ * written earlier in the file would be silently undone. */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+  .spin {
+    animation-duration: 1.8s;
   }
 }

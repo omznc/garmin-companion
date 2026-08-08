@@ -5,14 +5,19 @@
  * Hash history is deliberate: the webview loads from a file URL in a packaged
  * build, where path-based history has no origin to push against.
  */
+import { useEffect, useLayoutEffect } from "react";
 import {
   createHashHistory,
   createRootRoute,
   createRoute,
   createRouter,
   Outlet,
+  useRouterState,
 } from "@tanstack/react-router";
-import { Sidebar } from "./components/Sidebar";
+import { defaultRoute } from "./lib/nav";
+import { scroller } from "./lib/scroller";
+import { Sidebar, SIDEBAR_W } from "./components/Sidebar";
+import { ScrollFade } from "./components/ScrollFade";
 import { Today } from "./screens/Today";
 import { Activities } from "./screens/Activities";
 import { ActivityDetail } from "./screens/ActivityDetail";
@@ -23,6 +28,7 @@ import { Gear } from "./screens/Gear";
 import { Reports } from "./screens/Reports";
 import { Settings } from "./screens/Settings";
 import { Food } from "./screens/Food";
+import { Weight } from "./screens/Weight";
 import { Plan } from "./screens/Plan";
 import { Routes } from "./screens/Routes";
 
@@ -45,11 +51,18 @@ function Shell() {
         justifyContent: "center",
       }}
     >
+      {/* Fixed, so it's positioned against the window rather than this box —
+          hence the centring being repeated as a calc. It covers the reading
+          column only: the nav beside it is sticky and never moves. */}
+      <ScrollFade left={`calc(max(0px, (100vw - ${SHELL_MAX}px) / 2) + ${SIDEBAR_W}px)`} />
       <div style={{ display: "flex", width: "100%", maxWidth: SHELL_MAX }}>
         <Sidebar />
         <main style={{ flex: 1, minWidth: 0, padding: "0 56px 160px" }}>
-          <div style={{ maxWidth: 720, margin: "0 auto", paddingTop: 78 }}>
-            <Outlet />
+          {/* Left-aligned, not centred: centring made the gap to the nav grow
+              with the window, so the two drifted apart on a wide screen while
+              sitting a fixed 56px apart on a narrow one. */}
+          <div style={{ maxWidth: 720, paddingTop: 78 }}>
+            <Page />
           </div>
         </main>
       </div>
@@ -57,13 +70,63 @@ function Shell() {
   );
 }
 
+/**
+ * The screen, plus the fact that it's a new one.
+ *
+ * Keyed on the path so the entrance keyframe restarts on every navigation —
+ * a CSS animation only runs when the node is new, and React would otherwise
+ * reuse this div across the swap and play nothing. The key is the path alone,
+ * so a search-param change (a range picker, a filter) leaves the node in place
+ * and doesn't re-announce a screen you're already reading.
+ *
+ * Scroll goes with it, in a layout effect so the reset lands in the same paint
+ * as the new screen. Deep in a long activity list and opening one of them,
+ * you'd otherwise arrive at a detail page already scrolled past its title —
+ * and now that the column fades in, land there mid-fade as well.
+ */
+function Page() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useLayoutEffect(() => {
+    scroller().scrollTop = 0;
+  }, [pathname]);
+
+  return (
+    <div key={pathname} className="page">
+      <Outlet />
+    </div>
+  );
+}
+
 const rootRoute = createRootRoute({ component: Shell });
+
+/**
+ * The window opens on `#/`, which belongs to no screen: the first one is
+ * whichever the user has put at the top of the nav, and that's a preference
+ * rather than a route. Today has its own path like everything else, so that
+ * preference can name it without `/` meaning two things at once.
+ *
+ * Rewritten on the history rather than through a route redirect so the very
+ * first render is already the right screen — and rewritten, not pushed, so
+ * Back from the opening screen leaves the app instead of landing here again.
+ */
+const history = createHashHistory();
+if (history.location.pathname === "/") history.replace(defaultRoute());
+
+/** The same hop for anything that reaches `/` later in the session. */
+function DefaultScreen() {
+  useEffect(() => {
+    history.replace(defaultRoute());
+  }, []);
+  return null;
+}
 
 // Written out one by one rather than through a helper: TanStack derives the
 // typed path union from these literals, and a helper taking `path: string`
 // erases it, which costs every `<Link to>` in the app its type checking.
 const routeTree = rootRoute.addChildren([
-  createRoute({ getParentRoute: () => rootRoute, path: "/", component: Today }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/", component: DefaultScreen }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/today", component: Today }),
   createRoute({ getParentRoute: () => rootRoute, path: "/activities", component: Activities }),
   createRoute({
     getParentRoute: () => rootRoute,
@@ -72,6 +135,7 @@ const routeTree = rootRoute.addChildren([
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/health", component: Health }),
   createRoute({ getParentRoute: () => rootRoute, path: "/food", component: Food }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/weight", component: Weight }),
   createRoute({ getParentRoute: () => rootRoute, path: "/ask", component: Ask }),
   createRoute({ getParentRoute: () => rootRoute, path: "/insights", component: Insights }),
   createRoute({ getParentRoute: () => rootRoute, path: "/plan", component: Plan }),
@@ -83,7 +147,7 @@ const routeTree = rootRoute.addChildren([
 
 export const router = createRouter({
   routeTree,
-  history: createHashHistory(),
+  history,
   defaultPreload: false,
 });
 

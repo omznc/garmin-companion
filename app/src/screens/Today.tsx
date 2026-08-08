@@ -4,22 +4,28 @@ import {
   cachedActivities,
   cachedDaily,
   garminProfile,
-  nutrition,
   type CachedActivity,
   type DailyMetrics,
 } from "../lib/api";
 import {
   attention,
+  balanceKcal,
   dailyDistance,
   dailySeries,
   easyHardSplit,
+  fuel,
   hasZoneData,
+  hydration,
   latest,
   pick,
   zonePercentages,
+  type Fuel,
+  type Hydration,
 } from "../lib/derive";
 import { mean } from "../lib/chart";
 import { ZoneBar } from "../components/ZoneBar";
+import { RefreshButton } from "../components/Refresh";
+import { WeightGlance } from "../components/WeightGlance";
 import { firstName, greeting } from "../lib/greeting";
 import {
   AxisLabels,
@@ -30,7 +36,7 @@ import {
   Loading,
   Metric,
   MetricRow,
-  Rule,
+  PageHeader,
   Spark,
   Unit,
 } from "../components/ui";
@@ -40,7 +46,6 @@ import {
   duration,
   hoursMinutes,
   isRun,
-  isoDate,
   km,
   longDate,
   num,
@@ -59,9 +64,6 @@ export function Today() {
     queryKey: ["activities", 60],
     queryFn: () => cachedActivities(60),
   });
-  // Food is often not logged at all, so this one is allowed to be missing
-  // without holding up the screen.
-  const food = useQuery({ queryKey: ["nutrition", 7], queryFn: () => nutrition(7) });
   // Shares the sidebar's cache entry, so this costs nothing. A greeting that
   // has to wait for a name would be worse than one that never uses it.
   const profile = useQuery({
@@ -80,21 +82,30 @@ export function Today() {
 
   if (!activities.length && !(daily.data ?? []).length) {
     return (
-      <Empty
-        title="Nothing cached yet."
-        body={
-          <>
-            Run a sync to pull your Garmin history onto this machine. Everything
-            on these screens is read from that local copy — this is the only
-            screen that will tell you it's missing.
-          </>
-        }
-        action={
-          <Link className="cta" to="/settings">
-            Go to settings
-          </Link>
-        }
-      />
+      <div>
+        <PageHeader
+          eyebrow={longDate(new Date())}
+          title={greeting({
+            name: firstName(profile.data?.fullName ?? profile.data?.displayName),
+          })}
+          action={<RefreshButton />}
+        />
+        <Empty
+          title="Nothing cached yet."
+          body={
+            <>
+              Run a sync to pull your Garmin history onto this machine.
+              Everything on these screens is read from that local copy — this is
+              the only screen that will tell you it's missing.
+            </>
+          }
+          action={
+            <Link className="cta" to="/settings">
+              Go to settings
+            </Link>
+          }
+        />
+      </div>
     );
   }
 
@@ -110,7 +121,9 @@ export function Today() {
   const lastSession = activities[0] ?? null;
   // Runs with HR, newest first — the drift strip and nothing else uses these.
   const trackedRuns = activities.filter((a) => isRun(a.typeKey) && hasZoneData(a)).slice(0, 8);
-  const fuel = food.data?.days.find((d) => d.logged) ?? null;
+  const food = fuel(rows, 7);
+  // Null unless this account genuinely tracks hydration, which most don't.
+  const water = hydration(rows, 7);
 
   const week = dailyDistance(activities, 7);
   const weekTotal = week.reduce((a, b) => a + b, 0);
@@ -129,32 +142,15 @@ export function Today() {
   });
 
   return (
-    <div>
-      <div className="eyebrow-lg">{longDate(today)}</div>
-      <h1
-        className="serif"
-        style={{
-          fontSize: 44,
-          lineHeight: 1.08,
-          letterSpacing: "-0.015em",
-          margin: "20px 0 26px",
-        }}
-      >
-        {greeting({ name: firstName(profile.data?.fullName ?? profile.data?.displayName) })}
-      </h1>
-      <p
-        style={{
-          fontSize: 16.5,
-          lineHeight: 1.72,
-          margin: 0,
-          maxWidth: "64ch",
-          textWrap: "pretty",
-        }}
-      >
-        {summary}
-      </p>
+    <div className="screen">
+      <PageHeader
+        eyebrow={longDate(today)}
+        title={greeting({ name: firstName(profile.data?.fullName ?? profile.data?.displayName) })}
+        lede={summary}
+        action={<RefreshButton />}
+      />
 
-      <MetricRow style={{ margin: "46px 0 0" }}>
+      <MetricRow>
         <Metric
           label="Sleep"
           value={
@@ -195,26 +191,40 @@ export function Today() {
           accent={rhr != null && rhrBase != null && rhr.value - rhrBase >= 3}
           value={rhr ? bpm(rhr.value) : DASH}
         />
+        <Metric
+          // Blank rather than absent when nothing is logged: the tile holding
+          // its place is what makes a missing food log legible as a gap.
+          label={fuelLabel(food)}
+          accent={(foodBalance(food) ?? 0) <= -500}
+          value={<FuelValue fuel={food} />}
+        />
       </MetricRow>
 
-      {fuel && (
-        <p style={{ fontSize: 14, color: "var(--mut)", margin: "26px 0 0", maxWidth: "58ch" }}>
-          {fuelSentence(fuel.consumedKcal, fuel.totalBurnKcal, fuel.balanceKcal, fuel.date)}
-        </p>
-      )}
+      <p style={{ fontSize: "var(--fs-base)", color: "var(--mut)", margin: "26px 0 0", maxWidth: "58ch" }}>
+        {fuelSentence(food)}
+        {water && ` ${hydrationSentence(water)}`}
+      </p>
 
-      <Rule m="52px 0 26px" />
+      {/* Directly under the fuel line: what you ate and what the scale says are
+          the two halves of the same question, and this renders nothing at all
+          on an account with no weigh-ins. */}
+      <WeightGlance from="today" />
 
       {notes.length > 0 && (
         <>
-          <div className="eyebrow" style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ margin: "72px 0 16px" }}>
             Attention
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
             {notes.map((n, i) => (
               <Bullet key={i} accent={n.accent}>
                 {n.text}
-                {n.spark && <Spark values={n.spark} />}
+                {n.spark && (
+                  <Spark
+                    values={n.spark}
+                    format={(v) => `${v.toFixed(0)}${n.sparkUnit ? ` ${n.sparkUnit}` : ""}`}
+                  />
+                )}
                 {n.link && (
                   <Link
                     className="underlined"
@@ -227,7 +237,6 @@ export function Today() {
               </Bullet>
             ))}
           </div>
-          <Rule m="44px 0 26px" />
         </>
       )}
 
@@ -235,20 +244,21 @@ export function Today() {
 
       {trackedRuns.length >= 2 && <ZoneDrift runs={trackedRuns} />}
 
-      <div className="eyebrow" style={{ marginBottom: 18 }}>
+      <div className="eyebrow" style={{ margin: "72px 0 18px" }}>
         Last seven days
       </div>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 34, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 320 }}>
           <LineChart
-            series={[{ values: week }]}
+            series={[{ values: week, fill: true, format: (v) => `${v.toFixed(1)} km` }]}
             height={84}
             viewWidth={440}
             pad={6}
+            labels={axis}
           />
           <AxisLabels labels={axis} />
         </div>
-        <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--mut)", maxWidth: "26ch" }}>
+        <div style={{ fontSize: "var(--fs-base)", lineHeight: 1.6, color: "var(--mut)", maxWidth: "26ch" }}>
           {weekTotal > 0
             ? `${weekTotal.toFixed(1)} km across ${sessions} ${sessions === 1 ? "session" : "sessions"}.`
             : `${sessions} ${sessions === 1 ? "session" : "sessions"}, none with recorded distance.`}{" "}
@@ -296,7 +306,7 @@ function LastSession({ activity }: { activity: CachedActivity }) {
           alignItems: "baseline",
           justifyContent: "space-between",
           gap: 16,
-          marginBottom: 16,
+          margin: "72px 0 16px",
         }}
       >
         <div className="eyebrow">Last session</div>
@@ -304,16 +314,16 @@ function LastSession({ activity }: { activity: CachedActivity }) {
           className="underlined"
           to="/activities/$activityId"
           params={{ activityId: String(activity.activityId) }}
-          style={{ fontSize: 12.5, whiteSpace: "nowrap" }}
+          style={{ fontSize: "var(--fs-small)", whiteSpace: "nowrap" }}
         >
           Full breakdown
         </Link>
       </div>
 
-      <div style={{ fontSize: 17, marginBottom: 4 }}>
+      <div style={{ fontSize: "var(--fs-lg)", marginBottom: 4 }}>
         {activity.name || sportLabel(activity.typeKey)}
       </div>
-      <div style={{ fontSize: 12.5, color: "var(--faint)", marginBottom: 20 }}>
+      <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginBottom: 20 }}>
         {sportLabel(activity.typeKey)}
         {when ? ` · ${shortDate(when)}` : ""}
         {hasZoneData(activity) ? ` · ${aboveZ2.toFixed(0)}% above Z2` : ""}
@@ -331,12 +341,12 @@ function LastSession({ activity }: { activity: CachedActivity }) {
       >
         {stats.map(([label, value]) => (
           <div key={label}>
-            <div className="mono" style={{ fontSize: 19, letterSpacing: "-0.03em" }}>
+            <div className="mono" style={{ fontSize: 20, letterSpacing: "-0.03em" }}>
               {value}
             </div>
             <div
               style={{
-                font: "400 10px/1 'Instrument Sans', sans-serif",
+                font: "400 var(--fs-micro)/1 'Instrument Sans', sans-serif",
                 letterSpacing: "0.11em",
                 textTransform: "uppercase",
                 color: "var(--faint)",
@@ -348,8 +358,6 @@ function LastSession({ activity }: { activity: CachedActivity }) {
           </div>
         ))}
       </div>
-
-      <Rule m="44px 0 26px" />
     </>
   );
 }
@@ -382,11 +390,11 @@ function ZoneDrift({ runs }: { runs: CachedActivity[] }) {
           alignItems: "baseline",
           justifyContent: "space-between",
           gap: 16,
-          marginBottom: 18,
+          margin: "72px 0 18px",
         }}
       >
         <div className="eyebrow">Zone drift · last {runs.length} runs</div>
-        <div style={{ fontSize: 12.5, color: "var(--mut)" }}>
+        <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
           {avgRecent.toFixed(0)}% above Z2 lately · {TARGET}% is the target
         </div>
       </div>
@@ -410,7 +418,7 @@ function ZoneDrift({ runs }: { runs: CachedActivity[] }) {
                 color: "inherit",
               }}
             >
-              <span className="mono" style={{ fontSize: 11.5, color: "var(--mut)" }}>
+              <span className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--mut)" }}>
                 {shares[i].toFixed(0)}%
               </span>
               {/* Full-height track so the bars share a scale and a short run
@@ -436,33 +444,108 @@ function ZoneDrift({ runs }: { runs: CachedActivity[] }) {
                   }}
                 />
               </span>
-              <span style={{ fontSize: 10.5, color: "var(--faint)", textAlign: "center" }}>
+              <span style={{ fontSize: "var(--fs-micro)", color: "var(--faint)", textAlign: "center" }}>
                 {when ? shortDate(when) : DASH}
               </span>
             </Link>
           );
         })}
       </div>
-
-      <Rule m="44px 0 26px" />
     </>
   );
 }
 
-/** Only ever called with a day that actually has food logged. */
-function fuelSentence(
-  consumed: number | null,
-  burned: number | null,
-  balance: number | null,
-  date: string,
-): string {
-  const when = parseLocal(date);
-  const day = isoDate(new Date()) === date ? "Today" : when ? shortDate(when) : "That day";
-  if (balance == null) {
-    return `${day}: ${num(consumed)} kcal logged.`;
+/**
+ * Only ever called with hydration that's actually tracked — `hydration()`
+ * returns null otherwise, which is what keeps this clause off the screen for
+ * the accounts where the column is nothing but zeros.
+ */
+function hydrationSentence(h: Hydration): string {
+  const litres = (ml: number) => `${(ml / 1000).toFixed(2)} L`;
+  const head =
+    h.latest && h.latest.age === 0
+      ? `You've logged ${litres(h.latest.ml)} of water today`
+      : `Water averaged ${litres(h.avgMl)} over the ${h.logged} of ${h.window} days you logged it`;
+
+  if (h.goalMl == null) return `${head}.`;
+  const against = h.latest && h.latest.age === 0 ? h.latest.ml : h.avgMl;
+  const pct = (against / h.goalMl) * 100;
+  return `${head} — ${pct.toFixed(0)}% of your ${litres(h.goalMl)} goal.`;
+}
+
+const foodBalance = (f: Fuel): number | null =>
+  f.day ? balanceKcal(f.day) : null;
+
+/**
+ * The tile's caption carries the age of the reading.
+ *
+ * The old version of this screen picked the most recent logged day out of a
+ * seven-day window and printed it with no indication of which day it was, so a
+ * Tuesday deficit sat under Friday's heading looking current.
+ */
+function fuelLabel(f: Fuel): string {
+  if (!f.day || f.age == null) return "Fuel balance";
+  if (f.age === 0) return "Fuel balance";
+  if (f.age === 1) return "Fuel balance · yesterday";
+  return `Fuel balance · ${f.age}d ago`;
+}
+
+function FuelValue({ fuel: f }: { fuel: Fuel }) {
+  const balance = foodBalance(f);
+  if (balance == null) return <>{DASH}</>;
+  const rounded = Math.round(balance);
+  return (
+    <>
+      {rounded > 0 ? "+" : ""}
+      {num(rounded)}
+      <Unit size={20}> kcal</Unit>
+    </>
+  );
+}
+
+/**
+ * The fuel line, which always says something.
+ *
+ * Burn comes off the watch every day whether or not anything was eaten into a
+ * log, so an unlogged week still has a true sentence available — and saying it
+ * is the difference between "food is missing from this app" and "food is
+ * missing from your week", which are very different problems.
+ */
+function fuelSentence(f: Fuel): string {
+  const burn = f.avgBurn != null ? `${num(Math.round(f.avgBurn))} kcal a day` : null;
+
+  if (!f.day || f.age == null) {
+    return burn
+      ? `No food logged in the last ${f.window} days. You've burned an average of ${burn} over the same stretch — the intake side is what's missing, not the day.`
+      : `No food logged in the last ${f.window} days.`;
   }
-  const verb = balance < 0 ? "deficit" : "surplus";
-  return `${day}: ${num(consumed)} kcal in against ${num(burned)} burned — a ${num(Math.abs(balance))} kcal ${verb}.`;
+
+  const when = parseLocal(f.day.date);
+  const day =
+    f.age === 0
+      ? "Today"
+      : f.age === 1
+        ? "Yesterday"
+        : when
+          ? shortDate(when)
+          : "That day";
+
+  const balance = balanceKcal(f.day);
+  const head =
+    balance == null
+      ? `${day}: ${num(f.day.consumedKcal)} kcal logged.`
+      : `${day}: ${num(f.day.consumedKcal)} kcal in against ${num(f.day.totalBurnKcal)} burned — a ${num(Math.abs(Math.round(balance)))} kcal ${balance < 0 ? "deficit" : "surplus"}.`;
+
+  // Averaging over unlogged days would invent a deficit, so the sentence says
+  // what the average is actually over.
+  if (f.logged >= 3 && f.avgBalance != null) {
+    const avg = Math.round(f.avgBalance);
+    return `${head} Across the ${f.logged} of ${f.window} days you logged, the average was ${avg > 0 ? "+" : ""}${num(avg)} kcal.`;
+  }
+  if (f.logged === 1 && f.window > 1) {
+    return `${head} It's the only day logged this week, so there's no average worth quoting.`;
+  }
+  return head;
 }
 
 function countSessions(activities: CachedActivity[], days: number): number {

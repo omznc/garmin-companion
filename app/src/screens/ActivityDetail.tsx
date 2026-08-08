@@ -1,10 +1,18 @@
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  activityDetails,
-  activitySplits,
+  activityAnalysis,
+  activityCritique,
+  activityTags,
   cachedActivity,
+  cachedActivityCritique,
+  chatConfig,
+  type ActivityAnalysis,
+  type ActivityLap,
+  type ActivitySeries,
   type CachedActivity,
+  type Highlight,
 } from "../lib/api";
 import {
   BackLink,
@@ -14,9 +22,13 @@ import {
   Loading,
   Metric,
   MetricRow,
+  PageHeader,
   Rule,
   Unit,
 } from "../components/ui";
+import { ActivityMap } from "../components/ActivityMap";
+import { ActivityChat } from "../components/ActivityChat";
+import { Tags } from "../components/Tags";
 import { hasData, type Point } from "../lib/chart";
 import { zonePercentages, zoneTotal } from "../lib/derive";
 import {
@@ -28,6 +40,7 @@ import {
   num,
   pace,
   parseLocal,
+  since,
   speed,
   sportLabel,
   timeOfDay,
@@ -40,9 +53,26 @@ export function ActivityDetail() {
   const navigate = useNavigate();
   const id = Number(activityId);
 
+  /**
+   * The moment on the timeline the pointer is over, shared by the map and every
+   * chart below it. They are all views of the same sample array, so pointing at
+   * a spike on the heart-rate chart marks the place on the route it happened.
+   */
+  const [hover, setHover] = useState<number | null>(null);
+
+  // The cached summary paints the top of the page immediately; the analysis is
+  // three Garmin requests on first open and fills in everything below it. Two
+  // queries rather than one so an offline visit still shows the numbers.
   const activity = useQuery({
     queryKey: ["activity", id],
     queryFn: () => cachedActivity(id),
+  });
+
+  const analysis = useQuery({
+    queryKey: ["activityAnalysis", id],
+    queryFn: () => activityAnalysis(id),
+    retry: false,
+    staleTime: 5 * 60_000,
   });
 
   if (activity.isLoading) return <Loading />;
@@ -60,9 +90,10 @@ export function ActivityDetail() {
 
   const start = parseLocal(a.startTimeLocal ?? a.localDate);
   const paced = isRun(a.typeKey) || !!a.typeKey?.match(/walk|hik/);
+  const data = analysis.data;
 
   return (
-    <div>
+    <div className="screen">
       <BackLink
         onClick={() => navigate({ to: "/activities" })}
         style={{ marginBottom: 26, color: "var(--mut)" }}
@@ -70,15 +101,20 @@ export function ActivityDetail() {
         Activities
       </BackLink>
 
-      <div className="eyebrow-lg">
-        {sportLabel(a.typeKey)}
-        {start && ` · ${longDate(start)} · ${timeOfDay(start)}`}
-      </div>
-      <h1 className="h1" style={{ margin: "16px 0 30px" }}>
-        {a.name ?? "Untitled"}
-      </h1>
+      <PageHeader
+        eyebrow={
+          <>
+            {sportLabel(a.typeKey)}
+            {start && ` · ${longDate(start)} · ${timeOfDay(start)}`}
+          </>
+        }
+        title={a.name ?? "Untitled"}
+        space={30}
+      />
 
-      <MetricRow gap={46} style={{ marginBottom: 40 }}>
+      <Critique activityId={id} ready={analysis.isSuccess} />
+
+      <MetricRow gap={46} style={{ marginBottom: 30 }}>
         {a.distanceM != null && a.distanceM > 0 && (
           <Metric size={31} label="Distance" value={km(a.distanceM, 2)} />
         )}
@@ -121,10 +157,288 @@ export function ActivityDetail() {
         )}
       </MetricRow>
 
-      <Zones activity={a} />
-      <Charts id={id} />
-      <Splits id={id} paced={paced} />
+      <TagRow activityId={id} />
+
+      {/* Everything below here needs the samples. While they're on the way the
+          page is already complete enough to read — which is why the wait is a
+          line of text and not a spinner over the whole screen. */}
+      {analysis.isLoading && (
+        <div style={{ marginTop: 42 }}>
+          <Loading label="Reading the session from Garmin" />
+        </div>
+      )}
+      {analysis.error != null && (
+        <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "42px 0 0" }}>
+          Couldn't fetch the samples for this session — the numbers above came
+          from the cache and are unaffected.
+        </p>
+      )}
+
+      {data && (
+        <>
+          {data.highlights.length > 0 && (
+            <div style={{ marginTop: 46 }}>
+              <Highlights highlights={data.highlights} />
+            </div>
+          )}
+
+          <div style={{ marginTop: 46 }}>
+            <ActivityMap
+              series={data.series}
+              zones={data.zones}
+              highlights={data.highlights}
+              hover={hover}
+              onHover={setHover}
+            />
+          </div>
+        </>
+      )}
+
+      <div style={{ marginTop: 46 }}>
+        <Zones activity={a} />
+      </div>
+
+      {data && (
+        <>
+          <div style={{ marginTop: 46 }}>
+            <Charts series={data.series} hover={hover} onHover={setHover} />
+          </div>
+          <Splits laps={data.laps} paced={paced} />
+          {data.comparison && <Against comparison={data.comparison} sport={a.typeKey} />}
+        </>
+      )}
+
+      <Rule m="52px 0 26px" />
+      <div className="eyebrow" style={{ marginBottom: 18 }}>
+        Ask about this session
+      </div>
+      <ActivityChat activityId={id} activityName={a.name ?? "Untitled"} />
     </div>
+  );
+}
+
+/* -------------------------------------------------------------- critique --- */
+
+/**
+ * The coach's verdict on the session, written on request.
+ *
+ * Not a description of the run: the page below is already that, and so is the
+ * memory of having done it. What this asks the model for is the part that isn't
+ * on the screen — what went wrong, what to have done instead, and what to carry
+ * into the next one — which is also why it is a button rather than something
+ * that happens on open. An unsolicited opinion about every session you look at
+ * is both a request you didn't ask for and a criticism you didn't invite.
+ *
+ * A critique already written is shown straight away, since that costs a read of
+ * a local table. `ready` holds the button until the analysis has landed — the
+ * critique is written from that exact analysis, and pressing it earlier would
+ * have two requests racing to fetch the same three things from Garmin.
+ */
+function Critique({ activityId, ready }: { activityId: number; ready: boolean }) {
+  const [run, setRun] = useState(0);
+  const qc = useQueryClient();
+  const config = useQuery({ queryKey: ["chatConfig"], queryFn: chatConfig });
+  const configured = !!(config.data?.provider && config.data.model);
+
+  // The route reuses this component between activities, so a press on one run
+  // would otherwise be carried onto the next one opened and spend a request on
+  // a session nobody asked about.
+  useEffect(() => setRun(0), [activityId]);
+
+  const stored = useQuery({
+    queryKey: ["activityCritique", activityId],
+    queryFn: () => cachedActivityCritique(activityId),
+    enabled: ready && configured,
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  const written = useQuery({
+    // `run` is in the key so pressing rewrite is a new query rather than a
+    // refetch that would show the previous answer again on the way past.
+    queryKey: ["activityCritiqueRun", activityId, run],
+    queryFn: () => activityCritique(activityId),
+    enabled: run > 0,
+    retry: false,
+    staleTime: Infinity,
+    gcTime: 0,
+  });
+
+  // A rewrite replaces what's stored, so the read query has to be told —
+  // otherwise leaving the page and coming back inside the cache window would
+  // bring the superseded critique back with it.
+  useEffect(() => {
+    if (written.data) qc.setQueryData(["activityCritique", activityId], written.data);
+  }, [written.data, activityId, qc]);
+
+  // Nothing at all when there's no model: an empty state here would be a
+  // settings prompt sitting on top of a page that works without one.
+  if (!configured) return null;
+
+  const critique = written.data ?? stored.data ?? null;
+
+  if (!critique) {
+    if (!ready) return null;
+
+    if (written.isFetching) {
+      return (
+        <div style={{ marginBottom: 34 }}>
+          <Loading label="Reading this session back" />
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ marginBottom: 34 }}>
+        <button
+          className="underlined"
+          style={{ fontSize: "var(--fs-md)" }}
+          onClick={() => setRun((n) => n + 1)}
+        >
+          Tell me what I got wrong
+        </button>
+        {written.isError && (
+          <p
+            style={{
+              fontSize: "var(--fs-small)",
+              color: "var(--faint)",
+              margin: "10px 0 0",
+              maxWidth: "62ch",
+              lineHeight: 1.6,
+            }}
+          >
+            {/* The provider's own words. "Couldn't write a critique" is true of
+                an expired key, a model that no longer exists and a flat network
+                alike, and tells you which of the three to fix in none of them. */}
+            {errorText(written.error)}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 34 }}>
+      <p
+        className="selectable"
+        style={{
+          fontSize: "var(--fs-lg)",
+          lineHeight: 1.75,
+          margin: 0,
+          maxWidth: "68ch",
+          textWrap: "pretty",
+        }}
+      >
+        {critique.text}
+      </p>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: 14,
+          marginTop: 10,
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+        }}
+      >
+        <span>Written {since(critique.generatedAt)}</span>
+        <button
+          className="underlined"
+          onClick={() => setRun((n) => n + 1)}
+          disabled={written.isFetching}
+        >
+          {written.isFetching ? "Rewriting…" : "Rewrite"}
+        </button>
+        {/* A failed rewrite leaves the previous critique on the page, so the
+            reason it failed has to be said next to the control that failed. */}
+        {written.isError && <span>{errorText(written.error)}</span>}
+      </div>
+    </div>
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/* ------------------------------------------------------------------ tags --- */
+
+/**
+ * The tag row reads its own list rather than waiting for the analysis.
+ *
+ * The tags ride along on the analysis, but that is three Garmin requests on
+ * first open and the row should be editable long before it lands. This is a
+ * single indexed read of a local table, so it resolves in the same frame.
+ */
+function TagRow({ activityId }: { activityId: number }) {
+  const tags = useQuery({
+    queryKey: ["activityTags", activityId],
+    queryFn: () => activityTags(activityId),
+  });
+
+  return <Tags activityId={activityId} tags={tags.data ?? []} />;
+}
+
+/* ------------------------------------------------------------ highlights --- */
+
+/**
+ * What was worth noticing, computed from the samples rather than written about
+ * them. The paragraph at the top is the model's reading of exactly this list,
+ * so the two can't disagree — and this half survives having no model at all.
+ */
+function Highlights({ highlights }: { highlights: Highlight[] }) {
+  return (
+    <>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>
+        Worth noticing
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+        {highlights.map((h, i) => (
+          <div key={`${h.kind}-${i}`} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            {/* A tone, not a severity. Accent is the thing to look at, muted is
+                context, and a good session gets a mark rather than nothing. */}
+            <span
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                marginTop: 9,
+                flex: "none",
+                background:
+                  h.tone === "watch"
+                    ? "var(--acc)"
+                    : h.tone === "good"
+                      ? "var(--fg)"
+                      : "var(--faint)",
+              }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "var(--fs-md)" }}>{h.title}</div>
+              <p
+                style={{
+                  fontSize: "var(--fs-small)",
+                  lineHeight: 1.65,
+                  color: "var(--mut)",
+                  margin: "3px 0 0",
+                  maxWidth: "62ch",
+                  textWrap: "pretty",
+                }}
+              >
+                {h.detail}
+              </p>
+            </div>
+            {h.atS != null && (
+              <span
+                className="mono"
+                style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}
+              >
+                {duration(h.atS)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -143,11 +457,10 @@ function Zones({ activity }: { activity: CachedActivity }) {
         <div className="eyebrow" style={{ marginBottom: 12 }}>
           Heart-rate zones
         </div>
-        <p style={{ fontSize: 14, color: "var(--mut)", margin: "0 0 8px", maxWidth: "56ch" }}>
+        <p style={{ fontSize: "var(--fs-base)", color: "var(--mut)", margin: "0 0 8px", maxWidth: "56ch" }}>
           No heart-rate data was recorded for this session, so there is no zone
           breakdown — not a session spent entirely in Z1.
         </p>
-        <Rule m="30px 0 22px" />
       </>
     );
   }
@@ -166,19 +479,21 @@ function Zones({ activity }: { activity: CachedActivity }) {
         }}
       >
         <div className="eyebrow">Heart-rate zones</div>
-        <div style={{ fontSize: 12.5, color: "var(--mut)" }}>
+        <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
           {hard.toFixed(0)}% above Z2 · {duration(total)} tracked
         </div>
       </div>
 
+      {/* No rule under each row. The bar already separates one row from the
+          next, so a hairline underneath it was a second divider for one gap. */}
       {ZONE_NAMES.map((name, i) => (
-        <div key={name} style={{ padding: "10px 0 12px", borderBottom: "1px solid var(--line2)" }}>
+        <div key={name} style={{ padding: "10px 0 12px" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-            <span style={{ flex: 1, fontSize: 14.5 }}>{name}</span>
-            <span style={{ fontSize: 13, color: "var(--mut)" }}>
+            <span style={{ flex: 1, fontSize: "var(--fs-md)" }}>{name}</span>
+            <span style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
               {duration(activity.zoneSecs[i])}
             </span>
-            <span className="mono" style={{ fontSize: 15, width: 56, textAlign: "right" }}>
+            <span className="mono" style={{ fontSize: "var(--fs-md)", width: 62, textAlign: "right" }}>
               {pct[i].toFixed(0)}%
             </span>
           </div>
@@ -194,7 +509,6 @@ function Zones({ activity }: { activity: CachedActivity }) {
           </div>
         </div>
       ))}
-      <Rule m="36px 0 22px" />
     </>
   );
 }
@@ -211,29 +525,21 @@ interface Metric3 {
   format: (v: number) => string;
 }
 
-function Charts({ id }: { id: number }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["activityDetails", id],
-    queryFn: () => activityDetails(id, 400),
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
+function Charts({
+  series,
+  hover,
+  onHover,
+}: {
+  series: ActivitySeries;
+  hover: number | null;
+  onHover: (index: number | null) => void;
+}) {
+  const charts = extractSeries(series);
+  const elapsed = series.elapsedS.map((t) => (t == null ? "" : `${duration(t)} in`));
 
-  if (isLoading) return <Loading label="Fetching the time series from Garmin" />;
-  // Charts are a live fetch, so an offline app should lose the charts, not the
-  // page. The rest of this screen came from the cache and is still correct.
-  if (error) {
+  if (!charts.length) {
     return (
-      <p style={{ fontSize: 13, color: "var(--faint)", margin: "0 0 36px" }}>
-        Couldn't fetch the time series — the cached summary above is unaffected.
-      </p>
-    );
-  }
-
-  const series = extractSeries(data);
-  if (!series.length) {
-    return (
-      <p style={{ fontSize: 13, color: "var(--faint)", margin: "0 0 36px" }}>
+      <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "0 0 36px" }}>
         Garmin has no sampled series for this activity.
       </p>
     );
@@ -241,7 +547,7 @@ function Charts({ id }: { id: number }) {
 
   return (
     <>
-      {series.map((s) => (
+      {charts.map((s) => (
         <div key={s.key} style={{ marginBottom: 38 }}>
           <div
             style={{
@@ -252,13 +558,16 @@ function Charts({ id }: { id: number }) {
             }}
           >
             <div className="eyebrow">{s.label}</div>
-            <div style={{ fontSize: 12.5, color: "var(--mut)" }}>
+            <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
               {summarise(s)}
             </div>
           </div>
           <LineChart
-            series={[{ values: s.values, stroke: s.stroke, invert: s.invert }]}
+            series={[{ values: s.values, stroke: s.stroke, invert: s.invert, format: s.format }]}
             height={92}
+            labels={elapsed}
+            hoverIndex={hover}
+            onHoverIndex={onHover}
           />
         </div>
       ))}
@@ -283,118 +592,59 @@ function paceLabel(minPerKm: number): string {
 }
 
 /**
- * Garmin's `/details` payload is a column-oriented table: `metricDescriptors`
- * names each column, `activityDetailMetrics[].metrics` holds the rows. Pull
- * out only the three columns the design charts.
+ * The three columns worth charting, in the order they answer questions in.
+ *
+ * The parsing that used to live here — Garmin's column-oriented details payload
+ * — moved into the analysis, so the charts, the map and the written summary all
+ * read one set of numbers rather than three parses of one payload.
+ *
+ * Elevation isn't among them. It's plotted against distance under the map,
+ * where it belongs — a hill is a feature of the ground, and against time it
+ * stretches out exactly where you slowed down for it.
  */
-function extractSeries(payload: unknown): Metric3[] {
-  const p = payload as {
-    metricDescriptors?: Array<{ key?: string; metricsIndex?: number }>;
-    activityDetailMetrics?: Array<{ metrics?: Array<number | null> }>;
-  } | null;
-  if (!p?.metricDescriptors || !p.activityDetailMetrics) return [];
-
-  const bpm = (v: number) => `${v.toFixed(0)} bpm`;
-  const wanted: Array<{
-    keys: string[];
-    label: string;
-    stroke: string;
-    invert?: boolean;
-    format: (v: number) => string;
-    scale?: (v: number) => number;
-  }> = [
-    { keys: ["directHeartRate"], label: "Heart rate", stroke: "var(--acc)", format: bpm },
+function extractSeries(series: ActivitySeries): Metric3[] {
+  const wanted: Metric3[] = [
     {
-      // Garmin reports speed in m/s. Converted to minutes per kilometre it is
-      // the unit every run here is read in, and the chart is inverted so faster
-      // still draws higher. A near-zero speed is a pause, not a 300 min/km lap.
-      keys: ["directSpeed"],
+      key: "hr",
+      label: "Heart rate",
+      values: series.hr,
+      stroke: "var(--acc)",
+      format: (v) => `${v.toFixed(0)} bpm`,
+    },
+    {
+      key: "pace",
       label: "Pace",
+      values: series.paceMinKm,
       stroke: "var(--fg)",
       invert: true,
-      scale: (v) => (v > 0.4 ? 1000 / v / 60 : NaN),
       format: (v) => `${paceLabel(v)} /km`,
     },
     {
-      keys: ["directRunCadence", "directDoubleCadence"],
+      key: "cadence",
       label: "Cadence",
+      values: series.cadence,
       stroke: "var(--mut)",
       format: (v) => `${v.toFixed(0)} spm`,
     },
-    {
-      keys: ["directElevation"],
-      label: "Elevation",
-      stroke: "var(--mut)",
-      format: (v) => `${v.toFixed(0)} m`,
-    },
   ];
-
-  const out: Metric3[] = [];
-  for (const w of wanted) {
-    const desc = p.metricDescriptors.find(
-      (d) => d.key && w.keys.includes(d.key) && d.metricsIndex != null,
-    );
-    if (!desc) continue;
-    const idx = desc.metricsIndex!;
-    const values = p.activityDetailMetrics.map((row) => {
-      const v = row.metrics?.[idx];
-      if (v == null || !isFinite(v)) return null;
-      const scaled = w.scale ? w.scale(v) : v;
-      return isFinite(scaled) ? scaled : null;
-    });
-    if (hasData(values)) {
-      out.push({
-        key: desc.key!,
-        label: w.label,
-        values,
-        stroke: w.stroke,
-        invert: w.invert,
-        format: w.format,
-      });
-    }
-  }
-  return out;
+  return wanted.filter((s) => hasData(s.values));
 }
 
 /* ---------------------------------------------------------------- splits --- */
 
-interface Lap {
-  lapIndex?: number;
-  distance?: number;
-  duration?: number;
-  averageHR?: number;
-  averageRunCadence?: number;
-  elevationGain?: number;
-}
-
-function Splits({ id, paced }: { id: number; paced: boolean }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["splits", id],
-    queryFn: () => activitySplits(id),
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-
-  if (isLoading || error) return null;
-
-  const laps = ((data as { lapDTOs?: Lap[] } | null)?.lapDTOs ?? []).filter(
-    (l) => (l.duration ?? 0) > 0,
-  );
+function Splits({ laps, paced }: { laps: ActivityLap[]; paced: boolean }) {
   if (laps.length < 2) return null;
 
   // Bars are scaled against the slowest lap so the fastest fills the row —
   // an absolute scale would leave every bar near-identical.
-  const rates = laps.map((l) =>
-    l.distance && l.duration ? l.duration / (l.distance / 1000) : null,
-  );
+  const rates = laps.map((l) => l.paceMinKm);
   const valid = rates.filter((r): r is number => r != null);
   const slowest = valid.length ? Math.max(...valid) : 1;
   const fastest = valid.length ? Math.min(...valid) : 1;
 
   return (
     <>
-      <Rule m="8px 0 24px" />
-      <div className="eyebrow" style={{ marginBottom: 8 }}>
+      <div className="eyebrow" style={{ margin: "0 0 8px" }}>
         Splits
       </div>
       {laps.map((l, i) => {
@@ -412,31 +662,133 @@ function Splits({ id, paced }: { id: number; paced: boolean }) {
               gap: 16,
               padding: "8px 0",
               borderBottom: "1px solid var(--line2)",
-              fontSize: 13.5,
+              fontSize: "var(--fs-base)",
             }}
           >
-            <span style={{ width: 26, color: "var(--faint)" }}>{l.lapIndex ?? i + 1}</span>
-            <span className="mono" style={{ width: 70, fontSize: 13.5 }}>
-              {l.distance
+            <span style={{ width: 28, color: "var(--faint)" }}>{l.index}</span>
+            <span className="mono" style={{ width: 76, fontSize: "var(--fs-base)" }}>
+              {l.distanceM
                 ? paced
-                  ? pace(l.distance, l.duration)
-                  : speed(l.distance, l.duration)
-                : duration(l.duration)}
+                  ? pace(l.distanceM, l.durationS)
+                  : speed(l.distanceM, l.durationS)
+                : duration(l.durationS)}
             </span>
             <span className="bar" style={{ flex: 1 }}>
               <span style={{ width: `${width}%` }} />
             </span>
-            <span style={{ width: 62, textAlign: "right", color: "var(--mut)" }}>
-              {l.averageHR ? `${Math.round(l.averageHR)} bpm` : DASH}
+            <span style={{ width: 68, textAlign: "right", color: "var(--mut)" }}>
+              {l.avgHr ? `${Math.round(l.avgHr)} bpm` : DASH}
             </span>
             <span
-              style={{ width: 56, textAlign: "right", color: "var(--faint)", fontSize: 12.5 }}
+              style={{ width: 62, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}
             >
-              {l.distance ? km(l.distance, 2) : DASH}
+              {l.distanceM ? km(l.distanceM, 2) : DASH}
             </span>
           </div>
         );
       })}
     </>
   );
+}
+
+/* ------------------------------------------------------------ comparison --- */
+
+/**
+ * This session against the recent ones like it.
+ *
+ * Only sessions that came *before* this one count, so opening an old run shows
+ * what it was compared to at the time rather than being judged against months
+ * of training it predates.
+ */
+function Against({
+  comparison: c,
+  sport,
+}: {
+  comparison: NonNullable<ActivityAnalysis["comparison"]>;
+  sport: string | null;
+}) {
+  const rows: Array<{ label: string; average: string; delta: number | null; pacey: boolean }> = [
+    {
+      label: "Pace",
+      average: c.avgPaceMinKm != null ? `${paceLabel(c.avgPaceMinKm)} /km` : DASH,
+      delta: c.paceDelta,
+      pacey: true,
+    },
+    {
+      label: "Avg HR",
+      average: c.avgHr != null ? `${c.avgHr.toFixed(0)} bpm` : DASH,
+      delta: c.hrDelta,
+      pacey: false,
+    },
+    {
+      label: "Cadence",
+      average: c.avgCadence != null ? `${c.avgCadence.toFixed(0)} spm` : DASH,
+      delta: c.cadenceDelta,
+      pacey: false,
+    },
+    {
+      label: "Above Z2",
+      average: c.avgPercentAboveZ2 != null ? `${c.avgPercentAboveZ2.toFixed(0)}%` : DASH,
+      delta: c.percentAboveZ2Delta,
+      pacey: false,
+    },
+  ];
+
+  const shown = rows.filter((r) => r.average !== DASH);
+  if (!shown.length) return null;
+
+  return (
+    <div style={{ marginTop: 46 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: 14,
+        }}
+      >
+        <div className="eyebrow">Against your recent {sportLabel(sport).toLowerCase()}</div>
+        <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
+          {c.sessions} earlier {c.sessions === 1 ? "session" : "sessions"}
+        </div>
+      </div>
+      {shown.map((r) => (
+        <div
+          key={r.label}
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 16,
+            padding: "8px 0",
+            borderBottom: "1px solid var(--line2)",
+            fontSize: "var(--fs-base)",
+          }}
+        >
+          <span style={{ flex: 1 }}>{r.label}</span>
+          <span className="mono" style={{ color: "var(--mut)" }}>
+            {r.average}
+          </span>
+          <span
+            className="mono"
+            style={{
+              width: 84,
+              textAlign: "right",
+              color: r.delta == null ? "var(--faint)" : "var(--fg)",
+            }}
+          >
+            {r.delta == null ? DASH : signed(r.label, r.delta, r.pacey)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A delta with its sign, in the unit the row is measured in. */
+function signed(label: string, delta: number, pacey: boolean): string {
+  const sign = delta > 0 ? "+" : "−";
+  const size = Math.abs(delta);
+  if (pacey) return `${sign}${paceLabel(size)}`;
+  if (label === "Above Z2") return `${sign}${size.toFixed(0)} pts`;
+  return `${sign}${size.toFixed(0)}`;
 }

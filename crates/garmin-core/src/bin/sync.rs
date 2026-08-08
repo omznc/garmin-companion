@@ -33,7 +33,13 @@ async fn main() -> Result<()> {
     let db = Db::open_default()?;
 
     println!("syncing {days} days{}…", if full { " (full)" } else { "" });
-    let report = sync::sync_all(&client, &db, days, full).await?;
+    // The same progress the app draws a bar from, one line per step — which is
+    // also how a long sync gets watched from a terminal.
+    let on = |p: sync::SyncProgress| {
+        let of = p.total.map(|t| format!("/{t}")).unwrap_or_default();
+        println!("  {:<10} {:>5}{of}  {}", p.phase, p.done, p.detail);
+    };
+    let report = sync::sync_all_with(&client, &db, days, full, &on).await?;
 
     println!(
         "activities: {} seen, {} written\ndays: {}\nworkouts: {}\ntracks: {}",

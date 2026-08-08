@@ -53,3 +53,34 @@ jobs:
       # needs a key out of the OS keyring, neither of which belongs in CI.
       - name: Test
         run: cargo test --workspace
+
+  # Its own job rather than a step in `check`: the worker shares no toolchain
+  # with the rest of this, and a Rust compile failure shouldn't hide a broken
+  # proxy or the other way round. Deploying stays manual — the thing this is in
+  # front of is a funded API key.
+  worker:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: worker/pnpm-lock.yaml
+
+      - name: Install worker dependencies
+        working-directory: worker
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck worker
+        working-directory: worker
+        run: pnpm typecheck
+
+      - name: Test worker
+        working-directory: worker
+        run: pnpm test

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { cachedActivities, type CachedActivity } from "../lib/api";
-import { Empty, ErrorNote, Loading, PageTitle } from "../components/ui";
+import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import {
   DASH,
   duration,
@@ -33,7 +34,12 @@ export function Activities() {
   if (!activities.length) {
     return (
       <>
-        <PageTitle>Activities</PageTitle>
+        <PageHeader
+          eyebrow="Nothing cached"
+          title="Activities"
+          lede="Every session on this machine, newest first."
+          action={<RefreshButton />}
+        />
         <Empty
           title="No activities cached."
           body="Sync from Settings to pull your history down. Nothing on this screen ever hits the network."
@@ -47,11 +53,13 @@ export function Activities() {
   const more = activities.length >= limit;
 
   return (
-    <div>
-      <PageTitle style={{ marginBottom: 8 }}>Activities</PageTitle>
-      <p style={{ fontSize: 14.5, color: "var(--mut)", margin: "0 0 40px" }}>
-        {activities.length.toLocaleString()} shown · {km(total, 0)}
-      </p>
+    <div className="screen">
+      <PageHeader
+        eyebrow={`${activities.length.toLocaleString()} shown · ${km(total, 0)}`}
+        title="Activities"
+        lede="Every session on this machine, newest first."
+        action={<RefreshButton />}
+      />
 
       {groups.map(([month, rows]) => (
         <div key={month}>
@@ -67,7 +75,7 @@ export function Activities() {
       {more && (
         <button
           className="quiet"
-          style={{ marginTop: 26, fontSize: 13, color: "var(--mut)" }}
+          style={{ marginTop: 26, fontSize: "var(--fs-small)", color: "var(--mut)" }}
           onClick={() => setLimit((l) => l + PAGE)}
           disabled={isFetching}
         >
@@ -97,10 +105,10 @@ function ActivityRow({ a }: { a: CachedActivity }) {
     >
       <span
         style={{
-          width: 46,
+          width: 50,
           flex: "none",
           color: "var(--faint)",
-          fontSize: 12,
+          fontSize: "var(--fs-caption)",
           letterSpacing: "0.03em",
         }}
       >
@@ -116,20 +124,20 @@ function ActivityRow({ a }: { a: CachedActivity }) {
         }}
       >
         {a.name ?? "Untitled"}
-        <span style={{ color: "var(--faint)", fontSize: 12.5, marginLeft: 10 }}>
+        <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
           {sportLabel(a.typeKey)}
         </span>
       </span>
-      <span className="mono" style={{ width: 74, textAlign: "right", fontSize: 14 }}>
+      <span className="mono" style={{ width: 82, textAlign: "right", fontSize: "var(--fs-base)" }}>
         {a.distanceM ? km(a.distanceM, 1) : DASH}
       </span>
-      <span style={{ width: 64, textAlign: "right", color: "var(--mut)", fontSize: 13 }}>
+      <span style={{ width: 70, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
         {duration(a.durationS)}
       </span>
-      <span style={{ width: 78, textAlign: "right", color: "var(--mut)", fontSize: 13 }}>
+      <span style={{ width: 86, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
         {rate}
       </span>
-      <span style={{ width: 54, textAlign: "right", color: "var(--faint)", fontSize: 13 }}>
+      <span style={{ width: 60, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}>
         {a.avgHr ? Math.round(a.avgHr) : DASH}
       </span>
     </Link>

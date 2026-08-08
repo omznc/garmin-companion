@@ -19,9 +19,10 @@ import {
   Loading,
   Metric,
   MetricRow,
-  PageTitle,
-  Rule,
+  PageHeader,
 } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
+import { WeightGlance } from "../components/WeightGlance";
 import { DASH, num, parseLocal, shortDate } from "../lib/format";
 
 const DAYS = 30;
@@ -33,9 +34,19 @@ function balance(v: number | null): string {
   return r > 0 ? `+${num(r)}` : num(r);
 }
 
+/**
+ * Litres, with zero treated as "not tracked".
+ *
+ * Garmin writes a 0 rather than a null on days nothing recorded hydration, and
+ * this column used to print "0.00 L" down the whole page for it — a confident
+ * figure for a thing nobody measured. An account that does track water still
+ * gets its real numbers; one that doesn't gets a dash, which is true.
+ */
 function litres(ml: number | null | undefined): string {
-  return ml == null ? DASH : `${(ml / 1000).toFixed(2)} L`;
+  return ml == null || ml <= 0 ? DASH : `${(ml / 1000).toFixed(2)} L`;
 }
+
+const kcal = (v: number) => `${num(v)} kcal`;
 
 function dayLabel(d: NutritionDay | undefined): string {
   const parsed = d?.date ? parseLocal(d.date) : null;
@@ -59,8 +70,7 @@ export function Food() {
   if (!report || report.daysLogged === 0) {
     return (
       <div>
-        <PageTitle>Food</PageTitle>
-        <Lede />
+        <Header />
         <Empty
           title="No food logged in the last 30 days."
           body={
@@ -72,6 +82,7 @@ export function Food() {
               appears here on the next sync.
             </>
           }
+          action={<WeightGlance from="food" />}
         />
       </div>
     );
@@ -84,9 +95,8 @@ export function Food() {
   const goal = newest?.netCalorieGoal ?? null;
 
   return (
-    <div>
-      <PageTitle>Food</PageTitle>
-      <Lede />
+    <div className="screen">
+      <Header />
 
       <MetricRow style={{ marginBottom: 8 }}>
         <Metric
@@ -103,17 +113,21 @@ export function Food() {
           accent={(report.avgBalanceKcal ?? 0) > 0}
         />
       </MetricRow>
-      <p style={{ fontSize: 13, color: "var(--faint)", margin: "0 0 8px", maxWidth: "60ch" }}>
+      <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "0 0 8px", maxWidth: "60ch" }}>
         Averaged over the {report.daysLogged}{" "}
         {report.daysLogged === 1 ? "day" : "days"} with a food log, not over all{" "}
         {days.length}. Balance is eaten minus burned — negative is a deficit.
         {goal != null && ` Your Garmin net calorie goal is ${num(goal)}.`}
       </p>
 
+      {/* The scale is the check on everything above it — a logged deficit only
+          means something if the weight moved. Renders nothing when the account
+          has no weigh-ins. */}
+      <WeightGlance from="food" />
+
       {hasData(consumed) && (
         <>
-          <Rule m="44px 0 20px" />
-          <div className="eyebrow" style={{ marginBottom: 16 }}>
+          <div className="eyebrow" style={{ margin: "64px 0 16px" }}>
             Eaten against burned
           </div>
           {/* Shared scale: the gap between the two lines is the entire point,
@@ -121,20 +135,20 @@ export function Food() {
           <LineChart
             shareScale
             series={[
-              { values: consumed, stroke: "var(--acc)", width: 1.6 },
-              { values: burned, stroke: "var(--mut)", width: 1.2, dashed: true },
+              { values: consumed, stroke: "var(--acc)", width: 1.6, fill: true, name: "Eaten", format: kcal },
+              { values: burned, stroke: "var(--mut)", width: 1.2, dashed: true, name: "Burned", format: kcal },
             ]}
+            labels={chrono.map(dayLabel)}
           />
           <AxisLabels labels={[dayLabel(chrono[0]), dayLabel(chrono[chrono.length - 1])]} />
-          <div style={{ display: "flex", gap: 20, fontSize: 12, color: "var(--faint)", marginTop: 10 }}>
+          <div style={{ display: "flex", gap: 20, fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
             <span style={{ color: "var(--acc)" }}>— Eaten</span>
             <span>‑ ‑ Burned</span>
           </div>
         </>
       )}
 
-      <Rule m="46px 0 20px" />
-      <div className="eyebrow" style={{ marginBottom: 6 }}>
+      <div className="eyebrow" style={{ margin: "66px 0 6px" }}>
         By day
       </div>
       <div>
@@ -146,20 +160,14 @@ export function Food() {
   );
 }
 
-function Lede() {
+function Header() {
   return (
-    <p
-      style={{
-        fontSize: 16,
-        lineHeight: 1.7,
-        color: "var(--mut)",
-        margin: "0 0 44px",
-        maxWidth: "62ch",
-        textWrap: "pretty",
-      }}
-    >
-      Intake against expenditure, matched to what Garmin says you burned.
-    </p>
+    <PageHeader
+      eyebrow={`Last ${DAYS} days`}
+      title="Food"
+      lede="Intake against expenditure, matched to what Garmin says you burned."
+      action={<RefreshButton />}
+    />
   );
 }
 
@@ -169,7 +177,7 @@ function DayRow({ day }: { day: NutritionDay }) {
 
   return (
     <div className="row-static" style={{ justifyContent: "space-between" }}>
-      <span style={{ width: 96, flex: "none", color: day.logged ? undefined : "var(--faint)" }}>
+      <span style={{ width: 106, flex: "none", color: day.logged ? undefined : "var(--faint)" }}>
         {d ? shortDate(d) : day.date}
       </span>
 
@@ -196,7 +204,7 @@ function DayRow({ day }: { day: NutritionDay }) {
         // Burn is still known on unlogged days; showing it makes clear that
         // it's the food log that's missing, not the whole day.
         <>
-          <span style={{ flex: 1, color: "var(--faint)", fontSize: 13 }}>
+          <span style={{ flex: 1, color: "var(--faint)", fontSize: "var(--fs-small)" }}>
             no food logged
           </span>
           <span className="mono" style={{ width: 74, textAlign: "right", color: "var(--faint)" }}>
@@ -208,7 +216,7 @@ function DayRow({ day }: { day: NutritionDay }) {
 
       <span
         className="mono"
-        style={{ width: 78, textAlign: "right", color: "var(--faint)", fontSize: 13 }}
+        style={{ width: 78, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}
         title={day.sweatLossMl != null ? `${num(day.sweatLossMl)} ml sweat loss` : undefined}
       >
         {litres(day.hydrationMl)}

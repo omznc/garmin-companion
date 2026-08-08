@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { gearList, type GearRow } from "../lib/api";
-import { Empty, ErrorNote, Loading, PageTitle } from "../components/ui";
+import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import { km, num } from "../lib/format";
 
 export function Gear() {
@@ -15,7 +16,7 @@ export function Gear() {
   if (error) {
     return (
       <>
-        <PageTitle style={{ marginBottom: 46 }}>Gear</PageTitle>
+        <Header />
         <ErrorNote error={error} />
       </>
     );
@@ -24,8 +25,8 @@ export function Gear() {
   const rows = data ?? [];
 
   return (
-    <div>
-      <PageTitle style={{ marginBottom: rows.length ? 46 : 20 }}>Gear</PageTitle>
+    <div className="screen">
+      <Header space={rows.length ? 44 : 20} />
 
       {!rows.length && (
         <Empty
@@ -46,7 +47,7 @@ export function Gear() {
       ))}
 
       {rows.length > 0 && (
-        <p style={{ fontSize: 13.5, color: "var(--faint)", marginTop: 26 }}>
+        <p style={{ fontSize: "var(--fs-base)", color: "var(--faint)", marginTop: 26 }}>
           Distances come from Garmin's own gear totals. The wear bar is against
           the retirement limit you set on each item — items without one show no
           bar rather than a guessed threshold.
@@ -78,20 +79,20 @@ function GearItem({ row }: { row: GearRow }) {
   return (
     <div style={{ padding: "22px 0", borderBottom: "1px solid var(--line2)" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-        <div style={{ flex: 1, fontSize: 16 }}>
+        <div style={{ flex: 1, fontSize: "var(--fs-lg)" }}>
           {gear.displayName ?? gear.customMakeModel ?? "Unnamed"}
-          <span style={{ color: "var(--faint)", fontSize: 12.5, marginLeft: 10 }}>
+          <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
             {gear.gearTypeName ?? ""}
           </span>
         </div>
-        <div className="serif" style={{ fontSize: 22 }}>
+        <div className="serif" style={{ fontSize: 24 }}>
           {distance > 0 ? km(distance, 0) : "—"}
         </div>
         <div
           style={{
-            width: 84,
+            width: 92,
             textAlign: "right",
-            fontSize: 12.5,
+            fontSize: "var(--fs-small)",
             color: accent ? "var(--acc)" : "var(--mut)",
           }}
         >
@@ -106,11 +107,23 @@ function GearItem({ row }: { row: GearRow }) {
         </div>
       )}
       {stats?.totalActivities != null && (
-        <div style={{ fontSize: 12, color: "var(--faint)", marginTop: 10 }}>
+        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
           {num(stats.totalActivities)} activities
           {limit ? ` · limit ${km(limit, 0)}` : ""}
         </div>
       )}
     </div>
+  );
+}
+
+function Header({ space }: { space?: number }) {
+  return (
+    <PageHeader
+      eyebrow="Live from Garmin"
+      title="Gear"
+      lede="Shoes and bikes registered on your account, with the distance logged against each."
+      action={<RefreshButton live />}
+      space={space}
+    />
   );
 }

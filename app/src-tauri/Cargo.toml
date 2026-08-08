@@ -20,8 +20,14 @@ garmin-core = { workspace = true }
 
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# The frontend picks its window chrome from the target OS, and it has to know
+# which one before the first paint. This plugin's `platform()` is a compile-time
+# constant handed to the webview at startup rather than an IPC round-trip, so
+# the chrome never renders once and then flips sides.
+tauri-plugin-os = "2"
 
 anyhow = { workspace = true }
+chrono = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -33,6 +39,18 @@ futures-util = { version = "0.3.33", default-features = false, features = ["std"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+
+# An undecorated macOS window is drawn borderless, which loses the system's
+# rounded corner mask — the app would sit on screen as a hard rectangle. Getting
+# the corners back means clipping them ourselves, which needs the window surface
+# behind them to be transparent, which on macOS needs this feature.
+#
+# The cost is that it rules out Mac App Store distribution. `release.yml` ships
+# signed artifacts through GitHub releases, so nothing here depends on that
+# channel — but a future move to the store would have to give up either the
+# custom chrome or the rounded corners.
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
 
 [dev-dependencies]
 # `test` provides the mock runtime the chat integration test drives `run_turn`

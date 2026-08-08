@@ -13,6 +13,7 @@
 import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ExternalIcon } from "../lib/icons";
 
 /** Cell contents that should be treated as a figure rather than a label. */
 const NUMERIC = /^[\s+\-–]*[\d.,:]+\s*(%|bpm|km|kg|ms|spm|kcal|m|s|h|min|L)?\s*$/i;
@@ -55,9 +56,13 @@ const COMPONENTS: Components = {
   ul: ({ children }) => <ul className="md-ul">{children}</ul>,
   ol: ({ children }) => <ol className="md-ol">{children}</ol>,
 
+  // Every link in an answer opens outside the app, so each one says so. The
+  // mark sits inside the anchor, which keeps it on the same line as the last
+  // word rather than wrapping onto its own.
   a: ({ children, href }) => (
     <a href={href} target="_blank" rel="noreferrer">
       {children}
+      <ExternalIcon size={12} style={{ verticalAlign: -1, marginLeft: 3 }} aria-hidden />
     </a>
   ),
 
@@ -88,7 +93,7 @@ const COMPONENTS: Components = {
         background: "var(--sel)",
         borderRadius: 4,
         overflowX: "auto",
-        fontSize: 13,
+        fontSize: "var(--fs-small)",
         lineHeight: 1.6,
       }}
     >
@@ -119,7 +124,7 @@ const COMPONENTS: Components = {
         style={{
           borderCollapse: "collapse",
           width: "100%",
-          fontSize: 14,
+          fontSize: "var(--fs-base)",
           lineHeight: 1.5,
         }}
       >
@@ -137,7 +142,7 @@ const COMPONENTS: Components = {
         ...style,
         borderBottom: "1px solid var(--line)",
         paddingBottom: 8,
-        font: "400 10.5px/1 'Instrument Sans', sans-serif",
+        font: "400 var(--fs-micro)/1 'Instrument Sans', sans-serif",
         letterSpacing: "0.11em",
         textTransform: "uppercase",
         color: "var(--faint)",

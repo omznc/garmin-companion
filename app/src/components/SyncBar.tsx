@@ -1,0 +1,145 @@
+/**
+ * The narrated sync.
+ *
+ * Lives in the window's top strip, in the empty run between the drag handle
+ * and the window controls, because the sync is started from two places and
+ * outlives the screen you started it on. It says which stage is running, which
+ * date it's fetching, and — where the stage knows its own length — how far
+ * along it is.
+ *
+ * The strip is space the app already reserves and never draws in, so the
+ * readout costs the page nothing: no row is covered and no layout moves when a
+ * sync starts. It takes no pointer events either, so the whole width of it
+ * stays a drag handle for the window.
+ */
+import { useRef, useSyncExternalStore } from "react";
+import {
+  describe,
+  fraction,
+  getSyncState,
+  subscribe,
+  type SyncStep,
+} from "../lib/syncProgress";
+import { CONTROLS_SIDE, CONTROLS_W, STRIP } from "./WindowChrome";
+
+export function useSyncState() {
+  return useSyncExternalStore(subscribe, getSyncState);
+}
+
+export function SyncBar() {
+  const sync = useSyncState();
+
+  // The store clears `step` in the same update as `running`, and `describe(null)`
+  // is a sync's *opening* line — so a readout that kept reading the live step
+  // would flip to "Starting" for the length of its own fade-out. The last step
+  // it showed is held instead, and the strip leaves saying what it last did.
+  const last = useRef<SyncStep | null>(null);
+  if (sync.running) last.current = sync.step;
+  const step = sync.running ? sync.step : last.current;
+
+  const { title, detail } = describe(step);
+  const pct = fraction(step);
+
+  return (
+    <div
+      role="status"
+      // Hidden from the tree while faded out — it is still on the page, and a
+      // screen reader should not find a stale sync report in it.
+      aria-hidden={!sync.running}
+      className="sync-bar"
+      data-running={sync.running}
+      style={{
+        position: "fixed",
+        top: 0,
+        // Clear of the controls, and never so wide that it reaches the drag
+        // strip's grab bar in the middle of a narrow window. On macOS the
+        // controls are at the other end, so this end only needs the inset it
+        // would have had anyway.
+        right: CONTROLS_SIDE === "right" ? CONTROLS_W : 12,
+        maxWidth: "min(42vw, 460px)",
+        height: STRIP,
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        // Over the drag strip and the corner resize handle, under the window
+        // controls — the same order the controls themselves keep.
+        zIndex: 60,
+        // The readout is text, not a control. Handing the events straight
+        // through keeps this part of the strip draggable.
+        pointerEvents: "none",
+      }}
+    >
+      <span className="pulse-dot" style={{ flex: "none" }} />
+
+      <span style={{ fontSize: "var(--fs-small)", flex: "none" }}>{title}</span>
+      {/* The one part that can be any length — a date, an activity name — so
+          it is the one part allowed to shrink and clip. */}
+      <span
+        className="shimmer"
+        style={{
+          fontSize: "var(--fs-small)",
+          // The counts inside the sentence tick over every few hundred ms.
+          // Same-width digits keep the words around them still.
+          fontVariantNumeric: "tabular-nums",
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {detail}
+      </span>
+
+      {/* A rail only where there's a real denominator — a bar that invents its
+          own length is worse than no bar. */}
+      {pct != null ? (
+        <>
+          <span
+            style={{
+              flex: "none",
+              width: 56,
+              height: 2,
+              background: "var(--line)",
+              borderRadius: 2,
+              overflow: "hidden",
+            }}
+          >
+            <span
+              style={{
+                display: "block",
+                height: "100%",
+                width: "100%",
+                background: "var(--acc)",
+                // Scaled rather than resized: a `width` transition relayouts
+                // the strip on every frame of a sync that is already busy.
+                transform: `scaleX(${pct})`,
+                transformOrigin: "left",
+                transition: "transform .3s linear",
+              }}
+            />
+          </span>
+          <span
+            className="mono"
+            style={{
+              fontSize: "var(--fs-caption)",
+              color: "var(--faint)",
+              flex: "none",
+              // Room for "100%" from the first frame, right-aligned. The strip
+              // shrink-wraps its content against the right edge, so a readout
+              // that grew from 2 characters to 4 would drag the whole line —
+              // title, detail and rail — leftwards as the sync finished.
+              width: "4ch",
+              textAlign: "right",
+            }}
+          >
+            {Math.round(pct * 100)}%
+          </span>
+        </>
+      ) : (
+        <span className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>
+          {sync.full ? "Full sync" : "Sync"}
+        </span>
+      )}
+    </div>
+  );
+}

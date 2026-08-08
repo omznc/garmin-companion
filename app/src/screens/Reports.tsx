@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cachedActivitiesSince, cachedDaily } from "../lib/api";
-import { byWeek, dailySeries, easyHardSplit, pick, type Week } from "../lib/derive";
+import {
+  byWeek,
+  dailySeries,
+  easyHardSplit,
+  fuel,
+  hydration,
+  pick,
+  type Fuel,
+  type Hydration,
+  type Week,
+} from "../lib/derive";
 import { mean } from "../lib/chart";
 import {
   AxisLabels,
@@ -10,9 +20,10 @@ import {
   LineChart,
   Loading,
   Metric,
-  Rule,
+  PageHeader,
   Unit,
 } from "../components/ui";
+import { RefreshButton } from "../components/Refresh";
 import { DASH, daysAgo, duration, hoursMinutes, km, num, parseLocal } from "../lib/format";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -32,10 +43,18 @@ export function Reports() {
   const weeks = byWeek(acts.data ?? []);
   if (!weeks.length) {
     return (
-      <Empty
-        title="No weeks to report on."
-        body="The weekly report is built from cached activities. Sync some history and it writes itself."
-      />
+      <div>
+        <PageHeader
+          eyebrow="No weeks yet"
+          title="The Weekly"
+          lede="Monday to Sunday, written up and set against the week before."
+          action={<RefreshButton />}
+        />
+        <Empty
+          title="No weeks to report on."
+          body="The weekly report is built from cached activities. Sync some history and it writes itself."
+        />
+      </div>
     );
   }
 
@@ -47,6 +66,11 @@ export function Reports() {
   const avgSleep = mean(pick(inWeek, "sleepSecs"));
   const avgRhr = mean(pick(inWeek, "restingHr"));
   const split = easyHardSplit(week.activities);
+  // The whole week, not a trailing window — `inWeek` is already the seven days
+  // being reported on, so the fuel figures line up with every other number
+  // on the page.
+  const food = fuel(inWeek, inWeek.length || 1);
+  const water = hydration(inWeek, inWeek.length || 1);
 
   // One bar per day of that specific week, Monday first.
   const perDay = DAY_LABELS.map((_, i) => {
@@ -65,48 +89,34 @@ export function Reports() {
   });
 
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          borderBottom: "1px solid var(--fg)",
-          paddingBottom: 12,
-        }}
-      >
-        <div className="serif" style={{ fontSize: 30 }}>
-          The Weekly
-        </div>
-        <div
-          style={{
-            font: "400 10.5px/1 'Instrument Sans', sans-serif",
-            letterSpacing: "0.13em",
-            textTransform: "uppercase",
-            color: "var(--mut)",
-          }}
-        >
-          No. {weeks.length - offset} · {range(week)}
-        </div>
-      </div>
+    <div className="screen">
+      {/* Which issue you're looking at goes in the header's eyebrow. This used
+          to sit the issue number beside the title over a full-width `--fg`
+          rule — the only hairline in the app drawn at text weight, which read
+          as a masthead on a screen that isn't one. */}
+      <PageHeader
+        eyebrow={`No. ${weeks.length - offset} · ${range(week)}`}
+        title="The Weekly"
+        lede="Monday to Sunday, written up and set against the week before."
+        action={<RefreshButton />}
+      />
 
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "1.35fr 1fr",
           gap: 44,
-          marginTop: 34,
         }}
       >
         <div>
           <div className="serif" style={{ fontSize: 26, lineHeight: 1.3, marginBottom: 14 }}>
             {headline(week, prior, split)}
           </div>
-          <p style={{ fontSize: 15, lineHeight: 1.72, margin: "0 0 14px", textWrap: "pretty" }}>
+          <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.72, margin: "0 0 14px", textWrap: "pretty" }}>
             {body(week, prior)}
           </p>
-          <p style={{ fontSize: 15, lineHeight: 1.72, color: "var(--mut)", margin: 0, textWrap: "pretty" }}>
-            {recoveryBody(avgSleep, avgRhr, split)}
+          <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.72, color: "var(--mut)", margin: 0, textWrap: "pretty" }}>
+            {recoveryBody(avgSleep, avgRhr, split, food, water)}
           </p>
         </div>
 
@@ -145,35 +155,38 @@ export function Reports() {
         </div>
       </div>
 
-      <Rule m="38px 0 20px" />
-      <div className="eyebrow" style={{ marginBottom: 14 }}>
+      <div className="eyebrow" style={{ margin: "58px 0 14px" }}>
         Daily distance
       </div>
-      <LineChart series={[{ values: perDay, width: 1.4 }]} height={80} pad={6} />
+      <LineChart
+        series={[{ values: perDay, width: 1.4, fill: true, format: (v) => `${v.toFixed(1)} km` }]}
+        height={80}
+        pad={6}
+        labels={DAY_LABELS}
+      />
       <AxisLabels labels={DAY_LABELS} />
 
-      <Rule m="40px 0 20px" />
-      <div className="eyebrow" style={{ marginBottom: 14 }}>
+      <div className="eyebrow" style={{ margin: "60px 0 14px" }}>
         Sessions
       </div>
       {week.activities.map((a) => (
         <div key={a.activityId} className="row-static">
           <span style={{ flex: 1 }}>
             {a.name ?? "Untitled"}
-            <span style={{ color: "var(--faint)", fontSize: 12.5, marginLeft: 10 }}>
+            <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
               {(a.typeKey ?? "").replace(/_/g, " ")}
             </span>
           </span>
-          <span className="mono" style={{ width: 80, textAlign: "right", fontSize: 14 }}>
+          <span className="mono" style={{ width: 88, textAlign: "right", fontSize: "var(--fs-base)" }}>
             {a.distanceM ? km(a.distanceM) : DASH}
           </span>
-          <span style={{ width: 70, textAlign: "right", color: "var(--mut)", fontSize: 13 }}>
+          <span style={{ width: 76, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
             {duration(a.durationS)}
           </span>
         </div>
       ))}
 
-      <div style={{ display: "flex", gap: 24, marginTop: 40, fontSize: 13 }}>
+      <div style={{ display: "flex", gap: 24, marginTop: 40, fontSize: "var(--fs-small)" }}>
         <button
           className="quiet"
           style={{ color: "var(--mut)" }}
@@ -245,10 +258,38 @@ function recoveryBody(
   avgSleep: number | null,
   avgRhr: number | null,
   split: ReturnType<typeof easyHardSplit>,
+  food: Fuel,
+  water: Hydration | null,
 ): string {
   const parts: string[] = [];
   if (avgSleep != null) parts.push(`Sleep averaged ${hoursMinutes(avgSleep)}.`);
   if (avgRhr != null) parts.push(`Resting heart rate averaged ${num(avgRhr)} bpm.`);
+
+  // Two logged days can't describe a week, so below that the sentence reports
+  // the coverage instead of an average computed off it.
+  if (food.logged >= 3 && food.avgBalance != null) {
+    const avg = Math.round(food.avgBalance);
+    parts.push(
+      `Food was logged on ${food.logged} of ${food.window} days, averaging ${avg > 0 ? "a surplus of" : "a deficit of"} ${num(Math.abs(avg))} kcal against ${num(Math.round(food.avgBurn ?? 0))} burned.`,
+    );
+  } else if (food.logged > 0) {
+    parts.push(
+      `Food was logged on ${food.logged} of ${food.window} ${food.window === 1 ? "day" : "days"} — too thin to average.`,
+    );
+  } else if (food.avgBurn != null) {
+    parts.push(`No food logged this week, against ${num(Math.round(food.avgBurn))} kcal a day burned.`);
+  }
+
+  // Silent for accounts that don't track it, rather than reporting a week of
+  // zeroes as a week of drinking nothing.
+  if (water) {
+    const litres = `${(water.avgMl / 1000).toFixed(2)} L`;
+    parts.push(
+      water.goalMl != null
+        ? `Water averaged ${litres} a day across ${water.logged} logged ${water.logged === 1 ? "day" : "days"}, against a ${(water.goalMl / 1000).toFixed(2)} L goal.`
+        : `Water averaged ${litres} a day across ${water.logged} logged ${water.logged === 1 ? "day" : "days"}.`,
+    );
+  }
   if (split) {
     parts.push(
       split.hardPct > 30

@@ -11,8 +11,14 @@ import { zonePercentages, zoneTotal } from "../lib/derive";
 
 const LABELS = ["Z1", "Z2", "Z3", "Z4", "Z5"];
 
-/** Z3 up. Each step darker so the ladder is legible inside the accent block. */
-const FILL = [
+/**
+ * Z3 up. Each step darker so the ladder is legible inside the accent block.
+ *
+ * Exported because the route on the activity screen is coloured by the same
+ * ladder. A trace whose red meant something different from the red in this bar
+ * would be two legends for one idea.
+ */
+export const ZONE_FILL = [
   "var(--line)",
   "var(--mut)",
   "color-mix(in srgb, var(--acc) 55%, transparent)",
@@ -31,7 +37,7 @@ export function ZoneBar({
 }) {
   if (zoneTotal(activity) <= 0) {
     return (
-      <div style={{ fontSize: 13, color: "var(--faint)" }}>
+      <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)" }}>
         No heart-rate data recorded — not a session spent entirely in Z1.
       </div>
     );
@@ -47,7 +53,7 @@ export function ZoneBar({
             <div
               key={i}
               title={`${LABELS[i]} · ${p.toFixed(0)}%`}
-              style={{ width: `${p}%`, background: FILL[i] }}
+              style={{ width: `${p}%`, background: ZONE_FILL[i] }}
             />
           ) : null,
         )}
@@ -58,7 +64,7 @@ export function ZoneBar({
             display: "flex",
             gap: 16,
             marginTop: 9,
-            fontSize: 11.5,
+            fontSize: "var(--fs-caption)",
             color: "var(--mut)",
             flexWrap: "wrap",
           }}
@@ -73,7 +79,7 @@ export function ZoneBar({
                     width: 6,
                     height: 6,
                     borderRadius: 1,
-                    background: FILL[i],
+                    background: ZONE_FILL[i],
                     display: "inline-block",
                   }}
                 />
