@@ -6,13 +6,16 @@ spent the session, which is the thing Garmin's own app buries.
 
 Ships with an MCP server over the same data, so Claude Desktop can read it too.
 
+![Today](docs/screenshots/today-dark.png)
+
 ## What it does
 
 Everything is read from a local SQLite cache rather than from Garmin, so the
 screens open instantly and a tool call can't stall on a network hiccup
 mid-conversation. Sync is the only thing that talks to Garmin.
 
-- **Today** — recovery numbers, the last session in full with its zone
+- **Today** — the week against your goals as rings, anything the coach has to
+  say unprompted, recovery numbers, the last session in full with its zone
   breakdown, and hard-effort drift across recent runs
 - **Activities / Activity** — the history, and per-lap splits and charts for
   one session
@@ -20,10 +23,27 @@ mid-conversation. Sync is the only thing that talks to Garmin.
 - **Food** — calories in against out, hydration
 - **Ask** — questions answered by a model you choose, given only the metrics
   the question needs
+- **Strength** — lifting set by set: reps, time working, rest between sets and
+  the work:rest ratio. No load, because the watch doesn't record one
+- **Fitness** — Garmin's own verdict rather than this app's: training status,
+  acute and chronic load, the acute:chronic ratio, the monthly aerobic /
+  anaerobic balance against Garmin's target ranges, race predictions, and the
+  personal records
 - **Insights / Reports** — correlations mined from the cache, each stating its
   sample size, and weekly summaries
 - **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
   and shoe and bike mileage
+
+| A session, read back to you | Where the heart rate actually went | Asked in your own words |
+|---|---|---|
+| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Zones](docs/screenshots/activity-zones-dark.png)](docs/screenshots/activity-zones-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
+
+| Correlations, with their sample size | Recovery over time | Routes out of the GPS traces |
+|---|---|---|
+| [![Insights](docs/screenshots/insights-light.png)](docs/screenshots/insights-light.png) | [![Health](docs/screenshots/health-light.png)](docs/screenshots/health-light.png) | [![Routes](docs/screenshots/routes-dark.png)](docs/screenshots/routes-dark.png) |
+
+Light and dark both, on every screen. The rest of them — and the same shots
+without the backdrop — are in [`docs/screenshots`](docs/screenshots).
 
 ## Where your data goes
 
@@ -119,6 +139,26 @@ Connect an account in Settings, or adopt tokens from an existing
 [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) install in
 one click if you have one.
 
+### The coach
+
+The one part of the app that speaks first. It looks at the week against the
+goals you set in Settings and decides whether anything is worth raising — most
+days nothing is, which is the design rather than a failure. What it does raise
+carries the numbers behind it, and one nudge a day can become a system
+notification.
+
+On Android that notification arrives without the app running. Nothing evaluates
+the rules in the background, so instead the next few days are queued with the
+system in advance, from a plan rebuilt on every launch and after every sync.
+Anything queued beyond the first day says in its own text when it was worked
+out, because by then it is reporting the last thing the cache was told rather
+than something current — and after those days the phone goes quiet until the app
+is opened again. Desktop has no way to queue a notification at all, so there it
+is shown on launch, at most once a day.
+
+The rules are stateless and live in `crates/garmin-core/src/coach.rs`; what a
+nudge has already said, and for how many days, lives in the cache.
+
 There's also a headless sync, useful for a cron job:
 
 ```sh
@@ -129,13 +169,16 @@ cargo run -p garmin-core --bin sync -- 365 --full
 ## The MCP server
 
 `crates/garmin-mcp` exposes the same queries as MCP tools — zone breakdowns,
-drift, cadence, recovery, nutrition, workouts, routes. It shares the client,
-token store and cache with the app, so an answer given in Claude Desktop and
-one given in the app's Ask screen come from identical code.
+drift, cadence, recovery, nutrition, weight, tags, workouts, routes, strength
+sessions, personal records, Garmin's training status, the coach, and the full
+per-session analysis. It shares the client, token store and cache with the app,
+so an answer given in Claude Desktop and one given in the app's Ask screen come
+from identical code.
 
 ```sh
 cargo build --release -p garmin-mcp
 ./target/release/garmin-mcp import   # adopt existing tokens, once
+./target/release/garmin-mcp coach    # what the coach would say today
 ```
 
 `manifest.json` describes it for Claude Desktop.
