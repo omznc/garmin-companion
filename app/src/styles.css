@@ -1816,12 +1816,23 @@ body::-webkit-scrollbar {
   margin: 7px 0 0;
 }
 
+.md-h {
+  line-height: 1.25;
+  margin: 22px 0 10px;
+}
+
 /* The last paragraph in an answer or a table cell shouldn't add trailing space. */
 .md-body > *:last-child,
 .md-body td > p:last-child,
 .md-body th > p:last-child,
 .md-body li > p:last-child {
   margin-bottom: 0;
+}
+
+/* Nor should a leading heading push the block away from whatever introduced
+ * it — release notes tend to open with one, where an answer opens with prose. */
+.md-body > *:first-child {
+  margin-top: 0;
 }
 
 /* --------------------------------------------------------- tool loader --- */

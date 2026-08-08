@@ -1,6 +1,11 @@
 mod chat;
 mod login;
 
+/// The tray, the login item, and the loop that fires the coach's nudge at the
+/// hour it was asked for. Desktop only — the phone has the system do all three.
+#[cfg(desktop)]
+mod background;
+
 /// Public because `main` has to call into it before `run()` — see the module
 /// docs for why that ordering is the whole point.
 #[cfg(target_os = "linux")]
@@ -27,6 +32,14 @@ fn to_msg(e: anyhow::Error) -> String {
 #[derive(Default)]
 pub struct AppState {
     garmin: RwLock<Option<Arc<GarminClient>>>,
+    /// Held for the length of a sync, so that only one runs at a time.
+    ///
+    /// The frontend already refuses to start a second — see `lib/syncProgress`
+    /// — but it is no longer the only thing that starts one: the background loop
+    /// syncs on its own schedule, and the two would otherwise meet in the middle
+    /// of the same tables. The loop takes this without waiting and gives up if
+    /// it can't have it, because a sync it wanted is a sync already happening.
+    syncing: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -143,6 +156,9 @@ async fn sync_now<R: tauri::Runtime>(
 ) -> CmdResult<serde_json::Value> {
     let client = state.client().await?;
     let (days, full) = (days.unwrap_or(30), full.unwrap_or(false));
+    // Waits, where the background loop wouldn't: this one was asked for, and
+    // someone is watching a progress bar for it.
+    let _busy = state.syncing.lock().await;
 
     let handle = tokio::runtime::Handle::current();
     let report = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -346,12 +362,23 @@ fn notification_settings() -> CmdResult<garmin_core::coach::NotifySettings> {
     garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)
 }
 
+/// On desktop this is also the tray switch. Nothing there can deliver a
+/// notification at six in the evening unless the app is still running at six in
+/// the evening, so wanting the nudge is what puts the app in the tray, and
+/// turning the nudge off takes it back out.
 #[tauri::command]
 fn set_notification_settings(
+    app: tauri::AppHandle,
     settings: garmin_core::coach::NotifySettings,
 ) -> CmdResult<garmin_core::coach::NotifySettings> {
     let db = Db::open_default().map_err(to_msg)?;
     settings.save(&db).map_err(to_msg)?;
+
+    #[cfg(desktop)]
+    background::apply(&app, settings.enabled)?;
+    #[cfg(mobile)]
+    let _ = app;
+
     Ok(settings)
 }
 
@@ -367,6 +394,10 @@ struct NudgeSchedule {
     permitted: bool,
     /// False on desktop, where the plugin has no scheduling at all.
     supported: bool,
+    /// Whether the app will still be there at the hour to show it. Always true
+    /// on a phone, where the system holds the plan; on a desktop it means the
+    /// tray, and so is false when this one hasn't got one.
+    resident: bool,
 }
 
 /// The id block the coach's scheduled notifications occupy.
@@ -386,9 +417,10 @@ const NUDGE_NOTIFICATION_IDS: std::ops::Range<i32> = 7100..7116;
 /// each call cancels the previous plan before laying down a new one — so the
 /// text is never older than the last time the app was open.
 ///
-/// Desktop takes the other path. The plugin ignores `schedule` there, and a
-/// desktop app that is running is a desktop app whose Today screen is already
-/// on screen, so it keeps the immediate once-a-day notification instead.
+/// Desktop takes the other path. The plugin ignores `schedule` there, so the
+/// nudge is shown when its hour arrives and the app is the thing awake to notice
+/// — which is what `background` exists to make possible. Called on launch, after
+/// every sync, and once a minute by the background loop.
 #[tauri::command]
 async fn schedule_nudges(app: tauri::AppHandle) -> CmdResult<NudgeSchedule> {
     let now = chrono::Local::now().naive_local();
@@ -396,20 +428,22 @@ async fn schedule_nudges(app: tauri::AppHandle) -> CmdResult<NudgeSchedule> {
     // Read first, and let the connection go before anything can block: what
     // follows may sit on a permission dialog for as long as it takes someone to
     // notice their phone.
-    let planned = {
+    let (settings, planned) = {
         let db = Db::open_default().map_err(to_msg)?;
         let settings = garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)?;
         let report = garmin_core::coach::for_today(&db, now.date()).map_err(to_msg)?;
-        garmin_core::coach::plan_notifications(&report, &settings, now)
+        let planned = garmin_core::coach::plan_notifications(&report, &settings, now);
+        (settings, planned)
     };
 
-    deliver(app, planned).await
+    deliver(app, planned, settings).await
 }
 
 #[cfg(mobile)]
 async fn deliver(
     app: tauri::AppHandle,
     planned: Vec<garmin_core::coach::PlannedNudge>,
+    _settings: garmin_core::coach::NotifySettings,
 ) -> CmdResult<NudgeSchedule> {
     use tauri_plugin_notification::{NotificationExt, Schedule};
 
@@ -425,6 +459,7 @@ async fn deliver(
             planned,
             permitted: true,
             supported: true,
+            resident: true,
         });
     }
 
@@ -438,6 +473,7 @@ async fn deliver(
             planned: Vec::new(),
             permitted: false,
             supported: true,
+            resident: true,
         });
     }
 
@@ -476,6 +512,7 @@ async fn deliver(
         planned: queued,
         permitted: true,
         supported: true,
+        resident: true,
     })
 }
 
@@ -500,18 +537,33 @@ fn local_instant(at: chrono::NaiveDateTime) -> Option<time::OffsetDateTime> {
 /// rest are dropped. The once-a-day claim is a compare-and-set in SQLite rather
 /// than a flag in the frontend, so opening the app twice still produces one
 /// notification a day.
+///
+/// "Now" is not any moment this is called, though — only one at or after the
+/// hour in Settings. That hour used to be ignored here, because the only time a
+/// desktop nudge could be shown was while the app happened to be open and
+/// waiting for six o'clock would have meant showing almost nothing. With the
+/// background loop there is something awake at six o'clock, so the hour means
+/// what it says; and opening the app later in the day still catches up, because
+/// later is also "at or after".
 #[cfg(desktop)]
 async fn deliver(
     app: tauri::AppHandle,
     planned: Vec<garmin_core::coach::PlannedNudge>,
+    settings: garmin_core::coach::NotifySettings,
 ) -> CmdResult<NudgeSchedule> {
+    use chrono::Timelike;
     use tauri_plugin_notification::NotificationExt;
 
     let none = |permitted| NudgeSchedule {
         planned: Vec::new(),
         permitted,
         supported: false,
+        resident: background::resident(),
     };
+
+    if chrono::Local::now().hour() < settings.hour() {
+        return Ok(none(true));
+    }
 
     let Some(nudge) = planned.into_iter().next() else {
         return Ok(none(true));
@@ -550,7 +602,35 @@ async fn deliver(
         planned: vec![nudge],
         permitted: true,
         supported: false,
+        resident: background::resident(),
     })
+}
+
+/* ------------------------------------------------------------ background --- */
+
+/// Whether the app launches itself at login. Always false on a phone, which has
+/// no login item and doesn't need one; the commands exist on both platforms
+/// because the handler list does.
+#[tauri::command]
+fn start_at_login(app: tauri::AppHandle) -> CmdResult<bool> {
+    #[cfg(desktop)]
+    return Ok(background::start_at_login(&app));
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn set_start_at_login(app: tauri::AppHandle, on: bool) -> CmdResult<bool> {
+    #[cfg(desktop)]
+    return background::set_start_at_login(&app, on).map(|()| background::start_at_login(&app));
+    #[cfg(mobile)]
+    {
+        let _ = (app, on);
+        Ok(false)
+    }
 }
 
 /* ---------------------------------------------------------------- themes --- */
@@ -1174,6 +1254,71 @@ fn garmin_login_error() -> CmdResult<Option<String>> {
 
 /* ------------------------------------------------------ android update --- */
 
+/// Where the Android build looks for a new version.
+///
+/// The second hardcoded reference to the repo slug — `plugins.updater.endpoints`
+/// in `tauri.conf.json` is the other, and it is the desktop equivalent of this
+/// line. They are separate because they describe separate artifacts, but they
+/// move together: if the repo is ever renamed, both change or half the installs
+/// stop hearing about releases. RELEASING says so in one place.
+///
+/// `releases/latest/download/…` rather than a pinned URL, because GitHub
+/// redirects it to whichever release is currently published — which is also why
+/// a draft release is invisible to this until someone hits publish.
+const ANDROID_MANIFEST: &str =
+    "https://github.com/omznc/garmin-companion/releases/latest/download/latest-android.json";
+
+/// What `.github/workflows/release.yml` writes beside the APK.
+#[derive(Serialize, serde::Deserialize)]
+pub struct ApkRelease {
+    version: String,
+    url: String,
+    /// Lowercased on the way through, since it's compared against a digest this
+    /// process computes rather than against the string GitHub stored.
+    sha256: String,
+}
+
+/// Read the published Android manifest.
+///
+/// Asked for from Rust rather than from the page, which is the entire reason
+/// this command exists. `releases/latest/download/…` is a redirect to a host
+/// that sends no `Access-Control-Allow-Origin`, so the identical request made
+/// by `fetch` in the webview is refused before its body can be read — not
+/// because the release, the manifest or the network were wrong, but because a
+/// document served from `tauri.localhost` isn't allowed to look at github.com.
+/// It fails the same way for every release, which is what made it look like
+/// there was never a new one. `reqwest` is not a browser and is under no such
+/// rule.
+///
+/// `None` means there is nothing published to read — no release yet, or one
+/// whose Android job hasn't finished uploading. An `Err` means the asking
+/// itself failed. Those are kept apart because the frontend turns the first
+/// into "up to date", and it should only ever say that when it knows.
+#[tauri::command]
+async fn latest_apk() -> CmdResult<Option<ApkRelease>> {
+    let resp = reqwest::Client::new()
+        .get(ANDROID_MANIFEST)
+        .send()
+        .await
+        .map_err(|e| format!("couldn't reach the update server: {e}"))?;
+
+    // A 404 is the ordinary "no manifest attached to the current release", not
+    // a fault worth reporting.
+    if !resp.status().is_success() {
+        return Ok(None);
+    }
+    let Ok(m) = resp.json::<ApkRelease>().await else {
+        return Ok(None);
+    };
+    if m.version.is_empty() || m.url.is_empty() || m.sha256.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(ApkRelease {
+        sha256: m.sha256.to_lowercase(),
+        ..m
+    }))
+}
+
 /// Where a fetched APK ended up, and whether this call is what put it there.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1355,10 +1500,33 @@ fn surface_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
+/// Passed by the login item, and by nothing else. See the `autostart` plugin
+/// below and `background`'s module docs.
+#[cfg(desktop)]
+const BACKGROUND_FLAG: &str = "--background";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Before every other plugin, which is this one's own requirement.
+    //
+    // It earns its place the moment the app can outlive its window: opening it
+    // again from the launcher would otherwise start a second copy, with a second
+    // background loop syncing into the same database, while the first sat in the
+    // tray wondering where everyone went. Instead the second launch hands its
+    // arguments to the first and stops, and the first shows itself — which is
+    // also the way back in on a desktop whose tray never displayed the icon.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            background::show_window(app);
+        }));
+    }
+
+    #[allow(unused_mut)]
+    let mut builder = builder
         .plugin(tauri_plugin_opener::init())
         // Feeds the frontend the target OS, which is what the window chrome
         // branches on — see `lib/platform.ts`.
@@ -1368,11 +1536,62 @@ pub fn run() {
 
     // `process` is what lets the app restart itself once an update is staged;
     // without it the user would have to quit and reopen by hand.
+    //
+    // `autostart` writes the login item behind the switch in Settings. The flag
+    // is how the app knows, on the next login, that it was started by the system
+    // rather than by a person — and so should go straight to the tray instead of
+    // putting a window in front of someone who was opening their laptop to do
+    // something else.
     #[cfg(desktop)]
     {
         builder = builder
             .plugin(tauri_plugin_updater::Builder::new().build())
-            .plugin(tauri_plugin_process::init());
+            .plugin(tauri_plugin_process::init())
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec![BACKGROUND_FLAG]),
+            ))
+            .setup(|app| {
+                use tauri::Manager;
+
+                let handle = app.handle().clone();
+                background::restore(&handle);
+                background::start(&handle);
+
+                if let Some(window) = app.get_webview_window("main") {
+                    // The window is built hidden — see `tauri.conf.json` — so
+                    // that a login-time launch never shows one for a frame.
+                    // Every other launch shows it here, as early as there is
+                    // anything to show.
+                    //
+                    // And so does a login-time launch with no tray icon to have
+                    // gone to, which is not hypothetical: a GNOME desktop with
+                    // no AppIndicator extension has nowhere to put one. A window
+                    // nobody asked for beats a process nobody can find.
+                    let hide =
+                        std::env::args().any(|a| a == BACKGROUND_FLAG) && background::resident();
+                    if !hide {
+                        let _ = window.show();
+                    }
+
+                    // Closing the window is only quitting when there is nowhere
+                    // else for the app to be. When there is a tray icon, it is
+                    // where the app goes.
+                    let handle = handle.clone();
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            if background::resident() {
+                                api.prevent_close();
+                                if let Some(w) = handle.get_webview_window("main") {
+                                    let _ = w.hide();
+                                }
+                            }
+                        }
+                    });
+                }
+
+                Ok(())
+            });
     }
 
     // Android hands an app its private directory at runtime; there is no
@@ -1460,6 +1679,7 @@ pub fn run() {
             chat_followups,
             garmin_login,
             garmin_login_error,
+            latest_apk,
             download_apk,
             strength_sessions,
             strength_session,
@@ -1472,6 +1692,8 @@ pub fn run() {
             schedule_nudges,
             notification_settings,
             set_notification_settings,
+            start_at_login,
+            set_start_at_login,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

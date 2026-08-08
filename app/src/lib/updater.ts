@@ -23,7 +23,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import { askToInstall, canInstallApk, installApk, onInstallFailed } from "./android";
-import { fetchApk, isNewer, latestApk } from "./apk";
+import { fetchApk, isNewer, latestApk, releaseNotes } from "./apk";
 import { IS_MOBILE } from "./platform";
 
 export type UpdateState =
@@ -132,11 +132,16 @@ async function runAndroid(): Promise<void> {
     }
 
     set({ at: "downloading", version: release.version, pct: null });
+    // Started alongside the download rather than after it. It's a small request
+    // to a different host than the APK comes from, nothing about installing
+    // waits on it, and it resolves to undefined rather than throwing — so the
+    // worst it can do to the line below is leave the notes out.
+    const notes = releaseNotes(release.version);
     const apk = await fetchApk(release, (pct) =>
       set({ at: "downloading", version: release.version, pct }),
     );
     staged = apk.path;
-    set({ at: "ready", version: release.version });
+    set({ at: "ready", version: release.version, notes: await notes });
 
     // Downloading is the part worth doing behind someone's back; interrupting
     // them with a system dialog is not, so a fresh download waits in Settings.

@@ -179,9 +179,11 @@ const COMPONENTS: Components = {
   },
 };
 
+// The margins live in CSS rather than inline so that `.md-body`'s edge rules —
+// no space before the first block, none after the last — can reach them.
 function Heading({ children, size }: { children: ReactNode; size: number }) {
   return (
-    <div className="serif" style={{ fontSize: size, lineHeight: 1.25, margin: "22px 0 10px" }}>
+    <div className="serif md-h" style={{ fontSize: size }}>
       {children}
     </div>
   );

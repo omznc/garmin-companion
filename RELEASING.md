@@ -15,13 +15,20 @@ https://github.com/omznc/garmin-companion/releases/latest/download/latest-androi
 
 The first is in `app/src-tauri/tauri.conf.json` under
 `plugins.updater.endpoints`, read by `tauri-plugin-updater`. The second is the
-`MANIFEST` constant in `app/src/lib/apk.ts`, read by the app itself — the
-plugin isn't compiled in on Android, so there is nothing to configure and the
-URL lives next to the code that fetches it.
+`ANDROID_MANIFEST` constant in `app/src-tauri/src/lib.rs`, read by the app
+itself — the plugin isn't compiled in on Android, so there is nothing to
+configure and the URL lives next to the code that fetches it.
 
-Those two lines are the only places the repo slug appears. If it ever moves,
-both change or half the installed copies stop hearing about releases. Getting
-either wrong doesn't break the build — it breaks update checks silently.
+That fetch is in Rust rather than in the webview, and has to stay there: GitHub
+serves release assets from a host that sends no `Access-Control-Allow-Origin`,
+so the same URL fetched from the page is refused by the WebView every time,
+which the app can only read as "no new version". A third slug appears in
+`RELEASE_API` in `app/src/lib/apk.ts` — that one is `api.github.com`, which does
+send the header, and it fetches the release notes rather than the manifest.
+
+Those three lines are the only places the repo slug appears. If it ever moves,
+all of them change or half the installed copies stop hearing about releases.
+Getting one wrong doesn't break the build — it breaks update checks silently.
 
 **The updater key**, which proves a bundle came from you. The app refuses any
 update it can't verify against the public half baked into it.
@@ -121,8 +128,8 @@ It does, and the note that used to be here saying it can't was wrong. What an
 Android app can't do is replace its own package *silently* — that's reserved
 for device owners. It can hand the system a new APK and have the system ask.
 
-So the flow is: `app/src/lib/apk.ts` fetches `latest-android.json`, compares
-versions, and calls the `download_apk` command in Rust, which streams the APK
+So the flow is: `app/src/lib/apk.ts` asks the `latest_apk` command in Rust for
+`latest-android.json`, compares versions, and calls `download_apk`, which streams the APK
 into the app's cache and checks it against the hash in the manifest.
 `ApkInstaller` on the Kotlin side then commits a `PackageInstaller` session, and
 Android draws its own confirmation over the app. One tap. Everything before it

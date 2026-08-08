@@ -12,6 +12,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { apply, getUpdateState, runUpdate, subscribe, type UpdateState } from "../lib/updater";
 import { IS_MOBILE } from "../lib/platform";
 import { SyncIcon, UpdateIcon } from "../lib/icons";
+import { Markdown } from "./Markdown";
 
 export function useUpdateState(): UpdateState {
   return useSyncExternalStore(subscribe, getUpdateState);
@@ -71,19 +72,22 @@ export function UpdateCheck() {
         )}
       </div>
 
+      {/* Release notes are written as Markdown on GitHub, so they're rendered
+          as Markdown here — as prose with headings and bullets, the same way an
+          answer on Ask is, rather than as the asterisks and hyphens someone
+          typed to produce them. */}
       {state.at === "ready" && state.notes && (
         <div
-          className="selectable"
+          className="md-body selectable"
           style={{
             fontSize: "var(--fs-base)",
             lineHeight: 1.65,
             color: "var(--mut)",
             marginTop: 14,
             maxWidth: "58ch",
-            whiteSpace: "pre-wrap",
           }}
         >
-          {state.notes}
+          <Markdown>{state.notes}</Markdown>
         </div>
       )}
     </div>

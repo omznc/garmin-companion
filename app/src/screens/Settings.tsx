@@ -10,6 +10,8 @@ import {
   garminStatus,
   goals,
   setGoals,
+  startAtLogin,
+  setStartAtLogin,
   notificationSettings,
   setNotificationSettings,
   scheduleNudges,
@@ -1790,11 +1792,10 @@ const GOAL_FIELDS = [
 /**
  * When the coach is allowed to interrupt.
  *
- * The panel is mostly an explanation, because the mechanism is surprising and
- * matters: this app has no background execution, so a notification is not
- * decided when it arrives — it is queued days ahead from a plan built the last
- * time the app was open. Everything queued is shown, including how old the
- * wording will be by the time each one fires.
+ * The switch does more on a desktop than it says: there is nothing there to
+ * hold a notification for later, so turning it on is also what keeps the app in
+ * the tray after its window closes, and turning it off is what lets it quit
+ * again. One switch, because they are one decision — see `background.rs`.
  *
  * Mounting reschedules. That is the same work a launch does, it is idempotent,
  * and it means what this screen lists is what the system actually holds rather
@@ -1825,12 +1826,16 @@ function NotificationSettings() {
         on={s.enabled}
         onChange={(enabled) => save.mutate({ ...s, enabled })}
         label="Daily nudge"
-        note="One notification, only on days the coach has something worth saying. Turning this off also clears anything already queued."
+        note={
+          IS_MOBILE
+            ? "One notification, only on days the coach has something to say."
+            : "One notification, only on days the coach has something to say. Keeps the app in the tray when you close the window, so it can arrive."
+        }
       />
 
       <Setting
         label="Time of day"
-        note="Local time. The default is early enough that “go tomorrow” is still a plan rather than a regret."
+        note="Local time."
         control={
           <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <input
@@ -1855,8 +1860,52 @@ function NotificationSettings() {
         }
       />
 
+      {/* Only once there is a tray for it to start into. */}
+      {!IS_MOBILE && s.enabled && plan?.resident && <StartAtLogin />}
+
+      {/* The one case worth a sentence: the switch above says the app stays in
+          the tray, and this desktop hasn't got one to stay in. */}
+      {!IS_MOBILE && s.enabled && plan && !plan.resident && (
+        <div
+          style={{
+            fontSize: "var(--fs-small)",
+            color: "var(--mut)",
+            lineHeight: 1.55,
+            marginTop: 14,
+          }}
+        >
+          This desktop has no tray, so the app still quits with its window — the nudge only arrives
+          while it's open.
+        </div>
+      )}
+
       {plan && <NudgeQueue plan={plan} enabled={s.enabled} />}
     </>
+  );
+}
+
+/**
+ * Desktop only, and only worth offering once the nudge is on: the app is already
+ * staying in the tray by then, and this decides whether it gets there by itself.
+ */
+function StartAtLogin() {
+  const qc = useQueryClient();
+  const current = useQuery({ queryKey: ["startAtLogin"], queryFn: startAtLogin });
+
+  const save = useMutation({
+    mutationFn: setStartAtLogin,
+    onSuccess: (on) => qc.setQueryData(["startAtLogin"], on),
+  });
+
+  if (current.data == null) return null;
+
+  return (
+    <Switch
+      on={current.data}
+      onChange={(on) => save.mutate(on)}
+      label="Start at login"
+      note="Opens into the tray, without a window."
+    />
   );
 }
 
@@ -1887,15 +1936,9 @@ function NudgeQueue({ plan, enabled }: { plan: NudgeSchedule; enabled: boolean }
     );
   }
 
-  if (!plan.supported) {
-    return note(
-      <>
-        On this machine a nudge can only be shown while the app is running — the platform has no way
-        to queue one for later. It arrives on launch, at most once a day. The phone is where a nudge
-        reaches you without the app being open.
-      </>,
-    );
-  }
+  // Desktop has nothing to list: the nudge is decided at its hour by the app
+  // itself rather than handed to the system days ahead.
+  if (!plan.supported) return null;
 
   if (!plan.planned.length) {
     return note(

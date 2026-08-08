@@ -56,6 +56,17 @@ futures-util = { version = "0.3.33", default-features = false, features = ["std"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# The login item behind the "start at login" switch. Writes a LaunchAgent, a
+# registry key or a `.desktop` file depending on the platform — none of which
+# Android has, or needs: the system holds the coach's nudges there.
+tauri-plugin-autostart = "2"
+# One copy at a time. Only matters once the app can outlive its window: a second
+# launch would otherwise be a second background loop syncing into the same file.
+tauri-plugin-single-instance = "2"
+# The tray icon the app lives in once its window is closed, which is the only
+# thing on a desktop that can still be awake at six in the evening. See
+# `background`.
+tauri = { version = "2", features = ["tray-icon"] }
 
 # The notification plugin hands `Schedule::At` a `time::OffsetDateTime`, and
 # everything else in this workspace keeps time in chrono. Mobile only: desktop
@@ -72,6 +83,12 @@ time = "0.3"
 # signed artifacts through GitHub releases, so nothing here depends on that
 # channel — but a future move to the store would have to give up either the
 # custom chrome or the rounded corners.
+# One question, asked once at startup: is anything on this session bus hosting a
+# tray? GNOME isn't, without an extension, and `background` has to know before it
+# hides a window into one. Already in the tree under GTK, so it costs a `use`.
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.18"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri = { version = "2", features = ["macos-private-api"] }
 

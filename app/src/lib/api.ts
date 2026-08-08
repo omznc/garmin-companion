@@ -704,6 +704,12 @@ export interface NudgeSchedule {
   permitted: boolean;
   /** False on desktop, where notifications can only be shown, never queued. */
   supported: boolean;
+  /**
+   * Whether the app will still be running at the hour to show it. Always true
+   * on a phone; on a desktop it means the tray, and is false on one that hasn't
+   * got somewhere to put an icon — GNOME without an extension, mostly.
+   */
+  resident: boolean;
 }
 
 export const notificationSettings = () => invoke<NotifySettings>("notification_settings");
@@ -721,6 +727,14 @@ export const setNotificationSettings = (settings: NotifySettings) =>
  * day, decided in SQLite rather than here.
  */
 export const scheduleNudges = () => invoke<NudgeSchedule>("schedule_nudges");
+
+/**
+ * Whether the app launches itself, into the tray, at login. Always false on a
+ * phone. Answers with what the system says afterwards rather than with what was
+ * asked for.
+ */
+export const startAtLogin = () => invoke<boolean>("start_at_login");
+export const setStartAtLogin = (on: boolean) => invoke<boolean>("set_start_at_login", { on });
 
 /* ------------------------------------------------------------------ live --- */
 

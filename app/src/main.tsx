@@ -7,6 +7,7 @@ import { blockNativeContextMenu } from "./components/ContextMenu";
 import { startAppearance } from "./lib/theme";
 import { startAutoUpdate } from "./lib/updater";
 import { startDayRollover } from "./lib/dayRollover";
+import { startBackgroundRefresh } from "./lib/backgroundRefresh";
 import { startDevReload } from "./lib/devReload";
 import { startBack } from "./lib/back";
 import { applyPlatform } from "./lib/platform";
@@ -47,6 +48,10 @@ startAutoUpdate();
 
 // Same reasoning: one timer for the life of the process, not one per mount.
 startDayRollover(queryClient);
+
+// And one listener: the desktop build syncs on its own while the window sits
+// open, and the screens have no other way to hear about it.
+startBackgroundRefresh(queryClient);
 
 // And one listener, for the same reason. The app draws its own right-click
 // menus; the webview's belongs to a browser.
