@@ -9,7 +9,7 @@
  * page in a real browser window — the credentials never touch this app — and
  * keeps the design's layout, typography and rhythm.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -27,6 +27,7 @@ import {
 } from "../lib/api";
 import { runSync } from "../lib/syncProgress";
 import { IS_MOBILE, STORE } from "../lib/platform";
+import { setEdgeToEdge } from "../lib/android";
 import { ArrowRight, BackLink, ErrorNote } from "../components/ui";
 import { ScrollFade } from "../components/ScrollFade";
 import { useTheme } from "../lib/useTheme";
@@ -34,21 +35,23 @@ import type { Theme } from "../lib/theme";
 
 export function Setup({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(1);
+  const shell = useRef<HTMLDivElement>(null);
 
   return (
     <div
+      ref={shell}
+      className="setup-shell"
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         background: "var(--bg)",
         color: "var(--fg)",
         display: "flex",
         justifyContent: "center",
-        padding: "0 56px",
       }}
     >
       {/* Full width here: setup has no nav to stop short of. */}
-      <ScrollFade left="0" />
-      <div style={{ width: "100%", maxWidth: step === 1 ? 460 : 520, padding: "150px 0 120px" }}>
+      <ScrollFade left="0" track={shell} />
+      <div style={{ width: "100%", maxWidth: step === 1 ? 460 : 520 }}>
         {step === 1 && <StepGarmin onNext={() => setStep(2)} />}
         {step === 2 && <StepModel onBack={() => setStep(1)} onNext={() => setStep(3)} />}
         {step === 3 && <StepPreferences onBack={() => setStep(2)} onDone={onDone} />}
@@ -57,13 +60,7 @@ export function Setup({ onDone }: { onDone: () => void }) {
   );
 }
 
-function StepHeader({
-  step,
-  onBack,
-}: {
-  step: number;
-  onBack?: () => void;
-}) {
+function StepHeader({ step, onBack }: { step: number; onBack?: () => void }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 16, marginBottom: 52 }}>
       {onBack && <BackLink onClick={onBack}>Back</BackLink>}
@@ -100,7 +97,15 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
 
   const login = useMutation({
     mutationFn: garminLogin,
-    onMutate: () => setError(null),
+    onMutate: () => {
+      setError(null);
+      // On a phone this is about to hand the window over to Garmin's own page,
+      // which lays out at y=0 and would otherwise put its header under the
+      // notification bar and behind the camera. White because theirs is. Only
+      // the handing over is said here — the activity watches for the webview
+      // coming back and restores itself. No-op off Android.
+      setEdgeToEdge(false, "#ffffff");
+    },
     onSuccess: async () => {
       await qc.invalidateQueries();
       onNext();
@@ -139,7 +144,7 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
               // replaced by Garmin's website, which without warning looks like
               // a crash rather than a sign-in.
               "This screen will hand over to Garmin's own sign-in page, and come back here once you're done. This app never sees your password — it only keeps the token Garmin issues afterwards."
-              : `You'll sign in on Garmin's own page, in its own window. This app never sees your password — it only keeps the token Garmin issues afterwards, in ${STORE}.`}
+            : `You'll sign in on Garmin's own page, in its own window. This app never sees your password — it only keeps the token Garmin issues afterwards, in ${STORE}.`}
       </p>
 
       {importable && !connected && (
@@ -173,7 +178,9 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
       )}
 
       {progress && (
-        <div style={{ fontSize: "var(--fs-base)", color: "var(--mut)", marginBottom: 24 }}>{progress}</div>
+        <div style={{ fontSize: "var(--fs-base)", color: "var(--mut)", marginBottom: 24 }}>
+          {progress}
+        </div>
       )}
       {error && <ErrorNote error={error} />}
 
@@ -198,7 +205,12 @@ function StepGarmin({ onNext }: { onNext: () => void }) {
           </button>
         )}
         {connected && (
-          <button className="quiet" style={{ fontSize: "var(--fs-small)" }} onClick={() => login.mutate()} disabled={busy}>
+          <button
+            className="quiet"
+            style={{ fontSize: "var(--fs-small)" }}
+            onClick={() => login.mutate()}
+            disabled={busy}
+          >
             Sign in again
           </button>
         )}
@@ -287,9 +299,8 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
         Which model should read your data?
       </h1>
       <p className="lede" style={{ margin: "0 0 32px", maxWidth: "52ch" }}>
-        A local model never sends anything off this machine. A hosted one
-        receives only the metrics a question needs — never your whole history,
-        and never GPS.
+        A local model never sends anything off this machine. A hosted one receives only the metrics
+        a question needs — never your whole history, and never GPS.
       </p>
 
       {providers.map((p) => (
@@ -319,9 +330,13 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
             }}
           >
             {p.name}
-            <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>{p.note}</span>
+            <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
+              {p.note}
+            </span>
           </span>
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>{p.tag}</span>
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>
+            {p.tag}
+          </span>
         </button>
       ))}
 
@@ -341,7 +356,14 @@ function StepModel({ onBack, onNext }: { onBack: () => void; onNext: () => void 
       )}
 
       {picked && (
-        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 26, lineHeight: 1.6 }}>
+        <div
+          style={{
+            fontSize: "var(--fs-caption)",
+            color: "var(--faint)",
+            marginTop: 26,
+            lineHeight: 1.6,
+          }}
+        >
           {picked === "cloud"
             ? "Questions go to a small server this project runs, which forwards them to a model and pays for the answer. It sees the metrics a question needs — heart rates, sleep, weight — and keeps none of them. Settings can move you to your own key or a local model at any point."
             : picked === "openrouter"
@@ -426,7 +448,9 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
         <div key={label} className="row-static" style={{ alignItems: "center" }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: "var(--fs-md)" }}>{label}</div>
-            <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 4 }}>{note}</div>
+            <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 4 }}>
+              {note}
+            </div>
           </div>
           <div
             style={{
@@ -443,10 +467,17 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
       ))}
       {/* These describe what the sync actually does rather than offering
           switches that wouldn't be wired to anything. */}
-      <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 14, maxWidth: "52ch", lineHeight: 1.6 }}>
-        This is what the sync fetches today, not a set of toggles — per-category
-        opt-outs aren't implemented yet, and a switch that did nothing would be
-        worse than saying so.
+      <div
+        style={{
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+          marginTop: 14,
+          maxWidth: "52ch",
+          lineHeight: 1.6,
+        }}
+      >
+        This is what the sync fetches today, not a set of toggles — per-category opt-outs aren't
+        implemented yet, and a switch that did nothing would be worse than saying so.
       </div>
 
       {error && <ErrorNote error={error} />}
@@ -455,7 +486,12 @@ function StepPreferences({ onBack, onDone }: { onBack: () => void; onDone: () =>
           At 20px gutters "Open Companion" and "Skip the first sync" can't share
           a line without the primary action wrapping mid-phrase. */}
       <div className="setup-actions">
-        <button className="cta" style={{ fontSize: 25 }} onClick={() => sync.mutate()} disabled={sync.isPending}>
+        <button
+          className="cta"
+          style={{ fontSize: 25 }}
+          onClick={() => sync.mutate()}
+          disabled={sync.isPending}
+        >
           {sync.isPending ? "Importing your history…" : "Open Companion"}
           <ArrowRight />
         </button>

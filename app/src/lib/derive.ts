@@ -53,10 +53,8 @@ export function dailySeries(rows: DailyMetrics[], days: number): DailyMetrics[] 
   return out;
 }
 
-export const pick = <K extends keyof DailyMetrics>(
-  rows: DailyMetrics[],
-  key: K,
-): Point[] => rows.map((r) => (r[key] as number | null) ?? null);
+export const pick = <K extends keyof DailyMetrics>(rows: DailyMetrics[], key: K): Point[] =>
+  rows.map((r) => (r[key] as number | null) ?? null);
 
 /** The most recent day that actually has a value for `key`. */
 export function latest<K extends keyof DailyMetrics>(
@@ -74,9 +72,7 @@ export function latest<K extends keyof DailyMetrics>(
 
 /** Eaten minus burned for one day. Negative is a deficit, null unless both sides exist. */
 export const balanceKcal = (d: DailyMetrics): number | null =>
-  d.consumedKcal != null && d.totalBurnKcal != null
-    ? d.consumedKcal - d.totalBurnKcal
-    : null;
+  d.consumedKcal != null && d.totalBurnKcal != null ? d.consumedKcal - d.totalBurnKcal : null;
 
 export interface Fuel {
   /** The most recent day carrying a food log, or null if the window has none. */
@@ -172,26 +168,20 @@ export function hydration(rows: DailyMetrics[], days = 7): Hydration | null {
   if (!real.length) return null;
 
   const lastIdx = values.map((v) => v != null).lastIndexOf(true);
-  const goals = window
-    .map((d) => d.hydrationGoalMl)
-    .filter((v): v is number => v != null && v > 0);
+  const goals = window.map((d) => d.hydrationGoalMl).filter((v): v is number => v != null && v > 0);
 
   return {
     logged: real.length,
     window: window.length,
     avgMl: real.reduce((a, b) => a + b, 0) / real.length,
-    latest:
-      lastIdx === -1
-        ? null
-        : { ml: values[lastIdx]!, age: values.length - 1 - lastIdx },
+    latest: lastIdx === -1 ? null : { ml: values[lastIdx]!, age: values.length - 1 - lastIdx },
     goalMl: goals.length ? goals[goals.length - 1] : null,
   };
 }
 
 /* ----------------------------------------------------------------- zones --- */
 
-export const zoneTotal = (a: CachedActivity) =>
-  a.zoneSecs.reduce((x, y) => x + y, 0);
+export const zoneTotal = (a: CachedActivity) => a.zoneSecs.reduce((x, y) => x + y, 0);
 
 export function zonePercentages(a: CachedActivity): [number, number, number, number, number] {
   const total = zoneTotal(a);
@@ -338,10 +328,7 @@ export interface Observation {
  * The "Attention" list. Each entry is a threshold crossed by real numbers, and
  * every one states the comparison it made so the claim can be checked.
  */
-export function attention(
-  daily: DailyMetrics[],
-  activities: CachedActivity[],
-): Observation[] {
+export function attention(daily: DailyMetrics[], activities: CachedActivity[]): Observation[] {
   const out: Observation[] = [];
   const rhr = pick(daily, "restingHr");
   const hrv = pick(daily, "hrvLastNight");
@@ -388,9 +375,7 @@ export function attention(
     });
   }
 
-  const lowCadence = runs.filter(
-    (a) => a.avgCadence != null && a.avgCadence < 155,
-  );
+  const lowCadence = runs.filter((a) => a.avgCadence != null && a.avgCadence < 155);
   if (lowCadence.length >= 3) {
     const avg = mean(lowCadence.map((a) => a.avgCadence));
     out.push({
@@ -480,10 +465,7 @@ const UNIT = {
  * coefficient, and none is emitted below the minimum pair count — a
  * correlation over five points is a coincidence with a decimal place.
  */
-export function insights(
-  daily: DailyMetrics[],
-  activities: CachedActivity[],
-): Insight[] {
+export function insights(daily: DailyMetrics[], activities: CachedActivity[]): Insight[] {
   const out: Insight[] = [];
 
   // Sleep against next-day resting HR. Lagged by one row: last night's sleep

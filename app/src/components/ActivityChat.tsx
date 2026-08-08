@@ -17,12 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
-import {
-  chatConfig,
-  chatSend,
-  saveChatSession,
-  type ChatMessage,
-} from "../lib/api";
+import { chatConfig, chatSend, saveChatSession, type ChatMessage } from "../lib/api";
 import { Markdown } from "./Markdown";
 import { ToolLoader } from "./ToolLoader";
 import { SendIcon } from "../lib/icons";
@@ -124,10 +119,7 @@ export function ActivityChat({
       try {
         await chatSend(id, next, activityId);
         if (answer.trim()) {
-          const done: ChatMessage[] = [
-            ...next,
-            { role: "assistant", content: answer, sources },
-          ];
+          const done: ChatMessage[] = [...next, { role: "assistant", content: answer, sources }];
           setHistory(done);
           // Titled by the session rather than by the question, so the Ask
           // screen's history says which run a conversation was about.
@@ -257,11 +249,20 @@ export function ActivityChat({
               {t.answer != null && (
                 <div
                   className="md-body selectable"
-                  style={{ fontSize: "var(--fs-md)", lineHeight: 1.75, maxWidth: "68ch", textWrap: "pretty" }}
+                  style={{
+                    fontSize: "var(--fs-md)",
+                    lineHeight: 1.75,
+                    maxWidth: "68ch",
+                    textWrap: "pretty",
+                  }}
                 >
                   <Markdown>{t.answer}</Markdown>
                   {t.streaming &&
-                    (t.answer ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
+                    (t.answer ? (
+                      <span className="caret" aria-hidden />
+                    ) : (
+                      <ToolLoader label={status} />
+                    ))}
                 </div>
               )}
             </div>

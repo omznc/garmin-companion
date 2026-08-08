@@ -12,21 +12,8 @@
 import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  routes,
-  type Route,
-  type RouteOuting,
-  type RouteSort,
-} from "../lib/api";
-import {
-  Empty,
-  ErrorNote,
-  Loading,
-  Metric,
-  MetricRow,
-  PageHeader,
-  Rule,
-} from "../components/ui";
+import { routes, type Route, type RouteOuting, type RouteSort } from "../lib/api";
+import { Empty, ErrorNote, Loading, Metric, MetricRow, PageHeader, Rule } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
 import { DASH, duration, isRun, km, longDate, parseLocal, sportLabel } from "../lib/format";
 
@@ -61,9 +48,8 @@ export function Routes() {
           title="No GPS traces cached."
           body={
             <>
-              Routes are matched from the trace on each activity. Nothing in the
-              cache has one yet — run a sync from Settings and any activity
-              Garmin recorded outdoors will be fetched.
+              Routes are matched from the trace on each activity. Nothing in the cache has one yet —
+              run a sync from Settings and any activity Garmin recorded outdoors will be fetched.
             </>
           }
           action={
@@ -91,19 +77,36 @@ export function Routes() {
       </MetricRow>
 
       {repeated.length === 0 && (
-        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
-          Nothing repeats yet — every trace you have starts or finishes
-          somewhere different, or covers a different distance. These are one-off
-          journeys rather than a route you keep coming back to.
+        <p
+          style={{
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.7,
+            color: "var(--mut)",
+            margin: "0 0 8px",
+            maxWidth: "62ch",
+            textWrap: "pretty",
+          }}
+        >
+          Nothing repeats yet — every trace you have starts or finishes somewhere different, or
+          covers a different distance. These are one-off journeys rather than a route you keep
+          coming back to.
         </p>
       )}
 
       {!anyRuns && (
-        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
-          None of these are runs — every trace here is a ride or a walk. A
-          treadmill records no position at all, so those sessions can never
-          appear. An outdoor run would show up here, and would start VO2 max
-          tracking too.
+        <p
+          style={{
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.7,
+            color: "var(--mut)",
+            margin: "0 0 8px",
+            maxWidth: "62ch",
+            textWrap: "pretty",
+          }}
+        >
+          None of these are runs — every trace here is a ride or a walk. A treadmill records no
+          position at all, so those sessions can never appear. An outdoor run would show up here,
+          and would start VO2 max tracking too.
         </p>
       )}
 
@@ -126,10 +129,16 @@ export function Routes() {
       {/* Traces are only loaded for the most-repeated routes, so say so rather
           than leave a run of empty thumbnails unexplained. */}
       {all.slice(0, shown).some((r) => r.outings[0].points.length < 2) && (
-        <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 22, maxWidth: "58ch" }}>
-          Only the first 40 routes in this order carry a drawn trace — loading
-          every one at once is what used to take the window down. Re-sorting
-          re-picks which 40 those are.
+        <p
+          style={{
+            fontSize: "var(--fs-small)",
+            color: "var(--faint)",
+            marginTop: 22,
+            maxWidth: "58ch",
+          }}
+        >
+          Only the first 40 routes in this order carry a drawn trace — loading every one at once is
+          what used to take the window down. Re-sorting re-picks which 40 those are.
         </p>
       )}
     </div>
@@ -147,13 +156,7 @@ const SORTS: { key: RouteSort; label: string }[] = [
  * active order is the only one at full contrast, which is enough to read as
  * selected without a control drawn around it.
  */
-function SortTabs({
-  sort,
-  onChange,
-}: {
-  sort: RouteSort;
-  onChange: (sort: RouteSort) => void;
-}) {
+function SortTabs({ sort, onChange }: { sort: RouteSort; onChange: (sort: RouteSort) => void }) {
   return (
     <div style={{ display: "flex", gap: 18, alignItems: "baseline", marginBottom: 8 }}>
       <span className="eyebrow" style={{ marginRight: 2 }}>
@@ -198,11 +201,26 @@ function Header() {
 function RouteCard({ route: r }: { route: Route }) {
   const first = r.outings[0];
   return (
-    <div style={{ display: "flex", gap: 26, alignItems: "flex-start", padding: "22px 0", borderBottom: "1px solid var(--line2)" }}>
+    <div
+      style={{
+        display: "flex",
+        gap: 26,
+        alignItems: "flex-start",
+        padding: "22px 0",
+        borderBottom: "1px solid var(--line2)",
+      }}
+    >
       <Trace points={first.points} />
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "baseline" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 16,
+            alignItems: "baseline",
+          }}
+        >
           <span style={{ fontSize: "var(--fs-lg)" }}>{first.name ?? "Untitled"}</span>
           <span className="mono" style={{ flex: "none" }}>
             {r.avgDistanceM ? km(r.avgDistanceM) : DASH}
@@ -275,10 +293,7 @@ function Trace({ points: raw }: { points: [number, number][] }) {
   // A 78px thumbnail cannot show 400 points, and drawing them anyway is what
   // made a full page of traces expensive. Every nth point, endpoints kept.
   const step = Math.ceil(raw.length / MAX_TRACE_POINTS);
-  const points =
-    step > 1
-      ? [...raw.filter((_, i) => i % step === 0), raw[raw.length - 1]]
-      : raw;
+  const points = step > 1 ? [...raw.filter((_, i) => i % step === 0), raw[raw.length - 1]] : raw;
 
   const lats = points.map((p) => p[0]);
   const lons = points.map((p) => p[1]);
@@ -296,14 +311,21 @@ function Trace({ points: raw }: { points: [number, number][] }) {
 
   const d = points
     .map((p, i) => {
-      const x = (BOX - spanLon * scale) / 2 + (p[1] - minLon) * Math.cos((midLat * Math.PI) / 180) * scale;
+      const x =
+        (BOX - spanLon * scale) / 2 + (p[1] - minLon) * Math.cos((midLat * Math.PI) / 180) * scale;
       const y = (BOX - spanLat * scale) / 2 + (maxLat - p[0]) * scale;
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
 
   return (
-    <svg width={BOX} height={BOX} viewBox={`0 0 ${BOX} ${BOX}`} style={{ flex: "none" }} aria-hidden="true">
+    <svg
+      width={BOX}
+      height={BOX}
+      viewBox={`0 0 ${BOX} ${BOX}`}
+      style={{ flex: "none" }}
+      aria-hidden="true"
+    >
       <path
         d={d}
         fill="none"

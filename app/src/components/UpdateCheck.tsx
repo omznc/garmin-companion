@@ -1,12 +1,16 @@
 /**
  * The Settings read-out for the updater. All it does is display state and
- * offer the restart — the work itself runs from `lib/updater`, started at
+ * offer the last step — the work itself runs from `lib/updater`, started at
  * launch, so it keeps going when you navigate away from this screen.
+ *
+ * What that last step is differs by platform and this file doesn't decide:
+ * `apply()` restarts a desktop build into a version already installed, and
+ * hands an Android one to the system installer. Only the wording below knows.
  */
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { getUpdateState, runUpdate, subscribe, type UpdateState } from "../lib/updater";
+import { apply, getUpdateState, runUpdate, subscribe, type UpdateState } from "../lib/updater";
+import { IS_MOBILE } from "../lib/platform";
 import { SyncIcon, UpdateIcon } from "../lib/icons";
 
 export function useUpdateState(): UpdateState {
@@ -45,9 +49,18 @@ export function UpdateCheck() {
 
       <div style={{ display: "flex", gap: 22, marginTop: 14, fontSize: "var(--fs-small)" }}>
         {state.at === "ready" && (
-          <button className="underlined action" onClick={() => void relaunch()}>
+          <button className="underlined action" onClick={apply}>
             <UpdateIcon size={13} aria-hidden />
-            Restart now
+            {IS_MOBILE ? "Install now" : "Restart now"}
+          </button>
+        )}
+        {/* Same button, second time round. Granting the permission is a trip to
+            a settings screen with no way to notify us it happened, so coming
+            back and pressing this is the only signal there is. */}
+        {state.at === "blocked" && (
+          <button className="underlined action" onClick={apply}>
+            <UpdateIcon size={13} aria-hidden />
+            Try again
           </button>
         )}
         {(state.at === "current" || state.at === "failed") && (
@@ -90,8 +103,19 @@ function caption(s: UpdateState): string {
         : `downloading ${s.version} — ${Math.round(s.pct * 100)}%`;
     case "ready":
       // States what already happened and what's left, so the button reads as a
-      // shortcut rather than a chore you're being asked to complete.
-      return `${s.version} installed — starts next time you open the app`;
+      // shortcut rather than a chore you're being asked to complete. The two
+      // platforms have got to different places by here and saying so matters:
+      // a desktop build is *already* on the new version and only the running
+      // process is stale, where an Android one has the new version sitting in a
+      // file and needs permission to become it.
+      return IS_MOBILE
+        ? `${s.version} downloaded — Android will ask before replacing this app`
+        : `${s.version} installed — starts next time you open the app`;
+    case "blocked":
+      // Names the setting rather than the permission. "Install unknown apps" is
+      // the string on the screen they were just sent to, and the one they have
+      // to find in a list of every app on the phone.
+      return `${s.version} is ready — turn on "Install unknown apps" for this app, then come back`;
     case "failed":
       return s.message;
   }

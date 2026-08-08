@@ -117,8 +117,7 @@ export function polyline(values: Point[], opts: PolyOpts): string {
   return polylines(values, opts).join(" ");
 }
 
-export const hasData = (values: Point[]) =>
-  values.some((v) => v != null && isFinite(v));
+export const hasData = (values: Point[]) => values.some((v) => v != null && isFinite(v));
 
 /** Centred rolling mean, for the trend line drawn under a noisy series. */
 export function smooth(values: Point[], window = 7): Point[] {

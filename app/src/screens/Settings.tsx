@@ -44,8 +44,10 @@ import { useTheme } from "../lib/useTheme";
 import { useTypeface } from "../lib/useTypeface";
 import { runSync } from "../lib/syncProgress";
 import { IS_MOBILE, STORE } from "../lib/platform";
+import { dynamicTheme } from "../lib/dynamic";
 import {
   BUILT_IN,
+  DYNAMIC,
   PRESETS,
   builtIn,
   customPalette,
@@ -214,7 +216,15 @@ export function Settings() {
 
       {/* ---------------------------------------------------------- garmin */}
       <Section title="Garmin" first>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, fontSize: "var(--fs-md)", lineHeight: 1.6 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 12,
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.6,
+          }}
+        >
           <span
             style={{
               width: 5,
@@ -233,24 +243,46 @@ export function Settings() {
               <span style={{ color: "var(--mut)" }}>
                 {" "}
                 {cache.data.activities.toLocaleString()} activities cached
-                {cache.data.lastSync ? `, last synced ${since(cache.data.lastSync)}` : ", never synced"}.
+                {cache.data.lastSync
+                  ? `, last synced ${since(cache.data.lastSync)}`
+                  : ", never synced"}
+                .
               </span>
             )}
           </span>
         </div>
 
         {cache.data?.path && (
-          <div className="mono selectable" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
+          <div
+            className="mono selectable"
+            style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}
+          >
             {cache.data.path}
           </div>
         )}
 
-        <div style={{ display: "flex", alignItems: "baseline", gap: 26, marginTop: 24, fontSize: "var(--fs-small)" }}>
-          <button className="quiet action" onClick={() => sync.mutate(false)} disabled={sync.isPending}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            gap: 26,
+            marginTop: 24,
+            fontSize: "var(--fs-small)",
+          }}
+        >
+          <button
+            className="quiet action"
+            onClick={() => sync.mutate(false)}
+            disabled={sync.isPending}
+          >
             <SyncIcon size={13} className={sync.isPending ? "spin" : undefined} aria-hidden />
             {sync.isPending ? "Syncing…" : "Sync recent"}
           </button>
-          <button className="quiet action" onClick={() => sync.mutate(true)} disabled={sync.isPending}>
+          <button
+            className="quiet action"
+            onClick={() => sync.mutate(true)}
+            disabled={sync.isPending}
+          >
             <FullSyncIcon size={13} aria-hidden />
             Full re-sync
           </button>
@@ -269,8 +301,8 @@ export function Settings() {
         {syncError && <ErrorNote error={syncError} />}
         {sync.data && (
           <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)", marginTop: 14 }}>
-            {sync.data.activitiesSeen} seen, {sync.data.activitiesWritten} new or
-            updated, {sync.data.daysWritten} days of wellness data.
+            {sync.data.activitiesSeen} seen, {sync.data.activitiesWritten} new or updated,{" "}
+            {sync.data.daysWritten} days of wellness data.
             {sync.data.warnings.length > 0 && (
               <div style={{ color: "var(--faint)", marginTop: 6 }}>
                 {sync.data.warnings.length} warning
@@ -290,8 +322,11 @@ export function Settings() {
       </Section>
 
       {/* ----------------------------------------------------------- usage */}
+      {/* The built-in coach is paid for by this project, so its price is not
+          the user's problem and the section drops the money framing entirely
+          — it counts requests and tokens instead. */}
       <Section
-        title="What it has cost"
+        title={chat.data?.provider === "cloud" ? "What it has used" : "What it has cost"}
         lede="One answer is several requests — the model asks for data, reads it, and often asks again. These are the totals across all of them."
       >
         <UsagePanel />
@@ -302,17 +337,26 @@ export function Settings() {
         <Setting
           label="Theme"
           note={
-            paletteName ? (
+            // Material You is the exception the sentence below can't cover:
+            // it has both appearances, so the mode still picks between them
+            // and is not set aside at all.
+            palette === DYNAMIC ? (
+              "Material You comes in both, so this still chooses which one you get."
+            ) : paletteName ? (
               <>
                 Set aside while {paletteName} is on — a palette is always{" "}
                 {(preset ?? custom)?.appearance}. Choose Default below to hand it back.
               </>
             ) : (
-              "Match system follows whatever your desktop is set to."
+              `Match system follows whatever your ${IS_MOBILE ? "phone" : "desktop"} is set to.`
             )
           }
           control={
-            <ThemeChoice theme={theme} onChange={setTheme} overridden={!!paletteName} />
+            <ThemeChoice
+              theme={theme}
+              onChange={setTheme}
+              overridden={!!paletteName && palette !== DYNAMIC}
+            />
           }
         />
 
@@ -337,15 +381,22 @@ export function Settings() {
 
       {/* ------------------------------------------------------------ data */}
       <Section title="What leaves this machine">
-        <div style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", maxWidth: "62ch", textWrap: "pretty" }}>
+        <div
+          style={{
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.7,
+            color: "var(--mut)",
+            maxWidth: "62ch",
+            textWrap: "pretty",
+          }}
+        >
           <p style={{ margin: "0 0 12px" }}>
-            Garmin requests go straight from this app to Garmin, using tokens in{" "}
-            {STORE} — never through a server of ours.
+            Garmin requests go straight from this app to Garmin, using tokens in {STORE} — never
+            through a server of ours.
           </p>
           <p style={{ margin: 0 }}>
-            Chat sends your question plus whatever a tool returned for it — a
-            handful of summary rows, never the whole database and never GPS
-            traces.{" "}
+            Chat sends your question plus whatever a tool returned for it — a handful of summary
+            rows, never the whole database and never GPS traces.{" "}
             {/* Named rather than generalised. "A server" is the sentence that
                 lets someone assume it isn't ours, and on the default provider
                 it is. */}
@@ -359,38 +410,37 @@ export function Settings() {
       </Section>
 
       {/* --------------------------------------------------------- version */}
-      {/* Nothing to offer on Android: the app can't replace its own package, so
-          the updater isn't compiled in and this section would be a button that
-          reports a failure every time it's pressed. Updates arrive as a new APK
-          from the release page instead. */}
-      {!IS_MOBILE && (
-        <Section title="Version">
-          <UpdateCheck />
-        </Section>
-      )}
+      {/* Every platform, including Android — which used to be excluded on the
+          belief that an app can't replace its own package. It can; it just
+          can't do it quietly. See `lib/updater.ts` for what differs. */}
+      <Section title="Version">
+        <UpdateCheck />
+      </Section>
 
       {/* ----------------------------------------------------------- about */}
       <Section title="About">
         <div
           className="selectable"
-          style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", maxWidth: "62ch", textWrap: "pretty" }}
+          style={{
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.7,
+            color: "var(--mut)",
+            maxWidth: "62ch",
+            textWrap: "pretty",
+          }}
         >
           <p style={{ margin: "0 0 12px" }}>
-            I took up running in July 2026 and got it wrong on the first attempt
-            — nearly two thirds of that run sat in my top heart-rate zone, and I
-            only found that out days later, several taps deep into Garmin
-            Connect. The data was all there. The one number I actually needed
-            wasn't anywhere I would have looked.
+            I was always really into data, and Garmin is a data powerhouse. I used to export it and
+            then look at it in excel, nowadays I just point the claude to it, but I wanted something
+            easier for non-technical people.
           </p>
           <p style={{ margin: "0 0 12px" }}>
-            So I built the thing I wanted instead: my whole history pulled onto
-            my own machine, the zone breakdown on the first screen rather than
-            behind a ring, and a model that can read the rest when I have a
-            question the charts don't answer. No account, no server in the
-            middle, nothing selling my resting heart rate back to me.
+            This is it, you're looking at it. A cross-platform app where you just log in and that's
+            it, full free access to AI analysis of your Garmin data. Want more privacy? Use a local
+            model. It's all open source, and fully up to you,
           </p>
           <p style={{ margin: 0 }}>
-            — Omar Žunić, <Link href="https://omarzunic.com">omarzunic.com</Link>
+            — <Link href="https://omarzunic.com">Omar Žunić</Link>
           </p>
         </div>
       </Section>
@@ -510,8 +560,15 @@ function PaletteChoice({
     onSuccess: () => refreshCustomThemes(),
   });
 
+  // Null on a desktop, and on an Android older than 12 — there is no wallpaper
+  // palette to read, so there is no row to offer. Built for the mode rather
+  // than for a fixed appearance: the swatch has to preview what picking it
+  // would actually give you, and that depends on which half of the wallpaper's
+  // colours the mode is currently asking for.
+  const dynamicSwatch = dynamicTheme(builtIn(theme));
+
   /**
-   * Default, the shipped palettes, then yours.
+   * Default, Material You where there is one, the shipped palettes, then yours.
    *
    * Yours last because they're additions to a list that already existed, and
    * because the cut below can't hide the one that matters: a theme is selected
@@ -534,6 +591,24 @@ function PaletteChoice({
       swatch: BUILT_IN[builtIn(theme)],
       appearance: builtIn(theme),
     },
+    // Second, and above the cut, on the phones that have it. It is the default
+    // there, so the row it is a row of has to be the one you can find without
+    // expanding a list — this is the way back to the palette the app was
+    // designed in, and it should not be the thing you have to go looking for.
+    //
+    // Mode-aware like Default and unlike everything after it: the swatch and
+    // the appearance both follow the mode, because the wallpaper gives both.
+    ...(dynamicSwatch
+      ? [
+          {
+            id: DYNAMIC,
+            name: "Material You",
+            note: "From your wallpaper",
+            swatch: dynamicSwatch,
+            appearance: builtIn(theme),
+          },
+        ]
+      : []),
     ...PRESETS.map((p) => ({
       id: p.id,
       name: p.name,
@@ -600,9 +675,7 @@ function PaletteChoice({
                 transform: "translateY(-3px)",
               }}
             />
-            <span
-              style={{ flex: 1, minWidth: 0, color: on ? "var(--fg)" : "var(--mut)" }}
-            >
+            <span style={{ flex: 1, minWidth: 0, color: on ? "var(--fg)" : "var(--mut)" }}>
               {r.name}
               {r.note && (
                 <span
@@ -675,9 +748,8 @@ function ThemeMaker({
   return (
     <div style={{ marginTop: 30 }}>
       <p className="lede" style={{ maxWidth: "62ch", margin: "0 0 16px" }}>
-        Describe one in <RouterLink to="/ask">Ask</RouterLink> — "a dark theme
-        like a forest at dusk" — and it will mix the colours, save it here and
-        put it on. Or set the seven yourself.
+        Describe one in <RouterLink to="/ask">Ask</RouterLink> — "a dark theme like a forest at
+        dusk" — and it will mix the colours, save it here and put it on. Or set the seven yourself.
         {hasCustoms && " Right-click one of yours above to edit or delete it."}
       </p>
 
@@ -901,15 +973,7 @@ function tokenCount(n: number): string {
 }
 
 /** One number, big, with its name above it and its caveat below. */
-function Figure({
-  label,
-  value,
-  note,
-}: {
-  label: string;
-  value: string;
-  note?: string;
-}) {
+function Figure({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div style={{ minWidth: 96 }}>
       <div style={{ fontSize: "var(--fs-caption)", color: "var(--mut)", marginBottom: 6 }}>
@@ -942,6 +1006,10 @@ const usd = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
  * counted per provider so a dollar on your own OpenRouter key can't be read
  * back as a dollar on the built-in coach — but that split would hide the dollar
  * entirely if the panel only ever showed the current one.
+ *
+ * The built-in coach is billed to this project rather than to whoever is
+ * reading, so it reports requests here the way Ollama does — the money it cost
+ * is real, but it isn't theirs to see.
  */
 function OtherTotals({ items }: { items: AiUsage[] }) {
   if (items.length === 0) return null;
@@ -956,14 +1024,15 @@ function OtherTotals({ items }: { items: AiUsage[] }) {
     >
       Counted separately, from providers you aren't using now:{" "}
       {items
-        .map(
-          (o) =>
-            `${PROVIDER_NAME[o.provider]} ${
-              o.costUsd > 0
-                ? usd(o.costUsd)
-                : `${o.requests.toLocaleString()} request${o.requests === 1 ? "" : "s"}, nothing billed`
-            }`,
-        )
+        .map((o) => {
+          if (o.provider !== "cloud" && o.costUsd > 0) {
+            return `${PROVIDER_NAME[o.provider]} ${usd(o.costUsd)}`;
+          }
+          const n = `${o.requests.toLocaleString()} request${o.requests === 1 ? "" : "s"}`;
+          return `${PROVIDER_NAME[o.provider]} ${
+            o.provider === "cloud" ? n : `${n}, nothing billed`
+          }`;
+        })
         .join(" · ")}
       . Switch to one to see or reset its totals.
     </div>
@@ -1000,7 +1069,9 @@ function UsagePanel() {
     return (
       <div style={{ fontSize: "var(--fs-small)", color: "var(--faint)" }}>
         {u
-          ? `Nothing spent yet on ${PROVIDER_NAME[u.provider]}.`
+          ? u.provider === "cloud"
+            ? `Nothing asked yet of the ${PROVIDER_NAME[u.provider].toLowerCase()}.`
+            : `Nothing spent yet on ${PROVIDER_NAME[u.provider]}.`
           : "Nothing spent yet."}{" "}
         Ask a question and the totals start here.
         <OtherTotals items={others} />
@@ -1010,38 +1081,27 @@ function UsagePanel() {
 
   // A hosted provider reports a price; Ollama reports nothing because there
   // isn't one. Zero is therefore ambiguous, and saying so beats printing $0.00.
-  const priced = u.costUsd > 0;
-  const cachedPct = u.promptTokens
-    ? Math.round((u.cachedTokens / u.promptTokens) * 100)
-    : 0;
+  // The built-in coach does report one, but it's this project's bill, not the
+  // reader's, so the figure is left out rather than shown as somebody else's
+  // money — the requests and tokens beside it still say how much was used.
+  const priced = u.provider !== "cloud" && u.costUsd > 0;
+  const cachedPct = u.promptTokens ? Math.round((u.cachedTokens / u.promptTokens) * 100) : 0;
 
   return (
     <div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "28px 48px" }}>
-        <Figure
-          label="Cost"
-          value={priced ? usd(u.costUsd) : "—"}
-          note={
-            !priced
-              ? "nothing billed"
-              : u.provider === "cloud"
-                ? "paid by this project, not by you"
-                : "as OpenRouter billed it"
-          }
-        />
-        <Figure
-          label="Requests"
-          value={u.requests.toLocaleString()}
-          note="one answer is several"
-        />
+        {u.provider !== "cloud" && (
+          <Figure
+            label="Cost"
+            value={priced ? usd(u.costUsd) : "—"}
+            note={priced ? "as OpenRouter billed it" : "nothing billed"}
+          />
+        )}
+        <Figure label="Requests" value={u.requests.toLocaleString()} note="one answer is several" />
         <Figure
           label="Sent"
           value={tokenCount(u.promptTokens)}
-          note={
-            u.cachedTokens > 0
-              ? `${cachedPct}% read from cache`
-              : "none cached"
-          }
+          note={u.cachedTokens > 0 ? `${cachedPct}% read from cache` : "none cached"}
         />
         <Figure label="Received" value={tokenCount(u.completionTokens)} />
       </div>
@@ -1240,7 +1300,9 @@ function ModelSettings({
               {p.note}
             </span>
           </span>
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>{p.tag}</span>
+          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>
+            {p.tag}
+          </span>
         </button>
       ))}
 
@@ -1358,16 +1420,15 @@ function ModelSettings({
               maxWidth: "60ch",
             }}
           >
-            Questions go to a small server this project runs, which forwards them
-            to our own model and pays for the answer. It sees whatever a question needs — heart
-            rates, sleep, weight — and keeps none of it. Raw GPS is never sent by
-            any provider.
+            Questions go to a small server this project runs, which forwards them to our own model
+            and pays for the answer. It sees whatever a question needs — heart rates, sleep, weight
+            — and keeps none of it. Raw GPS is never sent by any provider.
             <br />
             <br />
-            It is shared, so it has daily limits, and a heavy day can run into
-                      them. Your own OpenRouter key or a local Ollama has no such ceiling.
-                      <br />
-                      It's free, so yeah.
+            It is shared, so it has daily limits, and a heavy day can run into them. Your own
+            OpenRouter key or a local Ollama has no such ceiling.
+            <br />
+            It's free, so yeah.
           </div>
 
           {/* Stated, not offered. The id is what the daily limit is counted
@@ -1375,10 +1436,9 @@ function ModelSettings({
               limit — the disclosure is worth keeping, the reset isn't. */}
           <Sub top={34}>This install</Sub>
           <div className="row-static" style={{ color: "var(--mut)" }}>
-            A random id the coach hands this install the first time you ask it
-            something, held in your keychain so it can count requests against a
-            shared budget. It isn't tied to your Garmin account or anything
-            else.
+            A random id the coach hands this install the first time you ask it something, held in
+            your keychain so it can count requests against a shared budget. It isn't tied to your
+            Garmin account or anything else.
           </div>
         </>
       )}
@@ -1398,7 +1458,9 @@ function ModelSettings({
                 {m}
               </span>
               {current?.model === m && (
-                <span style={{ fontSize: "var(--fs-caption)", color: "var(--acc)", flex: "none" }}>In use</span>
+                <span style={{ fontSize: "var(--fs-caption)", color: "var(--acc)", flex: "none" }}>
+                  In use
+                </span>
               )}
             </button>
           ))}
@@ -1530,10 +1592,23 @@ function ModelPicker({
           )}
 
           {hits.slice(0, SHOWN).map((m) => (
-            <Row key={m.id} model={m} selected={m.id === selected} onPick={onPick} saving={saving} />
+            <Row
+              key={m.id}
+              model={m}
+              selected={m.id === selected}
+              onPick={onPick}
+              saving={saving}
+            />
           ))}
 
-          <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 12, lineHeight: 1.6 }}>
+          <div
+            style={{
+              fontSize: "var(--fs-caption)",
+              color: "var(--faint)",
+              marginTop: 12,
+              lineHeight: 1.6,
+            }}
+          >
             {hits.length === 0
               ? "Nothing matches that."
               : hits.length > SHOWN
@@ -1573,7 +1648,9 @@ function Row({
         <span style={{ display: "block", color: selected ? "var(--fg)" : "var(--mut)" }}>
           {model.name}
           {model.id === DEFAULT_MODEL && (
-            <span style={{ color: "var(--faint)", fontSize: "var(--fs-caption)", marginLeft: 10 }}>Default</span>
+            <span style={{ color: "var(--faint)", fontSize: "var(--fs-caption)", marginLeft: 10 }}>
+              Default
+            </span>
           )}
         </span>
         <span
@@ -1593,19 +1670,34 @@ function Row({
       </span>
       {/* Schema support isn't required, so it's a note rather than a gate. */}
       {model.structured && (
-        <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }} title="Takes a JSON schema">
+        <span
+          style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}
+          title="Takes a JSON schema"
+        >
           schema
         </span>
       )}
       <span
         className="mono"
-        style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none", width: 72, textAlign: "right" }}
+        style={{
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+          flex: "none",
+          width: 72,
+          textAlign: "right",
+        }}
       >
         {tokens(model.context)}
       </span>
       <span
         className="mono"
-        style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none", width: 106, textAlign: "right" }}
+        style={{
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+          flex: "none",
+          width: 106,
+          textAlign: "right",
+        }}
       >
         {price(model)}
       </span>

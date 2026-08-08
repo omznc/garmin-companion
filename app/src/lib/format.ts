@@ -26,10 +26,7 @@ export function hoursMinutes(secs: number | null | undefined): string {
 }
 
 /** Minutes-per-km, the unit every run in this account is read in. */
-export function pace(
-  metres: number | null | undefined,
-  secs: number | null | undefined,
-): string {
+export function pace(metres: number | null | undefined, secs: number | null | undefined): string {
   if (!metres || !secs || metres < 50) return DASH;
   const minPerKm = secs / 60 / (metres / 1000);
   if (!isFinite(minPerKm) || minPerKm > 60) return DASH;
@@ -39,24 +36,19 @@ export function pace(
 }
 
 /** Cycling and other sports read better as speed than as pace. */
-export function speed(
-  metres: number | null | undefined,
-  secs: number | null | undefined,
-): string {
+export function speed(metres: number | null | undefined, secs: number | null | undefined): string {
   if (!metres || !secs) return DASH;
   return `${(metres / 1000 / (secs / 3600)).toFixed(1)} km/h`;
 }
 
-export function num(
-  v: number | null | undefined,
-  digits = 0,
-  suffix = "",
-): string {
+export function num(v: number | null | undefined, digits = 0, suffix = ""): string {
   if (v == null || Number.isNaN(v)) return DASH;
-  return v.toLocaleString("en-GB", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }) + suffix;
+  return (
+    v.toLocaleString("en-GB", {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }) + suffix
+  );
 }
 
 export function bpm(v: number | null | undefined): string {
@@ -76,25 +68,29 @@ export const isRun = (typeKey: string | null | undefined) =>
 /* -------------------------------------------------------------- calendar --- */
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
-const DAYS = [
-  "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
-];
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /** Parses `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS` as *local* time.
  *  `new Date("2026-08-07")` would parse as UTC and shift the date backwards
  *  for anyone west of Greenwich. */
 export function parseLocal(s: string | null | undefined): Date | null {
   if (!s) return null;
-  const m = s.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/,
-  );
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
   if (!m) return null;
-  return new Date(
-    +m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0),
-  );
+  return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0));
 }
 
 /** "Friday, 7 August" */
@@ -153,9 +149,7 @@ export function since(iso: string | null | undefined, now = new Date()): string 
 
   // Calendar days, not 24-hour blocks: a sync at 23:00 last night is
   // "yesterday" at 08:00, however few hours have actually passed.
-  const days = Math.round(
-    (startOfDay(now).getTime() - startOfDay(then).getTime()) / 86_400_000,
-  );
+  const days = Math.round((startOfDay(now).getTime() - startOfDay(then).getTime()) / 86_400_000);
   if (days <= 1) return "yesterday";
   if (days < 14) return `${days} days ago`;
   return `on ${shortDate(then)}${then.getFullYear() === now.getFullYear() ? "" : ` ${then.getFullYear()}`}`;
@@ -164,4 +158,3 @@ export function since(iso: string | null | undefined, now = new Date()): string 
 const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"} ago`;
 
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-

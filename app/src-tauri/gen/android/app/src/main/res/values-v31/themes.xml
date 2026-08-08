@@ -1,0 +1,25 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      The frame before the webview has painted anything.
+
+      Not the status or navigation bar: `MainActivity` calls enableEdgeToEdge(),
+      so those are transparent and the page itself shows through them — which is
+      what the scroll fade at the top of the app is drawn against, and tinting
+      them here would put an opaque band back over it.
+
+      What is left is the window's own background, which the system paints for
+      the moment between the activity starting and the first frame of the app.
+      Left alone that is Material's flat white, so a launch into the app's dark
+      palette is a white flash. Android 12 and up can do better: the same
+      wallpaper-derived neutral the app is about to paint itself in.
+
+      Approximate on purpose. It follows the *system's* light/dark setting, not
+      the app's, because that is all a resource qualifier can see — someone
+      running the app light on a dark phone still gets one dark frame. Matching
+      exactly would mean reading the app's own stored appearance from native
+      code before the webview exists, which is a lot of machinery for one frame.
+    -->
+    <style name="Theme.app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/system_neutral1_10</item>
+    </style>
+</resources>

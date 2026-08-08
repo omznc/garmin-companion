@@ -155,9 +155,7 @@ const COMPONENTS: Components = {
     </th>
   ),
 
-  tr: ({ children }) => (
-    <tr style={{ borderBottom: "1px solid var(--line2)" }}>{children}</tr>
-  ),
+  tr: ({ children }) => <tr style={{ borderBottom: "1px solid var(--line2)" }}>{children}</tr>,
 
   td: ({ children, style }) => {
     const numeric = isNumeric(children);
@@ -169,8 +167,8 @@ const COMPONENTS: Components = {
           ...style,
           // An explicit GFM alignment wins; otherwise figures go right so the
           // column reads as a column.
-          textAlign: (style?.textAlign as "left" | "right" | "center") ??
-            (numeric ? "right" : "left"),
+          textAlign:
+            (style?.textAlign as "left" | "right" | "center") ?? (numeric ? "right" : "left"),
           paddingRight: numeric ? 0 : cellBase.padding,
           whiteSpace: numeric ? "nowrap" : undefined,
         }}
@@ -183,10 +181,7 @@ const COMPONENTS: Components = {
 
 function Heading({ children, size }: { children: ReactNode; size: number }) {
   return (
-    <div
-      className="serif"
-      style={{ fontSize: size, lineHeight: 1.25, margin: "22px 0 10px" }}
-    >
+    <div className="serif" style={{ fontSize: size, lineHeight: 1.25, margin: "22px 0 10px" }}>
       {children}
     </div>
   );

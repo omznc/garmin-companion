@@ -3,14 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { cachedDaily, type DailyMetrics } from "../lib/api";
 import { dailySeries, hydrationMl, pick, sweatLossMl } from "../lib/derive";
 import { hasData, mean, smooth, type Point } from "../lib/chart";
-import {
-  AxisLabels,
-  Empty,
-  ErrorNote,
-  LineChart,
-  Loading,
-  PageHeader,
-} from "../components/ui";
+import { AxisLabels, Empty, ErrorNote, LineChart, Loading, PageHeader } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
 import { DASH, hoursMinutes, num, parseLocal, shortDate } from "../lib/format";
 
@@ -28,8 +21,7 @@ const RANGES = [
  * a month-long window whole and barely moved across a year, so it scales with
  * the range instead.
  */
-const trendWindow = (days: number) =>
-  days >= 180 ? 21 : days >= 90 ? 7 : days >= 30 ? 5 : 3;
+const trendWindow = (days: number) => (days >= 180 ? 21 : days >= 90 ? 7 : days >= 30 ? 5 : 3);
 
 interface Track {
   key: keyof DailyMetrics;
@@ -53,11 +45,41 @@ const read = (t: Track, rows: DailyMetrics[]): Point[] =>
 
 const TRACKS: Track[] = [
   { key: "sleepSecs", label: "Sleep", format: hoursMinutes, stroke: "var(--acc)", upIsGood: true },
-  { key: "bodyBatteryHigh", label: "Body battery", format: (v) => num(v), stroke: "var(--fg)", upIsGood: true },
-  { key: "restingHr", label: "Resting HR", format: (v) => `${num(v)} bpm`, stroke: "var(--acc)", upIsGood: false },
-  { key: "hrvLastNight", label: "HRV", format: (v) => `${num(v)} ms`, stroke: "var(--fg)", upIsGood: true },
-  { key: "trainingReadiness", label: "Readiness", format: (v) => num(v), stroke: "var(--mut)", upIsGood: true },
-  { key: "stressAvg", label: "Stress", format: (v) => num(v), stroke: "var(--mut)", upIsGood: false },
+  {
+    key: "bodyBatteryHigh",
+    label: "Body battery",
+    format: (v) => num(v),
+    stroke: "var(--fg)",
+    upIsGood: true,
+  },
+  {
+    key: "restingHr",
+    label: "Resting HR",
+    format: (v) => `${num(v)} bpm`,
+    stroke: "var(--acc)",
+    upIsGood: false,
+  },
+  {
+    key: "hrvLastNight",
+    label: "HRV",
+    format: (v) => `${num(v)} ms`,
+    stroke: "var(--fg)",
+    upIsGood: true,
+  },
+  {
+    key: "trainingReadiness",
+    label: "Readiness",
+    format: (v) => num(v),
+    stroke: "var(--mut)",
+    upIsGood: true,
+  },
+  {
+    key: "stressAvg",
+    label: "Stress",
+    format: (v) => num(v),
+    stroke: "var(--mut)",
+    upIsGood: false,
+  },
   { key: "steps", label: "Steps", format: (v) => num(v), stroke: "var(--mut)", upIsGood: true },
   // Only renders for accounts that actually log it — `hasData` sees an all-zero
   // column as empty once the accessor has stripped the zeros, so the track
@@ -148,13 +170,7 @@ export function Health() {
   );
 }
 
-function RangePicker({
-  days,
-  onPick,
-}: {
-  days: number;
-  onPick: (days: number) => void;
-}) {
+function RangePicker({ days, onPick }: { days: number; onPick: (days: number) => void }) {
   return (
     <div
       style={{
@@ -185,15 +201,7 @@ function RangePicker({
   );
 }
 
-function TrackChart({
-  track,
-  rows,
-  days,
-}: {
-  track: Track;
-  rows: DailyMetrics[];
-  days: number;
-}) {
+function TrackChart({ track, rows, days }: { track: Track; rows: DailyMetrics[]; days: number }) {
   const values = read(track, rows);
   // Real readings only, which for a track with an accessor is not the same as
   // the populated rows — and blanks must never average in as zero.
@@ -224,7 +232,14 @@ function TrackChart({
           </div>
           {/* The average is over the days that carry a reading, not over the
               window — say which, and keep the latest figure reachable. */}
-          <div style={{ fontSize: "var(--fs-caption)", lineHeight: 1.4, color: "var(--faint)", marginTop: 7 }}>
+          <div
+            style={{
+              fontSize: "var(--fs-caption)",
+              lineHeight: 1.4,
+              color: "var(--faint)",
+              marginTop: 7,
+            }}
+          >
             {real.length > 1
               ? `avg of ${real.length} days · latest ${track.format(latest!)}`
               : real.length === 1
@@ -262,14 +277,16 @@ function TrackChart({
               // The smoothed line shares the raw series' scale so the two are
               // readable against each other.
               ...(trend
-                ? [{
-                    values: trend,
-                    stroke: "var(--faint)",
-                    width: 1,
-                    dashed: true,
-                    name: "Trend",
-                    format: track.format,
-                  }]
+                ? [
+                    {
+                      values: trend,
+                      stroke: "var(--faint)",
+                      width: 1,
+                      dashed: true,
+                      name: "Trend",
+                      format: track.format,
+                    },
+                  ]
                 : []),
             ]}
             height={76}
@@ -313,7 +330,20 @@ function sentence(track: Track, values: Point[]): string {
   return `${rising ? "Up" : "Down"} ${Math.abs(change).toFixed(0)}% on the earlier part of this window (${track.format(recent)} against ${track.format(earlier)}) — ${good ? "the direction you want" : "worth keeping an eye on"}.`;
 }
 
-const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_ABBR = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 /** Heads the hover readout. Every day gets one, unlike the four axis markers,
  *  so pointing at a peak on a year-long chart still says which day it was. */
@@ -331,8 +361,6 @@ function axisFor(rows: DailyMetrics[], days: number): string[] {
   return [0, 1, 2, 3].map((i) => {
     const d = parseLocal(rows[Math.floor((i / 3) * (rows.length - 1))].date);
     if (!d) return "";
-    return days <= 31
-      ? `${d.getDate()} ${MONTH_ABBR[d.getMonth()]}`
-      : MONTH_ABBR[d.getMonth()];
+    return days <= 31 ? `${d.getDate()} ${MONTH_ABBR[d.getMonth()]}` : MONTH_ABBR[d.getMonth()];
   });
 }

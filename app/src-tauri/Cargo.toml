@@ -36,11 +36,19 @@ chrono = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Checks a downloaded APK against the hash in `latest-android.json` before it
+# goes anywhere near the system installer — see `download_apk`.
+sha2 = { workspace = true }
 tokio = { workspace = true }
 futures-util = { version = "0.3.33", default-features = false, features = ["std"] }
 
-# Desktop only: the updater swaps out the whole app bundle, which is not
-# something a store-installed mobile build is allowed to do.
+# Desktop only, because the last step differs: this plugin swaps the app bundle
+# on disk and restarts, and Android has no equivalent — replacing a package is
+# the system's job, asked for through `PackageInstaller` and confirmed by the
+# user. Android is still self-updating; it just gets there through
+# `download_apk` and the `ApkInstaller` bridge instead. `process` goes with the
+# plugin because the restart it offers only exists on the platforms that need
+# one.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

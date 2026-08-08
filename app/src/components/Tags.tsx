@@ -105,9 +105,7 @@ export function Tags({ activityId, tags }: { activityId: number; tags: string[] 
       ))}
 
       {tags.length === 0 && !adding && (
-        <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
-          None yet
-        </span>
+        <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>None yet</span>
       )}
 
       {adding ? (

@@ -64,14 +64,7 @@ type Drag = {
 };
 
 export function Sidebar() {
-  const {
-    toggle,
-    next: nextTheme,
-    label: themeLabel,
-    preset,
-    custom,
-    paletteName,
-  } = useTheme();
+  const { toggle, next: nextTheme, label: themeLabel, preset, custom, paletteName } = useTheme();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const qc = useQueryClient();
 
@@ -321,7 +314,11 @@ export function Sidebar() {
   // have committed to it. It's a word and not a box, so nothing reflows as it
   // moves between rows.
   const defaultKey = drag
-    ? move(nav, nav.findIndex((n) => n.to === drag.key), drag.to)[0].to
+    ? move(
+        nav,
+        nav.findIndex((n) => n.to === drag.key),
+        drag.to,
+      )[0].to
     : nav[0].to;
 
   // The lit entry's ground. One element, living inside whichever row is active,
@@ -575,10 +572,14 @@ export function Sidebar() {
           aria-hidden
         />
         {sync.isPending ? "Syncing…" : "Sync"}
-        <span style={{ color: "var(--faint)" }}>{syncAge(sync.isPending, cache.data?.lastSync)}</span>
+        <span style={{ color: "var(--faint)" }}>
+          {syncAge(sync.isPending, cache.data?.lastSync)}
+        </span>
       </button>
       {sync.isError && (
-        <div style={{ fontSize: 11.5, color: "var(--acc)", padding: "1px 0 3px", lineHeight: 1.35 }}>
+        <div
+          style={{ fontSize: 11.5, color: "var(--acc)", padding: "1px 0 3px", lineHeight: 1.35 }}
+        >
           Sync failed. See Settings.
         </div>
       )}
@@ -647,7 +648,6 @@ export function Sidebar() {
           {themeLabel}
         </button>
       )}
-
     </nav>
   );
 }

@@ -90,16 +90,7 @@ export function ElevationProfile({
 
   return (
     <div style={{ marginTop: 34 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 16,
-          marginBottom: 10,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="section-head" style={{ marginBottom: 10 }}>
         <div className="eyebrow">Elevation</div>
         <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }} className="mono">
           ↑ {gain.toFixed(0)} m · ↓ {loss.toFixed(0)} m · {min.toFixed(0)}–{max.toFixed(0)} m
@@ -169,9 +160,7 @@ export function ElevationProfile({
                 background: "var(--acc)",
               }}
             />
-            {reading && (
-              <Tip series={series} index={cursor.i} left={(cursor.x / W) * 100} />
-            )}
+            {reading && <Tip series={series} index={cursor.i} left={(cursor.x / W) * 100} />}
           </>
         )}
       </div>
@@ -264,15 +253,7 @@ function layout(series: ActivitySeries): Layout | null {
 
 /* ------------------------------------------------------------------- tip --- */
 
-function Tip({
-  series,
-  index,
-  left,
-}: {
-  series: ActivitySeries;
-  index: number;
-  left: number;
-}) {
+function Tip({ series, index, left }: { series: ActivitySeries; index: number; left: number }) {
   const rows: Array<[string, string]> = [];
   const elevation = series.elevationM[index];
   const grade = gradeAt(series, index);

@@ -20,9 +20,7 @@ export function App() {
   useTypeface();
 
   const status = useQuery({ queryKey: ["garminStatus"], queryFn: garminStatus });
-  const [dismissed, setDismissed] = useState(
-    () => localStorage.getItem(SETUP_DONE) === "1",
-  );
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(SETUP_DONE) === "1");
 
   // A disconnect from Settings should drop back into setup on next launch, so
   // the flag tracks the connection rather than being set once and forgotten.

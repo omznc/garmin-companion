@@ -15,13 +15,7 @@ import {
   type WorkoutDraft,
 } from "../lib/api";
 import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
-import {
-  DeleteIcon,
-  NewIcon,
-  PinIcon,
-  SendIcon,
-  UnpinIcon,
-} from "../lib/icons";
+import { DeleteIcon, NewIcon, PinIcon, SendIcon, UnpinIcon } from "../lib/icons";
 import { Markdown } from "../components/Markdown";
 import { ToolLoader } from "../components/ToolLoader";
 import { WorkoutCard } from "../components/WorkoutCard";
@@ -174,31 +168,30 @@ export function Ask() {
    * conversation shows the card as already sent rather than offering the
    * button a second time and quietly creating a duplicate.
    */
-  const markSaved = useCallback(
-    (messageIndex: number, draftIndex: number, workoutId: number) => {
-      setHistory((prev) => {
-        const next = prev.map((m, i) =>
-          i !== messageIndex || !m.drafts
-            ? m
-            : {
-                ...m,
-                drafts: m.drafts.map((d, j) => (j === draftIndex ? { ...d, savedWorkoutId: workoutId } : d)),
-              },
-        );
-        const conv = session.current;
-        if (conv) {
-          void saveChatSession({
-            sessionId: conv.id,
-            title: title(next),
-            startedAt: conv.startedAt,
-            messages: next,
-          }).catch(() => {});
-        }
-        return next;
-      });
-    },
-    [],
-  );
+  const markSaved = useCallback((messageIndex: number, draftIndex: number, workoutId: number) => {
+    setHistory((prev) => {
+      const next = prev.map((m, i) =>
+        i !== messageIndex || !m.drafts
+          ? m
+          : {
+              ...m,
+              drafts: m.drafts.map((d, j) =>
+                j === draftIndex ? { ...d, savedWorkoutId: workoutId } : d,
+              ),
+            },
+      );
+      const conv = session.current;
+      if (conv) {
+        void saveChatSession({
+          sessionId: conv.id,
+          title: title(next),
+          startedAt: conv.startedAt,
+          messages: next,
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
 
   if (config.isLoading) return <Loading label="Checking your model settings" />;
 
@@ -398,18 +391,16 @@ export function Ask() {
 
           {(history.length > 0 || pending != null) && (
             <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  justifyContent: "space-between",
-                  margin: "52px 0 34px",
-                }}
-              >
+              <div className="section-head" style={{ margin: "52px 0 34px" }}>
                 <div className="eyebrow">This session</div>
                 <button
                   className="quiet"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--fs-caption)" }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: "var(--fs-caption)",
+                  }}
                   onClick={reset}
                   disabled={busy}
                 >
@@ -614,7 +605,9 @@ function Earlier({ onLoad }: { onLoad: (id: string) => void }) {
       {/* Sits below the last row; crossing it pulls the next page in. */}
       <div ref={sentinel} style={{ height: 1 }} />
       {isFetchingNextPage && (
-        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", padding: "14px 0" }}>Loading…</div>
+        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", padding: "14px 0" }}>
+          Loading…
+        </div>
       )}
     </div>
   );
@@ -648,10 +641,20 @@ function Past({
         >
           {session.title}
         </span>
-        <span className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>
+        <span
+          className="mono"
+          style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}
+        >
           {session.messageCount}
         </span>
-        <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none", minWidth: 96 }}>
+        <span
+          style={{
+            fontSize: "var(--fs-caption)",
+            color: "var(--faint)",
+            flex: "none",
+            minWidth: 96,
+          }}
+        >
           {since(session.updatedAt)}
         </span>
       </button>
@@ -723,7 +726,8 @@ function Answer({
         <Markdown>{text}</Markdown>
         {/* A caret once prose is arriving; before that, the loader — which says
             which of your data it went to read. */}
-        {streaming && (text ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
+        {streaming &&
+          (text ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
       </div>
       {/* Below the prose explaining it, and above the list of what was read —
           the workout is the thing you act on, not a footnote about sources. */}

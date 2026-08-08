@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { cachedActivities, workouts, type Workout } from "../lib/api";
 import {
+  colWidth,
   Empty,
   ErrorNote,
   Loading,
@@ -46,10 +47,9 @@ export function Plan() {
           title="No workouts saved on your Garmin account."
           body={
             <>
-              Garmin holds no training plan and no goal race for you, so a plan
-              can only come from the structured workouts you build in Connect.
-              There aren't any yet. Create one and it appears here on the next
-              sync.
+              Garmin holds no training plan and no goal race for you, so a plan can only come from
+              the structured workouts you build in Connect. There aren't any yet. Create one and it
+              appears here on the next sync.
             </>
           }
         />
@@ -68,10 +68,7 @@ export function Plan() {
   const longestRun = runs.reduce<number>((m, a) => Math.max(m, a.durationS ?? 0), 0);
 
   const runWorkouts = saved.filter((w) => isRun(w.sportType));
-  const target = runWorkouts.reduce<number>(
-    (m, w) => Math.max(m, w.estDurationS ?? 0),
-    0,
-  );
+  const target = runWorkouts.reduce<number>((m, w) => Math.max(m, w.estDurationS ?? 0), 0);
 
   return (
     <div className="screen">
@@ -80,25 +77,30 @@ export function Plan() {
       <MetricRow style={{ marginBottom: 10 }}>
         <Metric value={saved.length} label="Saved workouts" />
         <Metric value={runs.length} label={`Runs in ${LOOKBACK} days`} />
-        <Metric
-          value={longestRun ? duration(longestRun) : DASH}
-          label="Longest recent run"
-        />
+        <Metric value={longestRun ? duration(longestRun) : DASH} label="Longest recent run" />
       </MetricRow>
 
       {target > 0 && (
-        <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: "0 0 8px", maxWidth: "62ch", textWrap: "pretty" }}>
+        <p
+          style={{
+            fontSize: "var(--fs-md)",
+            lineHeight: 1.7,
+            color: "var(--mut)",
+            margin: "0 0 8px",
+            maxWidth: "62ch",
+            textWrap: "pretty",
+          }}
+        >
           Your longest running workout asks for {duration(target)}.{" "}
           {longestRun >= target ? (
             <>
-              Your longest run in the last {LOOKBACK} days was{" "}
-              {duration(longestRun)} — you're covering it.
+              Your longest run in the last {LOOKBACK} days was {duration(longestRun)} — you're
+              covering it.
             </>
           ) : longestRun > 0 ? (
             <>
-              Your longest run in the last {LOOKBACK} days was{" "}
-              {duration(longestRun)}, which is {Math.round((1 - longestRun / target) * 100)}%
-              short of it. That gap is the plan.
+              Your longest run in the last {LOOKBACK} days was {duration(longestRun)}, which is{" "}
+              {Math.round((1 - longestRun / target) * 100)}% short of it. That gap is the plan.
             </>
           ) : (
             <>Nothing in the last {LOOKBACK} days has been a run.</>
@@ -118,13 +120,20 @@ export function Plan() {
       <div className="eyebrow" style={{ margin: "66px 0 14px" }}>
         What Garmin doesn't have
       </div>
-      <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.7, color: "var(--mut)", margin: 0, maxWidth: "62ch", textWrap: "pretty" }}>
-        No goal race and no structured week are stored on your account — the
-        training-plan and goal endpoints both return nothing. Those are
-        decisions rather than data, so the app won't invent them. Everything
-        above is what Garmin genuinely holds.{" "}
-        <Link to="/activities">Browse activities</Link> for what you've actually
-        done.
+      <p
+        style={{
+          fontSize: "var(--fs-md)",
+          lineHeight: 1.7,
+          color: "var(--mut)",
+          margin: 0,
+          maxWidth: "62ch",
+          textWrap: "pretty",
+        }}
+      >
+        No goal race and no structured week are stored on your account — the training-plan and goal
+        endpoints both return nothing. Those are decisions rather than data, so the app won't invent
+        them. Everything above is what Garmin genuinely holds.{" "}
+        <Link to="/activities">Browse activities</Link> for what you've actually done.
       </p>
     </div>
   );
@@ -148,15 +157,25 @@ function WorkoutRow({ workout: w }: { workout: Workout }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block" }}>{w.name ?? "Untitled workout"}</span>
         {w.description && (
-          <span style={{ display: "block", fontSize: "var(--fs-small)", color: "var(--faint)", marginTop: 3 }}>
+          <span
+            style={{
+              display: "block",
+              fontSize: "var(--fs-small)",
+              color: "var(--faint)",
+              marginTop: 3,
+            }}
+          >
             {w.description}
           </span>
         )}
       </span>
-      <span style={{ width: 118, flex: "none", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
+      <span
+        className="col-key"
+        style={{ ...colWidth(118), color: "var(--mut)", fontSize: "var(--fs-small)" }}
+      >
         {sportLabel(w.sportType)}
       </span>
-      <span className="mono" style={{ width: 82, flex: "none", textAlign: "right" }}>
+      <span className="col mono" style={colWidth(82)}>
         {/* Strength workouts carry a zero estimate rather than a real one. */}
         {w.estDurationS ? duration(w.estDurationS) : w.estDistanceM ? km(w.estDistanceM) : DASH}
       </span>

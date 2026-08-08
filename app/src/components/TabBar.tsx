@@ -47,6 +47,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { loadNavOrder, loadTabs, saveTabs, type NavEntry } from "../lib/nav";
 import { Spring, project, rubberband } from "../lib/spring";
 import { MoreIcon } from "../lib/icons";
+import { onBack } from "../lib/back";
 
 /** How long a press holds before it stops being a tap and becomes a promotion.
  *  Long enough not to fire on a slow tap, short enough that someone who was
@@ -124,6 +125,17 @@ export function TabBar() {
   useEffect(() => {
     dismiss();
   }, [pathname, dismiss]);
+
+  // Back closes the sheet rather than leaving the screen under it. Registered
+  // only while it's open, so a back press with no sheet up falls straight
+  // through to the history — see `lib/back.ts`.
+  useEffect(() => {
+    if (!sheet) return;
+    return onBack(() => {
+      dismiss();
+      return true;
+    });
+  }, [sheet, dismiss]);
 
   // Nothing behind the sheet scrolls while it is open. Without this the page
   // slides around under a surface that is supposed to have taken over, and the

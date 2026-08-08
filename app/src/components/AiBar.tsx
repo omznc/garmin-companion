@@ -15,10 +15,17 @@
  * Lives in the window's top strip, alongside the sync readout. Unlike that one
  * it takes pointer events, because the useful thing to do about a broken
  * provider is go and change it.
+ *
+ * On a phone there is no strip, and the top of the screen belongs to Android's
+ * status bar — so it moves to the bottom and sits where the sync readout sits,
+ * for the same reasons and with the same shape. The two never show at once
+ * (see the branch below), so sharing the one spot costs nothing.
  */
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { chatHealth } from "../lib/api";
+import { IS_MOBILE } from "../lib/platform";
 // The router instance rather than `useNavigate`: this renders in the window
 // strip, which sits outside the `RouterProvider` so that it survives every
 // screen. The singleton navigates the same tree without the hook's context.
@@ -59,23 +66,32 @@ export function AiBar() {
   if (!broken || sync.running) return null;
   if (dismissed === broken.at) return null;
 
-  return (
+  const bar = (
     <div
       role="status"
-      style={{
-        position: "fixed",
-        top: 0,
-        right: CONTROLS_SIDE === "right" ? CONTROLS_W : 12,
-        maxWidth: "min(52vw, 560px)",
-        height: STRIP,
-        display: "flex",
-        alignItems: "center",
-        gap: 9,
-        zIndex: 60,
-        // Over the drag strip and the corner resize handle, under the window
-        // controls — the same order the sync readout keeps.
-        pointerEvents: "auto",
-      }}
+      className="ai-bar"
+      data-mobile={IS_MOBILE || undefined}
+      style={
+        IS_MOBILE
+          ? // Position and surface are in `styles.css`, beside the sync bar's:
+            // both have to clear the tab bar and the gesture inset under it,
+            // and `env()` is only readable from a stylesheet.
+            undefined
+          : {
+              position: "fixed",
+              top: 0,
+              right: CONTROLS_SIDE === "right" ? CONTROLS_W : 12,
+              maxWidth: "min(52vw, 560px)",
+              height: STRIP,
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              zIndex: 60,
+              // Over the drag strip and the corner resize handle, under the
+              // window controls — the same order the sync readout keeps.
+              pointerEvents: "auto",
+            }
+      }
     >
       <ErrorIcon size={14} style={{ flex: "none", color: "var(--warn)" }} aria-hidden />
       <button
@@ -108,4 +124,9 @@ export function AiBar() {
       </button>
     </div>
   );
+
+  // Out of the scroller on a phone, for the reason `SyncBar` and `TabBar` are:
+  // Android stretches the whole scrolling layer on an overscroll, `position:
+  // fixed` inside it included.
+  return IS_MOBILE ? createPortal(bar, document.body) : bar;
 }

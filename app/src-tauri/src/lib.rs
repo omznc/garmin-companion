@@ -848,6 +848,166 @@ fn garmin_login_error() -> CmdResult<Option<String>> {
     }
 }
 
+/* ------------------------------------------------------ android update --- */
+
+/// Where a fetched APK ended up, and whether this call is what put it there.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StagedApk {
+    path: String,
+    /// False when the file was already on disk from an earlier launch. The
+    /// frontend uses it to decide whether to offer the install immediately or
+    /// wait — see `lib/updater.ts`.
+    fresh: bool,
+}
+
+/// Fetch the Android APK for `version` into the cache, and hand back the path.
+///
+/// Android is the only caller — a desktop build updates itself through
+/// `tauri-plugin-updater`, which does all of this and the install too. That
+/// plugin can't be used here because the last step is a `PackageInstaller`
+/// session rather than a file swap (see `ApkInstaller` on the Kotlin side), and
+/// what's left once you remove that step is small enough to be this.
+///
+/// The download is resumable only in the coarsest sense: a launch that gets
+/// interrupted leaves a `.part` behind and starts over next time. Worth having
+/// anyway, because the *completed* file survives — a phone that downloaded an
+/// update yesterday and was closed before installing it doesn't pay for it
+/// twice.
+///
+/// `sha256` is checked against what arrived rather than trusted from it. It is
+/// not the security boundary — Android refuses any APK not signed with this
+/// app's key, whatever this function says — it's the difference between a
+/// truncated download failing here, with a sentence, and failing inside the
+/// system installer as "App not installed".
+#[tauri::command]
+async fn download_apk(
+    app: tauri::AppHandle,
+    url: String,
+    version: String,
+    sha256: String,
+) -> CmdResult<StagedApk> {
+    use futures_util::StreamExt;
+    use sha2::{Digest, Sha256};
+    use std::io::Write;
+    use tauri::Manager;
+
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("nowhere to put the download: {e}"))?
+        .join("updates");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("nowhere to put the download: {e}"))?;
+
+    let want = sha256.to_lowercase();
+    let apk = dir.join(format!("garmin-companion_{version}.apk"));
+
+    // Anything that isn't the version being asked for is a download that was
+    // superseded or installed, and is dead weight in the cache — tens of
+    // megabytes of it. Swept here rather than after a successful install,
+    // because a successful install means this process is being replaced.
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for e in entries.flatten() {
+            if e.path() != apk {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+
+    if apk.is_file() && digest_of(&apk)? == want {
+        return Ok(StagedApk {
+            path: apk.to_string_lossy().into_owned(),
+            fresh: false,
+        });
+    }
+
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("couldn't reach the download: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("the download isn't there: {e}"))?;
+
+    // Absent whenever the response is chunked, which is why every progress
+    // report below is allowed to have no denominator.
+    let total = resp.content_length().unwrap_or(0);
+
+    let part = apk.with_extension("part");
+    let mut file =
+        std::fs::File::create(&part).map_err(|e| format!("couldn't open the download: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut stream = resp.bytes_stream();
+    let mut received: u64 = 0;
+    let mut announced: u64 = 0;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("the download stopped early: {e}"))?;
+        hasher.update(&chunk);
+        file.write_all(&chunk)
+            .map_err(|e| format!("couldn't write the download: {e}"))?;
+        received += chunk.len() as u64;
+
+        // Per chunk would be thousands of events across a webview bridge for a
+        // bar that is 260 pixels wide. A quarter of a megabyte is finer than
+        // one of those pixels on any APK this app will ever be.
+        if received - announced >= 256 * 1024 {
+            announced = received;
+            let _ = app.emit("apk-download", ApkProgress { received, total });
+        }
+    }
+    file.flush()
+        .map_err(|e| format!("couldn't write the download: {e}"))?;
+    drop(file);
+
+    let got = hex(&hasher.finalize());
+    if got != want {
+        let _ = std::fs::remove_file(&part);
+        return Err("the download didn't arrive intact".to_string());
+    }
+
+    // Renamed only once it's whole, so the name never refers to a partial file
+    // — which is what lets the check at the top of this function trust one it
+    // finds on a later launch.
+    std::fs::rename(&part, &apk).map_err(|e| format!("couldn't finish the download: {e}"))?;
+    let _ = app.emit(
+        "apk-download",
+        ApkProgress {
+            received,
+            total: received,
+        },
+    );
+
+    Ok(StagedApk {
+        path: apk.to_string_lossy().into_owned(),
+        fresh: true,
+    })
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApkProgress {
+    received: u64,
+    /// Zero when the server didn't say, which the frontend shows as an
+    /// indeterminate bar rather than as 0%.
+    total: u64,
+}
+
+fn digest_of(path: &std::path::Path) -> CmdResult<String> {
+    use sha2::{Digest, Sha256};
+
+    let mut file =
+        std::fs::File::open(path).map_err(|e| format!("couldn't read the download: {e}"))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)
+        .map_err(|e| format!("couldn't read the download: {e}"))?;
+    Ok(hex(&hasher.finalize()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// Publishes whether a transparent pixel in this window shows the desktop
 /// behind it, which decides whether the app cuts its own rounded corners.
 ///
@@ -975,6 +1135,7 @@ pub fn run() {
             chat_followups,
             garmin_login,
             garmin_login_error,
+            download_apk,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

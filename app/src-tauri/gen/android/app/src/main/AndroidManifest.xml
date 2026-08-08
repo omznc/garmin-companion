@@ -9,6 +9,23 @@
       moment the finger is covering the target.
     -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!--
+      Self-update. An installed app *is* allowed to hand the system a new APK
+      of itself — what it can't do is install one silently, which needs to be a
+      device owner. So the app downloads the new version and the system asks
+      before replacing anything, which is the whole flow in `lib/updater.ts`.
+
+      The safety here isn't this permission, it's the signature: Android
+      refuses to install over an existing package unless the new one is signed
+      with the same key. A malicious APK handed to `PackageInstaller` by this
+      app would be offered as a *separate* install with its own package name,
+      not as an update to this one.
+
+      This is on Google Play's restricted list — only store-shaped apps may
+      declare it — so it is stripped back out of the `.aab`. See the
+      `playBundle` transform in `app/build.gradle.kts`, and RELEASING.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

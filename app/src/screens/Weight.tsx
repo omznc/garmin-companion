@@ -28,6 +28,7 @@ import type { Point } from "../lib/chart";
 import {
   ArrowRight,
   AxisLabels,
+  colWidth,
   Empty,
   ErrorNote,
   LineChart,
@@ -45,8 +46,7 @@ const DAYS = 180;
 /** Beyond this, the newest reading is old enough that the trend is a memory. */
 const STALE_DAYS = 21;
 
-const kg = (v: number | null | undefined) =>
-  v == null ? DASH : `${v.toFixed(1)} kg`;
+const kg = (v: number | null | undefined) => (v == null ? DASH : `${v.toFixed(1)} kg`);
 
 /** Signed, with the sign carrying the meaning rather than a colour alone. */
 function signedKg(v: number | null | undefined, digits = 1): string {
@@ -69,11 +69,7 @@ export function Weight() {
   if (!report || report.count === 0) {
     return (
       <div>
-        <PageHeader
-          eyebrow="From Garmin"
-          title="Weight"
-          action={<RefreshButton />}
-        />
+        <PageHeader eyebrow="From Garmin" title="Weight" action={<RefreshButton />} />
         <Empty
           title={
             report?.latestDate
@@ -82,10 +78,9 @@ export function Weight() {
           }
           body={
             <>
-              This screen reads what Garmin holds — it never writes a weight and
-              never invents one. Weigh-ins reach Garmin from a connected scale,
-              from the Connect app's own entry screen, or from an integration
-              like MyFitnessPal.{" "}
+              This screen reads what Garmin holds — it never writes a weight and never invents one.
+              Weigh-ins reach Garmin from a connected scale, from the Connect app's own entry
+              screen, or from an integration like MyFitnessPal.{" "}
               {report?.latestDate
                 ? `The most recent one on the account is from ${report.latestDate}.`
                 : "Record one and it appears here on the next sync."}
@@ -184,7 +179,9 @@ function Summary({ report }: { report: WeightReport }) {
         >
           {/* Said plainly, because the prose can be days old: it's rewritten
               when the numbers move, not when the page is opened. */}
-          <span>Written {since(summary.data.generatedAt)} from your last {DAYS} days</span>
+          <span>
+            Written {since(summary.data.generatedAt)} from your last {DAYS} days
+          </span>
           <button
             className="quiet"
             onClick={() => regenerate.mutate()}
@@ -277,9 +274,16 @@ function Numbers({ report }: { report: WeightReport }) {
         <Metric value={report.bmi != null ? report.bmi.toFixed(1) : DASH} label="BMI" />
       </MetricRow>
 
-      <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "0 0 8px", maxWidth: "62ch" }}>
-        Trend is a time-weighted smoothing of your weigh-ins, so an irregular
-        gap between two of them doesn't count the same as a day.{" "}
+      <p
+        style={{
+          fontSize: "var(--fs-small)",
+          color: "var(--faint)",
+          margin: "0 0 8px",
+          maxWidth: "62ch",
+        }}
+      >
+        Trend is a time-weighted smoothing of your weigh-ins, so an irregular gap between two of
+        them doesn't count the same as a day.{" "}
         {report.rateKgPerWeek == null &&
           "The weekly rate needs at least three clean readings spread over a fortnight, which isn't there yet. "}
         {report.bmi != null && report.heightCm != null
@@ -354,7 +358,14 @@ function Chart({ report }: { report: WeightReport }) {
       <LineChart
         shareScale
         series={[
-          { values: trend, stroke: "var(--acc)", width: 1.6, fill: true, name: "Trend", format: kg },
+          {
+            values: trend,
+            stroke: "var(--acc)",
+            width: 1.6,
+            fill: true,
+            name: "Trend",
+            format: kg,
+          },
           { values: raw, stroke: "var(--mut)", width: 1.2, name: "Weigh-in", format: kg },
         ]}
         // One slot per calendar day, so the readout can name the day the
@@ -368,7 +379,15 @@ function Chart({ report }: { report: WeightReport }) {
         })}
       />
       <AxisLabels labels={[shortDate(start), shortDate(end)]} />
-      <div style={{ display: "flex", gap: 20, fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 20,
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+          marginTop: 10,
+        }}
+      >
         <span style={{ color: "var(--acc)" }}>— Trend</span>
         <span>· Weigh-ins</span>
         <span>Spaced by date, so the gaps are real.</span>
@@ -412,10 +431,17 @@ function Energy({ report }: { report: WeightReport }) {
         />
       </MetricRow>
 
-      <p style={{ fontSize: "var(--fs-base)", lineHeight: 1.65, color: "var(--mut)", maxWidth: "62ch" }}>
-        Across the {e.spanDays} days your weigh-ins span, {e.loggedDays} carried a
-        food log. Those days come to {num(Math.round(e.balanceKcal))} kcal, which is{" "}
-        {signedKg(predicted, 2)} at the textbook 7,700 kcal per kilogram.{" "}
+      <p
+        style={{
+          fontSize: "var(--fs-base)",
+          lineHeight: 1.65,
+          color: "var(--mut)",
+          maxWidth: "62ch",
+        }}
+      >
+        Across the {e.spanDays} days your weigh-ins span, {e.loggedDays} carried a food log. Those
+        days come to {num(Math.round(e.balanceKcal))} kcal, which is {signedKg(predicted, 2)} at the
+        textbook 7,700 kcal per kilogram.{" "}
         {thin
           ? "That figure covers only the logged days — it is not scaled up to the rest, because inventing the missing ones would make it a prediction about data that doesn't exist. Most of any gap between the two numbers above is missing log, not metabolism."
           : "The two won't match exactly — 7,700 kcal per kilogram assumes what's lost is mostly fat, and the scale carries water either way — but at this coverage the direction is worth believing."}
@@ -463,7 +489,7 @@ function Goal({ report }: { report: WeightReport }) {
           style={{ color: "var(--faint)", letterSpacing: 0, textTransform: "none" }}
           title="Garmin's API exposes no weight goal — nothing to read and nothing to write it to — so this one is stored locally"
         >
-            kept in this app; Garmin has no weight goal to sync
+          kept in this app; Garmin has no weight goal to sync
         </span>
       </div>
 
@@ -490,7 +516,11 @@ function Goal({ report }: { report: WeightReport }) {
             {save.isPending ? "Saving…" : "Save"}
           </button>
           {goal && (
-            <button className="quiet" onClick={() => setEditing(false)} style={{ fontSize: "var(--fs-caption)" }}>
+            <button
+              className="quiet"
+              onClick={() => setEditing(false)}
+              style={{ fontSize: "var(--fs-caption)" }}
+            >
               Cancel
             </button>
           )}
@@ -508,25 +538,29 @@ function Goal({ report }: { report: WeightReport }) {
             <Metric
               size={30}
               value={
-                goal.etaDate
-                  ? shortDate(parseLocal(goal.etaDate) ?? new Date(goal.etaDate))
-                  : DASH
+                goal.etaDate ? shortDate(parseLocal(goal.etaDate) ?? new Date(goal.etaDate)) : DASH
               }
               label="At this rate"
             />
           </MetricRow>
-          <p style={{ fontSize: "var(--fs-base)", lineHeight: 1.65, color: "var(--mut)", maxWidth: "62ch" }}>
+          <p
+            style={{
+              fontSize: "var(--fs-base)",
+              lineHeight: 1.65,
+              color: "var(--mut)",
+              maxWidth: "62ch",
+            }}
+          >
             {goal.etaDays != null ? (
               <>
-                About {goal.etaDays} days away if the current rate holds — which
-                is a big if over that span, and the projection is only ever as
-                good as the trend behind it.
+                About {goal.etaDays} days away if the current rate holds — which is a big if over
+                that span, and the projection is only ever as good as the trend behind it.
               </>
             ) : (
               <>
-                No arrival date: the trend is either flat or pointing away from
-                this target, and a date computed from that would be fiction. It
-                appears once the trend moves toward {goal.targetKg} kg.
+                No arrival date: the trend is either flat or pointing away from this target, and a
+                date computed from that would be fiction. It appears once the trend moves toward{" "}
+                {goal.targetKg} kg.
               </>
             )}{" "}
             <button
@@ -535,7 +569,12 @@ function Goal({ report }: { report: WeightReport }) {
                 setDraft(String(goal.targetKg));
                 setEditing(true);
               }}
-              style={{ fontSize: "var(--fs-base)", color: "var(--mut)", textDecoration: "underline", textUnderlineOffset: 3 }}
+              style={{
+                fontSize: "var(--fs-base)",
+                color: "var(--mut)",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
             >
               Change
             </button>
@@ -569,41 +608,44 @@ function ByDay({ points }: { points: WeightPoint[] }) {
 
 function Row({ point }: { point: WeightPoint }) {
   const d = parseLocal(point.date);
-  const drift =
-    point.trendKg != null && !point.outlier ? point.kg - point.trendKg : null;
+  const drift = point.trendKg != null && !point.outlier ? point.kg - point.trendKg : null;
 
   return (
     <div className="row-static" style={{ justifyContent: "space-between" }}>
-      <span style={{ width: 96, flex: "none" }}>{d ? shortDate(d) : point.date}</span>
+      <span className="col-key" style={colWidth(96)}>
+        {d ? shortDate(d) : point.date}
+      </span>
 
       <span
-        className="mono"
-        style={{ width: 84, textAlign: "right", color: point.outlier ? "var(--faint)" : undefined }}
+        className="col mono"
+        style={{ ...colWidth(84), color: point.outlier ? "var(--faint)" : undefined }}
       >
         {point.kg.toFixed(1)}
       </span>
 
-      <span className="mono" style={{ width: 84, textAlign: "right", color: "var(--mut)" }}>
+      <span className="col mono" style={{ ...colWidth(84), color: "var(--mut)" }}>
         {point.trendKg != null ? point.trendKg.toFixed(1) : DASH}
       </span>
 
       {/* How far this reading sat from the trend — the size of the daily noise,
           which is the thing that makes one reading a bad headline. */}
       <span
-        className="mono"
-        style={{ width: 76, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}
+        className="col mono"
+        style={{ ...colWidth(76), color: "var(--faint)", fontSize: "var(--fs-small)" }}
       >
         {drift != null ? signedKg(drift) : ""}
       </span>
 
       <span
+        className="col"
         style={{
-          width: 130,
-          textAlign: "right",
+          ...colWidth(130),
           fontSize: "var(--fs-caption)",
           color: point.outlier ? "var(--acc)" : "var(--faint)",
         }}
-        title={point.outlier ? "Disagrees with both neighbours by more than a body can move" : undefined}
+        title={
+          point.outlier ? "Disagrees with both neighbours by more than a body can move" : undefined
+        }
       >
         {point.outlier ? "looks like a typo" : sourceLabel(point.source)}
       </span>

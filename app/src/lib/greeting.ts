@@ -143,23 +143,19 @@ export interface GreetingOptions {
 
 export function greeting({ name, now = new Date() }: GreetingOptions = {}): string {
   const hour = now.getHours();
-  const bucket =
-    [...BUCKETS].reverse().find((b) => hour >= b.from) ?? BUCKETS[0];
+  const bucket = [...BUCKETS].reverse().find((b) => hour >= b.from) ?? BUCKETS[0];
 
   // Seeded on the date and the hour rather than Math.random(): the line has to
   // hold still while you look at it, and React will re-render this several
   // times a minute. It moves on when the hour does.
-  const seed = hash(
-    `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hour}`,
-  );
+  const seed = hash(`${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${hour}`);
 
   const weekday = bucket.weekdayFlavour ? (BY_WEEKDAY[now.getDay()] ?? []) : [];
   // A second, independent draw off the same seed decides which set to read
   // from, so the odds don't shift with how many lines a bucket happens to have.
   const preferWeekday = weekday.length > 0 && seed % WEEKDAY_ODDS === 0;
 
-  const usable = (lines: string[]) =>
-    lines.filter((line) => name || !line.includes("{name}"));
+  const usable = (lines: string[]) => lines.filter((line) => name || !line.includes("{name}"));
 
   const pool = preferWeekday ? usable(weekday) : usable(bucket.lines);
   const fallback = usable(preferWeekday ? bucket.lines : weekday);

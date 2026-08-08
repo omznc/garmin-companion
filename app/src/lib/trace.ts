@@ -110,7 +110,9 @@ export function zoneOf(hr: number, floors: readonly number[]): number {
 }
 
 /** The 5th to 95th percentile of whatever the column holds. */
-export function range(values: (number | null)[]): { min: number; max: number; span: number } | null {
+export function range(
+  values: (number | null)[],
+): { min: number; max: number; span: number } | null {
   const present = values.filter((v): v is number => v != null && isFinite(v));
   if (!present.length) return null;
   const sorted = [...present].sort((a, b) => a - b);

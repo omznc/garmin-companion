@@ -27,6 +27,7 @@ import { ZoneBar } from "../components/ZoneBar";
 import { RefreshButton } from "../components/Refresh";
 import { WeightGlance } from "../components/WeightGlance";
 import { firstName, greeting } from "../lib/greeting";
+import { IS_MOBILE } from "../lib/platform";
 import {
   AxisLabels,
   Bullet,
@@ -94,9 +95,9 @@ export function Today() {
           title="Nothing cached yet."
           body={
             <>
-              Run a sync to pull your Garmin history onto this machine.
-              Everything on these screens is read from that local copy — this is
-              the only screen that will tell you it's missing.
+              Run a sync to pull your Garmin history onto this machine. Everything on these screens
+              is read from that local copy — this is the only screen that will tell you it's
+              missing.
             </>
           }
           action={
@@ -120,14 +121,18 @@ export function Today() {
 
   const lastSession = activities[0] ?? null;
   // Runs with HR, newest first — the drift strip and nothing else uses these.
-  const trackedRuns = activities.filter((a) => isRun(a.typeKey) && hasZoneData(a)).slice(0, 8);
+  const trackedRuns = activities
+    .filter((a) => isRun(a.typeKey) && hasZoneData(a))
+    .slice(0, DRIFT_RUNS);
   const food = fuel(rows, 7);
   // Null unless this account genuinely tracks hydration, which most don't.
   const water = hydration(rows, 7);
 
   const week = dailyDistance(activities, 7);
   const weekTotal = week.reduce((a, b) => a + b, 0);
-  const priorWeek = dailyDistance(activities, 14).slice(0, 7).reduce((a, b) => a + b, 0);
+  const priorWeek = dailyDistance(activities, 14)
+    .slice(0, 7)
+    .reduce((a, b) => a + b, 0);
   const sessions = countSessions(activities, 7);
 
   const notes = attention(rows, activities);
@@ -181,9 +186,15 @@ export function Today() {
           }
         />
         <Metric
+          // The baseline the delta is against goes unsaid on a phone: with it,
+          // the label is wider than a third of the screen and takes two lines
+          // to itself while every other metric's takes one. The paragraph above
+          // says what the comparison is.
           label={
             rhr && rhrBase != null
-              ? `Resting HR · ${rhr.value > rhrBase ? "+" : ""}${(rhr.value - rhrBase).toFixed(0)} vs 30d`
+              ? `Resting HR · ${rhr.value > rhrBase ? "+" : ""}${(rhr.value - rhrBase).toFixed(0)}${
+                  IS_MOBILE ? "" : " vs 30d"
+                }`
               : "Resting HR"
           }
           // Only a rise gets the accent. A resting heart rate below your own
@@ -200,7 +211,14 @@ export function Today() {
         />
       </MetricRow>
 
-      <p style={{ fontSize: "var(--fs-base)", color: "var(--mut)", margin: "26px 0 0", maxWidth: "58ch" }}>
+      <p
+        style={{
+          fontSize: "var(--fs-base)",
+          color: "var(--mut)",
+          margin: "26px 0 0",
+          maxWidth: "58ch",
+        }}
+      >
         {fuelSentence(food)}
         {water && ` ${hydrationSentence(water)}`}
       </p>
@@ -247,8 +265,14 @@ export function Today() {
       <div className="eyebrow" style={{ margin: "72px 0 18px" }}>
         Last seven days
       </div>
+      {/* 320 is the chart's floor before the seven days stop being readable —
+          and also exactly a phone's column, so it has no slack there and
+          overflows on anything narrower than a 360dp screen. On a phone it
+          gives up the floor and takes whatever the column is: seven bars are
+          still seven bars at 300px, and being cut off at the right isn't
+          something a narrower chart can be. */}
       <div style={{ display: "flex", alignItems: "flex-end", gap: 34, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 320 }}>
+        <div style={{ flex: 1, minWidth: IS_MOBILE ? 0 : 320 }}>
           <LineChart
             series={[{ values: week, fill: true, format: (v) => `${v.toFixed(1)} km` }]}
             height={84}
@@ -258,7 +282,14 @@ export function Today() {
           />
           <AxisLabels labels={axis} />
         </div>
-        <div style={{ fontSize: "var(--fs-base)", lineHeight: 1.6, color: "var(--mut)", maxWidth: "26ch" }}>
+        <div
+          style={{
+            fontSize: "var(--fs-base)",
+            lineHeight: 1.6,
+            color: "var(--mut)",
+            maxWidth: "26ch",
+          }}
+        >
           {weekTotal > 0
             ? `${weekTotal.toFixed(1)} km across ${sessions} ${sessions === 1 ? "session" : "sessions"}.`
             : `${sessions} ${sessions === 1 ? "session" : "sessions"}, none with recorded distance.`}{" "}
@@ -289,7 +320,10 @@ function LastSession({ activity }: { activity: CachedActivity }) {
   const stats: [string, string][] = [
     ["Distance", km(activity.distanceM)],
     ["Time", duration(secs)],
-    [run ? "Pace" : "Speed", run ? `${pace(activity.distanceM, secs)} /km` : speed(activity.distanceM, secs)],
+    [
+      run ? "Pace" : "Speed",
+      run ? `${pace(activity.distanceM, secs)} /km` : speed(activity.distanceM, secs),
+    ],
     ["Avg HR", bpm(activity.avgHr)],
     ["Max HR", bpm(activity.maxHr)],
     // Already both feet, as the rest of the app reports it — doubling it here
@@ -300,15 +334,7 @@ function LastSession({ activity }: { activity: CachedActivity }) {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 16,
-          margin: "72px 0 16px",
-        }}
-      >
+      <div className="section-head" style={{ margin: "72px 0 16px" }}>
         <div className="eyebrow">Last session</div>
         <Link
           className="underlined"
@@ -363,6 +389,17 @@ function LastSession({ activity }: { activity: CachedActivity }) {
 }
 
 /**
+ * How many runs the drift strip holds.
+ *
+ * Eight fills the desktop column; on a phone the same eight leave each bar 31px
+ * wide, which is too narrow for "07 Aug" to sit on one line and — since every
+ * bar is a link to its session — under the 44px a finger needs. Six is what
+ * makes both true at 320px, and the strip is about the shape of the sequence
+ * rather than any one bar in it, so it survives losing two.
+ */
+const DRIFT_RUNS = IS_MOBILE ? 6 : 8;
+
+/**
  * Every recent run's zone mix side by side, newest last.
  *
  * A single session's split says nothing on its own — the question is whether
@@ -384,15 +421,7 @@ function ZoneDrift({ runs }: { runs: CachedActivity[] }) {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 16,
-          margin: "72px 0 18px",
-        }}
-      >
+      <div className="section-head" style={{ margin: "72px 0 18px" }}>
         <div className="eyebrow">Zone drift · last {runs.length} runs</div>
         <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
           {avgRecent.toFixed(0)}% above Z2 lately · {TARGET}% is the target
@@ -444,7 +473,17 @@ function ZoneDrift({ runs }: { runs: CachedActivity[] }) {
                   }}
                 />
               </span>
-              <span style={{ fontSize: "var(--fs-micro)", color: "var(--faint)", textAlign: "center" }}>
+              {/* Nowrap because the column is narrow enough to break "07 Aug"
+                  across two lines, which puts the month under the day and
+                  makes every bar in the strip a different height of label. */}
+              <span
+                style={{
+                  fontSize: "var(--fs-micro)",
+                  color: "var(--faint)",
+                  textAlign: "center",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {when ? shortDate(when) : DASH}
               </span>
             </Link>
@@ -473,8 +512,7 @@ function hydrationSentence(h: Hydration): string {
   return `${head} — ${pct.toFixed(0)}% of your ${litres(h.goalMl)} goal.`;
 }
 
-const foodBalance = (f: Fuel): number | null =>
-  f.day ? balanceKcal(f.day) : null;
+const foodBalance = (f: Fuel): number | null => (f.day ? balanceKcal(f.day) : null);
 
 /**
  * The tile's caption carries the age of the reading.
@@ -484,10 +522,13 @@ const foodBalance = (f: Fuel): number | null =>
  * Tuesday deficit sat under Friday's heading looking current.
  */
 function fuelLabel(f: Fuel): string {
-  if (!f.day || f.age == null) return "Fuel balance";
-  if (f.age === 0) return "Fuel balance";
-  if (f.age === 1) return "Fuel balance · yesterday";
-  return `Fuel balance · ${f.age}d ago`;
+  // "Balance" on a phone, where the qualifier is what makes the label long and
+  // the qualifier is the part that can't be dropped.
+  const what = IS_MOBILE ? "Balance" : "Fuel balance";
+  if (!f.day || f.age == null) return what;
+  if (f.age === 0) return what;
+  if (f.age === 1) return `${what} · yesterday`;
+  return `${what} · ${f.age}d ago`;
 }
 
 function FuelValue({ fuel: f }: { fuel: Fuel }) {
@@ -522,13 +563,7 @@ function fuelSentence(f: Fuel): string {
 
   const when = parseLocal(f.day.date);
   const day =
-    f.age === 0
-      ? "Today"
-      : f.age === 1
-        ? "Yesterday"
-        : when
-          ? shortDate(when)
-          : "That day";
+    f.age === 0 ? "Today" : f.age === 1 ? "Yesterday" : when ? shortDate(when) : "That day";
 
   const balance = balanceKcal(f.day);
   const head =
@@ -603,11 +638,15 @@ function narrative(rows: DailyMetrics[], activities: CachedActivity[]): string {
   const last = activities[0];
   if (last) {
     const when = parseLocal(last.startTimeLocal ?? last.localDate);
-    const days = when
-      ? Math.round((Date.now() - when.getTime()) / 86_400_000)
-      : null;
+    const days = when ? Math.round((Date.now() - when.getTime()) / 86_400_000) : null;
     const ago =
-      days === 0 ? "Today's" : days === 1 ? "Yesterday's" : days ? `${days} days ago, your` : "Your last";
+      days === 0
+        ? "Today's"
+        : days === 1
+          ? "Yesterday's"
+          : days
+            ? `${days} days ago, your`
+            : "Your last";
     const dist = last.distanceM ? ` ${km(last.distanceM)}` : "";
     parts.push(
       `${ago} session was${dist ? dist : ""} ${(last.typeKey ?? "activity").replace(/_/g, " ")}.`,

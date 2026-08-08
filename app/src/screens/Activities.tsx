@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { cachedActivities, type CachedActivity } from "../lib/api";
-import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
+import { colWidth, Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
 import {
   DASH,
@@ -104,9 +104,9 @@ function ActivityRow({ a }: { a: CachedActivity }) {
       style={{ color: "inherit" }}
     >
       <span
+        className="col-key"
         style={{
-          width: 50,
-          flex: "none",
+          ...colWidth(50),
           color: "var(--faint)",
           fontSize: "var(--fs-caption)",
           letterSpacing: "0.03em",
@@ -114,30 +114,31 @@ function ActivityRow({ a }: { a: CachedActivity }) {
       >
         {d ? shortDate(d) : DASH}
       </span>
-      <span
-        style={{
-          flex: 1,
-          minWidth: 0,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
+      <span className="col-name">
         {a.name ?? "Untitled"}
         <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
           {sportLabel(a.typeKey)}
         </span>
       </span>
-      <span className="mono" style={{ width: 82, textAlign: "right", fontSize: "var(--fs-base)" }}>
+      <span className="col mono" style={{ ...colWidth(82), fontSize: "var(--fs-base)" }}>
         {a.distanceM ? km(a.distanceM, 1) : DASH}
       </span>
-      <span style={{ width: 70, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
+      <span
+        className="col"
+        style={{ ...colWidth(70), color: "var(--mut)", fontSize: "var(--fs-small)" }}
+      >
         {duration(a.durationS)}
       </span>
-      <span style={{ width: 86, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
+      <span
+        className="col"
+        style={{ ...colWidth(86), color: "var(--mut)", fontSize: "var(--fs-small)" }}
+      >
         {rate}
       </span>
-      <span style={{ width: 60, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}>
+      <span
+        className="col"
+        style={{ ...colWidth(60), color: "var(--faint)", fontSize: "var(--fs-small)" }}
+      >
         {a.avgHr ? Math.round(a.avgHr) : DASH}
       </span>
     </Link>

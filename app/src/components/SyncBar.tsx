@@ -27,13 +27,7 @@
  */
 import { useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import {
-  describe,
-  fraction,
-  getSyncState,
-  subscribe,
-  type SyncStep,
-} from "../lib/syncProgress";
+import { describe, fraction, getSyncState, subscribe, type SyncStep } from "../lib/syncProgress";
 import { IS_MOBILE } from "../lib/platform";
 import { CONTROLS_SIDE, CONTROLS_W, STRIP } from "./WindowChrome";
 
@@ -159,7 +153,10 @@ export function SyncBar() {
           </span>
         </>
       ) : (
-        <span className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}>
+        <span
+          className="mono"
+          style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}
+        >
           {sync.full ? "Full sync" : "Sync"}
         </span>
       )}

@@ -3,7 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      `viewport-fit=cover` is what makes `env(safe-area-inset-*)` mean anything.
+      Without it those functions are defined but answer 0 on every device, so
+      the phone shell's padding for the status bar, the tab bar's gesture inset
+      and the scroll fade's top band were all quietly computing as if the screen
+      had no notch and no system bars — on a window that Android draws
+      edge-to-edge underneath both.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Tauri + React + Typescript</title>
   </head>
 

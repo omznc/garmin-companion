@@ -65,11 +65,7 @@ function Pulse() {
   return (
     <span style={{ display: "inline-flex", gap: 4, flex: "none" }} aria-hidden="true">
       {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="pulse-dot"
-          style={{ animationDelay: `${i * 0.16}s` }}
-        />
+        <span key={i} className="pulse-dot" style={{ animationDelay: `${i * 0.16}s` }} />
       ))}
     </span>
   );

@@ -388,17 +388,45 @@ button {
 /* Small caps-ish section marker. The design uses this everywhere a heading
  * would otherwise be too loud. */
 .eyebrow {
-  font: 400 var(--fs-micro)/1 "Instrument Sans", sans-serif;
+  font:
+    400 var(--fs-micro) / 1 "Instrument Sans",
+    sans-serif;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--faint);
 }
 
 .eyebrow-lg {
-  font: 400 var(--fs-caption)/1 "Instrument Sans", sans-serif;
+  font:
+    400 var(--fs-caption) / 1 "Instrument Sans",
+    sans-serif;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--faint);
+}
+
+/* A section's label, and the one line of context that belongs beside it —
+ * "Zone drift · last 8 runs" on the left, "18% above Z2 lately" on the right.
+ *
+ * The pair reads as one line on a desktop and cannot on a phone: the eyebrow is
+ * uppercase at 0.12em tracking and the note beside it is a sentence, so at 320px
+ * the note wraps to three lines against a one-line eyebrow and `baseline`
+ * alignment leaves the two ragged around each other. Stacked, the note becomes
+ * what it already was — a subtitle — and reads in the order you'd say it.
+ *
+ * Margins stay at the call site. Every one of these sits a different distance
+ * from what it introduces, and that spacing is the page's, not this rule's. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+:root[data-mobile] .section-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .h1 {
@@ -538,6 +566,79 @@ button {
   padding: 14px 0;
   border-bottom: 1px solid var(--line2);
   font-size: var(--fs-md);
+}
+
+/* ---------------------------------------------------------- row columns --- */
+
+/* The cells inside a `.row` or a `.row-static`.
+ *
+ * A list of figures only reads as a list if the figures line up down the page,
+ * which means a fixed width per column — and the right width is a property of
+ * the screen (the widest value it has to hold), not of this rule. So it arrives
+ * as `--w` from the call site.
+ *
+ * Through a custom property rather than as an inline `width`, and that is the
+ * whole point: an inline declaration outranks every selector in this file, so a
+ * width written at the call site could not be dropped on a phone. Written this
+ * way, the call site says how wide the column is and the rules below get to say
+ * when that stops applying. */
+.col {
+  flex: none;
+  width: var(--w);
+  text-align: right;
+}
+
+/* The column the row is identified by — a date, a lap number. Same width rule;
+ * left, because it is read as a label rather than compared as a figure. */
+.col-key {
+  flex: none;
+  width: var(--w);
+  text-align: left;
+}
+
+/* The row's name, which has no width of its own: it takes whatever the columns
+ * leave and truncates rather than wrapping the row to two lines. */
+.col-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* On a phone the fixed widths are the problem rather than the point.
+ *
+ * Weight's five columns sum to 470px before gaps, in a column 320px wide — and
+ * `#root` is `overflow: hidden` sideways, so the tail doesn't scroll, it simply
+ * isn't on the screen. Every row in the app was losing its last figure or two
+ * with nothing to say it had.
+ *
+ * Sized to content instead, and the row wraps. Alignment down the page goes,
+ * which is a real loss: comparing Tuesday's weight to Wednesday's is what the
+ * column was for. A figure you can read in a slightly ragged column still beats
+ * one that was never drawn. */
+/* `.cols` is the same opt-in for a row of `.col` cells that isn't a `.row` —
+ * Gear and the splits list carry their own flex because they have a bar drawn
+ * under them, and only want the wrapping. */
+:root[data-mobile] .row,
+:root[data-mobile] .row-static,
+:root[data-mobile] .cols {
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 5px;
+}
+
+:root[data-mobile] .col,
+:root[data-mobile] .col-key {
+  width: auto;
+}
+
+/* The name goes first and takes the line to itself. It's the one cell that can
+ * be any length, so leaving it in the wrap with the figures makes every row in
+ * the list break in a different place. */
+:root[data-mobile] .col-name {
+  order: -1;
+  flex: 1 0 100%;
 }
 
 /* ------------------------------------------------------------- controls --- */
@@ -775,8 +876,11 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
-  transition: color var(--dur-slow), transform var(--dur-fast) var(--ease-out),
-    background var(--dur-fast), box-shadow var(--dur-base) var(--ease-out);
+  transition:
+    color var(--dur-slow),
+    transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast),
+    box-shadow var(--dur-base) var(--ease-out);
 }
 
 .nav-link:hover,
@@ -788,7 +892,9 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
 /* Colour alone is the hover state, and a keyboard user has no pointer to
  * explain where it came from, so focus gets a mark of its own. */
 .nav-link:focus-visible {
-  box-shadow: 0 0 0 2px var(--bg2), 0 0 0 3.5px var(--acc);
+  box-shadow:
+    0 0 0 2px var(--bg2),
+    0 0 0 3.5px var(--acc);
 }
 
 .nav-link[data-active="true"] {
@@ -971,7 +1077,9 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
  * dropping something at the top would actually do. */
 .nav-default {
   flex: none;
-  font: 400 9px/1 "Instrument Sans", sans-serif;
+  font:
+    400 9px / 1 "Instrument Sans",
+    sans-serif;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--faint);
@@ -1012,7 +1120,8 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   box-sizing: content-box;
   height: 1px;
   padding: 7px 0 8px;
-  background: linear-gradient(var(--line), var(--line)) content-box no-repeat,
+  background:
+    linear-gradient(var(--line), var(--line)) content-box no-repeat,
     linear-gradient(var(--ground), var(--ground)) border-box;
 }
 
@@ -1079,7 +1188,9 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   font-size: 24px;
   color: var(--acc);
   cursor: pointer;
-  transition: color var(--dur-base), transform var(--dur-fast) var(--ease-out);
+  transition:
+    color var(--dur-base),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 @media (hover: hover) {
@@ -1116,7 +1227,9 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   border-radius: 5px;
   padding: 10px 13px;
   outline: none;
-  transition: border-color var(--dur-base), box-shadow var(--dur-base),
+  transition:
+    border-color var(--dur-base),
+    box-shadow var(--dur-base),
     background var(--dur-base);
 }
 
@@ -1163,7 +1276,9 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
   padding: 4px 6px;
   outline: none;
   text-align: right;
-  transition: border-color var(--dur-base), color var(--dur-base);
+  transition:
+    border-color var(--dur-base),
+    color var(--dur-base);
 }
 
 .input-hex:focus {
@@ -1247,7 +1362,6 @@ svg[viewBox="0 0 256 256"]:not(.no-tint) path[opacity="0.2"] {
 .input-bare::placeholder {
   color: var(--faint);
 }
-
 
 /* ---------------------------------------------------------------- bars --- */
 
@@ -1463,7 +1577,9 @@ body::-webkit-scrollbar {
   height: 26px;
   border-radius: 3px;
   color: var(--faint);
-  transition: background var(--dur-fast), color var(--dur-fast);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
 }
 
 /* The control glyphs are Phosphor icons, which paint with `fill` — the old
@@ -1562,7 +1678,8 @@ body::-webkit-scrollbar {
 .sync-bar {
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity var(--dur-slow) var(--ease-out),
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
     transform var(--dur-slow) var(--ease-out);
 }
 
@@ -1633,6 +1750,27 @@ body::-webkit-scrollbar {
     color-mix(in srgb, var(--bg) 9%, transparent) 85%,
     transparent 100%
   );
+}
+
+/* A phone's two edges are not the window's two edges.
+ *
+ * The top one is the status bar, which Android draws over the webview — so the
+ * fade covers that band plus a short ramp below it, rather than the flat 88px
+ * the desktop uses. 88 on a phone is an eighth of the screen washed out, which
+ * reads as a broken heading rather than as depth.
+ *
+ * The bottom one is the tab bar, not the bottom of the display: the bar is
+ * opaque and sits over the page, so the line content actually vanishes at is
+ * its top hairline. Anchoring the fade there puts the softening where the cut
+ * is. It stays at z 40, under the bar's 60 and the sync card's 61, so neither
+ * picks up a wash. */
+:root[data-mobile] .scroll-fade-top {
+  height: calc(env(safe-area-inset-top, 0px) + 44px);
+}
+
+:root[data-mobile] .scroll-fade-bottom {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h));
+  height: 56px;
 }
 
 /* ------------------------------------------------------------ markdown --- */
@@ -1815,7 +1953,9 @@ body::-webkit-scrollbar {
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 7px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 10px 28px -10px rgba(0, 0, 0, 0.22);
   outline: none;
   /* Hidden until measured: the card renders at the raw click point so it can
    * be sized, then moves inside the window edge. `data-placed` is the second
@@ -1823,7 +1963,8 @@ body::-webkit-scrollbar {
   opacity: 0;
   transform: scale(0.97);
   transform-origin: top left;
-  transition: opacity var(--dur-fast) var(--ease-out),
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
     transform var(--dur-fast) var(--ease-out);
 }
 
@@ -1904,7 +2045,9 @@ body::-webkit-scrollbar {
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 8px 20px -10px rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 8px 20px -10px rgba(0, 0, 0, 0.22);
   font-size: var(--fs-caption);
   line-height: 1.35;
   color: var(--fg);
@@ -2249,6 +2392,19 @@ body::-webkit-scrollbar {
 
 /* ------------------------------------------------------- mobile: setup --- */
 
+/* Setup is the one screen outside the shell, so it carries its own gutters
+ * rather than inheriting `.shell-mobile > main`'s. Same two numbers, and the
+ * same reasoning behind each — see there. */
+.setup-shell {
+  padding: 150px 56px 120px;
+}
+
+:root[data-mobile] .setup-shell {
+  padding: 0 20px;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 64px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+}
+
 /* The primary action and its escape hatch. Side by side with the pair pushed to
  * opposite ends on a desktop, which is the arrangement the design asks for and
  * the one that survives a 720px window. */
@@ -2307,6 +2463,31 @@ body::-webkit-scrollbar {
 
 .sync-bar[data-mobile][data-running="true"] {
   transform: none;
+}
+
+/* --------------------------------------------------- mobile: provider bar --- */
+
+/* The same card in the same place as the sync one above, because on a phone
+ * they are the same slot — the strip they shared on a desktop doesn't exist
+ * here, and the top of the screen is Android's status bar. `AiBar` renders
+ * nothing while a sync is running, so the two never stack.
+ *
+ * Unlike the sync readout this one is a control: it takes pointer events,
+ * because what you do about a broken provider is go and change it. */
+.ai-bar[data-mobile] {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h) + 10px);
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -15,6 +15,7 @@ import {
 import { mean } from "../lib/chart";
 import {
   AxisLabels,
+  colWidth,
   Empty,
   ErrorNote,
   LineChart,
@@ -112,10 +113,25 @@ export function Reports() {
           <div className="serif" style={{ fontSize: 26, lineHeight: 1.3, marginBottom: 14 }}>
             {headline(week, prior, split)}
           </div>
-          <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.72, margin: "0 0 14px", textWrap: "pretty" }}>
+          <p
+            style={{
+              fontSize: "var(--fs-md)",
+              lineHeight: 1.72,
+              margin: "0 0 14px",
+              textWrap: "pretty",
+            }}
+          >
             {body(week, prior)}
           </p>
-          <p style={{ fontSize: "var(--fs-md)", lineHeight: 1.72, color: "var(--mut)", margin: 0, textWrap: "pretty" }}>
+          <p
+            style={{
+              fontSize: "var(--fs-md)",
+              lineHeight: 1.72,
+              color: "var(--mut)",
+              margin: 0,
+              textWrap: "pretty",
+            }}
+          >
             {recoveryBody(avgSleep, avgRhr, split, food, water)}
           </p>
         </div>
@@ -138,11 +154,7 @@ export function Reports() {
             />
             <Metric size={26} label="Time" value={hoursMinutes(week.durationS)} />
             <Metric size={26} label="Sessions" value={num(week.activities.length)} />
-            <Metric
-              size={26}
-              label="Avg sleep"
-              value={avgSleep ? hoursMinutes(avgSleep) : DASH}
-            />
+            <Metric size={26} label="Avg sleep" value={avgSleep ? hoursMinutes(avgSleep) : DASH} />
             {split && (
               <Metric
                 size={26}
@@ -171,16 +183,19 @@ export function Reports() {
       </div>
       {week.activities.map((a) => (
         <div key={a.activityId} className="row-static">
-          <span style={{ flex: 1 }}>
+          <span className="col-name">
             {a.name ?? "Untitled"}
             <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
               {(a.typeKey ?? "").replace(/_/g, " ")}
             </span>
           </span>
-          <span className="mono" style={{ width: 88, textAlign: "right", fontSize: "var(--fs-base)" }}>
+          <span className="col mono" style={{ ...colWidth(88), fontSize: "var(--fs-base)" }}>
             {a.distanceM ? km(a.distanceM) : DASH}
           </span>
-          <span style={{ width: 76, textAlign: "right", color: "var(--mut)", fontSize: "var(--fs-small)" }}>
+          <span
+            className="col"
+            style={{ ...colWidth(76), color: "var(--mut)", fontSize: "var(--fs-small)" }}
+          >
             {duration(a.durationS)}
           </span>
         </div>
@@ -211,7 +226,20 @@ export function Reports() {
   );
 }
 
-const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_ABBR = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
 function range(w: Week): string {
   const a = parseLocal(w.start)!;
@@ -219,11 +247,7 @@ function range(w: Week): string {
   return `${a.getDate()} ${MONTH_ABBR[a.getMonth()]} – ${b.getDate()} ${MONTH_ABBR[b.getMonth()]}`;
 }
 
-function headline(
-  week: Week,
-  prior: Week,
-  split: ReturnType<typeof easyHardSplit>,
-): string {
+function headline(week: Week, prior: Week, split: ReturnType<typeof easyHardSplit>): string {
   if (week === prior) return "Your first week in the cache";
   if (split && split.hardPct <= 25 && week.runs >= 2)
     return "The closest you've come to an 80/20 week";
@@ -245,9 +269,7 @@ function body(week: Week, prior: Week): string {
     const change = ((week.durationS - prior.durationS) / prior.durationS) * 100;
     sentence += ` That's ${Math.abs(change).toFixed(0)}% ${change >= 0 ? "more" : "less"} time than the week before.`;
   }
-  const longest = [...week.activities].sort(
-    (a, b) => (b.durationS ?? 0) - (a.durationS ?? 0),
-  )[0];
+  const longest = [...week.activities].sort((a, b) => (b.durationS ?? 0) - (a.durationS ?? 0))[0];
   if (longest) {
     sentence += ` The longest was ${longest.name ?? "an untitled session"} at ${duration(longest.durationS)}.`;
   }
@@ -277,7 +299,9 @@ function recoveryBody(
       `Food was logged on ${food.logged} of ${food.window} ${food.window === 1 ? "day" : "days"} — too thin to average.`,
     );
   } else if (food.avgBurn != null) {
-    parts.push(`No food logged this week, against ${num(Math.round(food.avgBurn))} kcal a day burned.`);
+    parts.push(
+      `No food logged this week, against ${num(Math.round(food.avgBurn))} kcal a day burned.`,
+    );
   }
 
   // Silent for accounts that don't track it, rather than reporting a week of

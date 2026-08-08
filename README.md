@@ -68,9 +68,10 @@ Nothing is signed with an OS vendor certificate, which is what both warnings are
 about. Updates are signed with the updater's own key and work either way, so
 after the first install the app updates itself from Settings.
 
-Android is the exception: an installed Android app can't replace its own
-package, so there is no in-app update there. A new version means downloading the
-new APK and installing it over the old one.
+Android updates itself too, with one difference: replacing a package is the
+system's job there, so the app downloads the new version in the background and
+Android asks before swapping itself out. The first time, it will send you to
+turn on "Install unknown apps" for it — after that it's one tap.
 
 ### What's different on a phone
 

@@ -68,13 +68,41 @@ const HANDLES: {
   className?: string;
   style: React.CSSProperties;
 }[] = [
-  { dir: "North", cursor: "ns-resize", style: { top: 0, left: CORNER, right: CORNER, height: EDGE } },
-  { dir: "South", cursor: "ns-resize", style: { bottom: 0, left: CORNER, right: SE_CORNER, height: EDGE } },
-  { dir: "West", cursor: "ew-resize", style: { left: 0, top: CORNER, bottom: CORNER, width: EDGE } },
-  { dir: "East", cursor: "ew-resize", style: { right: 0, top: CORNER, bottom: SE_CORNER, width: EDGE } },
-  { dir: "NorthWest", cursor: "nwse-resize", style: { top: 0, left: 0, width: CORNER, height: CORNER } },
-  { dir: "NorthEast", cursor: "nesw-resize", style: { top: 0, right: 0, width: CORNER, height: CORNER } },
-  { dir: "SouthWest", cursor: "nesw-resize", style: { bottom: 0, left: 0, width: CORNER, height: CORNER } },
+  {
+    dir: "North",
+    cursor: "ns-resize",
+    style: { top: 0, left: CORNER, right: CORNER, height: EDGE },
+  },
+  {
+    dir: "South",
+    cursor: "ns-resize",
+    style: { bottom: 0, left: CORNER, right: SE_CORNER, height: EDGE },
+  },
+  {
+    dir: "West",
+    cursor: "ew-resize",
+    style: { left: 0, top: CORNER, bottom: CORNER, width: EDGE },
+  },
+  {
+    dir: "East",
+    cursor: "ew-resize",
+    style: { right: 0, top: CORNER, bottom: SE_CORNER, width: EDGE },
+  },
+  {
+    dir: "NorthWest",
+    cursor: "nwse-resize",
+    style: { top: 0, left: 0, width: CORNER, height: CORNER },
+  },
+  {
+    dir: "NorthEast",
+    cursor: "nesw-resize",
+    style: { top: 0, right: 0, width: CORNER, height: CORNER },
+  },
+  {
+    dir: "SouthWest",
+    cursor: "nesw-resize",
+    style: { bottom: 0, left: 0, width: CORNER, height: CORNER },
+  },
   {
     dir: "SouthEast",
     cursor: "nwse-resize",

@@ -5,16 +5,23 @@
 None of this needs doing again. It's written down because each piece is
 unrecoverable in a way that only surfaces months later.
 
-**The updater endpoint.** Hardcoded to
+**The updater endpoints**, of which there are two — one per manifest format,
+because desktop and Android don't ship the same kind of artifact:
 
 ```
 https://github.com/omznc/garmin-companion/releases/latest/download/latest.json
+https://github.com/omznc/garmin-companion/releases/latest/download/latest-android.json
 ```
 
-in `app/src-tauri/tauri.conf.json` under `plugins.updater.endpoints`. Nothing
-else refers to the slug, so if the repo ever moves, that one string is the
-edit. Getting it wrong doesn't break the build — it breaks update checks
-silently.
+The first is in `app/src-tauri/tauri.conf.json` under
+`plugins.updater.endpoints`, read by `tauri-plugin-updater`. The second is the
+`MANIFEST` constant in `app/src/lib/apk.ts`, read by the app itself — the
+plugin isn't compiled in on Android, so there is nothing to configure and the
+URL lives next to the code that fetches it.
+
+Those two lines are the only places the repo slug appears. If it ever moves,
+both change or half the installed copies stop hearing about releases. Getting
+either wrong doesn't break the build — it breaks update checks silently.
 
 **The updater key**, which proves a bundle came from you. The app refuses any
 update it can't verify against the public half baked into it.
@@ -94,9 +101,11 @@ Artifacts:
 | macOS | `.dmg` | `.app.tar.gz` + `.sig` |
 | Windows | `-setup.exe` (NSIS) | `.nsis.zip` + `.sig` |
 | Linux | `.AppImage`, `.deb`, `.rpm` | `.AppImage.tar.gz` + `.sig` |
-| Android | `.apk` (plus `.aab` for Play) | — none, see below |
+| Android | `.apk` (plus `.aab` for Play) | the `.apk` itself |
 
-`latest.json` is generated alongside them and is the file the app fetches.
+`latest.json` is generated alongside the desktop bundles and is the file those
+apps fetch. `latest-android.json` is the equivalent for the APK and is written
+by hand in the workflow — see below.
 
 ### Why Android is its own job
 
@@ -106,11 +115,67 @@ build produces neither, so it sits in a separate job that uploads through
 either fail on a platform it doesn't bundle for, or publish a `latest.json` that
 an APK can't be an update for.
 
-Android is not self-updating, and that isn't an omission. An installed Android
-app may not replace its own package, so `tauri-plugin-updater` is `cfg`'d out on
-that target (`app/src-tauri/Cargo.toml`) and Settings hides the update section.
-A new version means downloading the new APK over the old one — which works
-silently, provided the signing key hasn't changed.
+### How Android updates itself
+
+It does, and the note that used to be here saying it can't was wrong. What an
+Android app can't do is replace its own package *silently* — that's reserved
+for device owners. It can hand the system a new APK and have the system ask.
+
+So the flow is: `app/src/lib/apk.ts` fetches `latest-android.json`, compares
+versions, and calls the `download_apk` command in Rust, which streams the APK
+into the app's cache and checks it against the hash in the manifest.
+`ApkInstaller` on the Kotlin side then commits a `PackageInstaller` session, and
+Android draws its own confirmation over the app. One tap. Everything before it
+happens in the background.
+
+Three things hold that up, and all three are load-bearing:
+
+- **`REQUEST_INSTALL_PACKAGES`** in `AndroidManifest.xml`. Without it the
+  session is refused outright.
+- **"Install unknown apps"**, granted per-app by the user from Android 8. It is
+  held by whichever browser the APK was first downloaded through, never by this
+  app, so the *first* update sends them to a settings screen. After that it's
+  silent until the tap. There is no callback when it's granted — the app just
+  asks again next time the button is pressed.
+- **The signing key.** Android installs over an existing package only when the
+  new one carries the same signature. That, not the permission, is what makes
+  any of this safe: a substituted APK would be offered as a separate app under
+  its own name, not as an update to this one. The SHA-256 in the manifest is
+  belt and braces — it stops a truncated download from reaching the installer,
+  nothing more.
+
+A fresh download waits in Settings rather than interrupting. One left over from
+an earlier session offers itself at launch instead, once per version — which is
+the cheapest moment to be asked to restart into something.
+
+`latest-android.json` is written by the workflow rather than by a tool:
+
+```json
+{ "version": "0.2.0", "url": "https://…/garmin-companion_0.2.0.apk", "sha256": "…" }
+```
+
+It is not signed with the minisign key, and doesn't need to be — see the third
+point above for what actually gates the install. Adding a signature would mean
+carrying a verifier in the app to re-derive a guarantee the OS already enforces.
+
+### Why the Play bundle is built twice
+
+`REQUEST_INSTALL_PACKAGES` is on Google Play's restricted list — only
+store-shaped apps may declare it — so the `.aab` has to go up without it while
+the `.apk` keeps it.
+
+The two artifacts come out of the *same* Gradle variant, so a flavour or build
+type can't tell them apart, and adding a dimension that could would double the
+per-ABI Rust compile: the expensive half of an Android build, four times over.
+Instead `app/build.gradle.kts` registers a transform on the merged manifest that
+strips the permission, active only when the `playBundle` project property is
+set. The workflow runs `--apk` without it and `--aab` with
+`ORG_GRADLE_PROJECT_playBundle=true`, which is the only channel available —
+`tauri android build` can't pass a property through to Gradle.
+
+The transform throws if it finds nothing to strip. That's deliberate: a silent
+no-op there ships a restricted permission to Play review, and nothing about the
+bundle would look wrong in the meantime.
 
 ### The Android version code
 
@@ -225,7 +290,8 @@ Gatekeeper or SmartScreen.
 - **Android**: the APK *is* signed, with your own keystore — that is what
   Android requires, and there is no vendor certificate to buy. Installing it
   still needs "allow from this source" the first time, because it didn't come
-  from Play. Nothing fixes that except shipping on Play.
+  from Play, and the app needs its own grant of the same setting before it can
+  update itself. Nothing fixes either except shipping on Play.
 
 For a personal app this is a shrug. If you ever hand it to someone else, macOS
 notarization is the one worth buying.

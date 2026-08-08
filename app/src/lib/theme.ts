@@ -20,6 +20,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { themesList, type CustomTheme } from "./api";
 import { applyTokens } from "./customTheme";
+import { setBarAppearance } from "./android";
+import { dynamicAvailable, dynamicTheme, refresh as refreshDynamic } from "./dynamic";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -64,8 +66,35 @@ export const PRESETS: readonly Preset[] = [
  */
 export const BUILT_IN: Record<Mode, string> = { light: "paper", dark: "ink" };
 
+/**
+ * Material You: the wallpaper's colours, on Android 12 and up.
+ *
+ * The second palette in the app that the mode still applies to, and the first
+ * that isn't the built-in. Every other one — shipped or hand-written — declares
+ * a fixed `appearance` and that fixedness is the point: it's what makes the
+ * mode inert while the palette is on. This one can't work that way, because
+ * Android derives a light set and a dark set from the same wallpaper, so
+ * pinning it to either would break "match system" for the palette that most
+ * wants it. So it isn't a `Preset`; it's a case in `compute()`.
+ *
+ * See `lib/dynamic.ts` for where the colours come from and how the ramps are
+ * mapped onto the app's seven.
+ */
+export const DYNAMIC = "dynamic";
+
 const THEME_KEY = "garmin-companion:theme";
 const PALETTE_KEY = "garmin-companion:palette";
+
+/**
+ * Written when someone picks the built-in palette on purpose.
+ *
+ * The stored value used to be absent for both "never chose one" and "chose
+ * Default", which was fine while they meant the same thing. They stopped
+ * meaning the same thing the moment Android got a different default: without
+ * this, choosing Default on a phone would be forgotten on the next launch and
+ * the wallpaper palette would come back over the top of it.
+ */
+const DEFAULT = "default";
 
 const media = () => window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -109,18 +138,20 @@ export type ThemeState = {
 function compute(theme: Theme, palette: Palette, customs: CustomTheme[]): ThemeState {
   const preset = findPreset(palette);
   const slug = customSlug(palette);
-  const custom = slug ? (customs.find((c) => c.slug === slug) ?? null) : null;
-  return {
-    theme,
-    palette,
-    // A selected custom theme that hasn't loaded yet resolves to the mode
-    // underneath rather than to nothing, so the window is never unstyled — the
-    // theme snaps in when the folder read lands a moment later.
-    mode: preset ? preset.appearance : custom ? custom.appearance : builtIn(theme),
-    preset,
-    custom,
-    customs,
-  };
+  const saved = slug ? (customs.find((c) => c.slug === slug) ?? null) : null;
+
+  // A selected custom theme that hasn't loaded yet resolves to the mode
+  // underneath rather than to nothing, so the window is never unstyled — the
+  // theme snaps in when the folder read lands a moment later.
+  //
+  // The wallpaper palette resolves that way too, but for the opposite reason:
+  // it has no fixed appearance to fall back from, so the mode is what picks
+  // which half of it applies. That ordering is why the theme is built after
+  // the mode rather than beside it.
+  const mode = preset ? preset.appearance : saved ? saved.appearance : builtIn(theme);
+  const custom = palette === DYNAMIC ? dynamicTheme(mode) : saved;
+
+  return { theme, palette, mode, preset, custom, customs };
 }
 
 /**
@@ -144,14 +175,36 @@ function cached(slug: string): CustomTheme | null {
   }
 }
 
+/**
+ * What a build with nothing stored opens on.
+ *
+ * Material You where there is one, the app's own palette everywhere else. This
+ * is the only place the Android default is decided, and it is only ever
+ * consulted when the key is absent — an explicit choice, Default included,
+ * writes something and is honoured from then on.
+ */
+function initialPalette(): Palette {
+  return dynamicAvailable() ? DYNAMIC : null;
+}
+
 function stored(): ThemeState {
   const t = localStorage.getItem(THEME_KEY);
   const theme = t === "light" || t === "dark" || t === "system" ? t : "system";
 
-  // A palette dropped from a later build reads as no palette rather than as an
-  // attribute with no stylesheet behind it.
   const p = localStorage.getItem(PALETTE_KEY);
-  const palette = findPreset(p) || customSlug(p) ? p : null;
+  const palette =
+    p === DEFAULT
+      ? null
+      : // Not on this phone — an older Android, or a desktop build reading a
+        // profile written on one. Falls through to whatever is default here
+        // rather than to an unstyled window.
+        p === DYNAMIC
+        ? initialPalette()
+        : // A palette dropped from a later build reads as no palette rather
+          // than as an attribute with no stylesheet behind it.
+          findPreset(p) || customSlug(p)
+          ? p
+          : initialPalette();
 
   const slug = customSlug(palette);
   const seed = slug ? cached(slug) : null;
@@ -176,6 +229,11 @@ function paint(): void {
   if (current.preset) root.setAttribute("data-palette", current.preset.id);
   else root.removeAttribute("data-palette");
   applyTokens(current.custom);
+  // The status and navigation bars are the one part of the app's surface it
+  // doesn't paint, and they have to agree with the part it does. Driven from
+  // the resolved mode rather than the phone's, because the two disagree
+  // whenever the app's appearance is not the system's. No-op off Android.
+  setBarAppearance(current.mode === "light");
 }
 
 /**
@@ -206,10 +264,18 @@ function commit(theme: Theme, palette: Palette, customs = current.customs): void
   // snapshots by identity, and the mode can move while the other two don't.
   current = compute(theme, palette, customs);
   localStorage.setItem(THEME_KEY, theme);
-  if (palette) localStorage.setItem(PALETTE_KEY, palette);
-  else localStorage.removeItem(PALETTE_KEY);
-  if (current.custom) localStorage.setItem(CACHE_KEY, JSON.stringify(current.custom));
-  else localStorage.removeItem(CACHE_KEY);
+  // Always written, `null` included — see `DEFAULT` for why the absence of this
+  // key can no longer stand for the built-in palette.
+  localStorage.setItem(PALETTE_KEY, palette ?? DEFAULT);
+  // Only a theme that came off disk is worth mirroring. The wallpaper palette
+  // is rebuilt from the window binding before the first line of the app runs,
+  // so it is already as early as the cache would make it — and caching it here
+  // would evict a real theme's copy on the way past.
+  if (current.custom && customSlug(palette)) {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(current.custom));
+  } else {
+    localStorage.removeItem(CACHE_KEY);
+  }
   paint();
   for (const fn of listeners) fn();
 }
@@ -295,16 +361,29 @@ export function startAppearance(): void {
     }
   });
 
-  window.addEventListener("focus", () => void refreshCustomThemes());
+  window.addEventListener("focus", () => {
+    void refreshCustomThemes();
+    // And the wallpaper, which can be changed while the app is in the
+    // background and announces itself to nobody. Coming back to the window is
+    // the moment to look — a palette that shifts as you return is a change you
+    // just made, where one that shifted mid-session would be one that happened
+    // to you. Only repaints if the ramps actually moved.
+    if (current.palette === DYNAMIC && refreshDynamic()) {
+      commit(current.theme, current.palette);
+    }
+  });
 }
 
 // One listener for the life of the process. An explicit light or dark was never
 // the OS's call, so only "match system" listens at all.
 //
-// It stays listening under a palette, which looks redundant — the palette fixes
-// what's on screen, so nothing repaints. But "match system" is still what you'd
-// drop back to, and Settings draws that as a live swatch on the Default row. The
-// flip changes the answer even while nothing is showing it.
+// It stays listening under a palette, which used to look redundant — a palette
+// with a fixed appearance holds what's on screen, so nothing repaints. Two
+// reasons it still has to run. "Match system" is what you'd drop back to, and
+// Settings draws that as a live swatch on the Default row, so the flip changes
+// the answer even while nothing is showing it. And under Material You it is not
+// redundant at all: that palette has both appearances and the mode is what
+// picks between them, so sunset genuinely repaints the app.
 media().addEventListener("change", () => {
   if (current.theme !== "system") return;
   commit(current.theme, current.palette);

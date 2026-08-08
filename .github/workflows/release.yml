@@ -117,9 +117,11 @@ jobs:
 
             Nothing here is signed with an OS vendor certificate, which is what
             both warnings are about. Updates are signed, and those work either
-            way — existing desktop installs update themselves from Settings.
-            Android does not: an installed app can't replace its own package, so
-            a new version there means downloading the new APK over the old one.
+            way — existing installs update themselves from Settings on every
+            platform, Android included. Android downloads the new APK in the
+            background and then asks before replacing itself, which is as
+            quiet as the system allows; the first time, it will also send you
+            to turn on "Install unknown apps" for the app.
           # Left as a draft so the release can be checked, and so the four
           # matrix jobs can finish filling it in before anyone downloads.
           releaseDraft: true
@@ -235,21 +237,65 @@ jobs:
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
-      - name: Build
-        working-directory: app
-        run: pnpm tauri android build --apk --aab
-
-      # Renamed on the way out. Gradle calls both outputs `app-universal-release`
-      # whatever the app is, which on a release page next to four desktop
-      # installers says nothing about what it is or which version.
-      - name: Name the artifacts
-        id: artifacts
+      # The APK, which is the one people install and the one that self-updates.
+      #
+      # Copied out in the same step it's built in, and before the bundle build
+      # below runs over the same output tree with a different manifest. Nothing
+      # observed suggests Gradle would touch the APK there, but the failure if
+      # it ever did is a released APK missing the permission it needs to update
+      # itself — which nobody would notice until the release after next.
+      #
+      # `latest-android.json` is written here too, and is to the APK what
+      # `latest.json` is to the desktop bundles: the file an installed copy
+      # fetches to find out a newer one exists. Written by hand rather than by
+      # `tauri-action`, which doesn't know Android is a platform. The shape is
+      # documented in `app/src/lib/apk.ts`, which reads it.
+      #
+      # The hash is not the security boundary — Android refuses to install any
+      # APK not signed with the same key as the copy it's replacing, whatever
+      # is written here. It's what stops a truncated download reaching the
+      # system installer as a mystery.
+      - name: Build the APK
         run: |
+          (cd app && pnpm tauri android build --apk)
+
           VERSION=$(node -p "require('$GITHUB_WORKSPACE/app/src-tauri/tauri.conf.json').version")
           OUT=app/src-tauri/gen/android/app/build/outputs
           mkdir -p android-out
-          cp "$OUT"/apk/universal/release/*.apk \
-             "android-out/garmin-companion_${VERSION}.apk"
+          # Renamed on the way out. Gradle calls its output `app-universal-release`
+          # whatever the app is, which on a release page next to four desktop
+          # installers says nothing about what it is or which version.
+          APK="android-out/garmin-companion_${VERSION}.apk"
+          cp "$OUT"/apk/universal/release/*.apk "$APK"
+
+          # A `releases/latest/download/` URL, the same form the app asks for
+          # this manifest at, so both follow whatever is currently published
+          # instead of pinning this tag.
+          cat > android-out/latest-android.json <<EOF
+          {
+            "version": "${VERSION}",
+            "url": "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/garmin-companion_${VERSION}.apk",
+            "sha256": "$(sha256sum "$APK" | cut -d' ' -f1)"
+          }
+          EOF
+
+      # The bundle, which exists for Play and has to be a slightly different
+      # app: `REQUEST_INSTALL_PACKAGES` is restricted there, so the manifest
+      # transform in `app/build.gradle.kts` takes it back out. A second Gradle
+      # run rather than a second variant — see the comment there for why the
+      # obvious answer costs four extra Rust compiles.
+      #
+      # `ORG_GRADLE_PROJECT_` is how a project property is set from the
+      # environment, and it is the only channel there is: `tauri android build`
+      # has no way to pass one through to Gradle.
+      - name: Build the Play bundle
+        env:
+          ORG_GRADLE_PROJECT_playBundle: "true"
+        run: |
+          (cd app && pnpm tauri android build --aab)
+
+          VERSION=$(node -p "require('$GITHUB_WORKSPACE/app/src-tauri/tauri.conf.json').version")
+          OUT=app/src-tauri/gen/android/app/build/outputs
           cp "$OUT"/bundle/universalRelease/*.aab \
              "android-out/garmin-companion_${VERSION}.aab"
           ls -la android-out

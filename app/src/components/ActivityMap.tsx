@@ -96,10 +96,7 @@ export function ActivityMap({
   const at = owned?.at ?? hover ?? null;
 
   const geometry = useMemo(() => project(series), [series]);
-  const tiles = useMemo(
-    () => (geometry ? tilesFor(geometry.frame, mode) : []),
-    [geometry, mode],
-  );
+  const tiles = useMemo(() => (geometry ? tilesFor(geometry.frame, mode) : []), [geometry, mode]);
   // Tracked per tile rather than as one flag: a single tile failing is normal,
   // and only all of them failing means there is no network to draw a map with.
   // The keys carry the zoom, so a different route can't inherit these.
@@ -154,16 +151,7 @@ export function ActivityMap({
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 16,
-          marginBottom: 12,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="section-head" style={{ marginBottom: 12 }}>
         <div className="eyebrow">Route</div>
         <div style={{ display: "flex", gap: 16, alignItems: "baseline", flexWrap: "wrap" }}>
           {options.length > 1 &&
@@ -178,12 +166,7 @@ export function ActivityMap({
           {/* Set apart from the colourings: those pick what the line says, this
               picks whether there is a world behind it. */}
           {tiles.length > 0 && (
-            <Tab
-              label="Map"
-              on={showTiles}
-              onClick={() => setBasemap((v) => !v)}
-              muted
-            />
+            <Tab label="Map" on={showTiles} onClick={() => setBasemap((v) => !v)} muted />
           )}
         </div>
       </div>
@@ -276,7 +259,15 @@ export function ActivityMap({
 
           {marks.map((m) => (
             <g key={m.km}>
-              <circle cx={m.x} cy={m.y} r={3} fill="var(--bg)" stroke="var(--mut)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+              <circle
+                cx={m.x}
+                cy={m.y}
+                r={3}
+                fill="var(--bg)"
+                stroke="var(--mut)"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
               <text
                 x={m.x + 8}
                 y={m.y + 4}
@@ -310,8 +301,24 @@ export function ActivityMap({
 
           {/* Hollow start, filled finish — the same convention a lap chart
               uses, and it survives a route that ends where it began. */}
-          <circle cx={start.x} cy={start.y} r={6} fill="var(--bg)" stroke="var(--fg)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-          <circle cx={finish.x} cy={finish.y} r={5} fill="var(--fg)" stroke="var(--bg)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+          <circle
+            cx={start.x}
+            cy={start.y}
+            r={6}
+            fill="var(--bg)"
+            stroke="var(--fg)"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            cx={finish.x}
+            cy={finish.y}
+            r={5}
+            fill="var(--fg)"
+            stroke="var(--bg)"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+          />
 
           {cursor && (
             <circle
@@ -333,19 +340,13 @@ export function ActivityMap({
         )}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="section-head">
         <Legend colour={active} zones={zones} series={series} />
         {basemap && tiles.length > 0 && (
           <span style={{ fontSize: "var(--fs-micro)", color: "var(--faint)", marginTop: 12 }}>
-            {failed ? "Map tiles couldn't be fetched — the route is drawn without them." : TILE_CREDIT}
+            {failed
+              ? "Map tiles couldn't be fetched — the route is drawn without them."
+              : TILE_CREDIT}
           </span>
         )}
       </div>
@@ -601,9 +602,7 @@ function Legend({
   if (colour === "zone") {
     // Only the zones this session actually visited — five swatches under a run
     // that never left Z2 is a legend for somebody else's session.
-    const visited = zones.percent
-      .map((p, i) => ({ p, i }))
-      .filter(({ p }) => p >= 1);
+    const visited = zones.percent.map((p, i) => ({ p, i })).filter(({ p }) => p >= 1);
     return (
       <div style={style}>
         {visited.map(({ i, p }) => (
@@ -697,10 +696,9 @@ function Indoor() {
           textWrap: "pretty",
         }}
       >
-        No position was recorded for this session, so there's no route to draw —
-        a treadmill, a rower or a strength session never had one. It also means
-        this can't contribute to VO2 max, which Garmin only calculates from
-        outdoor runs.
+        No position was recorded for this session, so there's no route to draw — a treadmill, a
+        rower or a strength session never had one. It also means this can't contribute to VO2 max,
+        which Garmin only calculates from outdoor runs.
       </p>
     </div>
   );

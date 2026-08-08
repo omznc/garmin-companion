@@ -3,14 +3,22 @@ import { useEffect, useId, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { areas, polylines, scaleFor, hasData, type Point } from "../lib/chart";
 import { tokens } from "../lib/customTheme";
+import { IS_MOBILE } from "../lib/platform";
 import type { CustomTheme } from "../lib/api";
-import {
-  ArrowRightIcon,
-  BackIcon,
-  ErrorIcon,
-  SpinnerIcon,
-  SyncIcon,
-} from "../lib/icons";
+import { ArrowRightIcon, BackIcon, ErrorIcon, SpinnerIcon, SyncIcon } from "../lib/icons";
+
+/**
+ * How wide a `.col` or `.col-key` in a list row is.
+ *
+ * A property rather than a `width`, so `styles.css` can drop it on a phone —
+ * an inline width would outrank every rule in the file and the columns could
+ * only ever be the size a desktop needs. The long version is above `.col`.
+ */
+export function colWidth(px: number): CSSProperties {
+  // React types custom properties as unknown keys; the cast is the standard
+  // way round it and is checked by the one place that reads `--w`.
+  return { "--w": `${px}px` } as CSSProperties;
+}
 
 /**
  * A palette at 26px: its page, its accent, its ink.
@@ -23,13 +31,7 @@ import {
  * learn which palette they're in — so a swatch cannot drift from the thing it
  * claims to preview.
  */
-export function Swatch({
-  of,
-  small = false,
-}: {
-  of: string | CustomTheme;
-  small?: boolean;
-}) {
+export function Swatch({ of, small = false }: { of: string | CustomTheme; small?: boolean }) {
   const custom = typeof of === "string" ? null : of;
   return (
     <span
@@ -76,12 +78,7 @@ export function Switch({
   note?: ReactNode;
 }) {
   return (
-    <button
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className="switch-row"
-    >
+    <button role="switch" aria-checked={on} onClick={() => onChange(!on)} className="switch-row">
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontSize: "var(--fs-md)" }}>{label}</span>
         {note && (
@@ -183,16 +180,17 @@ export function PageHeader({
     // stylesheet. Nothing visual hangs off the class.
     <header className="page-header" style={{ marginBottom: space }}>
       <div
+        className="section-head"
         style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 16,
           // Holds the row open on screens with no action, so a missing refresh
           // button can't pull the title up.
           minHeight: 14,
         }}
       >
+        {/* Stacks on a phone like every other section head, and here it earns
+            it twice over: Weight's eyebrow alone is wider than the column, so
+            side by side the two either overlap or the words break mid-phrase
+            behind the button. */}
         <div className="eyebrow-lg">{eyebrow}</div>
         {action}
       </div>
@@ -200,7 +198,15 @@ export function PageHeader({
         {title}
       </h1>
       {lede && (
-        <p className="lede" style={{ fontSize: "var(--fs-lg)", lineHeight: 1.7, maxWidth: "62ch", margin: "12px 0 0" }}>
+        <p
+          className="lede"
+          style={{
+            fontSize: "var(--fs-lg)",
+            lineHeight: 1.7,
+            maxWidth: "62ch",
+            margin: "12px 0 0",
+          }}
+        >
           {lede}
         </p>
       )}
@@ -240,11 +246,16 @@ export function Metric({
       </div>
       <div
         style={{
-          font: "400 var(--fs-micro)/1 'Instrument Sans', sans-serif",
+          // 1.35 rather than 1, because a label that qualifies itself — "Fuel
+          // balance · yesterday" — can reach two lines in a phone's column, and
+          // at a line-height of 1 the two sit on top of each other. `balance`
+          // splits them evenly instead of leaving one word on the second line.
+          font: "400 var(--fs-micro)/1.35 'Instrument Sans', sans-serif",
           letterSpacing: "0.11em",
           textTransform: "uppercase",
           color: "var(--mut)",
-          marginTop: 11,
+          marginTop: 9,
+          textWrap: "balance",
         }}
       >
         {label}
@@ -258,6 +269,17 @@ export function Unit({ children, size = 26 }: { children: ReactNode; size?: numb
   return <span style={{ fontSize: size }}>{children}</span>;
 }
 
+/**
+ * `gap` is the desktop's. A phone gets a fixed, much tighter pair.
+ *
+ * 54px between two figures in a 320px column means at most two per line and
+ * usually one, so Today's six metrics came out as a five-row ladder with a
+ * different number of items in each row. The rhythm the gap is there to create
+ * is a desktop-width effect; at phone width the same number just wastes the
+ * line. 26 across and 22 down fits three of the short ones and reads as a grid.
+ */
+const METRIC_GAP_MOBILE = "22px 26px";
+
 export function MetricRow({
   children,
   gap = 54,
@@ -268,7 +290,16 @@ export function MetricRow({
   style?: CSSProperties;
 }) {
   return (
-    <div style={{ display: "flex", gap, flexWrap: "wrap", ...style }}>{children}</div>
+    <div
+      style={{
+        display: "flex",
+        gap: IS_MOBILE ? METRIC_GAP_MOBILE : gap,
+        flexWrap: "wrap",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -294,8 +325,7 @@ export interface Series {
 
 /** Values are all over the place — kg, kcal, bpm — so a call site that doesn't
  *  say how to write its own gets the least presumptuous thing possible. */
-const plain = (v: number) =>
-  v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const plain = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 
 interface Reading {
   /** Vertical position of the point, as a fraction of the chart height. */
@@ -365,9 +395,7 @@ export function LineChart({
     s.invert ? s.values.map((v) => (v == null ? null : -v)) : s.values,
   );
   const all = drawn.flat().filter((v): v is number => v != null);
-  const shared = shareScale && all.length
-    ? { min: Math.min(...all), max: Math.max(...all) }
-    : {};
+  const shared = shareScale && all.length ? { min: Math.min(...all), max: Math.max(...all) } : {};
   const opts = { width: viewWidth, height, pad, ...shared };
 
   const count = Math.max(...series.map((s) => s.values.length), 0);
@@ -431,8 +459,14 @@ export function LineChart({
               <linearGradient key={i} id={`${uid}-${i}`} x1="0" y1="0" x2="0" y2="1">
                 {/* Styles rather than attributes: the colour is usually a
                     custom property, and only the style resolves one for sure. */}
-                <stop offset="0%" style={{ stopColor: s.stroke ?? "var(--acc)", stopOpacity: 0.2 }} />
-                <stop offset="100%" style={{ stopColor: s.stroke ?? "var(--acc)", stopOpacity: 0 }} />
+                <stop
+                  offset="0%"
+                  style={{ stopColor: s.stroke ?? "var(--acc)", stopOpacity: 0.2 }}
+                />
+                <stop
+                  offset="100%"
+                  style={{ stopColor: s.stroke ?? "var(--acc)", stopOpacity: 0 }}
+                />
               </linearGradient>
             ) : null,
           )}
@@ -491,7 +525,11 @@ export function LineChart({
             {labels?.[hover!] && <div className="chart-tip-when">{labels[hover!]}</div>}
             {readings.map((r, i) => (
               <div key={i} className="chart-tip-row">
-                {r.name && <span className="chart-tip-key" style={{ color: r.stroke }}>{r.name}</span>}
+                {r.name && (
+                  <span className="chart-tip-key" style={{ color: r.stroke }}>
+                    {r.name}
+                  </span>
+                )}
                 <span className="mono">{r.text}</span>
               </div>
             ))}
@@ -603,13 +641,7 @@ export function AxisLabels({ labels }: { labels: string[] }) {
 /* ---------------------------------------------------------------- bullet --- */
 
 /** The dotted list used for "Attention" and risk flags. */
-export function Bullet({
-  children,
-  accent = false,
-}: {
-  children: ReactNode;
-  accent?: boolean;
-}) {
+export function Bullet({ children, accent = false }: { children: ReactNode; accent?: boolean }) {
   return (
     <div
       style={{
@@ -659,10 +691,7 @@ export function Empty({
 }) {
   return (
     <div style={{ padding: "10px 0 0", maxWidth: "58ch" }}>
-      <div
-        className="serif"
-        style={{ fontSize: 25, lineHeight: 1.3, marginBottom: 12 }}
-      >
+      <div className="serif" style={{ fontSize: 25, lineHeight: 1.3, marginBottom: 12 }}>
         {title}
       </div>
       <p className="lede" style={{ fontSize: "var(--fs-md)", lineHeight: 1.7 }}>

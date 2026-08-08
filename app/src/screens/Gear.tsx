@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { gearList, type GearRow } from "../lib/api";
-import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
+import { colWidth, Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
 import { km, num } from "../lib/format";
 
@@ -33,10 +33,9 @@ export function Gear() {
           title="No gear registered."
           body={
             <>
-              Garmin tracks shoe and bike mileage once you add the item in
-              Garmin Connect and attach it to your activities. Nothing is
-              registered on this account yet, so there's no wear to report —
-              this screen fills in by itself once there is.
+              Garmin tracks shoe and bike mileage once you add the item in Garmin Connect and attach
+              it to your activities. Nothing is registered on this account yet, so there's no wear
+              to report — this screen fills in by itself once there is.
             </>
           }
         />
@@ -48,9 +47,8 @@ export function Gear() {
 
       {rows.length > 0 && (
         <p style={{ fontSize: "var(--fs-base)", color: "var(--faint)", marginTop: 26 }}>
-          Distances come from Garmin's own gear totals. The wear bar is against
-          the retirement limit you set on each item — items without one show no
-          bar rather than a guessed threshold.
+          Distances come from Garmin's own gear totals. The wear bar is against the retirement limit
+          you set on each item — items without one show no bar rather than a guessed threshold.
         </p>
       )}
     </div>
@@ -78,8 +76,8 @@ function GearItem({ row }: { row: GearRow }) {
 
   return (
     <div style={{ padding: "22px 0", borderBottom: "1px solid var(--line2)" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-        <div style={{ flex: 1, fontSize: "var(--fs-lg)" }}>
+      <div className="cols" style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
+        <div className="col-name" style={{ fontSize: "var(--fs-lg)" }}>
           {gear.displayName ?? gear.customMakeModel ?? "Unnamed"}
           <span style={{ color: "var(--faint)", fontSize: "var(--fs-small)", marginLeft: 10 }}>
             {gear.gearTypeName ?? ""}
@@ -89,9 +87,9 @@ function GearItem({ row }: { row: GearRow }) {
           {distance > 0 ? km(distance, 0) : "—"}
         </div>
         <div
+          className="col"
           style={{
-            width: 92,
-            textAlign: "right",
+            ...colWidth(92),
             fontSize: "var(--fs-small)",
             color: accent ? "var(--acc)" : "var(--mut)",
           }}
@@ -101,9 +99,7 @@ function GearItem({ row }: { row: GearRow }) {
       </div>
       {pct != null && (
         <div className="bar" style={{ marginTop: 14 }}>
-          <span
-            style={{ width: `${pct}%`, background: accent ? "var(--acc)" : "var(--mut)" }}
-          />
+          <span style={{ width: `${pct}%`, background: accent ? "var(--acc)" : "var(--mut)" }} />
         </div>
       )}
       {stats?.totalActivities != null && (

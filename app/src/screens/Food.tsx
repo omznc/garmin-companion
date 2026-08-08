@@ -13,6 +13,7 @@ import { nutrition, type NutritionDay } from "../lib/api";
 import { hasData, type Point } from "../lib/chart";
 import {
   AxisLabels,
+  colWidth,
   Empty,
   ErrorNote,
   LineChart,
@@ -24,6 +25,7 @@ import {
 import { RefreshButton } from "../components/Refresh";
 import { WeightGlance } from "../components/WeightGlance";
 import { DASH, num, parseLocal, shortDate } from "../lib/format";
+import { IS_MOBILE } from "../lib/platform";
 
 const DAYS = 30;
 
@@ -75,10 +77,9 @@ export function Food() {
           title="No food logged in the last 30 days."
           body={
             <>
-              Garmin returns the eaten side of this screen only when something
-              writes it — the Connect app's own log, or an integration like
-              MyFitnessPal. The burn side is already here from your device;
-              it's intake that's missing. Log a day in Garmin Connect and it
+              Garmin returns the eaten side of this screen only when something writes it — the
+              Connect app's own log, or an integration like MyFitnessPal. The burn side is already
+              here from your device; it's intake that's missing. Log a day in Garmin Connect and it
               appears here on the next sync.
             </>
           }
@@ -113,10 +114,16 @@ export function Food() {
           accent={(report.avgBalanceKcal ?? 0) > 0}
         />
       </MetricRow>
-      <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "0 0 8px", maxWidth: "60ch" }}>
-        Averaged over the {report.daysLogged}{" "}
-        {report.daysLogged === 1 ? "day" : "days"} with a food log, not over all{" "}
-        {days.length}. Balance is eaten minus burned — negative is a deficit.
+      <p
+        style={{
+          fontSize: "var(--fs-small)",
+          color: "var(--faint)",
+          margin: "0 0 8px",
+          maxWidth: "60ch",
+        }}
+      >
+        Averaged over the {report.daysLogged} {report.daysLogged === 1 ? "day" : "days"} with a food
+        log, not over all {days.length}. Balance is eaten minus burned — negative is a deficit.
         {goal != null && ` Your Garmin net calorie goal is ${num(goal)}.`}
       </p>
 
@@ -135,13 +142,35 @@ export function Food() {
           <LineChart
             shareScale
             series={[
-              { values: consumed, stroke: "var(--acc)", width: 1.6, fill: true, name: "Eaten", format: kcal },
-              { values: burned, stroke: "var(--mut)", width: 1.2, dashed: true, name: "Burned", format: kcal },
+              {
+                values: consumed,
+                stroke: "var(--acc)",
+                width: 1.6,
+                fill: true,
+                name: "Eaten",
+                format: kcal,
+              },
+              {
+                values: burned,
+                stroke: "var(--mut)",
+                width: 1.2,
+                dashed: true,
+                name: "Burned",
+                format: kcal,
+              },
             ]}
             labels={chrono.map(dayLabel)}
           />
           <AxisLabels labels={[dayLabel(chrono[0]), dayLabel(chrono[chrono.length - 1])]} />
-          <div style={{ display: "flex", gap: 20, fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 20,
+              fontSize: "var(--fs-caption)",
+              color: "var(--faint)",
+              marginTop: 10,
+            }}
+          >
             <span style={{ color: "var(--acc)" }}>— Eaten</span>
             <span>‑ ‑ Burned</span>
           </div>
@@ -177,23 +206,25 @@ function DayRow({ day }: { day: NutritionDay }) {
 
   return (
     <div className="row-static" style={{ justifyContent: "space-between" }}>
-      <span style={{ width: 106, flex: "none", color: day.logged ? undefined : "var(--faint)" }}>
+      <span
+        className="col-key"
+        style={{ ...colWidth(106), color: day.logged ? undefined : "var(--faint)" }}
+      >
         {d ? shortDate(d) : day.date}
       </span>
 
       {day.logged ? (
         <>
-          <span className="mono" style={{ width: 74, textAlign: "right" }}>
+          <span className="col mono" style={colWidth(74)}>
             {num(day.consumedKcal)}
           </span>
-          <span className="mono" style={{ width: 74, textAlign: "right", color: "var(--mut)" }}>
+          <span className="col mono" style={{ ...colWidth(74), color: "var(--mut)" }}>
             {num(day.totalBurnKcal)}
           </span>
           <span
-            className="mono"
+            className="col mono"
             style={{
-              width: 82,
-              textAlign: "right",
+              ...colWidth(82),
               color: deficit ? "var(--mut)" : "var(--acc)",
             }}
           >
@@ -207,16 +238,20 @@ function DayRow({ day }: { day: NutritionDay }) {
           <span style={{ flex: 1, color: "var(--faint)", fontSize: "var(--fs-small)" }}>
             no food logged
           </span>
-          <span className="mono" style={{ width: 74, textAlign: "right", color: "var(--faint)" }}>
+          <span className="col mono" style={{ ...colWidth(74), color: "var(--faint)" }}>
             {num(day.totalBurnKcal)}
           </span>
-          <span style={{ width: 82 }} />
+          {/* Holds the balance column's place so the hydration figure below
+              stays in its own. Nothing to hold on a phone, where the columns
+              are sized to their contents and an empty one is a gap in the
+              wrap. */}
+          {!IS_MOBILE && <span className="col" style={colWidth(82)} />}
         </>
       )}
 
       <span
-        className="mono"
-        style={{ width: 78, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}
+        className="col mono"
+        style={{ ...colWidth(78), color: "var(--faint)", fontSize: "var(--fs-small)" }}
         title={day.sweatLossMl != null ? `${num(day.sweatLossMl)} ml sweat loss` : undefined}
       >
         {litres(day.hydrationMl)}

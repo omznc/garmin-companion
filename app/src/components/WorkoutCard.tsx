@@ -80,15 +80,7 @@ export function WorkoutCard({
         maxWidth: "62ch",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 12,
-        }}
-      >
+      <div className="section-head" style={{ marginBottom: 12 }}>
         <div className="eyebrow">{saved ? "Sent to Garmin" : "Proposed workout"}</div>
         <div className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
           {[
@@ -110,7 +102,14 @@ export function WorkoutCard({
         onChange={(e) => setW({ ...w, name: e.target.value })}
       />
       {w.description && (
-        <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)", margin: "10px 0 18px", maxWidth: "52ch" }}>
+        <div
+          style={{
+            fontSize: "var(--fs-small)",
+            color: "var(--mut)",
+            margin: "10px 0 18px",
+            maxWidth: "52ch",
+          }}
+        >
           {w.description}
         </div>
       )}
@@ -185,7 +184,9 @@ export function WorkoutCard({
             disabled={busy || !w.name.trim() || w.steps.length === 0}
             style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
           >
-            {busy && <SpinnerIcon size={14} className="spin" style={{ flex: "none" }} aria-hidden />}
+            {busy && (
+              <SpinnerIcon size={14} className="spin" style={{ flex: "none" }} aria-hidden />
+            )}
             {busy ? "Sending" : "Send to Garmin"}
           </button>
         )}
@@ -199,7 +200,14 @@ export function WorkoutCard({
       {/* Garmin's own rejection, verbatim. It names the field it didn't like,
           which is the only thing that makes a bad payload fixable. */}
       {error && (
-        <div style={{ fontSize: "var(--fs-small)", color: "var(--acc)", marginTop: 12, maxWidth: "52ch" }}>
+        <div
+          style={{
+            fontSize: "var(--fs-small)",
+            color: "var(--acc)",
+            marginTop: 12,
+            maxWidth: "52ch",
+          }}
+        >
           {error}
         </div>
       )}
@@ -551,7 +559,13 @@ function Num({
         const v = e.target.valueAsNumber;
         if (!Number.isNaN(v)) onChange(v);
       }}
-      style={{ width, flex: "none", fontSize: "var(--fs-small)", padding: "5px 7px", textAlign: "right" }}
+      style={{
+        width,
+        flex: "none",
+        fontSize: "var(--fs-small)",
+        padding: "5px 7px",
+        textAlign: "right",
+      }}
     />
   );
 }
@@ -571,7 +585,12 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       className="quiet"
       onClick={onClick}
-      style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "var(--fs-caption)" }}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: "var(--fs-caption)",
+      }}
     >
       <NewIcon size={12} style={{ flex: "none" }} aria-hidden />
       {label}

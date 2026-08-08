@@ -5,7 +5,7 @@
  * Hash history is deliberate: the webview loads from a file URL in a packaged
  * build, where path-based history has no origin to push against.
  */
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import {
   createHashHistory,
   createRootRoute,
@@ -47,8 +47,11 @@ function Shell() {
 }
 
 function DesktopShell() {
+  const shell = useRef<HTMLDivElement>(null);
+
   return (
     <div
+      ref={shell}
       style={{
         minHeight: "100vh",
         background: "var(--bg)",
@@ -60,7 +63,10 @@ function DesktopShell() {
       {/* Fixed, so it's positioned against the window rather than this box —
           hence the centring being repeated as a calc. It covers the reading
           column only: the nav beside it is sticky and never moves. */}
-      <ScrollFade left={`calc(max(0px, (100vw - ${SHELL_MAX}px) / 2) + ${SIDEBAR_W}px)`} />
+      <ScrollFade
+        left={`calc(max(0px, (100vw - ${SHELL_MAX}px) / 2) + ${SIDEBAR_W}px)`}
+        track={shell}
+      />
       <div style={{ display: "flex", width: "100%", maxWidth: SHELL_MAX }}>
         <Sidebar />
         <main style={{ flex: 1, minWidth: 0, padding: "0 56px 160px" }}>
@@ -79,18 +85,28 @@ function DesktopShell() {
 /**
  * One column, and the nav along the bottom.
  *
- * No `ScrollFade`: it exists to soften content passing under the window's top
- * strip, and there is no strip here — the status bar is the system's and draws
- * over nothing. Fading the top of a phone screen would just look like the
- * heading was broken.
+ * `ScrollFade` renders here too. It used not to, on the reasoning that the fade
+ * exists to soften content passing under the window's top strip and a phone has
+ * no strip — but Android is edge-to-edge, so the status bar draws *over* the
+ * webview rather than above it, which is the same fact the top padding below is
+ * built out of. Without the fade, a heading scrolling up doesn't end: it carries
+ * on behind the clock and the battery until it runs out of screen.
+ *
+ * The bottom is the same story with a different lid. The tab bar is opaque and
+ * fixed, so content meets its hairline at full strength and stops mid-word.
  *
  * The padding is in CSS rather than inline like the desktop shell's, because it
  * has to compose with `env(safe-area-inset-*)` — a notch, a punch-hole, the
- * gesture bar — and those are only readable from a stylesheet.
+ * gesture bar — and those are only readable from a stylesheet. The fade's own
+ * two edges are placed there for the same reason.
  */
 function MobileShell() {
+  const shell = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="shell-mobile">
+    <div className="shell-mobile" ref={shell}>
+      {/* Full width: there is no nav beside the column to clear. */}
+      <ScrollFade left="0" track={shell} />
       <main>
         <Page />
       </main>

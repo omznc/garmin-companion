@@ -52,9 +52,7 @@ export function tokens(theme: CustomTheme): Tokens {
 
     // On paper the shadow is the ink it's cast by; on a dark ground a tinted
     // one disappears into the page and only a near-black still reads as a gap.
-    "--lift": dark
-      ? "0 8px 22px rgba(0, 0, 0, 0.5)"
-      : `0 8px 22px ${alpha(fg, 0.14)}`,
+    "--lift": dark ? "0 8px 22px rgba(0, 0, 0, 0.5)" : `0 8px 22px ${alpha(fg, 0.14)}`,
 
     // Lifted toward the foreground on a dark theme, laid down as-is on a light
     // one. The long version of why is in `styles.css`, above the dark block.

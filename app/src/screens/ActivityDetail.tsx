@@ -16,6 +16,7 @@ import {
 } from "../lib/api";
 import {
   BackLink,
+  colWidth,
   Empty,
   ErrorNote,
   LineChart,
@@ -140,9 +141,7 @@ export function ActivityDetail() {
         )}
         {a.avgHr != null && <Metric size={31} label="Avg HR" value={num(a.avgHr)} />}
         {a.maxHr != null && <Metric size={31} label="Max HR" value={num(a.maxHr)} />}
-        {a.avgCadence != null && (
-          <Metric size={31} label="Cadence" value={num(a.avgCadence)} />
-        )}
+        {a.avgCadence != null && <Metric size={31} label="Cadence" value={num(a.avgCadence)} />}
         {a.elevationGain != null && a.elevationGain > 0 && (
           <Metric
             size={31}
@@ -169,8 +168,8 @@ export function ActivityDetail() {
       )}
       {analysis.error != null && (
         <p style={{ fontSize: "var(--fs-small)", color: "var(--faint)", margin: "42px 0 0" }}>
-          Couldn't fetch the samples for this session — the numbers above came
-          from the cache and are unaffected.
+          Couldn't fetch the samples for this session — the numbers above came from the cache and
+          are unaffected.
         </p>
       )}
 
@@ -394,7 +393,10 @@ function Highlights({ highlights }: { highlights: Highlight[] }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
         {highlights.map((h, i) => (
-          <div key={`${h.kind}-${i}`} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+          <div
+            key={`${h.kind}-${i}`}
+            style={{ display: "flex", gap: 14, alignItems: "flex-start" }}
+          >
             {/* A tone, not a severity. Accent is the thing to look at, muted is
                 context, and a good session gets a mark rather than nothing. */}
             <span
@@ -457,9 +459,16 @@ function Zones({ activity }: { activity: CachedActivity }) {
         <div className="eyebrow" style={{ marginBottom: 12 }}>
           Heart-rate zones
         </div>
-        <p style={{ fontSize: "var(--fs-base)", color: "var(--mut)", margin: "0 0 8px", maxWidth: "56ch" }}>
-          No heart-rate data was recorded for this session, so there is no zone
-          breakdown — not a session spent entirely in Z1.
+        <p
+          style={{
+            fontSize: "var(--fs-base)",
+            color: "var(--mut)",
+            margin: "0 0 8px",
+            maxWidth: "56ch",
+          }}
+        >
+          No heart-rate data was recorded for this session, so there is no zone breakdown — not a
+          session spent entirely in Z1.
         </p>
       </>
     );
@@ -470,14 +479,7 @@ function Zones({ activity }: { activity: CachedActivity }) {
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 14,
-        }}
-      >
+      <div className="section-head" style={{ marginBottom: 14 }}>
         <div className="eyebrow">Heart-rate zones</div>
         <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
           {hard.toFixed(0)}% above Z2 · {duration(total)} tracked
@@ -493,7 +495,10 @@ function Zones({ activity }: { activity: CachedActivity }) {
             <span style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
               {duration(activity.zoneSecs[i])}
             </span>
-            <span className="mono" style={{ fontSize: "var(--fs-md)", width: 62, textAlign: "right" }}>
+            <span
+              className="mono"
+              style={{ fontSize: "var(--fs-md)", width: 62, textAlign: "right" }}
+            >
               {pct[i].toFixed(0)}%
             </span>
           </div>
@@ -549,18 +554,9 @@ function Charts({
     <>
       {charts.map((s) => (
         <div key={s.key} style={{ marginBottom: 38 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 10,
-            }}
-          >
+          <div className="section-head" style={{ marginBottom: 10 }}>
             <div className="eyebrow">{s.label}</div>
-            <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
-              {summarise(s)}
-            </div>
+            <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>{summarise(s)}</div>
           </div>
           <LineChart
             series={[{ values: s.values, stroke: s.stroke, invert: s.invert, format: s.format }]}
@@ -656,6 +652,7 @@ function Splits({ laps, paced }: { laps: ActivityLap[]; paced: boolean }) {
         return (
           <div
             key={i}
+            className="cols"
             style={{
               display: "flex",
               alignItems: "center",
@@ -665,22 +662,25 @@ function Splits({ laps, paced }: { laps: ActivityLap[]; paced: boolean }) {
               fontSize: "var(--fs-base)",
             }}
           >
-            <span style={{ width: 28, color: "var(--faint)" }}>{l.index}</span>
-            <span className="mono" style={{ width: 76, fontSize: "var(--fs-base)" }}>
+            <span className="col-key" style={{ ...colWidth(28), color: "var(--faint)" }}>
+              {l.index}
+            </span>
+            <span className="col-key mono" style={{ ...colWidth(76), fontSize: "var(--fs-base)" }}>
               {l.distanceM
                 ? paced
                   ? pace(l.distanceM, l.durationS)
                   : speed(l.distanceM, l.durationS)
                 : duration(l.durationS)}
             </span>
-            <span className="bar" style={{ flex: 1 }}>
+            <span className="bar" style={{ flex: 1, minWidth: 60 }}>
               <span style={{ width: `${width}%` }} />
             </span>
-            <span style={{ width: 68, textAlign: "right", color: "var(--mut)" }}>
+            <span className="col" style={{ ...colWidth(68), color: "var(--mut)" }}>
               {l.avgHr ? `${Math.round(l.avgHr)} bpm` : DASH}
             </span>
             <span
-              style={{ width: 62, textAlign: "right", color: "var(--faint)", fontSize: "var(--fs-small)" }}
+              className="col"
+              style={{ ...colWidth(62), color: "var(--faint)", fontSize: "var(--fs-small)" }}
             >
               {l.distanceM ? km(l.distanceM, 2) : DASH}
             </span>
@@ -739,14 +739,7 @@ function Against({
 
   return (
     <div style={{ marginTop: 46 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          marginBottom: 14,
-        }}
-      >
+      <div className="section-head" style={{ marginBottom: 14 }}>
         <div className="eyebrow">Against your recent {sportLabel(sport).toLowerCase()}</div>
         <div style={{ fontSize: "var(--fs-small)", color: "var(--mut)" }}>
           {c.sessions} earlier {c.sessions === 1 ? "session" : "sessions"}

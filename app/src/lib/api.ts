@@ -106,11 +106,9 @@ export const cachedActivitiesSince = (from: string) =>
 export const cachedActivity = (activityId: number) =>
   invoke<CachedActivity | null>("cached_activity", { activityId });
 
-export const cachedDaily = (days = 30) =>
-  invoke<DailyMetrics[]>("cached_daily", { days });
+export const cachedDaily = (days = 30) => invoke<DailyMetrics[]>("cached_daily", { days });
 
-export const syncNow = (days = 30, full = false) =>
-  invoke<SyncReport>("sync_now", { days, full });
+export const syncNow = (days = 30, full = false) => invoke<SyncReport>("sync_now", { days, full });
 
 /* ------------------------------------------------------------- nutrition --- */
 
@@ -139,8 +137,7 @@ export interface NutritionReport {
   avgBalanceKcal: number | null;
 }
 
-export const nutrition = (days = 30) =>
-  invoke<NutritionReport>("nutrition", { days });
+export const nutrition = (days = 30) => invoke<NutritionReport>("nutrition", { days });
 
 /* ---------------------------------------------------------------- weight --- */
 
@@ -326,8 +323,7 @@ export interface Route {
  */
 export type RouteSort = "recent" | "repeats" | "distance";
 
-export const routes = (sort: RouteSort = "recent") =>
-  invoke<Route[]>("routes", { sort });
+export const routes = (sort: RouteSort = "recent") => invoke<Route[]>("routes", { sort });
 
 /* -------------------------------------------------------------- analysis --- */
 
@@ -634,8 +630,7 @@ export const resetChatUsage = (provider?: ChatProvider) =>
 export const setChatProvider = (provider: ChatProvider, model: string, structured = false) =>
   invoke<void>("set_chat_provider", { provider, model, structured });
 
-export const setOpenrouterKey = (key: string) =>
-  invoke<void>("set_openrouter_key", { key });
+export const setOpenrouterKey = (key: string) => invoke<void>("set_openrouter_key", { key });
 
 export const clearOpenrouterKey = () => invoke<void>("clear_openrouter_key");
 
@@ -756,8 +751,7 @@ export const themesList = () => invoke<CustomTheme[]>("themes_list");
 
 /** Returns the theme as filed — the slug is derived from the name, so a save
  *  is also how you find out what the selection should be stored as. */
-export const themeSave = (theme: CustomTheme) =>
-  invoke<CustomTheme>("themes_save", { theme });
+export const themeSave = (theme: CustomTheme) => invoke<CustomTheme>("themes_save", { theme });
 
 export const themeDelete = (slug: string) => invoke<void>("themes_delete", { slug });
 

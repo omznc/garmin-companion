@@ -76,7 +76,9 @@ function sentence({
     // Food's whole screen is the calorie balance, so the useful thing to say
     // here is that the scale is the check on it.
     return `Your weight trend is ${trend}${
-      rate != null ? `, moving ${rate < 0 ? "down" : "up"} ${Math.abs(rate).toFixed(2)} kg a week` : ""
+      rate != null
+        ? `, moving ${rate < 0 ? "down" : "up"} ${Math.abs(rate).toFixed(2)} kg a week`
+        : ""
     }.`;
   }
   return rate != null
