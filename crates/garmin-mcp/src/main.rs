@@ -20,6 +20,9 @@ garmin-mcp — Garmin Connect MCP server
                                  refresh the local cache (default: 30 days).
                                  --full walks the whole activity history
                                  instead of stopping once caught up.
+  garmin-mcp coach               what the coach would say today, and the week
+                                 against the goals. Exits 0 with nothing to say
+                                 when there is nothing to say.
 ";
 
 #[tokio::main]
@@ -40,6 +43,7 @@ async fn main() -> Result<()> {
                 .unwrap_or(30);
             sync(days, full).await
         }
+        Some("coach") => coach(),
         Some("-h" | "--help" | "help") => {
             print!("{USAGE}");
             Ok(())
@@ -95,6 +99,55 @@ fn status() -> Result<()> {
     );
     if let Some(p) = garmin_core::db::default_path() {
         println!("Cache:      {}", p.display());
+    }
+    Ok(())
+}
+
+/// Print the week and anything the coach has to say.
+///
+/// Reads the cache only — it never syncs, so a cron job should run `sync` first.
+fn coach() -> Result<()> {
+    let db = garmin_core::Db::open_default()?;
+    let today = chrono::Local::now().date_naive();
+    let report = garmin_core::coach::for_today(&db, today)?;
+
+    println!("Week of {}", report.week.week_start);
+    println!(
+        "  {} sessions, {:.0} min, longest run {:.0} min",
+        report.week.sessions, report.week.minutes, report.week.longest_run_minutes
+    );
+    for ring in &report.week.rings {
+        println!(
+            "  {:14} {:>6} / {:<6} {:<8} {}{}",
+            ring.label,
+            ring.actual,
+            ring.target,
+            ring.unit,
+            if ring.met { "met" } else { "" },
+            if ring.thin { "  (thin data)" } else { "" },
+        );
+    }
+
+    if report.nudges.is_empty() {
+        println!("\nNothing worth raising today.");
+        return Ok(());
+    }
+
+    for n in &report.nudges {
+        println!(
+            "\n[{:?}] {}{}",
+            n.nudge.tone,
+            n.nudge.title,
+            if n.days_running > 1 {
+                format!("  (day {} of saying this)", n.days_running)
+            } else {
+                String::new()
+            }
+        );
+        println!("  {}", n.nudge.body);
+        for e in &n.nudge.evidence {
+            println!("    · {e}");
+        }
     }
     Ok(())
 }
