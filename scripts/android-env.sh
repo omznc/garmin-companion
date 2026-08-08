@@ -23,14 +23,23 @@ export PATH="$_TC:$PATH"
 # openssl-sys shells out to a C compiler and ar for the vendored build, and
 # picks the host's unless told otherwise — which produces x86_64 objects that
 # fail to link into an arm64 .so, several minutes later.
+#
+# RANLIB is the same idea with a different symptom. The `cc` crate asks for
+# `<triple>-ranlib`, which the NDK stopped shipping at r23 — `llvm-ranlib` is
+# the only one left. Everything compiles and archives without it, and the build
+# then dies on OpenSSL's `make install_dev` with `ranlib: not found`.
 export CC_aarch64_linux_android="$_TC/aarch64-linux-android24-clang"
 export AR_aarch64_linux_android="$_TC/llvm-ar"
+export RANLIB_aarch64_linux_android="$_TC/llvm-ranlib"
 export CC_armv7_linux_androideabi="$_TC/armv7a-linux-androideabi24-clang"
 export AR_armv7_linux_androideabi="$_TC/llvm-ar"
+export RANLIB_armv7_linux_androideabi="$_TC/llvm-ranlib"
 export CC_x86_64_linux_android="$_TC/x86_64-linux-android24-clang"
 export AR_x86_64_linux_android="$_TC/llvm-ar"
+export RANLIB_x86_64_linux_android="$_TC/llvm-ranlib"
 export CC_i686_linux_android="$_TC/i686-linux-android24-clang"
 export AR_i686_linux_android="$_TC/llvm-ar"
+export RANLIB_i686_linux_android="$_TC/llvm-ranlib"
 
 # --- 2. Java ----------------------------------------------------------------
 # Gradle refuses JDK 25, which is what this box has on PATH. 17 and 21 are both

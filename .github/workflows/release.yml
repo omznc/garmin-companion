@@ -164,8 +164,22 @@ jobs:
       - name: Install the NDK
         run: |
           sdkmanager --install "ndk;28.2.13676358"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+
+          # The vendored OpenSSL finishes with `make install_dev`, which calls
+          # RANLIB. The `cc` crate resolves that to `<triple>-ranlib`, and the
+          # NDK dropped the per-target binutils wrappers at r23 — `llvm-ranlib`
+          # is all that's left. The failure is late and says nothing useful:
+          # every object compiles, libcrypto.a is archived and installed, then
+          # `aarch64-linux-android-ranlib: not found`. AR needs no such help,
+          # which is why the archive step gets that far.
+          LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          for target in aarch64_linux_android armv7_linux_androideabi \
+                        i686_linux_android x86_64_linux_android; do
+            echo "RANLIB_$target=$LLVM_BIN/llvm-ranlib" >> "$GITHUB_ENV"
+          done
 
       # OpenSSL is built from source for every Android ABI (see the `openssl`
       # dependency in `crates/garmin-core/Cargo.toml`), and its ./Configure is a
