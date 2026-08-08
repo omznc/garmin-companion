@@ -92,6 +92,26 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.4.0" date="2026-08-08">
+      <description>
+        <p>
+          The app speaks first now. It checks the week against goals you set and
+          raises the one thing worth raising, with the numbers behind it — most
+          days that is nothing at all, which is deliberate. On Android the nudge
+          arrives without opening the app.
+        </p>
+        <p>
+          Strength sessions get a screen: sets, reps, time under tension and how
+          long you rested. The watch does not record what was on the bar, so
+          there is no volume here and the screen says so.
+        </p>
+        <p>
+          A Fitness screen carries Garmin's own verdict — training status, the
+          monthly load balance against the ranges it wants, race predictions and
+          your records.
+        </p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-08-08">
       <description>
         <p>
