@@ -58,6 +58,61 @@
     </p>
   </description>
 
+  <!--
+    What GNOME Software and KDE Discover put above the description, and the
+    only part of this file most people will actually look at.
+
+    The URLs are remote and point at `master` rather than at a tag, which is
+    the AppStream convention and the only thing that works here: a software
+    centre reads this metadata out of its own index, long after and far away
+    from the package, so a relative path would resolve to nothing. Pointing at
+    `master` also means retaking a screenshot doesn't need a release to be
+    seen.
+
+    These are the `docs/screenshots/*.png` set — the window on a backdrop —
+    rather than `plain/`, whose transparent corners would be composited onto
+    whatever the centre's own background happens to be. All 1440×1060; keep the
+    dimensions honest, because a centre that trusts them and gets something
+    else lays the page out wrong.
+
+    Dark leads because the app opens dark, and two light shots are in the middle
+    so it's visible that both exist.
+  -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>Today — recovery, the last session in full, and hard-effort drift</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/today-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>One session, broken down by heart-rate zone</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/activity-zones-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Activities — the history, with per-lap splits</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/activities-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Ask — questions answered against the cache, not against a guess</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/ask-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Insights — correlations mined from the cache, each with its sample size</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/insights-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Health — resting heart rate, HRV, sleep and stress over time</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/health-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A route and its elevation, drawn from the GPS trace</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/activity-route-dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Reports — weekly summaries written from the numbers</caption>
+      <image type="source" width="1440" height="1060">https://raw.githubusercontent.com/omznc/garmin-companion/master/docs/screenshots/reports-dark.png</image>
+    </screenshot>
+  </screenshots>
+
   <!-- Kept in step with Categories in the .desktop template, which explains why
        a training log ends up filed under Utility. -->
   <categories>
