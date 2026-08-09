@@ -147,6 +147,37 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.7.0" date="2026-08-09">
+      <description>
+        <p>
+          The coach can ask you something now. When the advice turns on
+          something only you know — how long you have today, whether yesterday's
+          niggle has settled, whether you want this one easy or hard — the
+          question arrives as a card with answers to tap, before the answer is
+          written rather than tacked onto the end of it. Ignore it and it
+          decides anyway, and tells you what it assumed.
+        </p>
+        <p>
+          An answer can be stopped mid-sentence, and what had been written by
+          then is kept. While one is being written, every piece of your data the
+          coach goes and reads is listed as it reads it, instead of a single
+          line overwritten by the next.
+        </p>
+        <p>
+          The box you type in has moved to the bottom, so a conversation reads
+          downwards in the order it happened, and earlier conversations open in
+          a panel over the one you are reading rather than only on an empty
+          screen.
+        </p>
+        <p>
+          On Linux, a background update check no longer raises a password
+          dialog on its own. A .deb or .rpm downloads quietly and waits for you
+          to press install, which is the only moment root is needed and now the
+          only moment you are asked. AppImage installs never asked and still
+          don't.
+        </p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-08-09">
       <description>
         <p>
