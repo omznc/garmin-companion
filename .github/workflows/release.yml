@@ -16,7 +16,50 @@ permissions:
   contents: write
 
 jobs:
+  # The release body, built once and handed to both of the jobs that could be
+  # the one to open the draft. Its own job rather than a step in each, because
+  # five jobs generating it independently is five chances for them to disagree
+  # about what the release says — and because whichever wins the race writes the
+  # copy that sticks.
+  #
+  # It is not only a release page. `tauri-action` copies this into `latest.json`
+  # as `notes`, which is what the app renders in Settings once an update is
+  # staged, so this text is also the answer to "what did I just install?".
+  notes:
+    runs-on: ubuntu-24.04
+    outputs:
+      body: ${{ steps.body.outputs.body }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `scripts/changelog.mjs` walks back to the previous tag to find its
+          # range, and the default shallow clone has neither the tag nor the
+          # commits between.
+          fetch-depth: 0
+
+      - id: body
+        env:
+          # Through the environment rather than interpolated into the script.
+          # A ref name is not attacker-controlled here, but a `run:` block that
+          # pastes one in is the shape of the problem, and the habit is cheaper
+          # to keep than to remember when it starts mattering.
+          REF: ${{ github.ref_name }}
+        run: |
+          # Changes first, install instructions after: whoever is reading this
+          # in the app has already installed, and whoever is reading it on the
+          # download page can scroll.
+          {
+            echo 'body<<GARMIN_COMPANION_NOTES_EOF'
+            node scripts/changelog.mjs "$REF"
+            echo
+            echo '---'
+            echo
+            cat .github/install-notes.md
+            echo 'GARMIN_COMPANION_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
   build:
+    needs: notes
     strategy:
       fail-fast: false
       matrix:
@@ -93,35 +136,9 @@ jobs:
           # means tauri-action builds and publishes nothing, which is the point.
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: Garmin Companion ${{ github.ref_name }}
-          releaseBody: |
-            Download the file for your platform below.
-
-            **macOS** — `.dmg`, `aarch64` for Apple Silicon or `x64` for Intel.
-            Drag the app to Applications, then run this once. The app is
-            unsigned, and without it macOS refuses to open it at all — the
-            right-click → Open trick is not enough on recent versions.
-
-            ```sh
-            xattr -dr com.apple.quarantine "/Applications/Garmin Companion.app"
-            ```
-
-            **Windows** — `-setup.exe`. SmartScreen calls it an unrecognised
-            app: **More info** → **Run anyway**.
-
-            **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` /
-            `.rpm`. Needs `webkit2gtk-4.1` from your package manager.
-
-            **Android** — `.apk`. Not on Play, so your phone will ask you to
-            allow installing from wherever you downloaded it. The `.aab` beside
-            it is for the Play Console and is not installable directly.
-
-            Nothing here is signed with an OS vendor certificate, which is what
-            both warnings are about. Updates are signed, and those work either
-            way — existing installs update themselves from Settings on every
-            platform, Android included. Android downloads the new APK in the
-            background and then asks before replacing itself, which is as
-            quiet as the system allows; the first time, it will also send you
-            to turn on "Install unknown apps" for the app.
+          # Written by the `notes` job — the generated changelog followed by
+          # `.github/install-notes.md`. Also becomes `notes` in `latest.json`.
+          releaseBody: ${{ needs.notes.outputs.body }}
           # Left as a draft so the release can be checked, and so the four
           # matrix jobs can finish filling it in before anyone downloads.
           releaseDraft: true
@@ -145,6 +162,7 @@ jobs:
   # fail or publish a `latest.json` an APK can't be an update for. Android is
   # not self-updating (see `Cargo.toml`) — a new version is a new APK.
   android:
+    needs: notes
     runs-on: ubuntu-24.04
     # Job level, not step level: `secrets` isn't readable from an `if:`, and
     # step-level `env` isn't in scope for that step's own `if:` either. Lifting
@@ -178,8 +196,7 @@ jobs:
           # `aarch64-linux-android-ranlib: not found`. AR needs no such help,
           # which is why the archive step gets that far.
           LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          for target in aarch64_linux_android armv7_linux_androideabi \
-                        i686_linux_android x86_64_linux_android; do
+          for target in aarch64_linux_android armv7_linux_androideabi; do
             echo "RANLIB_$target=$LLVM_BIN/llvm-ranlib" >> "$GITHUB_ENV"
           done
 
@@ -193,10 +210,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y perl make
 
+      # Two ABIs, not four. Every ABI is a full compile of the workspace with
+      # OpenSSL built from C source on the end of it — a little under three
+      # minutes each, and the vendored OpenSSL is most of that. `i686` and
+      # `x86_64` are emulator ABIs: no phone has ever run either, so they cost
+      # five minutes a release to produce something nobody installs. `armv7`
+      # stays for 32-bit devices, which do still exist.
+      #
+      # Anything here has to match the `-t` list on both build steps below and
+      # the one in the `android` job in ci.yml, which is what warms this cache.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
+      # The key has to agree with ci.yml's `android` job down to the job id:
+      # rust-cache composes `v0-rust-{key}-{job}-{os}-{arch}-…`, and a run on a
+      # tag can only ever *read* a cache written on the default branch. Written
+      # here too, but nothing will ever restore that copy — see RELEASING.md.
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
@@ -257,7 +287,7 @@ jobs:
       # system installer as a mystery.
       - name: Build the APK
         run: |
-          (cd app && pnpm tauri android build --apk)
+          (cd app && pnpm tauri android build --apk -t aarch64 armv7)
 
           VERSION=$(node -p "require('$GITHUB_WORKSPACE/app/src-tauri/tauri.conf.json').version")
           OUT=app/src-tauri/gen/android/app/build/outputs
@@ -292,7 +322,7 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_playBundle: "true"
         run: |
-          (cd app && pnpm tauri android build --aab)
+          (cd app && pnpm tauri android build --aab -t aarch64 armv7)
 
           VERSION=$(node -p "require('$GITHUB_WORKSPACE/app/src-tauri/tauri.conf.json').version")
           OUT=app/src-tauri/gen/android/app/build/outputs
@@ -307,12 +337,20 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') && env.ANDROID_KEYSTORE != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through the environment rather than interpolated into the script:
+          # the body is Markdown full of backticks and dollar signs, and the
+          # shell would read a good deal of it as instructions.
+          RELEASE_BODY: ${{ needs.notes.outputs.body }}
         run: |
           # The desktop jobs may not have created the draft yet, and whichever
-          # gets here first has to make it.
-          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 \
-            || gh release create "${{ github.ref_name }}" --draft \
-                 --title "Garmin Companion ${{ github.ref_name }}" --notes ""
+          # gets here first has to make it — with the same body, or a release
+          # that Android happened to win the race for would be published empty.
+          if ! gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            printf '%s\n' "$RELEASE_BODY" > release-notes.md
+            gh release create "${{ github.ref_name }}" --draft \
+              --title "Garmin Companion ${{ github.ref_name }}" \
+              --notes-file release-notes.md
+          fi
           gh release upload "${{ github.ref_name }}" android-out/* --clobber
 
       - name: Upload for inspection

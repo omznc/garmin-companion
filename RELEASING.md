@@ -90,10 +90,20 @@ git push origin master --tags
 ```
 
 One file has to move with it: `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml`
-needs a new `<release>` entry with the same version and its date. That is what
-GNOME Software and KDE Discover show as "what's new", and what they compare an
-installed copy against — a stale list there doesn't break the build, it just
-means the Linux packages advertise the wrong version to every software centre.
+needs a new `<release>` entry with the same version, its date, and a paragraph
+or three of what changed. That is what GNOME Software and KDE Discover show as
+"what's new", and what they compare an installed copy against.
+
+Forgetting it used to be free — the packages build, install and run either way,
+they just advertise the previous version to every software centre on Linux.
+`scripts/check-metainfo.mjs` now runs in CI and fails the build instead, so the
+mismatch lands on the commit that caused it. It also checks the dates parse and
+the list is newest-first, and `appstreamcli validate` runs beside it.
+
+The prose there stays hand-written, and is not the same text as the release
+notes. A software centre shows it to someone deciding whether to install; the
+generated list of commits below is for someone deciding whether to care about
+an update they already have.
 
 `.github/workflows/release.yml` fires on the tag and builds five bundles in
 parallel: macOS arm64, macOS x64, Linux x64, Windows x64, and Android. It opens
@@ -113,6 +123,67 @@ Artifacts:
 `latest.json` is generated alongside the desktop bundles and is the file those
 apps fetch. `latest-android.json` is the equivalent for the APK and is written
 by hand in the workflow — see below.
+
+### Where the release notes come from
+
+A `notes` job runs before everything else and builds the release body once:
+`scripts/changelog.mjs` for the changes, then `.github/install-notes.md` for the
+fixed part about Gatekeeper and SmartScreen. Both `build` and `android` take it
+from there, because either can be the job that opens the draft and whichever
+gets there first writes the copy that sticks.
+
+The script reads `git log --first-parent` between the previous tag and this one,
+drops the `Release vX.Y.Z` commit, and groups what's left by conventional-commit
+type — `feat` under **New**, `fix` under **Fixed**, and so on, with anything
+unrecognised under **Other** rather than dropped. A `!` or a `BREAKING CHANGE:`
+trailer lifts an entry to the top. It links the PR where there is one and the
+commit where there isn't, so it works the same on a repo pushed straight to
+master as on one that goes through review.
+
+Run it against any tag to see what a release would say:
+
+```sh
+node scripts/changelog.mjs v0.6.0
+```
+
+This is not only a release page. `tauri-action` copies the body into
+`latest.json` as `notes`, which the app renders in Settings once an update is
+staged, and `releaseNotes()` in `app/src/lib/apk.ts` fetches the same text on
+Android. Changes come first for exactly that reason — whoever is reading it in
+the app has already installed.
+
+### Why the Android job is the slow one, and what keeps it honest
+
+It builds the Rust workspace once per ABI, and each pass ends with OpenSSL
+compiled from C source (see the `openssl` dependency in
+`crates/garmin-core/Cargo.toml`), which is most of the ~2m35 a pass costs. Four
+ABIs made it a 20-minute job against 5–10 for each desktop bundle.
+
+Two things cut that, and both are load-bearing if you touch them:
+
+- **Two ABIs, not four.** `-t aarch64 armv7` on both build steps. `i686` and
+  `x86_64` are emulator ABIs — no phone runs either — so they were five minutes
+  a release spent on something nobody installs. The list appears in three
+  places: the two build steps, the `targets:` on the toolchain, and the RANLIB
+  loop. All three have to agree.
+- **A cache the release can actually read.** GitHub scopes a cache to the ref
+  that wrote it, and a run may only restore from its own ref or from the default
+  branch. This workflow fires on tags and only on tags, so every release was
+  writing an 860 MB cache into a scope no later tag could ever see — the log
+  said `No cache found` on every single run, including for the four desktop
+  jobs. So `ci.yml` has an `android` job that runs the same build on master, and
+  the tag restores what that leaves behind.
+
+  The keys have to match for that to work. `rust-cache` composes
+  `v0-rust-{key}-{job}-{os}-{arch}-{rustc}-{lockfile}`, so the `key:` input
+  (`android`), the **job id** (`android` in both files), and the runner
+  (`ubuntu-24.04`) all have to agree — and so does the build command, since
+  different flags mean different fingerprints and a cache of artifacts nothing
+  asks for again is the same as no cache at all. That is why CI runs the real
+  `tauri android build` rather than a cheaper bare `cargo build`.
+
+The desktop jobs have the same cache problem and no equivalent fix; they are
+5–10 minutes cold and nobody has minded yet.
 
 ### Why Android is its own job
 
@@ -332,8 +403,10 @@ notarization is the one worth buying.
 
 ## What isn't automated
 
-- **The changelog.** The release body is a fixed blurb in the workflow. If you
-  want per-release notes, write them into the draft before publishing.
+- **The prose in `metainfo.xml`.** The version and the date are checked, the
+  paragraphs are not — nothing can check whether a description describes
+  anything. Write it with the version bump; CI will tell you if you didn't.
+  Everything else about the changelog is generated, see above.
 - **Version bumping.** Deliberately manual — one number, and it has to agree
   with the tag.
 - **iOS.** The Rust side is already platform-split for it — `secrets`, `paths`

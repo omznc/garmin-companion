@@ -54,6 +54,123 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  # The Linux packaging metadata, which is the one thing here that can be wrong
+  # without anything failing. A stale <release> entry or a malformed
+  # <screenshot> builds, installs and runs; it just means every software centre
+  # on Linux advertises the previous version, or shows no pictures, and nobody
+  # finds out for months.
+  #
+  # Its own job on 24.04 rather than a step in `check`, which is pinned to
+  # 22.04. That runner ships appstreamcli 0.15, which predates the `<developer>`
+  # element this file uses — it would fail the metadata for being newer than the
+  # validator, which is the least useful failure available.
+  metadata:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: sudo apt-get update && sudo apt-get install -y appstream
+
+      - name: Check the AppStream metadata
+        run: |
+          node scripts/check-metainfo.mjs
+          # --no-net: the screenshot URLs point at raw.githubusercontent.com,
+          # and fetching eight PNGs to prove a schema is fine is not this job's
+          # business. A broken link surfaces in the software centre, not here.
+          appstreamcli validate --no-net --explain \
+            app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml
+
+  # Builds the Android target on master, for two reasons that happen to want
+  # the same job.
+  #
+  # The first is the obvious one: nothing else compiles for Android, so until
+  # this existed the release was the first time anyone found out whether it
+  # still did — after a tag had been pushed.
+  #
+  # The second is the cache, and it is why this runs at all rather than being
+  # left to the release. GitHub scopes a cache to the ref that wrote it, and a
+  # run can only read caches from its own ref or from the default branch. The
+  # release workflow fires on tags and *only* on tags, so every release was
+  # writing an 860 MB cache into a scope no later tag could ever see, logging
+  # "No cache found" and rebuilding the world — including OpenSSL from C
+  # source, once per ABI, which was seven of its twenty minutes. A cache
+  # written here, on master, is one a tag can restore.
+  #
+  # That only holds while the key matches. rust-cache composes it as
+  # `v0-rust-{key}-{job}-{os}-{arch}-{rustc}-{lockfile}`, so the `key:` input,
+  # the job id (`android`, both places), and the runner all have to agree with
+  # the `android` job in release.yml. So does the build command: different
+  # flags mean different fingerprints, and a cache full of artifacts nothing
+  # asks for again is the same as no cache at all. That is why this runs the
+  # real `tauri android build` rather than a cheaper bare `cargo build`.
+  #
+  # Push-only. A pull request can read master's cache but writes into its own
+  # scope, so running it there would pay for a cache thrown away on merge.
+  android:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      # Same NDK, same RANLIB workaround, same reason — see release.yml, where
+      # the comment explaining the `cc` crate's missing `<triple>-ranlib` is
+      # written out in full.
+      - name: Install the NDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358"
+          NDK="$ANDROID_HOME/ndk/28.2.13676358"
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+
+          LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          for target in aarch64_linux_android armv7_linux_androideabi; do
+            echo "RANLIB_$target=$LLVM_BIN/llvm-ranlib" >> "$GITHUB_ENV"
+          done
+
+      - name: Install OpenSSL's build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y perl make
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: android
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # Unsigned, and deliberately so: no keystore is written here, because
+      # nothing downstream installs this APK. It exists to prove the target
+      # compiles and to leave the compiled dependencies behind in the cache.
+      #
+      # The `-t` list has to match release.yml's or the cache is warm for ABIs
+      # the release doesn't build and cold for the ones it does.
+      - name: Build the APK
+        run: cd app && pnpm tauri android build --apk -t aarch64 armv7
+
   # Its own job rather than a step in `check`: the worker shares no toolchain
   # with the rest of this, and a Rust compile failure shouldn't hide a broken
   # proxy or the other way round. Deploying stays manual — the thing this is in
