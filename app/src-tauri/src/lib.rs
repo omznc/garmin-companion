@@ -1257,6 +1257,27 @@ async fn chat_send(
         .map_err(to_msg)
 }
 
+/// Answer a question the model asked mid-turn, which unparks it.
+///
+/// Returns whether anything was still waiting: the turn may have been stopped or
+/// timed out between the card being drawn and the button being pressed, and the
+/// frontend uses the answer to decide whether the card locks or greys out.
+#[tauri::command]
+fn chat_answer(id: String, call_id: String, answers: Vec<String>) -> CmdResult<bool> {
+    Ok(chat::answer_ask(&id, &call_id, answers))
+}
+
+/// Stop a turn in flight. Whatever has already streamed stands as the answer.
+///
+/// Deliberately infallible: an id that no longer names a live turn means it
+/// finished while the button was being pressed, which is the outcome that was
+/// asked for.
+#[tauri::command]
+fn chat_cancel(id: String) -> CmdResult<()> {
+    chat::cancel(&id);
+    Ok(())
+}
+
 /* ----------------------------------------------------------------- login --- */
 
 #[tauri::command]
@@ -1707,6 +1728,8 @@ pub fn run() {
             prepare_cloud_chat,
             openrouter_models,
             chat_send,
+            chat_answer,
+            chat_cancel,
             chat_sessions,
             chat_session,
             save_chat_session,

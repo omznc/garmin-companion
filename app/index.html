@@ -11,7 +11,19 @@
       had no notch and no system bars — on a window that Android draws
       edge-to-edge underneath both.
     -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!--
+      `interactive-widget=resizes-content` is for the chat composer, which is
+      docked to the bottom of the window. The default on Android is for the
+      keyboard to overlay the viewport rather than shrink it, which puts the box
+      you are typing into underneath the keys you are typing with. This asks for
+      the layout viewport to be resized instead. `Composer` also watches the
+      visual viewport directly, because WebView versions disagree about this and
+      the failure mode is bad enough to be worth both.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <title>Tauri + React + Typescript</title>
   </head>
 

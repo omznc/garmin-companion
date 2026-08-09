@@ -492,6 +492,15 @@ button {
   }
 }
 
+/* Touch has no hover to darken on approach, so the press says it instead — the
+ * same argument `.quiet` makes below. Without this, tapping a row on a phone
+ * acknowledged nothing at all until whatever it opened began to arrive, which
+ * on a slow one is long enough to tap it twice. Outside the hover query on
+ * purpose: this is the case that query excludes. */
+.row:active:not(:disabled) {
+  background: var(--sel);
+}
+
 /* A row that can't be chosen shouldn't look like it can. */
 .row:disabled {
   cursor: default;
@@ -515,13 +524,44 @@ button {
 
 /* The inner button is what takes focus, so the group has to read its state to
  * keep keyboard navigation as visible as the pointer's. */
-.row-group:has(> .row:focus-visible) {
+.row-group:has(> .row:focus-visible),
+.row-group:has(> .row:active) {
   background: var(--sel);
 }
 
 @media (hover: hover) {
   .row-group:hover {
     background: var(--sel);
+  }
+}
+
+/* The control at the end of a grouped row — a delete, usually. The slot is
+ * always occupied so the row's right edge doesn't move, and where there is a
+ * pointer it stays out of the way until one arrives.
+ *
+ * Opacity and not `visibility`, which is what this was: a hidden control is not
+ * focusable, and a touchscreen has no hover to reveal it with, so between them
+ * the two shut a keyboard and a phone out of the action entirely. Restraint on
+ * a desktop is worth having; it is not worth a control nobody else can reach. */
+.row-trail {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 6px;
+  color: var(--faint);
+  transition: opacity var(--dur-base);
+}
+
+@media (hover: hover) {
+  .row-trail {
+    opacity: 0;
+  }
+
+  .row-group:hover .row-trail,
+  .row-trail:focus-visible {
+    opacity: 1;
   }
 }
 
@@ -1840,25 +1880,33 @@ body::-webkit-scrollbar {
 /* A highlight travelling across the text while the model works. The gradient
  * is painted into the glyphs themselves rather than behind them, so it reads
  * as the words lighting up rather than as a bar sliding past. */
+/* The travel has to be exactly one tile, or the loop is a stutter rather than a
+ * sweep. A percentage `background-position` resolves against `area - image`, so
+ * at `background-size: 200%` one full tile of travel is `-200%` and not the
+ * `-120%` this used to animate to — which landed mid-tile, jumped back to the
+ * start every 2.1s, and read as a highlight twitching in place. */
 .shimmer {
   background: linear-gradient(
     90deg,
     var(--mut) 0%,
-    var(--mut) 35%,
+    var(--mut) 38%,
     var(--fg) 50%,
-    var(--mut) 65%,
+    var(--mut) 62%,
     var(--mut) 100%
   );
-  background-size: 220% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: shimmer 2.1s linear infinite;
+  animation: shimmer 1.7s linear infinite;
 }
 
 @keyframes shimmer {
+  from {
+    background-position: 0 0;
+  }
   to {
-    background-position: -120% 0;
+    background-position: -200% 0;
   }
 }
 
@@ -2545,4 +2593,817 @@ body::-webkit-scrollbar {
   /* Selecting an answer to copy it shouldn't pick up the annotation. */
   user-select: none;
   pointer-events: none;
+}
+
+/* ================================================================== chat === */
+
+/* The reading column, as two numbers anything fixed can be placed against.
+ *
+ * The shell centres a 1240px pair of columns and left-aligns a 720px measure
+ * inside the right one (see `router.tsx`), which is fine for anything in the
+ * flow and no help at all to a composer docked to the bottom of the window. A
+ * fixed box is positioned against the viewport, so it has to recompute the same
+ * arithmetic — and having done it once here, it is one variable rather than a
+ * calc repeated at every call site and quietly drifting from the shell.
+ *
+ * `ScrollFade` is the other thing that needs it and doesn't use these yet: it
+ * takes its left edge as a prop because it is also used at full width on the
+ * phone. Worth collapsing, not worth collapsing today. */
+:root {
+  --shell-max: 1240px;
+  --sidebar-w: 228px;
+  --shell-gutter: 56px;
+  --col-left: calc(
+    max(0px, (100vw - var(--shell-max)) / 2) +
+    var(--sidebar-w) +
+    var(--shell-gutter)
+  );
+  --col-w: min(720px, 100vw - var(--col-left) - var(--shell-gutter));
+  /* Written by the composer as it grows, read by the thread above it as the
+   * room to leave at the bottom. A measured value rather than a guess, because
+   * a textarea that has grown to eight lines is three times the height of one
+   * that hasn't, and the difference is the last paragraph of the answer. */
+  --composer-h: 92px;
+  /* How much of the window the on-screen keyboard is covering. Zero everywhere
+   * but a phone with the keyboard up; see `Composer`. */
+  --kb: 0px;
+}
+
+:root[data-mobile] {
+  --col-left: 20px;
+  --col-w: calc(100vw - 40px);
+}
+
+/* Before anything has been asked. Sits in the space the conversation will
+ * eventually fill, close enough to the box that the two read as one thing —
+ * pinned to the top of the screen it would be a page header, and centred in the
+ * window it would be a splash. */
+.chat-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: calc(100dvh - var(--composer-h) - 210px);
+  padding-bottom: calc(var(--composer-h) + 26px);
+  animation: turn-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+/* The same screen a frame after you have left it, pinned to the pixels it was
+ * occupying and fading over the top of the thread that has taken its place.
+ *
+ * Fixed, at coordinates measured in JS rather than recomputed from `--col-left`
+ * and friends, because the only version of this that is certainly right is the
+ * one that copies down where the element actually was. And out of flow rather
+ * than faded where it stood: this block is most of a viewport tall, so leaving
+ * it in would hold that height open for the length of the fade and the collapse
+ * it exists to soften would just happen a beat later instead.
+ *
+ * Up and out. It isn't travelling anywhere — it is being replaced — so the
+ * distance is small enough to read as making way rather than as departing. */
+.chat-hero-ghost {
+  position: fixed;
+  z-index: 1;
+  min-height: 0;
+  pointer-events: none;
+  animation: hero-out var(--dur-slow) var(--ease-out) forwards;
+}
+
+@keyframes hero-out {
+  to {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+/* --------------------------------------------------------------- thread --- */
+
+/* Room at the bottom for the composer to sit over, plus a gap so the last line
+ * of an answer isn't touching it. */
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  padding-bottom: calc(var(--composer-h) + 26px);
+}
+
+.chat-thread-inline {
+  gap: 26px;
+  padding-bottom: 18px;
+}
+
+.chat-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* What you said, as a quiet block against the right edge.
+ *
+ * A block and not a bubble with an avatar over it: the answer below is the
+ * content, and this is the prompt that produced it. It needs to be findable
+ * when scrolling back through a long conversation and otherwise stay out of the
+ * way, which is what the alignment does and what a second colour would undo.
+ *
+ * The corner nearest the answer stays square. It is the one detail that says
+ * which direction this message came from, and it costs nothing. */
+.bubble-user {
+  align-self: flex-end;
+  max-width: min(48ch, 100%);
+  padding: 11px 15px;
+  border-radius: 10px 10px 3px 10px;
+  background: var(--sel);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  text-wrap: pretty;
+  /* Long enough and it is a paragraph, and paragraphs get their line breaks
+   * back — the composer accepts them, so the transcript has to keep them. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Entering under the composer as you send. The distance is small and the
+ * direction is up, so it reads as the message leaving the box it was typed in
+ * rather than as a card appearing. */
+.chat-turn {
+  animation: turn-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+}
+
+/* ------------------------------------------------------------- composer --- */
+
+/* Docked to the bottom of the reading column, over whatever is scrolling under
+ * it. Portalled to `document.body` for the same reason the tab bar is: Android
+ * stretches the whole scrolling layer on overscroll, `position: fixed` children
+ * included, and a composer that bounces with the page is a composer that has
+ * come loose. */
+.composer {
+  position: fixed;
+  bottom: 0;
+  left: var(--col-left);
+  width: var(--col-w);
+  z-index: 40;
+  /* Above the tab bar on a phone, clear of the gesture inset on both, and
+   * lifted by whatever the keyboard is covering. */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h, 0px) + var(--kb) + 18px);
+  padding-top: 14px;
+  /* The page has to stop being readable *before* it reaches the box, or a line
+   * of text ends against its top edge mid-word. A gradient rather than the
+   * hairline the tab bar uses: this sits in the middle of a reading column
+   * rather than at the edge of the window, and a rule across the text would
+   * read as the end of the document. */
+  background: linear-gradient(to bottom, transparent, var(--bg) 24px);
+  pointer-events: none;
+}
+
+.composer > * {
+  pointer-events: auto;
+}
+
+.composer-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  transition:
+    border-color var(--dur-base),
+    box-shadow var(--dur-base);
+}
+
+/* The same focus treatment `.input` gets, moved onto the box — the textarea
+ * inside has no border of its own to accent. */
+.composer-box:focus-within {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 16%, transparent);
+}
+
+.composer-box textarea {
+  flex: 1;
+  min-width: 0;
+  /* Grown by script to fit its content, capped so a pasted essay leaves some
+   * of the conversation visible. */
+  max-height: 190px;
+  padding: 5px 0;
+  font-family: inherit;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+  color: var(--fg);
+  background: none;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.composer-box textarea::placeholder {
+  color: var(--faint);
+}
+
+.composer-box textarea::-webkit-scrollbar {
+  display: none;
+}
+
+/* The one filled button in the app, and it earns it: this is the control the
+ * whole screen is built around, and an outline next to a textarea reads as a
+ * second field. Square-ish rather than round, like everything else here. */
+.composer-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 5px;
+  background: var(--acc);
+  color: var(--bg);
+  cursor: pointer;
+  transition:
+    background var(--dur-base),
+    opacity var(--dur-base),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.composer-send:disabled {
+  background: none;
+  color: var(--faint);
+  cursor: default;
+}
+
+.composer-send:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+/* The glyph inside, replaced rather than restyled when Send becomes Stop — see
+ * `Composer`. Small and quick: it is a mark changing, not a thing arriving. */
+.composer-mark {
+  display: grid;
+  place-items: center;
+  animation: mark-in var(--dur-fast) var(--ease-out);
+}
+
+@keyframes mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+/* Stop is the same button doing the opposite thing, so it says so in the one
+ * way that can't be misread: it stops looking like Send. */
+.composer-send[data-stop="true"] {
+  background: none;
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.composer-note {
+  margin: 9px 2px 0;
+  font-size: var(--fs-caption);
+  color: var(--faint);
+  text-wrap: pretty;
+}
+
+/* The suggestion row above the box: openers before you've asked anything, the
+ * model's own follow-ups after. Chips rather than the bare underlined links
+ * this used to be — they sit against a docked surface now, where a line of
+ * underlined text reads as a footer. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* Leaving alongside the hero, and on the same curve, because it is the same
+ * event. Taken out of the dock's flow while it goes: the row is a child of the
+ * composer, so removing its height the frame you press send drops the box a
+ * line under the hand that is still on it. `.composer` is fixed, so this is
+ * positioned against the composer and needs no measuring. */
+.chip-row[data-leaving] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin-bottom: 0;
+  pointer-events: none;
+  animation: hero-out var(--dur-slow) var(--ease-out) forwards;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: var(--fs-small);
+  color: var(--mut);
+  cursor: pointer;
+  transition:
+    color var(--dur-base),
+    border-color var(--dur-base),
+    transform var(--dur-fast) var(--ease-out);
+  animation: chip-in var(--dur-slow) var(--ease-out) backwards;
+}
+
+@media (hover: hover) {
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--mut);
+  }
+}
+
+/* Under the finger, not after it lifts. A chip sends a question the moment it
+ * is released, and the gap between pressing one and an answer beginning is long
+ * enough that without this you press it twice. Scoped to the question itself —
+ * pressing the pin beside it isn't the chip being pressed. */
+.chip:has(> .chip-text:active) {
+  transform: scale(0.97);
+}
+
+.chip[data-pinned="true"] {
+  color: var(--fg);
+}
+
+.chip > .chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Always in the layout, so crossing a chip doesn't resize it and reflow the row
+ * behind it, and so a keyboard has something to land on. */
+.chip-pin {
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: opacity var(--dur-base);
+}
+
+.chip[data-pinned="true"] .chip-pin {
+  color: var(--acc);
+}
+
+/* Only where there is a pointer to reveal it with. The row is meant to read as
+ * questions rather than as a list of settings, and hiding the toggle until you
+ * reach for one is how it does that — but a touchscreen never reaches, so on
+ * one the toggle stays where it can be found. A pinned chip keeps its mark
+ * either way: that is what says why this question is here and not rotating with
+ * the rest. */
+@media (hover: hover) {
+  .chip-pin {
+    opacity: 0;
+  }
+
+  .chip:hover .chip-pin,
+  .chip[data-pinned="true"] .chip-pin,
+  .chip-pin:focus-visible {
+    opacity: 1;
+  }
+}
+
+@keyframes chip-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+}
+
+/* ---------------------------------------------------------- tool timeline --- */
+
+/* What the model went and read, one row per call, in the order it read them.
+ *
+ * This replaced a single line that was overwritten by each new tool and gone
+ * the moment prose started arriving — which meant the most interesting thing
+ * the app does, going and reading your actual data, was visible for about two
+ * seconds and never afterwards. */
+.tool-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.tool-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-small);
+  color: var(--mut);
+  animation: step-in 300ms var(--ease-out) backwards;
+}
+
+/* Rows arrive as their calls do, so the stagger is real rather than decorative
+ * — but a round can return four at once, and four rows appearing on the same
+ * frame is a jump. A small fixed cascade, capped like the screen's. */
+.tool-step:nth-child(2) {
+  animation-delay: 40ms;
+}
+.tool-step:nth-child(3) {
+  animation-delay: 80ms;
+}
+.tool-step:nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-6px, 0, 0);
+  }
+}
+
+/* Done rows recede: the one still running is the one worth reading. */
+.tool-step[data-running="false"] {
+  color: var(--faint);
+}
+
+.tool-step-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+}
+
+/* The dot that becomes a tick. Whichever is in the slot is centred in it, and
+ * the slot's size is fixed, so the row's text never shifts as a call lands. */
+.tool-step-mark > * {
+  grid-area: 1 / 1;
+}
+
+.tool-step-secs {
+  font-size: var(--fs-micro);
+  color: var(--faint);
+}
+
+/* Once the turn has landed, the whole block collapses to this — the answer is
+ * what you came for, and eight rows of provenance above it is a filing cabinet.
+ * Still there, still expandable, no longer the first thing on the page. */
+.tool-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: var(--fs-caption);
+  color: var(--faint);
+  cursor: pointer;
+  transition: color var(--dur-base);
+}
+
+@media (hover: hover) {
+  .tool-summary:hover {
+    color: var(--mut);
+  }
+}
+
+.tool-summary-caret {
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.tool-summary[aria-expanded="true"] .tool-summary-caret {
+  transform: rotate(90deg);
+}
+
+/* The rows behind the summary line, opening out from under it.
+ *
+ * `0fr` to `1fr` is a height transition that doesn't need to know the height,
+ * which is the whole difficulty: the height here is however many things the
+ * model happened to read that turn. The child takes the `overflow: hidden`,
+ * because the track is what shrinks and the content has to be clipped by
+ * something as it does.
+ *
+ * The rows below the button move as this opens, which is the point — before
+ * this they were shoved down between two frames while the caret above them
+ * turned smoothly, one control describing the action two different ways. */
+.tool-summary-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--dur-slow) var(--ease-out),
+    opacity var(--dur-slow) var(--ease-out);
+}
+
+.tool-summary-panel > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tool-summary-panel[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* A row's own entrance is for a timeline arriving live, one call at a time. In
+ * here they are already there and the panel is what is moving; both at once is
+ * two animations narrating one event. */
+.tool-summary-panel .tool-step {
+  animation: none;
+}
+
+/* ------------------------------------------------------------- ask card --- */
+
+/* The model's own question, waiting on an answer.
+ *
+ * Given a surface of its own — the one card in the transcript with a border —
+ * because unlike everything else here it is not something to read. The turn is
+ * parked until it is answered, and a question that looks like prose is a
+ * question that gets scrolled past while the coach waits. */
+.ask-card {
+  max-width: 58ch;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  animation: ask-in 320ms var(--ease-out) backwards;
+  /* For the moment it stops being live. Answering flips the ground and the
+   * border below, and cutting between them reads as a repaint; settling reads
+   * as the question closing. */
+  transition:
+    background var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+@keyframes ask-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+}
+
+/* Answered, or gone by unanswered: the same card with nothing left to do in it.
+ * It keeps its border — it is still a distinct thing that happened — and loses
+ * the ground, so a scroll back through the conversation reads it as history. */
+.ask-card[data-live="false"] {
+  background: none;
+  border-color: var(--line2);
+}
+
+.ask-question {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.ask-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ask-option {
+  flex: 1 1 auto;
+  min-width: 140px;
+  max-width: 100%;
+  padding: 9px 13px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-base),
+    background var(--dur-base);
+}
+
+@media (hover: hover) {
+  .ask-option:hover:not(:disabled) {
+    border-color: var(--acc);
+  }
+}
+
+.ask-option:disabled {
+  cursor: default;
+}
+
+/* What you picked, once the question is over. The accent is doing the work a
+ * checkmark would; there is nothing else on the card to confuse it with. */
+.ask-option[data-picked="true"] {
+  border-color: var(--acc);
+  background: color-mix(in srgb, var(--acc) 8%, transparent);
+}
+
+.ask-option-label {
+  font-size: var(--fs-small);
+  color: var(--fg);
+}
+
+.ask-option-desc {
+  margin-top: 3px;
+  font-size: var(--fs-caption);
+  color: var(--faint);
+  text-wrap: pretty;
+}
+
+.ask-own {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ask-foot {
+  margin-top: 12px;
+  font-size: var(--fs-caption);
+  color: var(--faint);
+}
+
+/* --------------------------------------------------------------- drawer --- */
+
+/* Recent conversations, over the column rather than beside it.
+ *
+ * The scrim is the same one the phone's sheet uses; the panel differs by
+ * platform, and the difference is which edge a hand is near. On a phone it
+ * comes up from the bottom, where a thumb is. On a desktop it comes in from the
+ * right, because the left is where the nav already is and a second column of
+ * links either side of the reading measure is a maze. */
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.drawer {
+  position: fixed;
+  z-index: 71;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  outline: none;
+}
+
+.drawer-side {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(380px, 92vw);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--lift);
+  padding: 22px 22px 26px;
+}
+
+.drawer-sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 76dvh;
+  border-top: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  padding: 0 20px calc(env(safe-area-inset-bottom, 0px) + 20px);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 14px;
+}
+
+/* The rows inside bleed 14px sideways, so their highlight covers the panel's
+ * padding rather than stopping short of it. A scroll container counts that
+ * bleed as overflow — `overflow-y: auto` makes `overflow-x` scrollable too —
+ * and the sheet could be dragged sideways by exactly the bleed. Widening this
+ * box by the same 14px puts the bleed inside its own padding, where it isn't
+ * overflow, and leaves the rows where they were. */
+.drawer-list {
+  flex: 1;
+  min-height: 0;
+  margin-inline: -14px;
+  padding-inline: 14px;
+  overflow-y: auto;
+  overflow-x: clip;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ------------------------------------------------------------ jump pill --- */
+
+/* Only there when you have scrolled up out of a conversation that is still
+ * being written. Same offsets as the other floating pills in the app. */
+.jump-pill {
+  position: fixed;
+  /* The middle of the reading column, not of the window. Fixed positioning is
+   * against the viewport, so on a desktop with the sidebar out this sat a
+   * sidebar's width to the left of the conversation it belongs to — the same
+   * arithmetic the composer above it already does, and the reason `--col-left`
+   * and `--col-w` exist. */
+  left: calc(var(--col-left) + var(--col-w) / 2);
+  bottom: calc(var(--composer-h) + env(safe-area-inset-bottom, 0px) + var(--tabbar-h, 0px) + 14px);
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: var(--lift);
+  font-size: var(--fs-caption);
+  color: var(--mut);
+  cursor: pointer;
+  /* Rest is the hidden state, and `data-away` is the shown one — the pill stays
+   * mounted either way, so it leaves along the path it arrived on instead of
+   * being cut from the page the instant you reach the bottom. `visibility`
+   * rather than `display` because only the former can be transitioned, and it
+   * is delayed to the end of the fade so the pill isn't gone before it has
+   * finished going; while hidden it also keeps the pill off the tab order.
+   *
+   * Out is quicker than in. Arriving, it is offering you something and should
+   * be seen doing it; leaving, you have already got what it offered. */
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 8px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out),
+    visibility 0s linear var(--dur-base);
+}
+
+.jump-pill[data-away] {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out),
+    visibility 0s;
+}
+
+.jump-pill[data-away]:active {
+  transform: translate(-50%, 0) scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-turn,
+  .chip,
+  .tool-step,
+  .ask-card,
+  .composer-mark {
+    animation: none;
+  }
+
+  /* The pill still has to appear and disappear; what it loses is the travel.
+   * `visibility` keeps its delay, or it would vanish before it had faded. */
+  .jump-pill {
+    transform: translate(-50%, 0);
+    transition:
+      opacity var(--dur-base),
+      visibility 0s linear var(--dur-base);
+  }
+
+  .jump-pill[data-away] {
+    transition:
+      opacity var(--dur-base),
+      visibility 0s;
+  }
+
+  .chip,
+  .tool-summary-caret,
+  .composer-send {
+    transition: none;
+  }
+
+  /* Both still have to leave; what they lose is the travel. Keeping the fade is
+   * the point — it is the bridge, and cutting it is the jump this was for. */
+  .chat-hero-ghost,
+  .chip-row[data-leaving] {
+    animation: hero-fade var(--dur-base) linear forwards;
+  }
+
+  /* The panel opens without the hinge. A height that eases is exactly the kind
+   * of travel this setting is asking not to see, so the rows simply appear and
+   * the fade carries the change. */
+  .tool-summary-panel {
+    transition: opacity var(--dur-base);
+  }
+}
+
+@keyframes hero-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Frosted chrome is a nicety; legible text is not. Asked for less of it, the
+ * scrim gets its separation from opacity instead of from blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .drawer-scrim {
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: none;
+  }
 }

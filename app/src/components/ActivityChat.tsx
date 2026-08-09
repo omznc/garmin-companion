@@ -8,19 +8,23 @@
  * needs the weeks around it; the context narrows what a pronoun refers to, not
  * what can be read.
  *
- * Conversations are saved the same way the Ask screen saves them, so one
- * started here shows up in the history there. The transcript is deliberately
- * plain: this is a footnote to a page that already has the numbers on it, not a
- * second chat application.
+ * Conversations are saved the same way the Ask screen saves them, so one started
+ * here shows up in the history there. It runs on the same `useChat` too, which
+ * is how it inherited drafted workouts, questions the model asks back and the
+ * tool timeline without any of them being written twice.
+ *
+ * What it does not inherit is the docked composer. This is a footnote at the
+ * bottom of a page that already has the numbers on it, and a box fixed over that
+ * page would claim the screen for a conversation you may not be having. The box
+ * stays in the flow, under the transcript, where the rest of the page's controls
+ * are.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { listen } from "@tauri-apps/api/event";
-import { chatConfig, chatSend, saveChatSession, type ChatMessage } from "../lib/api";
-import { AiMark } from "./AiMark";
-import { Markdown } from "./Markdown";
-import { ToolLoader } from "./ToolLoader";
+import { useQuery } from "@tanstack/react-query";
+import { chatConfig, type ChatMessage } from "../lib/api";
+import { useChat } from "../lib/useChat";
+import { Thread } from "./chat/Thread";
 import { SendIcon } from "../lib/icons";
 
 /**
@@ -38,12 +42,6 @@ const OPENERS = [
 /** How many openers are offered at once. */
 const SUGGESTED = 2;
 
-type ChatEvent =
-  | { type: "status"; text: string }
-  | { type: "delta"; text: string }
-  | { type: "done"; sources: string[] }
-  | { type: "error"; text: string };
-
 export function ActivityChat({
   activityId,
   activityName,
@@ -52,98 +50,18 @@ export function ActivityChat({
   activityName: string;
 }) {
   const config = useQuery({ queryKey: ["chatConfig"], queryFn: chatConfig });
-  const qc = useQueryClient();
-
-  const [history, setHistory] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [pending, setPending] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
-  /** Created lazily on the first question, so opening a page saves nothing. */
-  const session = useRef<{ id: string; startedAt: string } | null>(null);
-
-  // Opening a different activity is a different conversation. Without this,
-  // navigating between two runs would carry the first one's transcript onto the
-  // second one's page, under the second one's numbers.
-  useEffect(() => {
-    session.current = null;
-    setHistory([]);
-    setPending(null);
-    setStatus(null);
-    setError(null);
-    setDraft("");
-  }, [activityId]);
-
-  const send = useCallback(
-    async (text: string) => {
-      const question = text.trim();
-      if (!question || busy) return;
-
-      const next: ChatMessage[] = [...history, { role: "user", content: question }];
-      setHistory(next);
-      setDraft("");
-      setError(null);
-      setStatus(null);
-      setPending("");
-      setBusy(true);
-
-      if (!session.current) {
-        session.current = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          startedAt: new Date().toISOString(),
-        };
-      }
-      const conv = session.current;
-
-      // One channel per turn, so a slow previous turn can't write into this one.
-      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      let answer = "";
-      const sources: string[] = [];
-
-      const unlisten = await listen<ChatEvent>(`chat:${id}`, (e) => {
-        const ev = e.payload;
-        if (ev.type === "delta") {
-          answer += ev.text;
-          setPending(answer);
-          setStatus(null);
-        } else if (ev.type === "status") {
-          setStatus(ev.text);
-        } else if (ev.type === "done") {
-          sources.push(...ev.sources);
-        } else if (ev.type === "error") {
-          setError(ev.text);
-        }
-      });
-
-      try {
-        await chatSend(id, next, activityId);
-        if (answer.trim()) {
-          const done: ChatMessage[] = [...next, { role: "assistant", content: answer, sources }];
-          setHistory(done);
-          // Titled by the session rather than by the question, so the Ask
-          // screen's history says which run a conversation was about.
-          void saveChatSession({
-            sessionId: conv.id,
-            title: `${activityName} — ${next[0].content}`,
-            startedAt: conv.startedAt,
-            messages: done,
-          })
-            .then(() => qc.invalidateQueries({ queryKey: ["chatSessions"] }))
-            .catch(() => {});
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        unlisten();
-        setPending(null);
-        setStatus(null);
-        setBusy(false);
-      }
-    },
-    [activityId, activityName, busy, history, qc],
-  );
+  const chat = useChat({
+    activityId,
+    // Titled by the session rather than by the question, so the Ask screen's
+    // history says which run a conversation was about.
+    titleFor: (messages: ChatMessage[]) =>
+      `${activityName} — ${messages.find((m) => m.role === "user")?.content ?? "Untitled"}`,
+    // The Ask screen has a row to put them in. This doesn't, and a request per
+    // answer for suggestions nothing renders is a request for nothing.
+    followups: false,
+  });
 
   if (config.isLoading) return null;
 
@@ -161,63 +79,74 @@ export function ActivityChat({
     );
   }
 
-  const turns: Array<{ question: string; answer: string | null; streaming: boolean }> = [];
-  for (let i = 0; i < history.length; i++) {
-    if (history[i].role !== "user") continue;
-    const reply = history[i + 1]?.role === "assistant" ? history[i + 1] : null;
-    turns.push({ question: history[i].content, answer: reply?.content ?? null, streaming: false });
-  }
-  if (pending != null && turns.length > 0) {
-    const last = turns[turns.length - 1];
-    if (last.answer == null) {
-      last.answer = pending;
-      last.streaming = true;
-    }
+  const empty = chat.history.length === 0 && chat.pending === null;
+  const blocked = chat.asking.some((a) => a.answers === null);
+
+  function send(text: string) {
+    setDraft("");
+    void chat.send(text);
   }
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <input
-          className="input-bare"
+      {!empty && (
+        <Thread
+          history={chat.history}
+          pending={chat.pending}
+          steps={chat.steps}
+          drafting={chat.drafting}
+          asking={chat.asking}
+          onAnswer={(callId, answers) => void chat.answer(callId, answers)}
+          onSaved={chat.markSaved}
+          onDraftSaved={chat.markDrafting}
+          compact
+        />
+      )}
+
+      <div className="composer-box" style={{ marginTop: empty ? 0 : 8 }}>
+        <textarea
+          rows={1}
           value={draft}
+          placeholder={
+            blocked ? "Answer the question above to carry on…" : "Ask about this session…"
+          }
+          disabled={blocked}
+          aria-label="Ask about this session"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send(draft);
-            }
+            if (e.key !== "Enter" || e.shiftKey) return;
+            if (e.nativeEvent.isComposing) return;
+            e.preventDefault();
+            if (draft.trim() && !chat.busy && !blocked) send(draft);
           }}
-          placeholder="Ask about this session…"
-          disabled={busy}
-          style={{ flex: 1 }}
         />
         <button
-          onClick={() => void send(draft)}
-          disabled={busy || !draft.trim()}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            fontSize: "var(--fs-small)",
-            color: busy || !draft.trim() ? "var(--faint)" : "var(--acc)",
-            whiteSpace: "nowrap",
-            cursor: busy || !draft.trim() ? "default" : "pointer",
-          }}
+          type="button"
+          className="composer-send"
+          data-stop={chat.busy || undefined}
+          disabled={!chat.busy && (!draft.trim() || blocked)}
+          aria-label={chat.busy ? "Stop" : "Send"}
+          onClick={() => (chat.busy ? chat.stop() : send(draft))}
         >
-          {busy ? "Thinking" : "Send"}
-          {!busy && <SendIcon size={14} style={{ flex: "none" }} aria-hidden />}
+          {chat.busy ? (
+            <svg width="10" height="10" viewBox="0 0 11 11" aria-hidden>
+              <rect width="11" height="11" rx="2" fill="currentColor" />
+            </svg>
+          ) : (
+            <SendIcon size={15} aria-hidden />
+          )}
         </button>
       </div>
 
-      {turns.length === 0 && !busy && (
-        <div style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 18 }}>
-          {OPENERS.slice(0, SUGGESTED).map((q) => (
+      {empty && !chat.busy && (
+        <div className="chip-row" style={{ margin: "12px 0 0" }}>
+          {OPENERS.slice(0, SUGGESTED).map((q, i) => (
             <button
               key={q}
-              className="underlined"
-              style={{ fontSize: "var(--fs-small)" }}
-              onClick={() => void send(q)}
+              type="button"
+              className="chip"
+              style={{ animationDelay: `${i * 35}ms` }}
+              onClick={() => send(q)}
             >
               {q}
             </button>
@@ -225,51 +154,9 @@ export function ActivityChat({
         </div>
       )}
 
-      {error && (
+      {chat.error && (
         <div style={{ fontSize: "var(--fs-small)", color: "var(--warn)", marginTop: 16 }}>
-          {error}
-        </div>
-      )}
-
-      {turns.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 30, marginTop: 32 }}>
-          {turns.map((t, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div
-                className="serif"
-                style={{
-                  fontStyle: "italic",
-                  fontSize: 20,
-                  lineHeight: 1.45,
-                  paddingLeft: 16,
-                  borderLeft: "1px solid var(--line)",
-                }}
-              >
-                {t.question}
-              </div>
-              {t.answer != null && (
-                <AiMark label="chat answer">
-                  <div
-                    className="md-body selectable"
-                    style={{
-                      fontSize: "var(--fs-md)",
-                      lineHeight: 1.75,
-                      maxWidth: "68ch",
-                      textWrap: "pretty",
-                    }}
-                  >
-                    <Markdown>{t.answer}</Markdown>
-                    {t.streaming &&
-                      (t.answer ? (
-                        <span className="caret" aria-hidden />
-                      ) : (
-                        <ToolLoader label={status} />
-                      ))}
-                  </div>
-                </AiMark>
-              )}
-            </div>
-          ))}
+          {chat.error}
         </div>
       )}
     </div>

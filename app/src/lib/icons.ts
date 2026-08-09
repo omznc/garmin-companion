@@ -12,11 +12,23 @@
  * Weight and size are not set here — `main.tsx` puts `duotone` at 16px on the
  * shared `IconContext`, so anything rendered without props is already right and
  * the odd exception is visible where it's made.
+ *
+ * Two glyphs are the exception, and they set their own weight below: `+` and
+ * `×`. Duotone works by filling the shape *behind* the strokes, and these two
+ * are nothing but strokes — there is no enclosed area for the tint layer to
+ * land in, so all it does is smear a second, paler cross a hair off the first.
+ * At the 11–13px they get used at, that reads as a blurred icon rather than as
+ * a soft one. Bold gives them the one thing they need, which is an edge.
  */
+import { createElement } from "react";
+import type { IconProps } from "@phosphor-icons/react";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 
 /* ---------------------------------------------------------------- chrome --- */
 
-export { XIcon as CloseIcon } from "@phosphor-icons/react/dist/csr/X";
+/** See the note at the top of this file: strokes only, so never duotone. */
+export const CloseIcon = (props: IconProps) => createElement(XIcon, { weight: "bold", ...props });
 export { MinusIcon as MinimiseIcon } from "@phosphor-icons/react/dist/csr/Minus";
 export { SquareIcon as MaximiseIcon } from "@phosphor-icons/react/dist/csr/Square";
 export { CopySimpleIcon as RestoreIcon } from "@phosphor-icons/react/dist/csr/CopySimple";
@@ -34,7 +46,8 @@ export { PushPinIcon as PinIcon } from "@phosphor-icons/react/dist/csr/PushPin";
 export { PushPinSlashIcon as UnpinIcon } from "@phosphor-icons/react/dist/csr/PushPinSlash";
 export { TrashIcon as DeleteIcon } from "@phosphor-icons/react/dist/csr/Trash";
 export { PaperPlaneRightIcon as SendIcon } from "@phosphor-icons/react/dist/csr/PaperPlaneRight";
-export { PlusIcon as NewIcon } from "@phosphor-icons/react/dist/csr/Plus";
+/** See the note at the top of this file: strokes only, so never duotone. */
+export const NewIcon = (props: IconProps) => createElement(PlusIcon, { weight: "bold", ...props });
 export { DownloadSimpleIcon as UpdateIcon } from "@phosphor-icons/react/dist/csr/DownloadSimple";
 export { ArrowsCounterClockwiseIcon as FullSyncIcon } from "@phosphor-icons/react/dist/csr/ArrowsCounterClockwise";
 export { LinkBreakIcon as DisconnectIcon } from "@phosphor-icons/react/dist/csr/LinkBreak";

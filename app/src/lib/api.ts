@@ -941,6 +941,39 @@ export interface ChatMessage {
    * and content only), so a card can't be mistaken for something it said.
    */
   drafts?: WorkoutDraft[];
+  /**
+   * Questions the model put to you during this turn, with what you answered.
+   *
+   * Kept because the answer above was written on the strength of them: reopening
+   * a conversation where you said "about 20 minutes" and finding a session
+   * prescribed for twenty minutes with no sign of why is the transcript lying by
+   * omission. Unlike `drafts` these *are* replayed to the model — see
+   * `chatSend` — because the next question in the conversation ("make it
+   * longer") has no antecedent without them.
+   */
+  asks?: AskRecord[];
+}
+
+/** One answer the model offered, as it wrote it. */
+export interface AskOption {
+  label: string;
+  /** The line under the label, where two options need telling apart. */
+  description?: string;
+}
+
+/** A question the model asked, and what came back. */
+export interface AskRecord {
+  /** Two words for what is being chosen, drawn as a chip over the question. */
+  header?: string;
+  question: string;
+  options: AskOption[];
+  /** Whether more than one option can apply at once. */
+  multi: boolean;
+  /**
+   * What you picked, or typed. Empty means the question went unanswered — the
+   * turn was stopped, or it timed out — which the card shows rather than hides.
+   */
+  answers: string[];
 }
 
 export const chatConfig = () => invoke<ChatConfig>("chat_config");
@@ -1030,22 +1063,65 @@ export const prepareCloudChat = () => invoke<void>("prepare_cloud_chat");
 export const openrouterModels = () => invoke<ModelInfo[]>("openrouter_models");
 
 /**
- * Streams over the `chat:{id}` event channel; resolves when the turn ends.
+ * What actually goes back to the model, which is not what's on screen.
  *
- * Only role and content go over — `sources` and `drafts` are this side's record
- * of how an answer was produced, and sending them back would put the model's
- * own tool bookkeeping into its context as if it were part of the conversation.
+ * `sources` and `drafts` are this side's record of how an answer was produced,
+ * and sending them back would put the model's own tool bookkeeping into its
+ * context as if it were part of the conversation.
+ *
+ * Answered questions are the exception, and they go back as a message of their
+ * own ahead of the answer they shaped. Within the turn the model saw them as a
+ * tool result, but tool results aren't kept — so without this, "make it a bit
+ * longer" on the next turn refers to a session whose length the model can no
+ * longer account for. Written in the athlete's voice because that is whose
+ * words they are.
+ */
+function forModel(history: ChatMessage[]) {
+  const out: Array<{ role: string; content: string }> = [];
+  for (const m of history) {
+    for (const a of m.asks ?? []) {
+      if (a.answers.length === 0) continue;
+      out.push({
+        role: "user",
+        content: `(You asked: ${a.question} — I answered: ${a.answers.join(", ")})`,
+      });
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+/**
+ * Streams over the `chat:{id}` event channel; resolves when the turn ends.
  */
 export const chatSend = (id: string, history: ChatMessage[], activityId?: number) =>
   invoke<void>("chat_send", {
     id,
-    history: history.map((m) => ({ role: m.role, content: m.content })),
+    history: forModel(history),
     // Scopes the turn to one session: its analysis goes in front of the model
     // so "was that too hard?" has an antecedent. Same tools underneath — the
     // model still reaches past the session when the answer needs the weeks
     // around it.
     activityId: activityId ?? null,
   });
+
+/**
+ * Answer a question the model asked mid-turn, which unparks it.
+ *
+ * Resolves false when nothing was waiting any more — the turn was stopped, or
+ * the question timed out, between the card being drawn and the button being
+ * pressed. The card uses that to say so rather than to pretend the answer landed.
+ */
+export const chatAnswer = (id: string, callId: string, answers: string[]) =>
+  invoke<boolean>("chat_answer", { id, callId, answers });
+
+/**
+ * Stop a turn in flight.
+ *
+ * Whatever has already streamed is kept and saved: a stopped answer is a short
+ * answer, not a discarded one. Safe to call on a turn that has already finished.
+ */
+export const chatCancel = (id: string) => invoke<void>("chat_cancel", { id });
 
 /* -------------------------------------------------------- chat sessions --- */
 

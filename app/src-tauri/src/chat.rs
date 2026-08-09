@@ -21,7 +21,11 @@ use futures_util::StreamExt;
 use garmin_core::{db::Db, query, store};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
+use tokio::sync::oneshot;
 
 const OPENROUTER_BASE: &str = "https://openrouter.ai/api/v1";
 const OLLAMA_BASE: &str = "http://localhost:11434/v1";
@@ -41,6 +45,21 @@ const CLOUD_BASE: &str = match option_env!("GARMIN_CLOUD_BASE") {
 /// Cap on tool round trips in one turn. Every tool here reads a bounded slice
 /// of a local table, so a model that keeps calling them is looping, not working.
 const MAX_TOOL_ROUNDS: usize = 6;
+
+/// How many questions the model may put to the athlete in one turn.
+///
+/// Two, because the thing being prevented is an interrogation: a model that can
+/// ask freely will happily spend a turn confirming what it could have read from
+/// the cache, and the athlete asked a question rather than volunteering to
+/// answer a form. Past this the tool returns an error telling it to decide.
+const MAX_ASKS_PER_TURN: usize = 2;
+
+/// How long a question waits before the turn gives up on it and carries on.
+///
+/// Ten minutes is long enough that a question you walked away from is still
+/// answerable when you come back, and short enough that a turn nobody is
+/// watching doesn't hold a provider connection open all day.
+const ASK_TIMEOUT_SECS: u64 = 600;
 
 /// How much of a conversation goes back to the model.
 ///
@@ -154,6 +173,23 @@ button to send it to Garmin or edits it first. Never tell them a workout has \
 been created, added to their watch, or scheduled — none of that has happened \
 when the tool returns. If it returns an error, the draft was rejected: fix what \
 it names and call it again rather than describing the session in prose instead.
+
+`ask_athlete` puts one question on their screen, with answers they can tap, and \
+waits for the one they pick. It is the only way you have of asking them \
+anything. A question written into your prose is not asking — it ends the turn \
+with a question mark on it, and leaves them typing out a reply you could have \
+handed them as a button. So: if any part of your answer would put a question to \
+the athlete, including the last line of it, that question goes through \
+`ask_athlete` instead. Never both, and never the prose version alone.
+
+Ask before doing the work, not after: a question that arrives under a finished \
+answer is too late to have been worth asking. Ask when the answer would change \
+what you advise and no tool can supply it — how long they have today, whether \
+yesterday's niggle has settled, whether they want this one easy or hard. \
+Everything the cache holds you read; you never ask for it. You never ask \
+permission to answer, and you never meet a factual question about their own \
+numbers with a question back. If they don't answer, decide anyway and say what \
+you assumed.
 
 You can also make this app's colour themes. When they ask for one, call \
 `save_theme` and build it — do not answer with a list of hex codes for them to \
@@ -919,6 +955,34 @@ fn tool_schemas() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "ask_athlete",
+                "description": "Put one short question to the athlete and wait for their answer, which comes back as this tool's result. This is the ONLY way to ask them anything — a question written into your reply instead is not a question, it is a turn that ends with a question mark and nobody waiting for it. Call this when the answer changes what you would advise and no tool can supply it: how much time they have today, whether a niggle is still there, whether they want this session easy or hard. Never ask for anything the cache holds: read it. Never ask permission, never ask them to confirm something you already decided, and never answer a factual question about their data with a question back. At most two per turn.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "question": { "type": "string", "description": "The question itself, one sentence, in the second person." },
+                        "header": { "type": "string", "description": "A two-word label for what is being chosen, e.g. 'Time today'. Shown as a small chip above the question." },
+                        "options": {
+                            "type": "array",
+                            "description": "Two to four answers to choose between. Concrete and distinguishable — 'about 20 minutes' and 'about 45 minutes', not 'short' and 'long'. They can always type their own instead, so there is no need for a catch-all option.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "label": { "type": "string", "description": "The button's words. A few, not a sentence." },
+                                    "description": { "type": "string", "description": "Optional line under the label, where two options need telling apart." }
+                                },
+                                "required": ["label"]
+                            }
+                        },
+                        "multi": { "type": "boolean", "description": "True when more than one answer can apply at once. Default false." }
+                    },
+                    "required": ["question", "options"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "list_themes",
                 "description": "The custom colour themes already saved on this machine. Call before saving one, so a new theme doesn't silently overwrite an existing theme of the same name, and so 'make it warmer' can start from what is actually there.",
                 "parameters": { "type": "object", "properties": {} }
@@ -1141,6 +1205,7 @@ fn describe(name: &str, args: &Value) -> String {
         "findings" => "Reading a year of it properly".into(),
         "cache_status" => "Checking what's cached".into(),
         "draft_workout" => "Putting a session together".into(),
+        "ask_athlete" => "Waiting on your answer".into(),
         "list_themes" => "Reading your saved themes".into(),
         "save_theme" => match args["name"].as_str() {
             Some(n) => format!("Mixing “{n}”"),
@@ -1382,6 +1447,182 @@ fn draft_workout(args: &Value) -> ToolOutput {
         result,
         draft: Some(draft),
         themes: None,
+    }
+}
+
+/* --------------------------------------------------------------- asking --- */
+
+/// One answer the athlete can pick, as the model wrote it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AskOption {
+    /// What the button says. Short — it is a button, not a sentence.
+    pub label: String,
+    /// The line under it, where the difference between two options needs
+    /// spelling out. Optional, and usually should be.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// The arguments `ask_athlete` takes, once they are shaped like a question.
+struct Ask {
+    header: Option<String>,
+    question: String,
+    options: Vec<AskOption>,
+    multi: bool,
+}
+
+/// Read a question out of whatever the model sent.
+///
+/// Forgiving in the same places [`repair`] is, and for the same reason: the
+/// small models this app is pointed at send `options` as a JSON-encoded string
+/// about as often as they send an array, and as bare strings about as often as
+/// objects. A question that arrives in the wrong shape and is refused costs a
+/// round trip to be told something the parser could have worked out.
+fn parse_ask(args: &Value) -> Result<Ask, String> {
+    let question = args["question"]
+        .as_str()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+        .ok_or("ask_athlete needs a `question` to put to them")?
+        .to_string();
+
+    // A string here is a nested JSON array that arrived encoded.
+    let raw = match &args["options"] {
+        Value::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
+        other => other.clone(),
+    };
+
+    let options: Vec<AskOption> = raw
+        .as_array()
+        .map(|xs| {
+            xs.iter()
+                .filter_map(|x| match x {
+                    Value::String(s) => Some(AskOption {
+                        label: s.clone(),
+                        description: None,
+                    }),
+                    Value::Object(_) => serde_json::from_value(x.clone()).ok(),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if options.len() < 2 {
+        return Err(
+            "ask_athlete needs at least two `options` to choose between. \
+                    If there is nothing to choose, don't ask — decide, and say \
+                    what you assumed."
+                .into(),
+        );
+    }
+
+    Ok(Ask {
+        header: args["header"]
+            .as_str()
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            // A chip, not a label. Anything longer than this is the question
+            // repeating itself in a space that can't hold it.
+            .map(|h| h.chars().take(16).collect()),
+        question,
+        // Four is what the card lays out; past that the model is offering a
+        // menu, and the two it thinks matter are the ones worth showing.
+        options: options.into_iter().take(4).collect(),
+        multi: args["multi"].as_bool().unwrap_or(false),
+    })
+}
+
+/// Put a question on screen and park the turn until it comes back.
+///
+/// This is the one tool that waits on a person. Everything else here reads a
+/// local table and returns in microseconds; this emits an event, hands its end
+/// of a channel to [`LIVE`] where the `chat_answer` command can find it, and
+/// awaits.
+///
+/// Three ways it stops waiting, and the model is told which: an answer, the
+/// timeout, or the sender being dropped — which is Stop, or the turn ending
+/// underneath it. The last two return `answered: false` rather than an error,
+/// because a question nobody answered is not a failure the model should retry.
+/// It should write the answer it would have written anyway and say what it
+/// assumed.
+async fn ask_athlete<R: Runtime>(
+    app: &AppHandle<R>,
+    id: &str,
+    channel: &str,
+    call_id: &str,
+    args: &Value,
+    used: &mut usize,
+) -> Value {
+    if *used >= MAX_ASKS_PER_TURN {
+        return json!({
+            "error": format!(
+                "you have already asked {MAX_ASKS_PER_TURN} questions this turn, \
+                 which is the limit. Decide from what you have and state the \
+                 assumption you made in your answer.",
+            ),
+        });
+    }
+
+    let ask = match parse_ask(args) {
+        Ok(a) => a,
+        Err(e) => return json!({ "error": e }),
+    };
+    *used += 1;
+
+    let (tx, rx) = oneshot::channel();
+    // Registered before the event goes out. The other order is a race the
+    // frontend wins on a fast machine: an answer arriving for a question with
+    // nowhere to deliver it is dropped, and the turn then waits ten minutes for
+    // a click that already happened.
+    let registered = with_live(|live| match live.get_mut(id) {
+        Some(turn) => {
+            turn.asks.insert(call_id.to_string(), tx);
+            true
+        }
+        None => false,
+    });
+    if !registered {
+        return json!({ "answered": false, "reason": "this turn is no longer live" });
+    }
+
+    emit(
+        app,
+        channel,
+        Event::Ask {
+            call_id,
+            header: ask.header.as_deref(),
+            question: &ask.question,
+            options: ask.options.clone(),
+            multi: ask.multi,
+        },
+    );
+
+    let waited = tokio::time::timeout(std::time::Duration::from_secs(ASK_TIMEOUT_SECS), rx).await;
+
+    // However it ended, this question is no longer open. Cheap when the answer
+    // came through `answer_ask`, which already took it out.
+    with_live(|live| {
+        if let Some(turn) = live.get_mut(id) {
+            turn.asks.remove(call_id);
+        }
+    });
+
+    match waited {
+        Ok(Ok(answers)) => json!({
+            "answered": true,
+            "question": ask.question,
+            "answers": answers,
+            "note": "This is the athlete's own answer. Use it, and don't ask it again.",
+        }),
+        Ok(Err(_)) => json!({
+            "answered": false,
+            "reason": "they stopped the answer or closed it before choosing",
+        }),
+        Err(_) => json!({
+            "answered": false,
+            "reason": "they didn't answer in time",
+        }),
     }
 }
 
@@ -1628,8 +1869,19 @@ pub struct HistoryMessage {
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Event<'a> {
-    Status {
-        text: String,
+    /// One tool call, twice: once when it starts and once when it comes back.
+    ///
+    /// Two events rather than the single replaceable status line this used to
+    /// be, because a turn reads three or four things and the interesting part is
+    /// the sequence — which of your data it went to, in what order, and how long
+    /// each took. A line that is overwritten by the next one can't show that,
+    /// and it can't show a call that finished either.
+    Tool {
+        call_id: &'a str,
+        label: &'a str,
+        /// `false` once the call has come back; `ok` is meaningless until then.
+        running: bool,
+        ok: bool,
     },
     Delta {
         text: &'a str,
@@ -1639,6 +1891,15 @@ enum Event<'a> {
     /// explaining it is still arriving.
     Draft {
         draft: garmin_core::workout::WorkoutDraft,
+    },
+    /// A question the model has put to the athlete. The turn is parked from the
+    /// moment this goes out until [`answer_ask`] resolves it — see `ask`.
+    Ask {
+        call_id: &'a str,
+        header: Option<&'a str>,
+        question: &'a str,
+        options: Vec<AskOption>,
+        multi: bool,
     },
     Done {
         sources: Vec<String>,
@@ -1654,6 +1915,64 @@ fn emit<R: Runtime>(app: &AppHandle<R>, channel: &str, event: Event<'_>) {
     let _ = app.emit(channel, event);
 }
 
+/* ----------------------------------------------------------- live turns --- */
+
+/// Every turn currently running, by the id the frontend opened it with.
+///
+/// Two things reach into a turn from outside it: Stop, and the answer to a
+/// question the model asked. Both arrive as separate Tauri commands on separate
+/// tasks while `run_turn` is still awaiting somewhere inside itself, so there
+/// has to be somewhere to address — hence a registry rather than state threaded
+/// through the call.
+///
+/// `std::sync::Mutex` and not tokio's: nothing here is held across an await, and
+/// the two operations are a map lookup and a channel send.
+static LIVE: std::sync::Mutex<Option<HashMap<String, TurnHandle>>> = std::sync::Mutex::new(None);
+
+/// The outside world's handle on a running turn.
+#[derive(Default)]
+struct TurnHandle {
+    /// Set by [`cancel`]. Read between rounds, between tool calls and between
+    /// stream chunks — the three places a turn can be interrupted without
+    /// leaving the provider mid-request.
+    stop: Arc<AtomicBool>,
+    /// Questions put to the athlete and not yet answered, by tool call id.
+    /// Dropping a sender is how an unanswerable question ends: the parked
+    /// receiver errors and the tool reports that nothing came back.
+    asks: HashMap<String, oneshot::Sender<Vec<String>>>,
+}
+
+fn with_live<T>(f: impl FnOnce(&mut HashMap<String, TurnHandle>) -> T) -> T {
+    let mut guard = LIVE.lock().unwrap_or_else(|e| e.into_inner());
+    f(guard.get_or_insert_with(HashMap::new))
+}
+
+/// Answer a question the model asked. False if it has already been answered,
+/// timed out, or belongs to a turn that is over — all of which are races the
+/// frontend can lose by a click, and none of which are errors worth showing.
+pub fn answer_ask(id: &str, call_id: &str, answers: Vec<String>) -> bool {
+    let sender = with_live(|live| live.get_mut(id).and_then(|t| t.asks.remove(call_id)));
+    match sender {
+        Some(tx) => tx.send(answers).is_ok(),
+        None => false,
+    }
+}
+
+/// Stop a turn. It ends at the next interruption point with whatever prose has
+/// already been streamed, which the frontend keeps — a stopped answer is a short
+/// answer, not a discarded one.
+pub fn cancel(id: &str) {
+    with_live(|live| {
+        if let Some(t) = live.get_mut(id) {
+            t.stop.store(true, Ordering::Relaxed);
+            // Unblocks a turn parked on a question. The senders are dropped
+            // rather than sent an empty answer, so the tool can tell "they
+            // pressed Stop" from "they chose nothing".
+            t.asks.clear();
+        }
+    });
+}
+
 /// Runs one assistant turn: tool rounds until the model stops asking for them,
 /// then streams the answer. Progress and text both arrive on `chat:{id}`.
 pub async fn run_turn<R: Runtime>(
@@ -1664,6 +1983,21 @@ pub async fn run_turn<R: Runtime>(
 ) -> Result<()> {
     let channel = format!("chat:{id}");
 
+    // Registered before the first request and removed on every exit path below,
+    // including the error one — a stale entry would let Stop and an answer
+    // address a turn that is no longer listening.
+    let stop = Arc::new(AtomicBool::new(false));
+    with_live(|live| {
+        live.insert(
+            id.clone(),
+            TurnHandle {
+                stop: Arc::clone(&stop),
+                asks: HashMap::new(),
+            },
+        )
+    });
+    let _guard = LiveGuard(id.clone());
+
     // The provider this turn was aimed at, for the health note below. Resolved
     // separately because a turn that fails before it reads the config has no
     // provider to blame, and blaming the wrong one is worse than saying nothing.
@@ -1672,7 +2006,7 @@ pub async fn run_turn<R: Runtime>(
         .and_then(|db| load_config(&db).ok())
         .and_then(|(p, _)| p);
 
-    match turn_inner(&app, &channel, history, context).await {
+    match turn_inner(&app, &id, &channel, &stop, history, context).await {
         Ok(sources) => {
             if let Some(p) = provider {
                 note_call(p, Ok(()));
@@ -1692,6 +2026,16 @@ pub async fn run_turn<R: Runtime>(
             emit(&app, &channel, Event::Error { text: text.clone() });
             Err(anyhow!(text))
         }
+    }
+}
+
+/// Takes the turn out of [`LIVE`] however it ends, including a panic on the way
+/// through — this is the one piece of bookkeeping where being wrong is silent.
+struct LiveGuard(String);
+
+impl Drop for LiveGuard {
+    fn drop(&mut self) {
+        with_live(|live| live.remove(&self.0));
     }
 }
 
@@ -1948,7 +2292,9 @@ fn refusal(provider: Provider, status: reqwest::StatusCode, body: &str) -> Strin
 
 async fn turn_inner<R: Runtime>(
     app: &AppHandle<R>,
+    id: &str,
     channel: &str,
+    stop: &AtomicBool,
     history: Vec<HistoryMessage>,
     context: Option<&garmin_core::ActivityAnalysis>,
 ) -> Result<Vec<String>> {
@@ -1984,8 +2330,17 @@ async fn turn_inner<R: Runtime>(
     // `finish_reason: "length"` — and without this the screen shows a blank
     // reply and no reason for it.
     let mut said_anything = false;
+    // Questions put to the athlete so far, against `MAX_ASKS_PER_TURN`.
+    let mut asks_used = 0usize;
 
     for round in 0..=MAX_TOOL_ROUNDS {
+        // Stop, caught between rounds. Whatever has streamed already stands as
+        // the answer — a stopped turn is a short one, not a discarded one, so
+        // this returns the sources it collected rather than an error.
+        if stop.load(Ordering::Relaxed) {
+            return Ok(sources);
+        }
+
         // On the last permitted round, drop the tools so the model is forced to
         // answer from what it already has rather than asking for more.
         let offer_tools = round < MAX_TOOL_ROUNDS;
@@ -2017,9 +2372,15 @@ async fn turn_inner<R: Runtime>(
             return Err(anyhow!(refusal(provider, status, &text)));
         }
 
-        let stream = stream_completion(app, channel, resp).await?;
+        let stream = stream_completion(app, channel, stop, resp).await?;
         record_usage(provider, stream.usage.as_ref());
         said_anything |= !stream.content.trim().is_empty();
+
+        // Before the branch below, which would otherwise read a turn stopped
+        // mid-sentence as a model that finished without saying anything.
+        if stop.load(Ordering::Relaxed) {
+            return Ok(sources);
+        }
 
         if stream.tool_calls.is_empty() {
             // Nothing asked for and nothing said. The turn is over either way,
@@ -2055,18 +2416,43 @@ async fn turn_inner<R: Runtime>(
             emit(
                 app,
                 channel,
-                Event::Status {
-                    text: label.clone(),
+                Event::Tool {
+                    call_id: &call.id,
+                    label: &label,
+                    running: true,
+                    ok: true,
                 },
             );
-            // `sources` is shown under the answer as "Read:", so only the tools
-            // that read belong in it. Drafting a workout appears as its own
-            // card and would read as a data source it isn't.
-            if call.name != "draft_workout" {
-                sources.push(label);
+            // `sources` is shown under the answer as what was read, so only the
+            // tools that read belong in it. Drafting a workout appears as its
+            // own card, and a question appears as its own card, and neither is
+            // a source the answer came from.
+            if !matches!(call.name.as_str(), "draft_workout" | "ask_athlete") {
+                sources.push(label.clone());
             }
 
-            let out = run_tool(&call.name, &args);
+            // The one tool that waits on a person, and the one that therefore
+            // can't go through `run_tool` — it needs the channel to ask on and
+            // the turn id to be answered against.
+            let out = if call.name == "ask_athlete" {
+                ask_athlete(app, id, channel, &call.id, &args, &mut asks_used)
+                    .await
+                    .into()
+            } else {
+                run_tool(&call.name, &args)
+            };
+
+            emit(
+                app,
+                channel,
+                Event::Tool {
+                    call_id: &call.id,
+                    label: &label,
+                    running: false,
+                    ok: out.result.get("error").is_none(),
+                },
+            );
+
             if let Some(draft) = out.draft {
                 emit(app, channel, Event::Draft { draft });
             }
@@ -2082,6 +2468,13 @@ async fn turn_inner<R: Runtime>(
                 "name": call.name,
                 "content": out.result.to_string(),
             }));
+
+            // Stop pressed while a tool was running — including while a question
+            // sat unanswered, which is the long one. The remaining calls in this
+            // round are skipped and the turn ends at the top of the next.
+            if stop.load(Ordering::Relaxed) {
+                return Ok(sources);
+            }
         }
     }
 
@@ -3029,6 +3422,7 @@ struct StreamResult {
 async fn stream_completion<R: Runtime>(
     app: &AppHandle<R>,
     channel: &str,
+    stop: &AtomicBool,
     resp: reqwest::Response,
 ) -> Result<StreamResult> {
     let mut out = StreamResult::default();
@@ -3037,6 +3431,18 @@ async fn stream_completion<R: Runtime>(
     let mut stream = resp.bytes_stream();
 
     while let Some(chunk) = stream.next().await {
+        // Stop, caught between chunks — which is as fine-grained as this gets
+        // and fine enough: chunks arrive several times a second. Dropping the
+        // stream here is what closes the connection, so a stopped turn stops
+        // costing money rather than finishing quietly in the background.
+        if stop.load(Ordering::Relaxed) {
+            // Any tool calls half-assembled at this point are deliberately
+            // discarded. The turn is over; running them would be doing work for
+            // an answer nobody is waiting for.
+            out.tool_calls.clear();
+            return Ok(out);
+        }
+
         let chunk = chunk.context("the model stream was cut short")?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
 
@@ -3325,20 +3731,126 @@ mod tests {
         assert!(names.contains(&"workouts".to_string()));
         assert!(names.contains(&"routes".to_string()));
         assert!(names.contains(&"draft_workout".to_string()));
+        assert!(names.contains(&"ask_athlete".to_string()));
 
         for name in &names {
+            // Every tool needs a human-readable label for the UI, this one
+            // included — it is the row the timeline shows while the turn waits.
+            assert!(
+                !describe(name, &json!({})).starts_with("Running "),
+                "{name} has no description in `describe`"
+            );
+
+            // `ask_athlete` is the exception, and deliberately so: it waits on a
+            // person, so it is dispatched by the turn loop where the channel and
+            // the turn id are, and `run_tool` has never heard of it. Routing it
+            // here would be routing it nowhere.
+            if name == "ask_athlete" {
+                continue;
+            }
+
             let out = run_tool(name, &json!({})).result;
             let err = out.get("error").and_then(|e| e.as_str()).unwrap_or("");
             assert!(
                 !err.starts_with("unknown tool"),
                 "{name} is offered to the model but has no dispatch arm"
             );
-            // Every tool also needs a human-readable label for the UI.
-            assert!(
-                !describe(name, &json!({})).starts_with("Running "),
-                "{name} has no description in `describe`"
-            );
         }
+    }
+
+    /// The shape the schema documents, and the three sloppier ones the small
+    /// models this app is pointed at actually send.
+    ///
+    /// A question that fails to parse doesn't fail loudly — the model is handed
+    /// an error, and the usual recovery is to give up on asking and guess, which
+    /// looks from the outside like the feature not existing.
+    #[test]
+    fn a_question_parses_from_every_shape_a_model_sends() {
+        let documented = parse_ask(&json!({
+            "question": "How long have you got today?",
+            "header": "Time today",
+            "options": [
+                { "label": "About 20 minutes", "description": "Enough for a short easy one." },
+                { "label": "About 45 minutes" }
+            ],
+        }))
+        .expect("the documented shape should parse");
+        assert_eq!(documented.header.as_deref(), Some("Time today"));
+        assert_eq!(documented.options.len(), 2);
+        assert_eq!(documented.options[1].description, None);
+        assert!(!documented.multi);
+
+        // Options as bare strings, which is what a model sends when it reads
+        // "two to four answers" and stops there.
+        let bare = parse_ask(&json!({
+            "question": "Easy or hard?",
+            "options": ["Easy", "Hard"],
+        }))
+        .expect("bare string options should parse");
+        assert_eq!(bare.options[0].label, "Easy");
+
+        // The whole array, JSON-encoded into a string. Same failure `repair`
+        // exists for on `draft_workout`.
+        let encoded = parse_ask(&json!({
+            "question": "Easy or hard?",
+            "options": "[{\"label\":\"Easy\"},{\"label\":\"Hard\"}]",
+        }))
+        .expect("an encoded array should parse");
+        assert_eq!(encoded.options.len(), 2);
+
+        // A header long enough to break the chip it is drawn in gets cut, not
+        // rejected — the question is still worth asking.
+        let long = parse_ask(&json!({
+            "question": "Which?",
+            "header": "How much time do you have available today",
+            "options": ["A", "B"],
+        }))
+        .expect("a long header should parse");
+        assert!(long.header.unwrap().chars().count() <= 16);
+    }
+
+    /// The two ways a question is not a question. Both come back as an error the
+    /// model can act on rather than a card the athlete can't answer.
+    #[test]
+    fn a_question_with_nothing_to_choose_is_refused() {
+        assert!(parse_ask(&json!({ "options": ["A", "B"] })).is_err());
+        assert!(parse_ask(&json!({ "question": "Shall I?", "options": ["Yes"] })).is_err());
+        assert!(parse_ask(&json!({ "question": "Shall I?" })).is_err());
+    }
+
+    /// Answering a question nobody asked, or one that has already been answered.
+    ///
+    /// Both are races the frontend can lose by a click — a Stop pressed as the
+    /// button goes down, a turn that timed out — and neither may panic or block.
+    #[test]
+    fn answering_a_question_that_is_no_longer_open_is_harmless() {
+        assert!(!answer_ask(
+            "no-such-turn",
+            "no-such-call",
+            vec!["Easy".into()]
+        ));
+
+        with_live(|live| live.insert("turn-1".into(), TurnHandle::default()));
+        assert!(
+            !answer_ask("turn-1", "call-1", vec!["Easy".into()]),
+            "a live turn with no open question still has nothing to answer"
+        );
+
+        // A sender whose receiver has gone — the turn moved on without it.
+        let (tx, rx) = oneshot::channel();
+        with_live(|live| {
+            live.get_mut("turn-1")
+                .unwrap()
+                .asks
+                .insert("call-1".into(), tx)
+        });
+        drop(rx);
+        assert!(!answer_ask("turn-1", "call-1", vec!["Easy".into()]));
+
+        // Cancelling drops whatever is still open, and says nothing about it.
+        cancel("turn-1");
+        cancel("no-such-turn");
+        with_live(|live| live.remove("turn-1"));
     }
 
     /// The exact shape the tool schema tells the model to send. If this stops

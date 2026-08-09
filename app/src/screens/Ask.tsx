@@ -1,26 +1,31 @@
+/**
+ * The chat screen.
+ *
+ * It reads as a chat now — you type at the bottom, the conversation runs
+ * downwards, and the newest thing is always nearest your hands. What it isn't is
+ * a clone: there are no avatars, no assistant bubble and no per-message toolbar,
+ * because the answer is prose about your training and this app already knows how
+ * to set prose. The mechanics come from every other chat application; the
+ * typography stays this one's.
+ *
+ * The parts live elsewhere. `useChat` owns a conversation, `Thread` draws it,
+ * `Composer` is the docked box, `Recents` is the drawer. What's left here is the
+ * screen's own business: which questions to suggest, where the scroll should be,
+ * and what to say when no model has been chosen yet.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listen } from "@tauri-apps/api/event";
-import {
-  chatConfig,
-  chatFollowups,
-  chatSend,
-  chatSession,
-  chatSessions,
-  deleteChatSession,
-  saveChatSession,
-  type ChatMessage,
-  type ChatSessionMeta,
-  type WorkoutDraft,
-} from "../lib/api";
-import { AiMark } from "../components/AiMark";
-import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
-import { DeleteIcon, NewIcon, PinIcon, SendIcon, UnpinIcon } from "../lib/icons";
-import { Markdown } from "../components/Markdown";
-import { ToolLoader } from "../components/ToolLoader";
-import { WorkoutCard } from "../components/WorkoutCard";
-import { since } from "../lib/format";
+import { useQuery } from "@tanstack/react-query";
+import { chatConfig } from "../lib/api";
+import { useChat } from "../lib/useChat";
+import { scroller } from "../lib/scroller";
+import { Composer } from "../components/chat/Composer";
+import { Recents } from "../components/chat/Recents";
+import { Thread } from "../components/chat/Thread";
+import { Drawer } from "../components/Drawer";
+import { Empty, ErrorNote, Loading } from "../components/ui";
+import { greeting } from "../lib/greeting";
+import { NewIcon, PinIcon, UnpinIcon } from "../lib/icons";
 
 /**
  * Openers for a conversation that hasn't started, drawn from before the model
@@ -53,8 +58,12 @@ const MAX_PINS = 6;
 /** Pinned questions, per machine — they're a personal shortlist, not app data. */
 const PINS_KEY = "garmin-companion:ask-pins";
 
-/** How many past conversations each scroll fetches. */
-const PAGE = 15;
+/** How far off the bottom you can be and still count as being at it. */
+const STICK_SLOP = 90;
+
+/** How long the opening screen takes to get out of the way. Matches `--dur-slow`
+ *  in the stylesheet; both are here so neither is a surprise. */
+const HERO_EXIT = 180;
 
 /**
  * The pinned shortlist.
@@ -103,213 +112,103 @@ function sample<T>(xs: readonly T[], n: number): T[] {
   return pool.slice(0, n);
 }
 
-type ChatEvent =
-  | { type: "status"; text: string }
-  | { type: "delta"; text: string }
-  | { type: "draft"; draft: WorkoutDraft }
-  | { type: "done"; sources: string[] }
-  | { type: "error"; text: string };
-
 export function Ask() {
   const config = useQuery({ queryKey: ["chatConfig"], queryFn: chatConfig });
-  const qc = useQueryClient();
-
-  const [history, setHistory] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  const [pending, setPending] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [followups, setFollowups] = useState<string[]>([]);
-  /** Workouts drafted during the turn being answered, before it's in history. */
-  const [drafting, setDrafting] = useState<WorkoutDraft[]>([]);
-  const top = useRef<HTMLDivElement>(null);
+  // No follow-up suggestions asked for: the row that displayed them is now only
+  // drawn on the empty screen, where by definition there is no answer to follow
+  // up on. Leaving it on would be a second model request per turn — billed, on a
+  // hosted provider — for a row nobody can see. `useChat` still knows how, so
+  // putting the row back is this flag and the `empty` gate on `showChips`.
+  const chat = useChat({ followups: false });
   const { pins, full, toggle } = usePins();
+  const [draft, setDraft] = useState("");
+  const [recents, setRecents] = useState(false);
+  /** Whether the conversation has been scrolled away from its bottom. */
+  const [away, setAway] = useState(false);
   // Drawn once per visit rather than per render, or every keystroke would
   // reshuffle the row underneath the pointer.
   const [openers] = useState(() => sample(OPENERS, SUGGESTED + MAX_PINS));
 
-  /* The conversation being written to. Created lazily on the first question so
-   * that opening the screen and leaving doesn't litter the cache with empties. */
-  const session = useRef<{ id: string; startedAt: string } | null>(null);
+  /**
+   * The opening screen, pinned to where it was, for as long as it takes to go.
+   *
+   * `empty` flips on the frame you press send, and the hero is most of a
+   * viewport — dropped from the tree there, a screenful of the app disappears
+   * between two frames while the first turn fades up into the hole it left. So
+   * the pixels it occupied are measured on the way out and redrawn as a fixed
+   * copy that fades, over the top of the thread that has already taken the
+   * space. Fading it in place instead would hold that viewport of height open
+   * for the length of the fade, and the collapse this exists to soften would
+   * simply happen a beat later.
+   */
+  const hero = useRef<HTMLDivElement>(null);
+  const [ghost, setGhost] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
-  // Newest first means the thing you just asked is already at the top of the
-  // transcript — so the scroll goes up to meet it, not down.
+  // Cleared from here rather than from the send, so asking a second question
+  // before the first has finished fading doesn't leave one pinned to the screen.
   useEffect(() => {
-    if (history.length > 0) top.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [history.length]);
-
-  const reset = useCallback(() => {
-    session.current = null;
-    setHistory([]);
-    setPending(null);
-    setStatus(null);
-    setError(null);
-    setFollowups([]);
-    setDrafting([]);
-  }, []);
-
-  /** Reopen an earlier conversation and keep writing into it. */
-  const load = useCallback(async (id: string) => {
-    const s = await chatSession(id);
-    if (!s) return;
-    session.current = { id: s.sessionId, startedAt: s.startedAt };
-    setHistory(JSON.parse(s.messages) as ChatMessage[]);
-    setPending(null);
-    setStatus(null);
-    setError(null);
-    setFollowups([]);
-    setDrafting([]);
-  }, []);
+    if (!ghost) return;
+    const t = setTimeout(() => setGhost(null), HERO_EXIT);
+    return () => clearTimeout(t);
+  }, [ghost]);
 
   /**
-   * Record that a proposed workout is now a real one on the Garmin account.
+   * Whether new content should pull the view down with it.
    *
-   * Written back into the transcript and persisted, so reopening this
-   * conversation shows the card as already sent rather than offering the
-   * button a second time and quietly creating a duplicate.
+   * True while you are at the bottom, false the moment you scroll up — which is
+   * the whole of the behaviour every chat application has and this one didn't.
+   * Reading back through an answer while the next paragraph streams in must not
+   * yank the page out from under you, and getting back to the live end must not
+   * mean a long scroll.
    */
-  const markSaved = useCallback((messageIndex: number, draftIndex: number, workoutId: number) => {
-    setHistory((prev) => {
-      const next = prev.map((m, i) =>
-        i !== messageIndex || !m.drafts
-          ? m
-          : {
-              ...m,
-              drafts: m.drafts.map((d, j) =>
-                j === draftIndex ? { ...d, savedWorkoutId: workoutId } : d,
-              ),
-            },
-      );
-      const conv = session.current;
-      if (conv) {
-        void saveChatSession({
-          sessionId: conv.id,
-          title: title(next),
-          startedAt: conv.startedAt,
-          messages: next,
-        }).catch(() => {});
-      }
-      return next;
-    });
+  const stick = useRef(true);
+
+  useEffect(() => {
+    const el = scroller();
+    const onScroll = () => {
+      const bottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stick.current = bottom < STICK_SLOP;
+      setAway(!stick.current);
+    };
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
   }, []);
+
+  const toBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = scroller();
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    stick.current = true;
+    setAway(false);
+  }, []);
+
+  // Every beat of a turn is a reason to follow it down: prose arriving, a tool
+  // row landing, a question appearing. Only while stuck — see above.
+  const beat = `${chat.history.length}:${chat.pending?.length ?? -1}:${chat.steps.length}:${chat.asking.length}`;
+  useEffect(() => {
+    if (stick.current) toBottom(chat.pending === null ? "smooth" : "auto");
+    // A streaming answer arrives a few characters at a time; smooth-scrolling
+    // each one queues animations faster than they run and the view lags behind
+    // the text. Jump for those, ease for the discrete events.
+  }, [beat, toBottom, chat.pending]);
+
+  // Reopening a conversation lands at its live end, not at its opening question.
+  const opened = chat.sessionId;
+  useEffect(() => {
+    if (opened) toBottom("auto");
+  }, [opened, toBottom]);
 
   if (config.isLoading) return <Loading label="Checking your model settings" />;
 
   const ready = config.data?.provider && config.data.model;
-
-  async function send(text: string) {
-    const question = text.trim();
-    if (!question || busy) return;
-
-    const next: ChatMessage[] = [...history, { role: "user", content: question }];
-    setHistory(next);
-    setDraft("");
-    setError(null);
-    setStatus(null);
-    setFollowups([]);
-    setDrafting([]);
-    setPending("");
-    setBusy(true);
-
-    if (!session.current) {
-      session.current = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        startedAt: new Date().toISOString(),
-      };
-    }
-    const conv = session.current;
-
-    // One channel per turn, so a slow previous turn can't write into this one.
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    let answer = "";
-    const sources: string[] = [];
-    // Held here as well as in state: the handler below and the history written
-    // when the turn ends both need the current list, and a state variable read
-    // from this closure would be the one captured when the turn started.
-    const drafted: WorkoutDraft[] = [];
-
-    const unlisten = await listen<ChatEvent>(`chat:${id}`, (e) => {
-      const ev = e.payload;
-      if (ev.type === "delta") {
-        answer += ev.text;
-        setPending(answer);
-        setStatus(null);
-      } else if (ev.type === "status") {
-        setStatus(ev.text);
-      } else if (ev.type === "draft") {
-        // Straight onto the screen, under the answer that is still arriving.
-        drafted.push(ev.draft);
-        setDrafting([...drafted]);
-      } else if (ev.type === "done") {
-        sources.push(...ev.sources);
-      } else if (ev.type === "error") {
-        setError(ev.text);
-      }
-    });
-
-    try {
-      await chatSend(id, next);
-      if (answer.trim()) {
-        const done: ChatMessage[] = [
-          ...next,
-          {
-            role: "assistant",
-            content: answer,
-            sources,
-            ...(drafted.length > 0 && { drafts: drafted }),
-          },
-        ];
-        setHistory(done);
-        // Persisting and proposing what to ask next are both nice-to-haves;
-        // neither should be able to take down a turn that already succeeded.
-        void saveChatSession({
-          sessionId: conv.id,
-          title: title(done),
-          startedAt: conv.startedAt,
-          messages: done,
-        })
-          .then(() => qc.invalidateQueries({ queryKey: ["chatSessions"] }))
-          .catch(() => {});
-        void chatFollowups(done)
-          .then((f) => {
-            // Only if you haven't already moved on to another question.
-            if (session.current?.id === conv.id) setFollowups(f);
-          })
-          .catch(() => {});
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      unlisten();
-      setPending(null);
-      setStatus(null);
-      setBusy(false);
-      // The cards live in history from here; leaving them here as well would
-      // render each one twice.
-      setDrafting([]);
-    }
-  }
-
-  // The model's own suggestions when it produced any, this visit's openers when
-  // it didn't — the row being empty half the time was worse than it being
-  // generic. Pinned questions come first and keep their place; the suggested
-  // three fill in behind them, minus anything already pinned so the row never
-  // offers the same question twice.
-  const suggested = (followups.length > 0 ? followups : openers)
-    .filter((q) => !pins.includes(q))
-    .slice(0, SUGGESTED);
-
-  return (
-    <div className="screen">
-      <PageHeader
-        eyebrow={ready ? config.data!.model : "No model configured"}
-        title="Ask"
-        lede="Reading your cached activities, zones, cadence and recovery. Only the metrics a question needs are sent."
-        space={30}
-      />
-
-      {!ready ? (
+  if (!ready) {
+    return (
+      <div className="screen">
         <Empty
           title="Choose a model first."
           body="Answers come from a model you point this at — the built-in coach, OpenRouter with your own key, or a local Ollama. None is configured yet, and nothing is sent anywhere until one is."
@@ -319,436 +218,268 @@ export function Ask() {
             </Link>
           }
         />
-      ) : (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <input
-              className="input-bare"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void send(draft);
-                }
-              }}
-              placeholder="Ask about your training…"
-              disabled={busy}
-              style={{ flex: 1 }}
-            />
-            <button
-              onClick={() => void send(draft)}
-              disabled={busy || !draft.trim()}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 7,
-                fontSize: "var(--fs-small)",
-                color: busy || !draft.trim() ? "var(--faint)" : "var(--acc)",
-                whiteSpace: "nowrap",
-                cursor: busy || !draft.trim() ? "default" : "pointer",
-              }}
-            >
-              {busy ? "Thinking" : "Send"}
-              {!busy && <SendIcon size={14} style={{ flex: "none" }} aria-hidden />}
-            </button>
-          </div>
-          <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 10 }}>
-            {config.data!.provider === "ollama"
-              ? "Sent to Ollama on this machine. Nothing leaves your computer."
-              : config.data!.provider === "cloud"
-                ? "The question and the metrics it needs go to this project's server, which forwards them to a model. Raw GPS never is."
-                : "The question and the metrics it needs are sent to OpenRouter. Raw GPS never is."}
-          </div>
+      </div>
+    );
+  }
 
-          {/* Openers before you've said anything, the model's own suggestions
-              after — same slot either way, with your pins ahead of both. */}
-          {(pins.length > 0 || suggested.length > 0) && !busy && pending == null && (
-            <div style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 22 }}>
-              {pins.map((s) => (
-                <Prompt
+  const empty = chat.history.length === 0 && chat.pending === null;
+  // Pinned questions come first and keep their place; this visit's openers fill
+  // in behind them, minus anything already pinned so the row never offers the
+  // same question twice.
+  const suggested = openers.filter((q) => !pins.includes(q)).slice(0, SUGGESTED);
+  // Only on the empty screen. The row is what to ask when you don't know what to
+  // ask; once there is a conversation on the page, the thing to ask next comes
+  // out of what was just said, and a rank of generic questions under it is the
+  // app talking over the answer you are still reading.
+  //
+  // Held for the ghost's beat on the way out, and marked while it is: the row
+  // sits inside the composer, so dropping it the frame you send shortens the
+  // dock and jerks the box down under your hands as you let go of it.
+  const hasChips = pins.length > 0 || suggested.length > 0;
+  const showChips = (empty || ghost !== null) && hasChips;
+  const chipsLeaving = !empty && ghost !== null;
+  /** A question is on screen and the turn is waiting on it. */
+  const blocked = chat.asking.some((a) => a.answers === null);
+
+  /**
+   * Send, and photograph the opening screen on its way out.
+   *
+   * Every send goes through here, from the box and from a chip alike. The
+   * measurement has to happen now, while the hero is still on screen and `empty`
+   * is still true — one render later React has swapped it for the thread and
+   * there is nothing left to measure.
+   */
+  function ask(q: string) {
+    const r = hero.current?.getBoundingClientRect();
+    if (r) setGhost({ top: r.top, left: r.left, width: r.width, height: r.height });
+    void chat.send(q);
+    // Sending is an explicit request to be at the live end, whatever you were
+    // reading a moment ago — as true of a chip as of the box, which is half the
+    // reason both come through here.
+    stick.current = true;
+  }
+
+  return (
+    <>
+      {empty ? (
+        <div className="chat-hero" ref={hero}>
+          <Hero />
+        </div>
+      ) : (
+        <Thread
+          history={chat.history}
+          pending={chat.pending}
+          steps={chat.steps}
+          drafting={chat.drafting}
+          asking={chat.asking}
+          onAnswer={(callId, answers) => void chat.answer(callId, answers)}
+          onSaved={chat.markSaved}
+          onDraftSaved={chat.markDrafting}
+        />
+      )}
+
+      {/* The screen you just left, on its way out. Out of the document's flow
+          and out of the accessible tree: it is the same words that were read a
+          moment ago, and nothing here can be clicked. */}
+      {ghost && !empty && (
+        <div className="chat-hero chat-hero-ghost" style={ghost} aria-hidden>
+          <Hero />
+        </div>
+      )}
+
+      {chat.error && (
+        <div style={{ paddingBottom: "calc(var(--composer-h) + 26px)" }}>
+          <ErrorNote error={chat.error} />
+        </div>
+      )}
+
+      {/* Kept mounted and hidden rather than unmounted, so it leaves the way it
+          arrived. Dropped from the tree it vanished on the frame you reached the
+          bottom, which is the one moment the eye is on it — a thing that fades in
+          from below has to fade back down, or the screen reads as glitching
+          rather than as settling. `visibility` in the hidden state keeps it off
+          the tab order while it isn't offering anything. */}
+      {!empty && (
+        <button
+          type="button"
+          className="jump-pill"
+          data-away={away || undefined}
+          onClick={() => toBottom()}
+        >
+          Jump to latest
+        </button>
+      )}
+
+      <Composer
+        value={draft}
+        onChange={setDraft}
+        onSend={() => {
+          const q = draft;
+          setDraft("");
+          ask(q);
+        }}
+        onStop={chat.stop}
+        busy={chat.busy}
+        blocked={blocked}
+        above={
+          showChips && (
+            <div className="chip-row" data-leaving={chipsLeaving || undefined}>
+              {pins.map((s, i) => (
+                <Chip
                   key={s}
                   text={s}
+                  index={i}
                   pinned
                   canPin
-                  onSend={() => void send(s)}
+                  onSend={() => ask(s)}
                   onToggle={() => toggle(s)}
                 />
               ))}
-              {suggested.map((s) => (
-                <Prompt
+              {suggested.map((s, i) => (
+                <Chip
                   key={s}
                   text={s}
+                  index={pins.length + i}
                   pinned={false}
                   canPin={!full}
-                  onSend={() => void send(s)}
+                  onSend={() => ask(s)}
                   onToggle={() => toggle(s)}
                 />
               ))}
             </div>
-          )}
+          )
+        }
+        note={
+          <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
+            {/* Where the question goes used to be here, one sentence per
+                provider. It is a setup-time fact, and Settings is where it is
+                now decided and said; under the box, every turn, the thing worth
+                repeating is that the answer might be wrong. */}
+            <span style={{ flex: 1, minWidth: 0 }}>
+              AI can be inaccurate — take it with a grain of salt.
+            </span>
+            {/* Down here rather than in a header, because a docked composer is
+                where your attention already is — and a header would scroll away
+                from a conversation long enough to want its history. */}
+            <button
+              type="button"
+              className="quiet"
+              style={{ flex: "none", fontSize: "var(--fs-caption)" }}
+              onClick={() => setRecents(true)}
+            >
+              Recents
+            </button>
+            {!empty && (
+              <button
+                type="button"
+                className="quiet"
+                style={{
+                  flex: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: "var(--fs-caption)",
+                }}
+                disabled={chat.busy}
+                onClick={chat.reset}
+              >
+                <NewIcon size={12} style={{ flex: "none" }} aria-hidden />
+                New
+              </button>
+            )}
+          </div>
+        }
+      />
 
-          {error && <ErrorNote error={error} />}
-
-          {(history.length > 0 || pending != null) && (
-            <>
-              <div className="section-head" style={{ margin: "52px 0 34px" }}>
-                <div className="eyebrow">This session</div>
-                <button
-                  className="quiet"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    fontSize: "var(--fs-caption)",
-                  }}
-                  onClick={reset}
-                  disabled={busy}
-                >
-                  <NewIcon size={13} style={{ flex: "none" }} aria-hidden />
-                  New conversation
-                </button>
-              </div>
-              {/* Newest at the top, next to the box you type in — reading the
-                  answer you just asked for should never mean scrolling past
-                  every answer before it. */}
-              <div ref={top} style={{ display: "flex", flexDirection: "column", gap: 44 }}>
-                {turns(history, pending, drafting).map((t) => (
-                  <div key={t.key} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                    <Question>{t.question}</Question>
-                    {t.answer != null && (
-                      <Answer
-                        text={t.answer}
-                        sources={t.sources}
-                        drafts={t.drafts}
-                        onSaved={(draftIndex, workoutId) =>
-                          markSaved(t.key + 1, draftIndex, workoutId)
-                        }
-                        status={status}
-                        streaming={t.streaming}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {history.length === 0 && pending == null && <Earlier onLoad={load} />}
-        </>
+      {recents && (
+        <Drawer title="Earlier conversations" onClose={() => setRecents(false)}>
+          <Recents
+            openId={chat.sessionId}
+            onOpen={(id) => void chat.load(id)}
+            onNew={chat.reset}
+            onClose={() => setRecents(false)}
+          />
+        </Drawer>
       )}
-    </div>
+    </>
   );
 }
 
 /**
- * One question in the suggestion row: the question itself, and the pin toggle
- * beside it.
+ * What the screen says before it has been asked anything.
  *
- * The toggle only appears on hover — the row is meant to read as a line of
- * questions, and a control next to each one turns it into a list of settings.
- * A pinned question keeps its toggle reachable the same way, and shows in the
- * foreground colour so the shortlist is distinguishable from the suggestions
- * that rotate behind it.
+ * Its own component only because it is drawn twice for a fraction of a second —
+ * once in the flow, and once as the fixed copy that fades as the thread takes
+ * its place. Two copies of the same words, so they have to come from one place.
  */
-function Prompt({
+function Hero() {
+  return (
+    <>
+      <h1 className="h1" style={{ margin: 0 }}>
+        {greeting()}
+      </h1>
+      <p className="lede" style={{ maxWidth: "48ch", margin: "14px 0 0" }}>
+        Ask about your training. It reads your cached activities, zones, cadence and recovery — only
+        the metrics a question needs are sent.
+      </p>
+    </>
+  );
+}
+
+/**
+ * One suggested question, and the pin toggle beside it.
+ *
+ * Where the toggle went. It used to be `display: none` until React saw a
+ * `mouseenter`, which had three problems and only looked like a style choice.
+ * `display: none` is not in the tab order, so a keyboard could never reach it;
+ * a touchscreen has no hover, so a phone could never pin anything at all; and
+ * removing it from the layout changed the chip's width under the pointer, which
+ * reflowed a wrapped row of chips every time you crossed one.
+ *
+ * So it is always in the layout, and only its opacity is conditional — on hover,
+ * on focus, or on being pinned already. Where there is no hover to reveal it,
+ * it simply stays visible: a control you cannot discover is not restraint. And
+ * on a full shortlist the toggle isn't drawn at all rather than drawn dead,
+ * because a disabled button still asks to be tried.
+ */
+function Chip({
   text,
+  index,
   pinned,
   canPin,
   onSend,
   onToggle,
 }: {
   text: string;
+  index: number;
   pinned: boolean;
   canPin: boolean;
   onSend: () => void;
   onToggle: () => void;
 }) {
-  const [hover, setHover] = useState(false);
-
   return (
     <span
-      style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      className="chip"
+      data-pinned={pinned}
+      // Staggered along the row as it appears, which is a handful of
+      // milliseconds and the difference between a row arriving and a row
+      // appearing. Capped, because a wrapped second line shouldn't wait.
+      style={{ animationDelay: `${Math.min(index, 5) * 35}ms` }}
     >
-      <button
-        className="underlined"
-        style={{ fontSize: "var(--fs-small)", color: pinned ? "var(--fg)" : undefined }}
-        onClick={onSend}
-      >
+      <button type="button" className="chip-text" onClick={onSend}>
         {text}
       </button>
-      {/* The slot is held open whether the icon shows or not, so the row of
-          questions doesn't shuffle sideways as the pointer crosses it. */}
-      <button
-        className="quiet"
-        onClick={onToggle}
-        disabled={!canPin}
-        aria-label={pinned ? "Unpin this question" : "Pin this question"}
-        title={pinned ? "Unpin this question" : `Pin this question (up to ${MAX_PINS})`}
-        style={{
-          display: "grid",
-          placeItems: "center",
-          width: 14,
-          color: pinned ? "var(--acc)" : "var(--faint)",
-          // A pin already set stays visible: it's the mark that says why this
-          // question is here and not rotating with the rest.
-          visibility: pinned || (hover && canPin) ? "visible" : "hidden",
-          alignSelf: "center",
-        }}
-      >
-        {pinned ? <UnpinIcon size={13} /> : <PinIcon size={13} />}
-      </button>
+      {canPin && (
+        <button
+          type="button"
+          className="quiet chip-pin"
+          onClick={onToggle}
+          aria-label={pinned ? "Unpin this question" : "Pin this question"}
+          title={pinned ? "Unpin this question" : `Pin this question (up to ${MAX_PINS})`}
+        >
+          {pinned ? <UnpinIcon size={12} /> : <PinIcon size={12} />}
+        </button>
+      )}
     </span>
   );
 }
-
-interface Turn {
-  key: number;
-  question: string;
-  answer: string | null;
-  sources?: string[];
-  drafts?: WorkoutDraft[];
-  streaming: boolean;
-}
-
-/**
- * Pair each question with its answer, newest first.
- *
- * The history is a flat alternating list because that's what the model is
- * sent; a question and its answer only become one thing here, where they have
- * to move up the page together.
- */
-function turns(history: ChatMessage[], pending: string | null, drafting: WorkoutDraft[]): Turn[] {
-  const out: Turn[] = [];
-  for (let i = 0; i < history.length; i++) {
-    const m = history[i];
-    if (m.role !== "user") continue;
-    const reply = history[i + 1]?.role === "assistant" ? history[i + 1] : null;
-    out.push({
-      key: i,
-      question: m.content,
-      answer: reply?.content ?? null,
-      sources: reply?.sources,
-      drafts: reply?.drafts,
-      streaming: false,
-    });
-  }
-  // The turn being answered right now: its question is already the last entry
-  // in history, so this fills in the answer rather than adding a turn.
-  if (pending != null && out.length > 0) {
-    const last = out[out.length - 1];
-    if (last.answer == null) {
-      last.answer = pending;
-      last.streaming = true;
-      // Anything drafted so far this turn. It moves into history when the turn
-      // ends, and `drafting` is cleared in the same breath.
-      if (drafting.length > 0) last.drafts = drafting;
-    }
-  }
-  return out.reverse();
-}
-
-/** What a conversation is "about": the question that started it. */
-function title(messages: ChatMessage[]): string {
-  const first = messages.find((m) => m.role === "user")?.content.trim() ?? "Untitled";
-  return first.length > 120 ? `${first.slice(0, 119)}…` : first;
-}
-
-/**
- * Past conversations, oldest fetched a page at a time as you reach the end.
- *
- * Only rendered on an empty conversation — below a transcript it would be a
- * list of other transcripts under the one you're reading.
- */
-function Earlier({ onLoad }: { onLoad: (id: string) => void }) {
-  const qc = useQueryClient();
-  const sentinel = useRef<HTMLDivElement>(null);
-
-  const q = useInfiniteQuery({
-    queryKey: ["chatSessions"],
-    queryFn: ({ pageParam }) => chatSessions(PAGE, pageParam),
-    initialPageParam: 0,
-    // A short page means the end; otherwise ask for everything past what we hold.
-    getNextPageParam: (last, all) =>
-      last.length < PAGE ? undefined : all.reduce((n, p) => n + p.length, 0),
-  });
-
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = q;
-
-  useEffect(() => {
-    const el = sentinel.current;
-    if (!el || !hasNextPage) return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !isFetchingNextPage) void fetchNextPage();
-    });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  const sessions = q.data?.pages.flat() ?? [];
-  if (sessions.length === 0) return null;
-
-  async function remove(id: string) {
-    await deleteChatSession(id);
-    await qc.invalidateQueries({ queryKey: ["chatSessions"] });
-  }
-
-  return (
-    <div style={{ marginTop: 58 }}>
-      <div className="eyebrow" style={{ marginBottom: 18 }}>
-        Earlier
-      </div>
-      {sessions.map((s) => (
-        <Past key={s.sessionId} session={s} onLoad={onLoad} onDelete={remove} />
-      ))}
-      {/* Sits below the last row; crossing it pulls the next page in. */}
-      <div ref={sentinel} style={{ height: 1 }} />
-      {isFetchingNextPage && (
-        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", padding: "14px 0" }}>
-          Loading…
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Past({
-  session,
-  onLoad,
-  onDelete,
-}: {
-  session: ChatSessionMeta;
-  onLoad: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  const [hover, setHover] = useState(false);
-
-  return (
-    <div
-      className="row-group"
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <button className="row" style={{ flex: 1 }} onClick={() => onLoad(session.sessionId)}>
-        <span
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {session.title}
-        </span>
-        <span
-          className="mono"
-          style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", flex: "none" }}
-        >
-          {session.messageCount}
-        </span>
-        <span
-          style={{
-            fontSize: "var(--fs-caption)",
-            color: "var(--faint)",
-            flex: "none",
-            minWidth: 96,
-          }}
-        >
-          {since(session.updatedAt)}
-        </span>
-      </button>
-      {/* Last in the row and vertically centred against it. The slot is always
-          there — it keeps the row's right edge steady — but the icon only shows
-          on hover, since deleting is never the reason you came to this list. */}
-      <button
-        className="quiet"
-        title="Delete this conversation"
-        aria-label="Delete this conversation"
-        onClick={() => onDelete(session.sessionId)}
-        style={{
-          flex: "none",
-          display: "grid",
-          placeItems: "center",
-          width: 24,
-          height: 24,
-          marginLeft: 6,
-          color: "var(--faint)",
-          visibility: hover ? "visible" : "hidden",
-        }}
-      >
-        <DeleteIcon size={15} aria-hidden />
-      </button>
-    </div>
-  );
-}
-
-function Question({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="serif"
-      style={{
-        fontStyle: "italic",
-        fontSize: 25,
-        lineHeight: 1.45,
-        paddingLeft: 18,
-        borderLeft: "1px solid var(--line)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Answer({
-  text,
-  sources,
-  drafts,
-  onSaved,
-  status,
-  streaming = false,
-}: {
-  text: string;
-  sources?: string[];
-  drafts?: WorkoutDraft[];
-  onSaved: (draftIndex: number, workoutId: number) => void;
-  status?: string | null;
-  streaming?: boolean;
-}) {
-  return (
-    <div>
-      {/* `selectable` because the answer is the one thing here worth copying,
-          and the app otherwise suppresses selection. */}
-      <AiMark label="chat answer">
-        <div
-          className="md-body selectable"
-          style={{
-            fontSize: "var(--fs-lg)",
-            lineHeight: 1.75,
-            maxWidth: "72ch",
-            textWrap: "pretty",
-          }}
-        >
-          <Markdown>{text}</Markdown>
-          {/* A caret once prose is arriving; before that, the loader — which says
-              which of your data it went to read. */}
-          {streaming &&
-            (text ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
-        </div>
-      </AiMark>
-      {/* Below the prose explaining it, and above the list of what was read —
-          the workout is the thing you act on, not a footnote about sources. */}
-      {drafts?.map((d, i) => (
-        <WorkoutCard key={i} draft={d} onSaved={(workoutId) => onSaved(i, workoutId)} />
-      ))}
-      {sources && sources.length > 0 && (
-        <div style={{ fontSize: "var(--fs-caption)", color: "var(--faint)", marginTop: 12 }}>
-          Read: {dedupe(sources).join(" · ")}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const dedupe = (xs: string[]) => [...new Set(xs)];
