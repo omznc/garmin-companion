@@ -1459,16 +1459,6 @@ function ModelSettings({
             <br />
             It's free, so yeah.
           </div>
-
-          {/* Stated, not offered. The id is what the daily limit is counted
-              against, so a button that replaces it is a button that clears the
-              limit — the disclosure is worth keeping, the reset isn't. */}
-          <Sub top={34}>This install</Sub>
-          <div className="row-static" style={{ color: "var(--mut)" }}>
-            A random id the coach hands this install the first time you ask it something, held in
-            your keychain so it can count requests against a shared budget. It isn't tied to your
-            Garmin account or anything else.
-          </div>
         </>
       )}
 

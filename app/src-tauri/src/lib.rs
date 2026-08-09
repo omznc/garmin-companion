@@ -195,7 +195,8 @@ fn cached_activities(
 #[tauri::command]
 fn cached_daily(days: Option<u32>) -> CmdResult<Vec<garmin_core::DailyMetrics>> {
     let db = Db::open_default().map_err(to_msg)?;
-    db.recent_daily(days.unwrap_or(30)).map_err(to_msg)
+    db.daily_since(&garmin_core::days_ago(days.unwrap_or(30)))
+        .map_err(to_msg)
 }
 
 #[tauri::command]
@@ -265,6 +266,27 @@ fn strength_session(
 ) -> CmdResult<Option<(garmin_core::StrengthSession, Vec<garmin_core::ExerciseSet>)>> {
     let db = Db::open_default().map_err(to_msg)?;
     query::strength_session(&db, activity_id).map_err(to_msg)
+}
+
+/* -------------------------------------------------------------- findings --- */
+
+/// The deep findings, computed in `garmin-core` so the Insights screen and the
+/// coach are reading the same analysis rather than two implementations of it.
+///
+/// The window is a year because most of these need one: a weekday pattern wants
+/// months of weekdays, and a fitness trend at a fixed heart rate wants every
+/// comparable run there has ever been.
+#[tauri::command]
+fn findings(days: Option<u32>) -> CmdResult<Vec<garmin_core::findings::Finding>> {
+    let db = Db::open_default().map_err(to_msg)?;
+    let from = garmin_core::days_ago(days.unwrap_or(365));
+    let daily = db.daily_since(&from).map_err(to_msg)?;
+    let activities = db.activities_since(&from).map_err(to_msg)?;
+    Ok(garmin_core::findings::all(
+        &daily,
+        &activities,
+        chrono::Local::now().date_naive(),
+    ))
 }
 
 /* --------------------------------------------------------------- fitness --- */
@@ -795,6 +817,18 @@ async fn chat_followups(history: Vec<chat::HistoryMessage>) -> CmdResult<Vec<Str
 #[tauri::command]
 async fn weight_summary(days: Option<u32>, force: Option<bool>) -> CmdResult<chat::WeightSummary> {
     chat::weight_summary(days.unwrap_or(180), force.unwrap_or(false))
+        .await
+        .map_err(to_msg)
+}
+
+/// The written opening of the Today screen.
+///
+/// Regenerated at most once a day — the fingerprint carries the date, so the
+/// paragraph rewrites when the calendar turns or when a sync moves the numbers,
+/// and not when the screen is merely reopened.
+#[tauri::command]
+async fn today_summary(force: Option<bool>) -> CmdResult<chat::TodaySummary> {
+    chat::today_summary(force.unwrap_or(false))
         .await
         .map_err(to_msg)
 }
@@ -1645,6 +1679,7 @@ pub fn run() {
             weight,
             set_weight_goal,
             weight_summary,
+            today_summary,
             workouts,
             create_workout,
             themes_list,
@@ -1682,6 +1717,7 @@ pub fn run() {
             latest_apk,
             download_apk,
             strength_sessions,
+            findings,
             strength_session,
             personal_records,
             fitness,

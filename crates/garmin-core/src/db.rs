@@ -24,6 +24,36 @@ const ACTIVITY_COLS: &str = "activity_id, name, type_key, start_time_local, loca
      calories, elevation_gain, steps, aerobic_te, anaerobic_te,
      z1_secs, z2_secs, z3_secs, z4_secs, z5_secs";
 
+/// Rows that are in the table but are not sessions.
+///
+/// This account's history holds thousands of `other` entries — auto-detected
+/// blips from a device retired years ago, carrying no heart rate, no zones and
+/// no distance worth the name. They are the overwhelming majority of the table
+/// and none of them describes a workout.
+///
+/// Left in, they poison every aggregate that windows over "activities": a
+/// weekday-shape finding counts them as training days, and a load metric that
+/// scores an HR-less session as easy minutes reads a year of phantom entries as
+/// base building. So the analysis queries exclude them.
+///
+/// The test is deliberately narrow — `other` **and** no heart rate **and** no
+/// zone time. A real session that happened to be filed as `other` keeps its
+/// heart rate and survives this; a genuinely HR-less strength session keeps its
+/// type and survives it too. Nothing is deleted, and [`Db::noise_count`] reports
+/// how many were set aside so the exclusion is visible rather than silent.
+///
+/// "No heart rate" has to be `COALESCE(avg_hr, 0) <= 0` rather than
+/// `avg_hr IS NULL`, and the difference is the whole filter. Garmin sends
+/// `averageHR: 0` — not a missing field — for a worn day it decided to file as
+/// an activity, so the null test matched none of them: on this account it held
+/// back 2,383 rows from 2018–2022 that no window reaches anyway, and let
+/// through all 26 inside the last year, which are the only ones doing damage.
+/// Three of those are single entries of over 1,000 minutes. Left in, the week
+/// of 2026-02-09 reads as 37.4 hours of training against a real 2.3.
+const NOT_NOISE: &str = "NOT (type_key = 'other'
+         AND COALESCE(avg_hr, 0) <= 0
+         AND (z1_secs + z2_secs + z3_secs + z4_secs + z5_secs) <= 0)";
+
 /// Ceilings on tagging. Neither is a data-integrity rule — they exist so that a
 /// paste accident can't put a paragraph, or four hundred labels, into a column
 /// the activity screen renders as chips.
@@ -475,6 +505,34 @@ impl Db {
             })?)
     }
 
+    /// The local date of the newest cached activity, `YYYY-MM-DD`.
+    ///
+    /// How fresh the data is, as opposed to when the sync last ran. Those come
+    /// apart exactly when it matters: syncing an account whose watch has been
+    /// in a drawer for two months succeeds, writes nothing, and moves
+    /// `last_sync` to now. Only this moves when there is something new.
+    pub fn newest_activity_date(&self) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT MAX(local_date) FROM activities", [], |r| {
+                r.get::<_, Option<String>>(0)
+            })?)
+    }
+
+    /// The newest date carrying any wellness data, `YYYY-MM-DD`.
+    ///
+    /// Separate from [`newest_activity_date`](Self::newest_activity_date)
+    /// because the two go quiet independently: a watch worn but not trained in
+    /// keeps writing daily rows, and one trained with but left off the wrist
+    /// overnight writes activities and no sleep.
+    pub fn newest_daily_date(&self) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT MAX(date) FROM daily_metrics", [], |r| {
+                r.get::<_, Option<String>>(0)
+            })?)
+    }
+
     /// Recent activities, newest first. `type_key` filters to one sport
     /// (`"running"`, `"treadmill_running"`, …); `None` returns everything.
     pub fn recent_activities(
@@ -485,11 +543,11 @@ impl Db {
         let sql = format!(
             "SELECT {ACTIVITY_COLS}
              FROM activities
-             {}
+             WHERE {NOT_NOISE} {}
              ORDER BY start_time_local DESC
              LIMIT ?1",
             if type_key.is_some() {
-                "WHERE type_key LIKE '%' || ?2 || '%'"
+                "AND type_key LIKE '%' || ?2 || '%'"
             } else {
                 ""
             }
@@ -513,13 +571,26 @@ impl Db {
     pub fn activities_since(&self, from: &str) -> Result<Vec<CachedActivity>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
-             WHERE local_date >= ?1
+             WHERE local_date >= ?1 AND {NOT_NOISE}
              ORDER BY start_time_local DESC"
         ))?;
         let rows = stmt
             .query_map(params![from], map_activity)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
+    }
+
+    /// How many rows [`NOT_NOISE`] holds back.
+    ///
+    /// Reported by `cache_status` so that "3,627 activities cached" and "352
+    /// sessions to reason about" are both on the screen. An exclusion nobody
+    /// can see is the kind that gets rediscovered as a bug.
+    pub fn noise_count(&self) -> Result<i64> {
+        Ok(self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM activities WHERE NOT ({NOT_NOISE})"),
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     pub fn activity(&self, activity_id: i64) -> Result<Option<CachedActivity>> {
@@ -593,18 +664,26 @@ impl Db {
         Ok(())
     }
 
-    /// Daily metrics for the last `days` calendar days, newest first.
-    pub fn recent_daily(&self, days: u32) -> Result<Vec<DailyMetrics>> {
+    /// Daily metrics on or after `from` (inclusive, `YYYY-MM-DD`), newest
+    /// first.
+    ///
+    /// Windowed by date rather than by row count, and that distinction is the
+    /// whole point. A watch that spends two months in a drawer stops producing
+    /// rows, and `LIMIT 30` on a table that stops there answers "the last
+    /// thirty days" with thirty days from two months ago — dated correctly, and
+    /// so read as current by anything that doesn't check. Asking for a date
+    /// range gives back an empty window instead, which is the truth.
+    pub fn daily_since(&self, from: &str) -> Result<Vec<DailyMetrics>> {
         let mut stmt = self.conn.prepare(
             "SELECT date, resting_hr, hrv_last_night, hrv_weekly_avg, hrv_status,
                     training_readiness, sleep_secs, sleep_score, steps,
                     stress_avg, body_battery_high, body_battery_low,
                     consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
                     net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml
-             FROM daily_metrics ORDER BY date DESC LIMIT ?1",
+             FROM daily_metrics WHERE date >= ?1 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![days], |r| {
+            .query_map(params![from], |r| {
                 Ok(DailyMetrics {
                     date: r.get(0)?,
                     resting_hr: r.get(1)?,
@@ -1226,18 +1305,22 @@ impl Db {
         Ok(())
     }
 
-    /// The last `days` of fitness rows, newest first.
-    pub fn recent_fitness(&self, days: u32) -> Result<Vec<FitnessDay>> {
+    /// Fitness rows on or after `from` (inclusive, `YYYY-MM-DD`), newest first.
+    ///
+    /// Date-windowed for the same reason as [`daily_since`](Self::daily_since):
+    /// Garmin's verdict on a training load goes stale, and the newest row in a
+    /// table nobody has added to is not "the current status".
+    pub fn fitness_since(&self, from: &str) -> Result<Vec<FitnessDay>> {
         let mut stmt = self.conn.prepare(
             "SELECT date, status, status_phrase, acute_load, chronic_load, acwr,
                     acwr_status, aerobic_low, aerobic_low_min, aerobic_low_max,
                     aerobic_high, aerobic_high_min, aerobic_high_max,
                     anaerobic, anaerobic_min, anaerobic_max, balance_phrase,
                     vo2max, race_5k_s, race_10k_s, race_half_s, race_marathon_s
-             FROM fitness_days ORDER BY date DESC LIMIT ?1",
+             FROM fitness_days WHERE date >= ?1 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![days], |r| {
+            .query_map(params![from], |r| {
                 Ok(FitnessDay {
                     date: r.get(0)?,
                     status: crate::TrainingStatus {
@@ -1545,11 +1628,32 @@ impl CachedActivity {
         self.zone_secs.map(|s| s / total * 100.0)
     }
 
-    /// Pace in minutes per kilometre. `None` for activities without distance,
-    /// which is most strength and jump-rope sessions.
+    /// Pace in minutes per kilometre, over the whole session. `None` for
+    /// activities without distance, which is most strength and jump-rope
+    /// sessions.
+    ///
+    /// Elapsed time rather than moving time, which is what Garmin Connect
+    /// itself labels "Average Pace" — so this figure matches what the athlete
+    /// sees there. See [`moving_pace_min_per_km`](Self::moving_pace_min_per_km)
+    /// for the other one.
     pub fn pace_min_per_km(&self) -> Option<f64> {
         let (d, t) = (self.distance_m?, self.duration_s?);
         if d < 1.0 {
+            return None;
+        }
+        Some((t / 60.0) / (d / 1000.0))
+    }
+
+    /// Pace over moving time, Garmin's "Moving Pace".
+    ///
+    /// Cached since the schema gained `moving_duration_s` and never used until
+    /// now. On a run/walk session the two paces are different questions — one
+    /// averages the walk breaks in and one doesn't — and reporting only the
+    /// first makes a session with deliberate walk intervals look slower than
+    /// the running in it was.
+    pub fn moving_pace_min_per_km(&self) -> Option<f64> {
+        let (d, t) = (self.distance_m?, self.moving_duration_s?);
+        if d < 1.0 || t <= 0.0 {
             return None;
         }
         Some((t / 60.0) / (d / 1000.0))
@@ -1723,4 +1827,199 @@ pub struct ChatSessionMeta {
     pub updated_at: String,
     pub title: String,
     pub message_count: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A cache of its own per test. No tempfile dependency for one helper —
+    /// the process id and a name are enough to keep parallel tests apart.
+    fn scratch(name: &str) -> Db {
+        let path = std::env::temp_dir().join(format!(
+            "garmin-companion-test-{}-{name}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        Db::open(&path).expect("scratch cache")
+    }
+
+    fn day(date: &str, resting_hr: f64) -> DailyMetrics {
+        DailyMetrics {
+            date: date.into(),
+            resting_hr: Some(resting_hr),
+            ..Default::default()
+        }
+    }
+
+    /// The bug in one assertion.
+    ///
+    /// These queries used to be `ORDER BY date DESC LIMIT ?`, which answers
+    /// "the last seven days" with the seven newest rows however old they are.
+    /// For a watch that stopped being worn in June that is June's data, dated
+    /// correctly and therefore read as current by anything downstream that
+    /// doesn't check — which was everything.
+    #[test]
+    fn a_window_that_predates_the_data_comes_back_empty_rather_than_old() {
+        let db = scratch("daily-window");
+        for d in ["2026-06-06", "2026-06-07", "2026-06-08"] {
+            db.upsert_daily(&day(d, 50.0)).unwrap();
+        }
+
+        assert!(
+            db.daily_since("2026-08-01").unwrap().is_empty(),
+            "August asked for, June returned"
+        );
+        assert_eq!(db.daily_since("2026-06-07").unwrap().len(), 2);
+        assert_eq!(
+            db.newest_daily_date().unwrap().as_deref(),
+            Some("2026-06-08"),
+        );
+    }
+
+    /// An activity as Garmin's list endpoint sends it, built through serde so
+    /// the `averageHR` rename is exercised rather than assumed.
+    fn activity(
+        id: i64,
+        type_key: &str,
+        date: &str,
+        mins: f64,
+        hr: serde_json::Value,
+    ) -> ActivitySummary {
+        serde_json::from_value(serde_json::json!({
+            "activityId": id,
+            "activityName": "Session",
+            "startTimeLocal": format!("{date} 07:00:00"),
+            "duration": mins * 60.0,
+            "averageHR": hr,
+            "activityType": { "typeKey": type_key },
+        }))
+        .expect("activity fixture")
+    }
+
+    fn hours_since(db: &Db, from: &str) -> f64 {
+        db.activities_since(from)
+            .unwrap()
+            .iter()
+            .map(|a| a.duration_s.unwrap_or(0.0))
+            .sum::<f64>()
+            / 3600.0
+    }
+
+    /// The filter's whole job, in the week that exposed it.
+    ///
+    /// Garmin files a worn day as an `other` activity with `averageHR: 0` — a
+    /// zero, not a missing field. The predicate originally tested
+    /// `avg_hr IS NULL`, which matches none of them, so three entries of over
+    /// a thousand minutes each sat inside the load window: the week of
+    /// 2026-02-09 totalled 37.4 hours against a real 2.1, and every metric
+    /// windowed over "activities" read it as the biggest block of the year.
+    #[test]
+    fn a_worn_day_filed_as_an_activity_is_not_training() {
+        let db = scratch("noise-filter");
+
+        // The phantom: seventeen hours, no heart rate, no zones.
+        db.upsert_activity(&activity(
+            1,
+            "other",
+            "2026-02-10",
+            1043.0,
+            serde_json::json!(0),
+        ))
+        .unwrap();
+        // Real work the same week. The strength session has no heart rate
+        // either — it survives on its type, which is the narrowness the filter
+        // depends on.
+        db.upsert_activity(&activity(
+            2,
+            "strength_training",
+            "2026-02-11",
+            65.0,
+            serde_json::json!(null),
+        ))
+        .unwrap();
+        db.upsert_activity(&activity(
+            3,
+            "treadmill_running",
+            "2026-02-12",
+            61.0,
+            serde_json::json!(148),
+        ))
+        .unwrap();
+        // An `other` that really was a session: heart rate present, so it stays.
+        db.upsert_activity(&activity(
+            4,
+            "other",
+            "2026-02-13",
+            30.0,
+            serde_json::json!(134),
+        ))
+        .unwrap();
+
+        let hours = hours_since(&db, "2026-02-09");
+        assert!(
+            (hours - 2.6).abs() < 0.01,
+            "the week should total the real 2.6 hours, got {hours:.1}"
+        );
+
+        assert_eq!(db.noise_count().unwrap(), 1, "one row set aside, visibly");
+        let ids: Vec<i64> = db
+            .activities_since("2026-02-09")
+            .unwrap()
+            .iter()
+            .map(|a| a.activity_id)
+            .collect();
+        assert!(!ids.contains(&1), "the worn day is not a session");
+        assert!(
+            ids.contains(&2),
+            "an HR-less strength session survives on its type"
+        );
+        assert!(ids.contains(&4), "an `other` with a heart rate survives");
+    }
+
+    /// The half that keeps the filter narrow. A null and a zero are the same
+    /// absence here, and both have to be caught — the original predicate caught
+    /// only the first and was therefore inert on the rows that mattered.
+    #[test]
+    fn a_missing_heart_rate_counts_whether_it_is_null_or_zero() {
+        let db = scratch("noise-null-vs-zero");
+        db.upsert_activity(&activity(
+            1,
+            "other",
+            "2026-03-01",
+            600.0,
+            serde_json::json!(null),
+        ))
+        .unwrap();
+        db.upsert_activity(&activity(
+            2,
+            "other",
+            "2026-03-02",
+            600.0,
+            serde_json::json!(0),
+        ))
+        .unwrap();
+
+        assert_eq!(db.noise_count().unwrap(), 2);
+        assert!(db.activities_since("2026-03-01").unwrap().is_empty());
+        assert_eq!(hours_since(&db, "2026-03-01"), 0.0);
+    }
+
+    /// Freshness is a fact about the data, and this is the accessor that says
+    /// so. `last_sync` cannot: syncing an account whose watch is in a drawer
+    /// succeeds and writes nothing, so it reports "just now" either way.
+    #[test]
+    fn the_newest_dates_report_where_the_data_actually_stops() {
+        let db = scratch("newest-dates");
+        assert_eq!(db.newest_daily_date().unwrap(), None);
+        assert_eq!(db.newest_activity_date().unwrap(), None);
+
+        db.upsert_daily(&day("2026-06-08", 51.0)).unwrap();
+        db.upsert_daily(&day("2026-06-02", 49.0)).unwrap();
+        assert_eq!(
+            db.newest_daily_date().unwrap().as_deref(),
+            Some("2026-06-08"),
+            "the newest date, not the last one written"
+        );
+    }
 }

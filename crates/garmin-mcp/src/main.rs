@@ -85,20 +85,54 @@ fn import(path: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// What's cached, and — separately — how current it is.
+///
+/// The two lines under `Last sync` are the point. This command is documented as
+/// answering "how stale", and until now it printed only when the app last asked
+/// Garmin, which is a fact about the app: a sync against an account whose watch
+/// has been in a drawer for weeks succeeds, writes nothing, and moves that
+/// timestamp to now. `Wellness` and `Activities through` are what actually
+/// answer the question.
 fn status() -> Result<()> {
     let db = garmin_core::Db::open_default()?;
-    println!(
-        "Connected:  {}",
-        garmin_core::store::load_tokens()?.is_some()
-    );
-    println!("Activities: {}", db.activity_count()?);
+    let s = garmin_core::query::cache_status(&db)?;
+
+    println!("Connected:  {}", s.connected_to_garmin);
+    println!("Activities: {}", s.activities_cached);
     println!(
         "Last sync:  {}",
-        db.sync_state("last_sync")?
-            .unwrap_or_else(|| "never".into())
+        s.last_sync.unwrap_or_else(|| "never".into())
     );
-    if let Some(p) = garmin_core::db::default_path() {
-        println!("Cache:      {}", p.display());
+
+    let age = |date: Option<String>, days: Option<i64>| match (date, days) {
+        (Some(d), Some(0)) => format!("{d} (today)"),
+        (Some(d), Some(1)) => format!("{d} (yesterday)"),
+        (Some(d), Some(n)) => format!("{d} ({n} days ago)"),
+        _ => "nothing cached".into(),
+    };
+    // Indented under a heading rather than as two more top-level labels: a
+    // second line beginning "Activities:" would have meant one thing on the
+    // count above and another here.
+    println!("Data through:");
+    println!(
+        "  Wellness:   {}",
+        age(s.newest_daily_date, s.days_since_daily)
+    );
+    println!(
+        "  Activities: {}",
+        age(s.newest_activity_date, s.days_since_activity)
+    );
+    if s.stale {
+        println!(
+            "\nThe wellness data has stopped. That is the watch not being worn \
+             rather than\na sync fault — syncing an account whose watch is in a \
+             drawer succeeds and\nreturns nothing. Anything read from this cache \
+             describes then, not now."
+        );
+    }
+
+    if let Some(p) = s.database_path {
+        println!("Cache:      {p}");
     }
     Ok(())
 }

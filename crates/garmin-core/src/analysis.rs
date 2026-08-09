@@ -93,6 +93,19 @@ pub struct ZoneProfile {
     /// Whether the floors came from Garmin or from the fallback ladder below.
     /// The screen never shows this; the model is told, so it can hedge.
     pub measured: bool,
+    /// The same split, recomputed here by classifying every heart-rate sample
+    /// against `floors`. `None` when the session has no usable trace.
+    ///
+    /// This app holds two independent answers to one question — Garmin's
+    /// `secs`, and its own classifier — and until now compared them never. They
+    /// should agree to within rounding. When they don't, either the ladder is
+    /// wrong for this session or the trace and the totals describe different
+    /// things, and both are worth knowing before quoting either to three
+    /// significant figures.
+    pub recomputed_percent: Option<[f64; 5]>,
+    /// Largest per-zone gap between `percent` and `recomputed_percent`, in
+    /// percentage points. Small is the expected case.
+    pub max_disagreement_pct: Option<f64>,
 }
 
 /// How a highlight should read. Not a severity — a session can be worth
@@ -196,6 +209,17 @@ pub struct ActivityAnalysis {
     pub anaerobic_te: Option<f64>,
     /// Minutes per kilometre over the whole session.
     pub pace_min_km: Option<f64>,
+    /// The same, over moving time only. On a run/walk session the two are
+    /// different questions and this is the one about the running.
+    pub moving_pace_min_km: Option<f64>,
+    /// How far the zone split below can be trusted. This is the one place the
+    /// per-sample check can run — the trace is right here — so this verdict is
+    /// stronger than the one a list view carries.
+    pub hr_confidence: crate::signal::HrConfidence,
+    /// True when pace and distance came off the arm accelerometer rather than
+    /// GPS. Not the same as `indoor`, which is about whether there is a track
+    /// to draw: an outdoor run with the GPS off is estimated too.
+    pub pace_estimated: bool,
     pub zones: ZoneProfile,
     pub series: Series,
     pub laps: Vec<Lap>,
@@ -272,7 +296,15 @@ pub fn analyse(
 ) -> ActivityAnalysis {
     let series = details.map(extract_series).unwrap_or_default();
     let laps = splits.map(extract_laps).unwrap_or_default();
-    let zones = zone_profile(activity, zone_buckets);
+    let mut zones = zone_profile(activity, zone_buckets);
+    // The second opinion on the split, from the same trace the screen draws.
+    if let Some(recomputed) = recompute_zones(&series, &zones.floors) {
+        let worst = (0..5)
+            .map(|i| (recomputed[i] - zones.percent[i]).abs())
+            .fold(0.0f64, f64::max);
+        zones.max_disagreement_pct = Some((worst * 10.0).round() / 10.0);
+        zones.recomputed_percent = Some(recomputed.map(|p| (p * 10.0).round() / 10.0));
+    }
     let comparison = compare(activity, recent);
 
     let highlights = highlights(activity, &series, &laps, &zones, comparison.as_ref());
@@ -294,6 +326,22 @@ pub fn analyse(
         aerobic_te: activity.aerobic_te,
         anaerobic_te: activity.anaerobic_te,
         pace_min_km: activity.pace_min_per_km(),
+        moving_pace_min_km: activity.moving_pace_min_per_km(),
+        // The strong check: the whole heart-rate and cadence trace, rather
+        // than the two averages a list view has to settle for.
+        hr_confidence: crate::signal::hr_confidence(
+            activity.type_key.as_deref(),
+            activity.duration_s,
+            activity.avg_hr,
+            activity.avg_cadence,
+            activity.zone_total_secs() > 0.0,
+            Some((&series.hr, &series.cadence)),
+        ),
+        // A session with no position fix had its distance estimated whatever
+        // its type key says, which catches an outdoor run recorded with the
+        // GPS switched off as well as every treadmill session.
+        pace_estimated: crate::signal::is_indoor(activity.type_key.as_deref())
+            || !series.has_track(),
         indoor: !series.has_track(),
         zones,
         series,
@@ -530,7 +578,42 @@ fn zone_profile(activity: &CachedActivity, buckets: Option<&Value>) -> ZoneProfi
         secs: activity.zone_secs,
         percent: activity.zone_percentages(),
         measured,
+        recomputed_percent: None,
+        max_disagreement_pct: None,
     }
+}
+
+/// Classify every heart-rate sample against the ladder and report the split.
+///
+/// Weighted by the gap to the next sample rather than by sample count: Garmin's
+/// sampling is irregular, and counting samples would let a densely-sampled
+/// minute outvote a sparsely-sampled five.
+fn recompute_zones(series: &Series, floors: &[f64; 5]) -> Option<[f64; 5]> {
+    let n = series.len();
+    if n < 2 || series.hr.iter().all(Option::is_none) {
+        return None;
+    }
+
+    let mut secs = [0.0f64; 5];
+    for i in 0..n {
+        let (Some(hr), Some(t)) = (series.hr[i], series.elapsed_s[i]) else {
+            continue;
+        };
+        if hr <= 0.0 {
+            continue;
+        }
+        // The final sample has no interval after it and is dropped. One
+        // sampling gap out of a whole session cannot move a percentage
+        // meaningfully, and inventing a duration for it would.
+        let dt = match series.elapsed_s.get(i + 1).and_then(|v| *v) {
+            Some(next) if next > t => next - t,
+            _ => continue,
+        };
+        secs[zone_of(hr, floors) - 1] += dt;
+    }
+
+    let total: f64 = secs.iter().sum();
+    (total > 0.0).then(|| secs.map(|s| s / total * 100.0))
 }
 
 /// Which zone a heart rate falls in, 1-indexed. Below the Z1 floor is still Z1 —
@@ -1701,6 +1784,49 @@ mod tests {
         let z = zone_profile(&activity(), Some(&buckets));
         assert!(!z.measured);
         assert_eq!(z.floors, FALLBACK_FLOORS);
+    }
+
+    /// The cross-check has to be weighted by time, not by sample count.
+    /// Garmin samples irregularly, and a densely-sampled hard minute would
+    /// otherwise outvote a sparsely-sampled easy ten and manufacture a
+    /// disagreement that isn't there.
+    #[test]
+    fn the_zone_cross_check_weights_by_time_not_by_sample_count() {
+        // Ten minutes at 125 bpm (Z2), sampled once a minute, then one minute
+        // at 180 (Z5) sampled every two seconds. By count, Z5 dominates; by
+        // time it is a small fraction.
+        let mut hr = Vec::new();
+        let mut elapsed = Vec::new();
+        for i in 0..10 {
+            hr.push(Some(125.0));
+            elapsed.push(Some(i as f64 * 60.0));
+        }
+        for i in 0..30 {
+            hr.push(Some(180.0));
+            elapsed.push(Some(600.0 + i as f64 * 2.0));
+        }
+        let series = Series {
+            hr,
+            elapsed_s: elapsed,
+            ..Default::default()
+        };
+
+        let pct = recompute_zones(&series, &FALLBACK_FLOORS).expect("a split");
+        assert!(
+            pct[1] > 85.0,
+            "ten minutes of Z2 should dominate, got {pct:?}"
+        );
+        assert!(pct[4] < 15.0, "one minute of Z5 is a fraction, got {pct:?}");
+    }
+
+    #[test]
+    fn a_trace_with_no_heart_rate_yields_no_second_opinion() {
+        let series = Series {
+            hr: vec![None; 10],
+            elapsed_s: (0..10).map(|i| Some(i as f64)).collect(),
+            ..Default::default()
+        };
+        assert_eq!(recompute_zones(&series, &FALLBACK_FLOORS), None);
     }
 
     #[test]

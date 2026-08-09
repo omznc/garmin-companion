@@ -29,6 +29,8 @@ import {
 } from "../components/ui";
 import { ActivityMap } from "../components/ActivityMap";
 import { ActivityChat } from "../components/ActivityChat";
+import { AiMark } from "../components/AiMark";
+import { SignalNote, ZoneDisagreement } from "../components/SignalNote";
 import { Tags } from "../components/Tags";
 import { hasData, type Point } from "../lib/chart";
 import { zonePercentages, zoneTotal } from "../lib/derive";
@@ -195,6 +197,16 @@ export function ActivityDetail() {
 
       <div style={{ marginTop: 46 }}>
         <Zones activity={a} />
+        {/* Under the split rather than above it. The numbers are the point of
+            the section and a caveat that arrives first reads as a disclaimer
+            on the page; arriving second, it reads as a footnote on the
+            figures — which is what it is. */}
+        {data && (
+          <>
+            <SignalNote confidence={data.hrConfidence} />
+            <ZoneDisagreement maxPct={data.zones.maxDisagreementPct} />
+          </>
+        )}
       </div>
 
       {data && (
@@ -318,18 +330,20 @@ function Critique({ activityId, ready }: { activityId: number; ready: boolean })
 
   return (
     <div style={{ marginBottom: 34 }}>
-      <p
-        className="selectable"
-        style={{
-          fontSize: "var(--fs-lg)",
-          lineHeight: 1.75,
-          margin: 0,
-          maxWidth: "68ch",
-          textWrap: "pretty",
-        }}
-      >
-        {critique.text}
-      </p>
+      <AiMark label="session critique">
+        <p
+          className="selectable"
+          style={{
+            fontSize: "var(--fs-lg)",
+            lineHeight: 1.75,
+            margin: 0,
+            maxWidth: "68ch",
+            textWrap: "pretty",
+          }}
+        >
+          {critique.text}
+        </p>
+      </AiMark>
       <div
         style={{
           display: "flex",

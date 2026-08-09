@@ -92,6 +92,34 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.6.0" date="2026-08-09">
+      <description>
+        <p>
+          The Insights findings moved into the shared core, so the coach can
+          finally read them: ask whether you are getting fitter and the answer
+          now comes from the same analysis the screen draws, rather than from
+          whatever the chat could work out on its own. Every finding carries a
+          bootstrap interval, and one whose interval straddles zero no longer
+          appears at all.
+        </p>
+        <p>
+          The home screen opens with a written read of the morning rather than
+          four stitched sentences, and says nothing about your data being thin
+          when it is merely two days since you last trained.
+        </p>
+        <p>
+          The weight page leads with the last week and the last month instead of
+          six months, which is what you actually wanted to know, and its summary
+          is now kept until you weigh in again rather than being rewritten every
+          time a meal is logged.
+        </p>
+        <p>
+          A worn day that the watch filed as an activity is no longer counted as
+          training. Three of them, over a thousand minutes each, had one week
+          reading as thirty-seven hours of training against a real two.
+        </p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-08-08">
       <description>
         <p>

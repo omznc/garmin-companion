@@ -10,6 +10,7 @@ import {
 } from "../lib/api";
 import { DeleteIcon, DoneIcon, NewIcon, SpinnerIcon } from "../lib/icons";
 import { duration, sportLabel } from "../lib/format";
+import { AiMark } from "./AiMark";
 
 /**
  * A workout the model proposed, laid out as something you can change and then
@@ -71,147 +72,149 @@ export function WorkoutCard({
   const drop = (i: number) => setW({ ...w, steps: w.steps.filter((_, j) => j !== i) });
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--line)",
-        borderRadius: 6,
-        padding: "18px 20px 20px",
-        marginTop: 20,
-        maxWidth: "62ch",
-      }}
-    >
-      <div className="section-head" style={{ marginBottom: 12 }}>
-        <div className="eyebrow">{saved ? "Sent to Garmin" : "Proposed workout"}</div>
-        <div className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
-          {[
-            sportLabel(w.sport),
-            total != null ? duration(total) : null,
-            `${flatCount(w.steps)} steps`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </div>
-      </div>
-
-      <input
-        className="input-bare"
-        style={{ fontSize: 23, marginBottom: w.description ? 8 : 18 }}
-        value={w.name}
-        disabled={saved}
-        aria-label="Workout name"
-        onChange={(e) => setW({ ...w, name: e.target.value })}
-      />
-      {w.description && (
-        <div
-          style={{
-            fontSize: "var(--fs-small)",
-            color: "var(--mut)",
-            margin: "10px 0 18px",
-            maxWidth: "52ch",
-          }}
-        >
-          {w.description}
-        </div>
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {w.steps.map((step, i) =>
-          step.type === "repeat" ? (
-            <RepeatRow
-              key={i}
-              step={step}
-              locked={saved}
-              onChange={(s) => put(i, s)}
-              onRemove={() => drop(i)}
-            />
-          ) : (
-            <StepRow
-              key={i}
-              step={step}
-              locked={saved}
-              onChange={(s) => put(i, { type: "exec", ...s })}
-              onRemove={() => drop(i)}
-            />
-          ),
-        )}
-      </div>
-
-      {!saved && (
-        <div style={{ display: "flex", gap: 18, marginTop: 14 }}>
-          <AddButton
-            label="Step"
-            onClick={() => setW({ ...w, steps: [...w.steps, { type: "exec", ...blank() }] })}
-          />
-          <AddButton
-            label="Repeat"
-            onClick={() =>
-              setW({
-                ...w,
-                steps: [...w.steps, { type: "repeat", times: 4, steps: [blank()] }],
-              })
-            }
-          />
-        </div>
-      )}
-
+    <AiMark label="drafted workout">
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 14,
-          marginTop: 22,
-          paddingTop: 18,
-          borderTop: "1px solid var(--line2)",
+          border: "1px solid var(--line)",
+          borderRadius: 6,
+          padding: "18px 20px 20px",
+          marginTop: 20,
+          maxWidth: "62ch",
         }}
       >
-        {saved ? (
-          <span
+        <div className="section-head" style={{ marginBottom: 12 }}>
+          <div className="eyebrow">{saved ? "Sent to Garmin" : "Proposed workout"}</div>
+          <div className="mono" style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
+            {[
+              sportLabel(w.sport),
+              total != null ? duration(total) : null,
+              `${flatCount(w.steps)} steps`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+
+        <input
+          className="input-bare"
+          style={{ fontSize: 23, marginBottom: w.description ? 8 : 18 }}
+          value={w.name}
+          disabled={saved}
+          aria-label="Workout name"
+          onChange={(e) => setW({ ...w, name: e.target.value })}
+        />
+        {w.description && (
+          <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 7,
               fontSize: "var(--fs-small)",
               color: "var(--mut)",
+              margin: "10px 0 18px",
+              maxWidth: "52ch",
             }}
           >
-            <DoneIcon size={14} style={{ flex: "none" }} aria-hidden />
-            Saved to your Garmin account.
-          </span>
-        ) : (
-          <button
-            className="cta"
-            onClick={() => void send()}
-            disabled={busy || !w.name.trim() || w.steps.length === 0}
-            style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-          >
-            {busy && (
-              <SpinnerIcon size={14} className="spin" style={{ flex: "none" }} aria-hidden />
-            )}
-            {busy ? "Sending" : "Send to Garmin"}
-          </button>
+            {w.description}
+          </div>
         )}
-        {!saved && (
-          <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
-            Nothing is saved until you press this.
-          </span>
-        )}
-      </div>
 
-      {/* Garmin's own rejection, verbatim. It names the field it didn't like,
-          which is the only thing that makes a bad payload fixable. */}
-      {error && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {w.steps.map((step, i) =>
+            step.type === "repeat" ? (
+              <RepeatRow
+                key={i}
+                step={step}
+                locked={saved}
+                onChange={(s) => put(i, s)}
+                onRemove={() => drop(i)}
+              />
+            ) : (
+              <StepRow
+                key={i}
+                step={step}
+                locked={saved}
+                onChange={(s) => put(i, { type: "exec", ...s })}
+                onRemove={() => drop(i)}
+              />
+            ),
+          )}
+        </div>
+
+        {!saved && (
+          <div style={{ display: "flex", gap: 18, marginTop: 14 }}>
+            <AddButton
+              label="Step"
+              onClick={() => setW({ ...w, steps: [...w.steps, { type: "exec", ...blank() }] })}
+            />
+            <AddButton
+              label="Repeat"
+              onClick={() =>
+                setW({
+                  ...w,
+                  steps: [...w.steps, { type: "repeat", times: 4, steps: [blank()] }],
+                })
+              }
+            />
+          </div>
+        )}
+
         <div
           style={{
-            fontSize: "var(--fs-small)",
-            color: "var(--acc)",
-            marginTop: 12,
-            maxWidth: "52ch",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            marginTop: 22,
+            paddingTop: 18,
+            borderTop: "1px solid var(--line2)",
           }}
         >
-          {error}
+          {saved ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 7,
+                fontSize: "var(--fs-small)",
+                color: "var(--mut)",
+              }}
+            >
+              <DoneIcon size={14} style={{ flex: "none" }} aria-hidden />
+              Saved to your Garmin account.
+            </span>
+          ) : (
+            <button
+              className="cta"
+              onClick={() => void send()}
+              disabled={busy || !w.name.trim() || w.steps.length === 0}
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+            >
+              {busy && (
+                <SpinnerIcon size={14} className="spin" style={{ flex: "none" }} aria-hidden />
+              )}
+              {busy ? "Sending" : "Send to Garmin"}
+            </button>
+          )}
+          {!saved && (
+            <span style={{ fontSize: "var(--fs-caption)", color: "var(--faint)" }}>
+              Nothing is saved until you press this.
+            </span>
+          )}
         </div>
-      )}
-    </div>
+
+        {/* Garmin's own rejection, verbatim. It names the field it didn't like,
+          which is the only thing that makes a bad payload fixable. */}
+        {error && (
+          <div
+            style={{
+              fontSize: "var(--fs-small)",
+              color: "var(--acc)",
+              marginTop: 12,
+              maxWidth: "52ch",
+            }}
+          >
+            {error}
+          </div>
+        )}
+      </div>
+    </AiMark>
   );
 }
 

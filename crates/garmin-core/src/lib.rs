@@ -8,11 +8,14 @@ pub mod auth;
 pub mod client;
 pub mod coach;
 pub mod db;
+pub mod findings;
 pub mod goals;
 pub mod paths;
 pub mod query;
 pub mod records;
 pub mod secrets;
+pub mod signal;
+pub mod stats;
 pub mod store;
 pub mod strength;
 pub mod sync;
@@ -31,6 +34,34 @@ pub use workout::WorkoutDraft;
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
+
+/// Today, in the machine's own timezone.
+///
+/// One place for it so that "today" means the same thing on every screen. The
+/// athlete's data is stamped in local dates by Garmin, so a UTC "today" is the
+/// wrong day for anyone west of London for part of every evening.
+pub fn today() -> chrono::NaiveDate {
+    chrono::Local::now().date_naive()
+}
+
+/// The `YYYY-MM-DD` cutoff for a window of `days` ending today, inclusive of
+/// both ends — `days_ago(1)` is today, `days_ago(7)` is a week counting today.
+///
+/// Every query that takes a day count goes through this rather than reaching
+/// for a row limit, which is the bug this exists to make hard to write again.
+pub fn days_ago(days: u32) -> String {
+    let span = chrono::Duration::days(days.saturating_sub(1) as i64);
+    (today() - span).format("%Y-%m-%d").to_string()
+}
+
+/// Whole days between two `YYYY-MM-DD` dates, or `None` if `date` won't parse.
+/// Positive means `date` is in the past.
+pub fn days_between(date: &str, from: chrono::NaiveDate) -> Option<i64> {
+    // Activity dates arrive as either a plain date or a local timestamp, and
+    // both start with the ten characters that matter.
+    let parsed = chrono::NaiveDate::parse_from_str(date.get(..10)?, "%Y-%m-%d").ok()?;
+    Some((from - parsed).num_days())
+}
 
 /// Build a client from tokens in the OS keyring, persisting rotated refresh
 /// tokens back as they change.

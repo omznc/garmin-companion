@@ -14,6 +14,7 @@ import {
   type ChatSessionMeta,
   type WorkoutDraft,
 } from "../lib/api";
+import { AiMark } from "../components/AiMark";
 import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
 import { DeleteIcon, NewIcon, PinIcon, SendIcon, UnpinIcon } from "../lib/icons";
 import { Markdown } from "../components/Markdown";
@@ -719,16 +720,23 @@ function Answer({
     <div>
       {/* `selectable` because the answer is the one thing here worth copying,
           and the app otherwise suppresses selection. */}
-      <div
-        className="md-body selectable"
-        style={{ fontSize: "var(--fs-lg)", lineHeight: 1.75, maxWidth: "72ch", textWrap: "pretty" }}
-      >
-        <Markdown>{text}</Markdown>
-        {/* A caret once prose is arriving; before that, the loader — which says
-            which of your data it went to read. */}
-        {streaming &&
-          (text ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
-      </div>
+      <AiMark label="chat answer">
+        <div
+          className="md-body selectable"
+          style={{
+            fontSize: "var(--fs-lg)",
+            lineHeight: 1.75,
+            maxWidth: "72ch",
+            textWrap: "pretty",
+          }}
+        >
+          <Markdown>{text}</Markdown>
+          {/* A caret once prose is arriving; before that, the loader — which says
+              which of your data it went to read. */}
+          {streaming &&
+            (text ? <span className="caret" aria-hidden /> : <ToolLoader label={status} />)}
+        </div>
+      </AiMark>
       {/* Below the prose explaining it, and above the list of what was read —
           the workout is the thing you act on, not a footnote about sources. */}
       {drafts?.map((d, i) => (

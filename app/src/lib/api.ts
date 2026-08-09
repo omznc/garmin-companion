@@ -179,9 +179,29 @@ export interface WeightGoal {
   etaDays: number | null;
 }
 
+/**
+ * A recent slice of the same series. The report's own figures cover the whole
+ * window — half a year — which is right for the chart and wrong for a sentence.
+ */
+export interface WeightWindow {
+  /** Days covered, counting back from today. */
+  days: number;
+  /** Clean weigh-ins inside it, outliers excluded. */
+  count: number;
+  /** All three are null below two clean readings: one point has no direction. */
+  trendStartKg: number | null;
+  trendEndKg: number | null;
+  changeKg: number | null;
+  /** Present from a single reading, since neither claims a direction. */
+  lowKg: number | null;
+  highKg: number | null;
+}
+
 export interface WeightReport {
   /** Oldest first. */
   points: WeightPoint[];
+  /** The last week and the last month, in that order. */
+  windows: WeightWindow[];
   count: number;
   latestKg: number | null;
   latestDate: string | null;
@@ -219,6 +239,78 @@ export interface WeightSummary {
 /** Kept until the numbers behind it move; `force` is the regenerate control. */
 export const weightSummary = (days = 180, force = false) =>
   invoke<WeightSummary>("weight_summary", { days, force });
+
+/* -------------------------------------------------------------- findings --- */
+
+/**
+ * The deep findings, computed in `garmin-core`.
+ *
+ * These were TypeScript first and lived only on the Insights screen, which meant
+ * the coach you asked about them had no idea they existed. They now come from
+ * the same Rust the MCP server and the chat tools read, so a claim on the screen
+ * and a claim in an answer are the same claim.
+ *
+ * The shape mirrors `garmin_core::findings::Finding`. One difference matters:
+ * `format` arrives as a unit name rather than as a formatter, because a function
+ * can't cross the boundary — `UNIT_FORMAT` in the Insights screen maps it back.
+ */
+export type FindingTone = "good" | "note" | "watch";
+export type FindingSection = "Fitness" | "Recovery" | "Patterns";
+export type FindingUnit = "spm" | "score" | "pct" | "pace" | "perBeat" | "load";
+
+/** A bootstrap interval. A finding only ships when this excludes zero. */
+export interface Estimate {
+  value: number;
+  low: number;
+  high: number;
+  /** Observations behind it — the number that decides how much it can bear. */
+  n: number;
+}
+
+export interface ApiFindingSeries {
+  name: string;
+  values: Array<number | null>;
+  format: FindingUnit;
+  muted?: boolean;
+  invert?: boolean;
+}
+
+export interface ApiFindingRow {
+  label: string;
+  value: string;
+  note?: string;
+  accent?: boolean;
+}
+
+export interface ApiFinding {
+  kind: string;
+  section: FindingSection;
+  tone: FindingTone;
+  claim: string;
+  detail: string;
+  basis: string;
+  estimate?: Estimate;
+  series?: ApiFindingSeries[];
+  labels?: string[];
+  rows?: ApiFindingRow[];
+}
+
+/** A year by default: a weekday pattern needs months of weekdays. */
+export const findings = (days = 365) => invoke<ApiFinding[]>("findings", { days });
+
+export interface TodaySummary {
+  text: string;
+  generatedAt: string;
+  /** True when this is the stored paragraph rather than one just written. */
+  cached: boolean;
+}
+
+/**
+ * The Today screen's written opening. Rewritten at most once a day — the
+ * backend's fingerprint carries the date, so reopening the screen is free and
+ * the calendar turning is not. `force` is the rewrite control.
+ */
+export const todaySummary = (force = false) => invoke<TodaySummary>("today_summary", { force });
 
 /* -------------------------------------------------------------- workouts --- */
 
@@ -363,6 +455,33 @@ export interface ZoneProfile {
   percent: [number, number, number, number, number];
   /** False when Garmin didn't send boundaries and the fallback ladder was used. */
   measured: boolean;
+  /** The same split, recomputed from the heart-rate trace. Null without one. */
+  recomputedPercent: [number, number, number, number, number] | null;
+  /** Largest per-zone gap between the two, in percentage points. */
+  maxDisagreementPct: number | null;
+}
+
+/** How far a session's zone split can be trusted. See `signal.rs`. */
+export type Confidence = "good" | "caution" | "poor";
+
+/**
+ * Whether the wrist sensor was reading arm swing rather than pulse.
+ *
+ * `possible` comes from the two averages sitting on top of each other, which a
+ * coincidence looks exactly like. `likely` means heart rate shadowed step rate
+ * across most of the session, which a real heart rate doesn't do.
+ */
+export type CadenceLock = "notChecked" | "unlikely" | "possible" | "likely";
+
+export interface HrConfidence {
+  level: Confidence;
+  cadenceLock: CadenceLock;
+  cadenceGapBpm: number | null;
+  cadenceAgreementPct: number | null;
+  shortEffort: boolean;
+  wristUnreliableSport: boolean;
+  /** One sentence per reason, already written for a reader. */
+  notes: string[];
 }
 
 /** Not a severity — a session can be remarkable without anything being wrong. */
@@ -425,6 +544,14 @@ export interface ActivityAnalysis {
   aerobicTe: number | null;
   anaerobicTe: number | null;
   paceMinKm: number | null;
+  /** Pace over moving time. On a run/walk session, the one about the running. */
+  movingPaceMinKm: number | null;
+  hrConfidence: HrConfidence;
+  /**
+   * Distance and pace were estimated from arm movement rather than measured.
+   * Broader than `indoor`: an outdoor run recorded with GPS off counts too.
+   */
+  paceEstimated: boolean;
   zones: ZoneProfile;
   series: ActivitySeries;
   laps: ActivityLap[];

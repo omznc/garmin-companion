@@ -132,6 +132,22 @@ const GREEN_LIGHT_QUIET_DAYS: i64 = 3;
 /// nothing changes between one week and the next.
 const OUTDOOR_REMINDER_DAYS: i64 = 21;
 
+/// How old a recovery or fitness reading may be and still describe now.
+///
+/// Readiness, HRV and the acute:chronic ratio are all statements about today,
+/// and a watch left in a drawer doesn't produce a wrong one — it produces no
+/// new one, leaving the last good reading sitting at the top of the table. Two
+/// days of slack covers a watch charging overnight; past that the rules that
+/// speak in the present tense have to go quiet rather than quote history as
+/// though it were this morning.
+const FRESH_DAYS: i64 = 2;
+
+/// The newest row, if it is recent enough to be talking about now.
+fn fresh<'a, T>(row: Option<&'a T>, date: &dyn Fn(&T) -> &str, today: NaiveDate) -> Option<&'a T> {
+    let row = row?;
+    (crate::days_between(date(row), today)? <= FRESH_DAYS).then_some(row)
+}
+
 /* --------------------------------------------------------------------- rules --- */
 
 fn hard_share(a: &CachedActivity) -> Option<f64> {
@@ -209,7 +225,8 @@ fn long_run_missing(ctx: &CoachContext<'_>) -> Option<Nudge> {
 }
 
 fn anaerobic_over_target(ctx: &CoachContext<'_>) -> Option<Nudge> {
-    let s = &ctx.fitness?.status;
+    // A rolling month's load balance, so it too describes now.
+    let s = &fresh(ctx.fitness, &|f: &crate::db::FitnessDay| &f.date, ctx.today)?.status;
     if !s.anaerobic_over_target() {
         return None;
     }
@@ -321,7 +338,8 @@ fn cadence_low(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nudge
 }
 
 fn load_spike(ctx: &CoachContext<'_>) -> Option<Nudge> {
-    let s = &ctx.fitness?.status;
+    // Same reasoning as `green_light`: "this week's load" has to be this week's.
+    let s = &fresh(ctx.fitness, &|f: &crate::db::FitnessDay| &f.date, ctx.today)?.status;
     let acwr = s.acwr?;
     if acwr < ACWR_HIGH {
         return None;
@@ -331,10 +349,21 @@ fn load_spike(ctx: &CoachContext<'_>) -> Option<Nudge> {
         kind: NudgeKind::LoadSpike,
         id: NudgeKind::LoadSpike.id().into(),
         title: "This week's load has run ahead of the base".into(),
+        // Reports the ratio as Garmin's opinion, which is all it is. The old
+        // copy said 1.5 was "where the injury numbers start to climb", and that
+        // claim doesn't survive the literature: the acute:chronic ratio is
+        // mathematically coupled — the latest week sits in both halves — and
+        // when the underlying data is treated as continuous rather than binned,
+        // the relationship with injury largely disappears. It remains a
+        // reasonable prompt to look at a week that jumped. It is not a risk
+        // figure, and this app shouldn't dress it as one.
         body: format!(
-            "Garmin puts the acute:chronic ratio at {acwr:.2}. Above about 1.5 is \
-             where the injury numbers start to climb — usually the fix is an easy \
-             week rather than a rest day."
+            "Garmin puts the acute:chronic ratio at {acwr:.2}, which is its way of \
+             saying this week ran well ahead of what the last month built. Treat \
+             that as a prompt to look rather than as a risk score — the threshold \
+             it's measured against is a rule of thumb the evidence has not been \
+             kind to. If the week did feel like a jump, an easy week answers it \
+             better than a rest day."
         ),
         tone: Tone::Watch,
         priority: 95,
@@ -350,7 +379,14 @@ fn load_spike(ctx: &CoachContext<'_>) -> Option<Nudge> {
 }
 
 fn green_light(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nudge> {
-    let latest = ctx.daily.first()?;
+    // "You're recovered, go hard" is a claim about this morning. Said off a
+    // reading from six weeks ago it is the most expensive thing this file can
+    // get wrong, so the freshness check comes before anything else.
+    let latest = fresh(
+        ctx.daily.first(),
+        &|d: &crate::DailyMetrics| &d.date,
+        ctx.today,
+    )?;
     let readiness = latest.training_readiness?;
     if readiness < READY_SCORE {
         return None;
@@ -362,6 +398,26 @@ fn green_light(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nudge
         .as_deref()
         .is_some_and(|s| s.eq_ignore_ascii_case("balanced") || s.eq_ignore_ascii_case("good"));
     if !hrv_ok {
+        return None;
+    }
+
+    // "Balanced" is a comparison against a personal range, and the range is
+    // only as good as the nights that built it — Garmin wants about four a
+    // week. Below that the status still reads Balanced, but it is measuring
+    // against a baseline drawn from too little, which is not the clearance it
+    // looks like. Nothing else in this file can catch that: the reading is
+    // present, fresh, and says the right word.
+    //
+    // The denominator is the calendar window, deliberately — not `daily.len()`.
+    // A row only exists for a day that recorded something, so counting rows
+    // would divide six nights of wear by six rows, call it seven a week, and
+    // wave through exactly the sparse baseline this check exists to catch.
+    let nights = ctx
+        .daily
+        .iter()
+        .filter(|d| d.hrv_last_night.is_some())
+        .count();
+    if !crate::signal::hrv_coverage(nights, WINDOW_DAYS as usize).sufficient {
         return None;
     }
 
@@ -677,8 +733,8 @@ pub fn for_today(db: &crate::Db, today: NaiveDate) -> anyhow::Result<CoachReport
 
     let goals = Goals::load(db)?;
     let activities = db.activities_since(&from)?;
-    let daily = db.recent_daily(WINDOW_DAYS as u32)?;
-    let fitness = db.recent_fitness(1)?.into_iter().next();
+    let daily = db.daily_since(&from)?;
+    let fitness = db.fitness_since(&from)?.into_iter().next();
     let week = crate::goals::week_progress(&goals, &activities, today);
 
     let nudges = evaluate(&CoachContext {
@@ -899,6 +955,27 @@ mod tests {
         nudges.iter().any(|n| n.kind == kind)
     }
 
+    /// A run of nights ending on `newest`, each carrying an HRV reading.
+    ///
+    /// The green light needs a baseline built on about four nights a week
+    /// before it will speak, so a fixture with one good night no longer
+    /// exercises the rest of the rule. `nights` consecutive days clears it.
+    fn worn_nights(newest: &str, nights: usize, readiness: f64) -> Vec<DailyMetrics> {
+        let last = NaiveDate::parse_from_str(newest, "%Y-%m-%d").unwrap();
+        (0..nights)
+            .map(|i| DailyMetrics {
+                date: (last - chrono::Duration::days(i as i64))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+                training_readiness: Some(readiness),
+                hrv_status: Some("BALANCED".into()),
+                hrv_last_night: Some(80.0),
+                hrv_weekly_avg: Some(79.0),
+                ..Default::default()
+            })
+            .collect()
+    }
+
     #[test]
     fn a_quiet_week_with_nothing_wrong_says_nothing() {
         let goals = Goals::default();
@@ -1006,28 +1083,101 @@ mod tests {
             Some(170.0),
         )];
         let week = week_progress(&goals, &acts, saturday());
-        let recovered = vec![DailyMetrics {
-            date: "2026-08-08".into(),
-            training_readiness: Some(82.0),
-            hrv_status: Some("BALANCED".into()),
-            hrv_last_night: Some(80.0),
-            hrv_weekly_avg: Some(79.0),
-            ..Default::default()
-        }];
+        let recovered = worn_nights("2026-08-08", 20, 82.0);
         assert!(fired(
             &evaluate(&ctx(saturday(), &goals, &week, &acts, &recovered)),
             NudgeKind::GreenLight
         ));
 
         // Same week, poor readiness: no green light.
-        let tired = vec![DailyMetrics {
-            date: "2026-08-08".into(),
-            training_readiness: Some(31.0),
-            hrv_status: Some("BALANCED".into()),
-            ..Default::default()
-        }];
+        let tired = worn_nights("2026-08-08", 20, 31.0);
         assert!(!fired(
             &evaluate(&ctx(saturday(), &goals, &week, &acts, &tired)),
+            NudgeKind::GreenLight
+        ));
+    }
+
+    /// "Balanced" is a verdict against a personal range, and the range is built
+    /// from nights of wear. Garmin wants about four a week; below that the
+    /// status still reads Balanced against a baseline drawn from too little.
+    /// The reading is present, fresh, and says the right word — which is why
+    /// nothing else in this file catches it.
+    #[test]
+    fn a_balanced_status_on_too_few_nights_is_not_a_green_light() {
+        let goals = Goals::default();
+        let acts = vec![run(
+            "2026-08-01",
+            10.0,
+            [0.0, 120.0, 480.0, 0.0, 0.0],
+            Some(170.0),
+        )];
+        let week = week_progress(&goals, &acts, saturday());
+
+        // Three nights across the four-week window: roughly one a week.
+        let sparse = [
+            worn_nights("2026-08-08", 1, 82.0),
+            worn_nights("2026-07-30", 1, 82.0),
+            worn_nights("2026-07-21", 1, 82.0),
+        ]
+        .concat();
+        assert!(
+            !fired(
+                &evaluate(&ctx(saturday(), &goals, &week, &acts, &sparse)),
+                NudgeKind::GreenLight
+            ),
+            "a baseline built on one night a week is not clearance to go hard"
+        );
+    }
+
+    /// The bug this guard exists for: a watch that stopped being worn leaves
+    /// its last good reading at the top of the table, where every rule that
+    /// speaks in the present tense reads it as this morning's. The reading is
+    /// real and correctly dated — nothing is fabricated — which is exactly why
+    /// it went unnoticed, and why "go hard today" came out of a recovery score
+    /// from two months ago.
+    #[test]
+    fn a_recovery_reading_from_two_months_ago_cannot_give_a_green_light() {
+        let goals = Goals::default();
+        let acts = vec![run(
+            "2026-06-01",
+            10.0,
+            [0.0, 120.0, 480.0, 0.0, 0.0],
+            Some(170.0),
+        )];
+        let week = week_progress(&goals, &acts, saturday());
+        // Excellent numbers, and every one of them from June.
+        let june = vec![DailyMetrics {
+            date: "2026-06-08".into(),
+            training_readiness: Some(88.0),
+            hrv_status: Some("BALANCED".into()),
+            hrv_last_night: Some(84.0),
+            hrv_weekly_avg: Some(79.0),
+            ..Default::default()
+        }];
+        assert!(
+            !fired(
+                &evaluate(&ctx(saturday(), &goals, &week, &acts, &june)),
+                NudgeKind::GreenLight
+            ),
+            "a two-month-old readiness score must not be read as this morning's"
+        );
+    }
+
+    /// The other half: the guard has to be slack enough for a watch that spent
+    /// last night on a charger, or it would silence the rule for everyone.
+    #[test]
+    fn yesterdays_reading_still_counts_as_current() {
+        let goals = Goals::default();
+        let acts = vec![run(
+            "2026-08-01",
+            10.0,
+            [0.0, 120.0, 480.0, 0.0, 0.0],
+            Some(170.0),
+        )];
+        let week = week_progress(&goals, &acts, saturday());
+        let yesterday = worn_nights("2026-08-07", 20, 82.0);
+        assert!(fired(
+            &evaluate(&ctx(saturday(), &goals, &week, &acts, &yesterday)),
             NudgeKind::GreenLight
         ));
     }

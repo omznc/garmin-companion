@@ -83,6 +83,18 @@ pub struct ActivityView {
     /// False when the session recorded no HR at all, in which case every zone
     /// reads zero — which is not the same as a session spent entirely in Z1.
     pub has_hr_data: bool,
+    /// How far the zone split above can be trusted, and why not. The numbers
+    /// are still the numbers — this says what they rest on.
+    pub hr_confidence: crate::signal::HrConfidence,
+    /// True for treadmill and other indoor work, where distance and pace come
+    /// off the arm accelerometer rather than GPS or the belt. Heart rate and
+    /// cadence indoors are measurements; these two are estimates, and
+    /// comparing them across sessions compares two estimates.
+    pub pace_estimated: bool,
+    /// Pace over moving time rather than elapsed. Diverges from
+    /// `pace_min_per_km` on a run/walk session, where it is the more useful of
+    /// the two — the other averages the walk breaks in.
+    pub moving_pace_min_per_km: Option<f64>,
 }
 
 impl From<&CachedActivity> for ActivityView {
@@ -104,6 +116,20 @@ impl From<&CachedActivity> for ActivityView {
             zones: zone_splits(a),
             easy_percent: round1(pcts[0] + pcts[1]),
             has_hr_data: a.zone_total_secs() > 0.0,
+            // Averages only here. `ActivityView` is built for lists, where the
+            // per-sample trace isn't loaded and loading fifty of them to
+            // annotate a summary would be absurd; the session's own analysis
+            // runs the stronger check.
+            hr_confidence: crate::signal::hr_confidence(
+                a.type_key.as_deref(),
+                a.duration_s,
+                a.avg_hr,
+                a.avg_cadence,
+                a.zone_total_secs() > 0.0,
+                None,
+            ),
+            pace_estimated: crate::signal::is_indoor(a.type_key.as_deref()),
+            moving_pace_min_per_km: a.moving_pace_min_per_km().map(round1),
         }
     }
 }
@@ -157,6 +183,11 @@ pub struct CadenceReport {
 pub struct RecoveryDay {
     pub date: String,
     pub resting_hr: Option<f64>,
+    /// Which of Garmin's two resting-heart-rate measurements this is. Only
+    /// `overnight` readings belong on one trend line with each other; a
+    /// daytime estimate is a different measurement under the same name, and
+    /// mixing them makes a trend out of whether the watch was worn to bed.
+    pub resting_hr_source: crate::signal::RestingHrSource,
     pub hrv_last_night: Option<f64>,
     pub hrv_weekly_avg: Option<f64>,
     pub hrv_status: Option<String>,
@@ -172,6 +203,7 @@ pub struct RecoveryDay {
 impl From<crate::DailyMetrics> for RecoveryDay {
     fn from(d: crate::DailyMetrics) -> Self {
         Self {
+            resting_hr_source: crate::signal::resting_hr_source(d.sleep_secs),
             date: d.date,
             resting_hr: d.resting_hr,
             hrv_last_night: d.hrv_last_night,
@@ -188,12 +220,30 @@ impl From<crate::DailyMetrics> for RecoveryDay {
     }
 }
 
+/// What's in the cache, and — separately — how current it is.
+///
+/// Those are two questions and this used to answer only the first. `last_sync`
+/// says when the app last asked Garmin, which is a fact about the app; a sync
+/// against a watch nobody has worn succeeds, writes nothing, and moves it to
+/// now. The `newest_*` fields say when the data itself stops, which is a fact
+/// about the athlete, and is the one that tells you whether an answer built on
+/// this cache describes this week or a week last spring.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CacheStatus {
     pub activities_cached: i64,
     pub last_sync: Option<String>,
     pub database_path: Option<String>,
     pub connected_to_garmin: bool,
+    /// Local date of the newest cached activity, and how many days back it is.
+    pub newest_activity_date: Option<String>,
+    pub days_since_activity: Option<i64>,
+    /// Same for wellness data — resting HR, HRV, sleep, readiness.
+    pub newest_daily_date: Option<String>,
+    pub days_since_daily: Option<i64>,
+    /// Set when the cache has nothing from the last few days. The number is
+    /// there to be reasoned about; this is here so the check is hard to skip.
+    pub stale: bool,
 }
 
 /* ---------------------------------------------------------------- analyses --- */
@@ -302,7 +352,7 @@ pub fn cadence_trend(db: &Db, count: u32) -> Result<CadenceReport> {
 
 pub fn recovery(db: &Db, days: u32) -> Result<Vec<RecoveryDay>> {
     Ok(db
-        .recent_daily(days)?
+        .daily_since(&crate::days_ago(days))?
         .into_iter()
         .map(RecoveryDay::from)
         .collect())
@@ -343,7 +393,7 @@ pub struct NutritionReport {
 
 pub fn nutrition(db: &Db, days: u32) -> Result<NutritionReport> {
     let rows: Vec<NutritionDay> = db
-        .recent_daily(days)?
+        .daily_since(&crate::days_ago(days))?
         .into_iter()
         .map(|d| NutritionDay {
             balance_kcal: d.calorie_balance().map(round1),
@@ -458,11 +508,86 @@ pub struct WeightGoal {
     pub eta_days: Option<i64>,
 }
 
+/// The same series, cut to a recent slice.
+///
+/// The report's own window is half a year, which is the right span for a chart
+/// and the wrong one for a sentence: "you're down 2 kg since February" is true
+/// on the day you gained a kilo. These are what a reader actually wants first —
+/// the last week and the last month — and they carry their own `count` so a
+/// window with one weigh-in in it can be described as the thin thing it is
+/// rather than as a trend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeightWindow {
+    /// Days the window covers, counting back from today.
+    pub days: u32,
+    /// Clean weigh-ins inside it. Outliers are excluded here, unlike the
+    /// report's own `count` — a window of two where one is a mis-entry has one
+    /// reading, and saying two would invite a change to be read off it.
+    pub count: usize,
+    /// The trend line at each end of the window, and the distance between them.
+    /// All three are `None` below two clean readings, because a single point
+    /// has no direction and a window is not a trend.
+    pub trend_start_kg: Option<f64>,
+    pub trend_end_kg: Option<f64>,
+    pub change_kg: Option<f64>,
+    /// Lightest and heaviest clean readings inside the window. Present from one
+    /// reading, since neither claims a direction.
+    pub low_kg: Option<f64>,
+    pub high_kg: Option<f64>,
+}
+
+/// The recent slices, newest span first.
+///
+/// Computed from `points`, which are already thinned to one per day and carry
+/// their trend, so this is a filter rather than a second pass over the rows.
+fn windows(points: &[WeightPoint], today: chrono::NaiveDate) -> Vec<WeightWindow> {
+    [7_u32, 30]
+        .into_iter()
+        .map(|days| {
+            let from = day_number(
+                &(today - chrono::Duration::days(days.saturating_sub(1) as i64))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+            );
+            let inside: Vec<&WeightPoint> = points
+                .iter()
+                .filter(|p| !p.outlier && day_number(&p.date) >= from)
+                .collect();
+
+            let kgs: Vec<f64> = inside.iter().map(|p| p.kg).collect();
+            let start = inside.first().and_then(|p| p.trend_kg);
+            let end = inside.last().and_then(|p| p.trend_kg);
+            WeightWindow {
+                days,
+                count: inside.len(),
+                trend_start_kg: start.filter(|_| inside.len() >= 2),
+                trend_end_kg: end.filter(|_| inside.len() >= 2),
+                change_kg: match (start, end) {
+                    (Some(a), Some(b)) if inside.len() >= 2 => Some(round1(b - a)),
+                    _ => None,
+                },
+                low_kg: kgs
+                    .iter()
+                    .cloned()
+                    .fold(None, |m: Option<f64>, k| Some(m.map_or(k, |m| m.min(k)))),
+                high_kg: kgs
+                    .iter()
+                    .cloned()
+                    .fold(None, |m: Option<f64>, k| Some(m.map_or(k, |m| m.max(k)))),
+            }
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeightReport {
     /// Oldest first, for drawing.
     pub points: Vec<WeightPoint>,
+    /// The last week and the last month, in that order. The report's own
+    /// figures describe the whole window and answer a different question.
+    pub windows: Vec<WeightWindow>,
     /// Weigh-ins in the window, outliers included.
     pub count: usize,
     /// The most recent weigh-in on the account, even if it predates the window
@@ -658,6 +783,7 @@ pub fn weight(db: &Db, days: u32) -> Result<WeightReport> {
         days_since_latest,
         bmi,
         height_cm,
+        windows: windows(&points, today),
         points,
     })
 }
@@ -675,13 +801,13 @@ fn energy_check(
         return Ok(None);
     }
 
-    // Enough rows to cover the span, then narrowed to it by date — the daily
-    // table is keyed by day and the weigh-ins are not, so they're joined here
-    // rather than in SQL.
-    let daily = db.recent_daily(span as u32 + 2)?;
+    // The span the weigh-ins actually cover, which is what the calorie balance
+    // has to be summed over — not a window ending today. The lower bound goes
+    // to SQL and the upper is applied here.
+    let daily = db.daily_since(&first.date)?;
     let logged: Vec<f64> = daily
         .iter()
-        .filter(|d| d.date.as_str() >= first.date.as_str() && d.date.as_str() <= last.date.as_str())
+        .filter(|d| d.date.as_str() <= last.date.as_str())
         .filter_map(|d| d.calorie_balance())
         .collect();
 
@@ -1074,7 +1200,7 @@ pub struct FitnessReport {
 }
 
 pub fn fitness(db: &Db, days: u32) -> Result<FitnessReport> {
-    let rows = db.recent_fitness(days)?;
+    let rows = db.fitness_since(&crate::days_ago(days))?;
     let latest = rows.first().cloned();
     Ok(FitnessReport {
         vo2max_missing: latest.as_ref().is_none_or(|d| d.status.vo2max.is_none()),
@@ -1086,12 +1212,35 @@ pub fn fitness(db: &Db, days: u32) -> Result<FitnessReport> {
     })
 }
 
+/// Days without a wellness row past which the cache is called stale.
+///
+/// A worn watch writes one every day, so a gap this size is the watch being off
+/// the wrist rather than a quiet week. Activities are deliberately not part of
+/// this test: not training for three days is a rest block, not a broken sync.
+const STALE_DAYS: i64 = 3;
+
 pub fn cache_status(db: &Db) -> Result<CacheStatus> {
+    let today = crate::today();
+    let newest_activity_date = db.newest_activity_date()?;
+    let newest_daily_date = db.newest_daily_date()?;
+
+    let age = |d: &Option<String>| {
+        d.as_deref()
+            .and_then(|s| crate::days_between(s, today))
+            .map(|n| n.max(0))
+    };
+    let days_since_daily = age(&newest_daily_date);
+
     Ok(CacheStatus {
         activities_cached: db.activity_count()?,
         last_sync: db.sync_state("last_sync")?,
         database_path: crate::db::default_path().map(|p| p.display().to_string()),
         connected_to_garmin: crate::store::load_tokens()?.is_some(),
+        days_since_activity: age(&newest_activity_date),
+        stale: days_since_daily.is_none_or(|n| n > STALE_DAYS),
+        newest_activity_date,
+        newest_daily_date,
+        days_since_daily,
     })
 }
 
@@ -1133,6 +1282,83 @@ mod tests {
             .map(|p| p.date.as_str())
             .collect();
         assert_eq!(flagged, ["2026-01-23"]);
+    }
+
+    fn on(date: &str) -> chrono::NaiveDate {
+        chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").unwrap()
+    }
+
+    /// This account's actual August: two weigh-ins two days apart, then nothing
+    /// back to June. The half-year figures are dominated by a spring the reader
+    /// isn't asking about, so the windows have to carry the recent slice
+    /// separately — and say how thin it is.
+    #[test]
+    fn the_recent_windows_describe_now_rather_than_the_whole_span() {
+        let pts = daily_points(vec![
+            w(1, "2026-03-29", 86.0),
+            w(2, "2026-06-28", 88.0),
+            w(3, "2026-08-04", 86.0),
+            w(4, "2026-08-06", 85.5),
+        ]);
+        let ws = windows(&pts, on("2026-08-09"));
+
+        let week = &ws[0];
+        assert_eq!(week.days, 7);
+        assert_eq!(week.count, 2, "August 4th and 6th are inside the week");
+        assert_eq!(week.low_kg, Some(85.5));
+        assert_eq!(week.high_kg, Some(86.0));
+
+        let month = &ws[1];
+        assert_eq!(month.days, 30);
+        assert_eq!(month.count, 2, "June 28th is 42 days back and outside it");
+        assert!(
+            month.change_kg.is_some(),
+            "two readings in the month is a direction, however short"
+        );
+    }
+
+    /// A window with one reading in it has no direction, and must not invent
+    /// one — a paragraph that reads a change off a single point is the failure
+    /// this field exists to prevent.
+    #[test]
+    fn a_single_reading_in_a_window_is_not_a_trend() {
+        let pts = daily_points(vec![w(1, "2026-07-01", 87.0), w(2, "2026-08-08", 86.0)]);
+        let ws = windows(&pts, on("2026-08-09"));
+
+        let week = &ws[0];
+        assert_eq!(week.count, 1);
+        assert_eq!(week.change_kg, None);
+        assert_eq!(week.trend_start_kg, None);
+        assert_eq!(week.trend_end_kg, None);
+        assert_eq!(
+            week.low_kg,
+            Some(86.0),
+            "the reading itself is still worth reporting"
+        );
+    }
+
+    /// Outliers are already excluded from the trend; they have to be excluded
+    /// from the window counts too, or a month holding one real weigh-in and one
+    /// mis-entry reads as two and invites a change to be drawn between them.
+    #[test]
+    fn a_mis_entry_does_not_pad_a_window_count() {
+        let pts = daily_points(vec![
+            w(1, "2026-07-20", 86.0),
+            w(2, "2026-07-28", 86.2),
+            w(3, "2026-07-29", 97.0),
+            w(4, "2026-07-30", 86.1),
+        ]);
+        let ws = windows(&pts, on("2026-08-09"));
+
+        assert!(pts.iter().any(|p| p.outlier), "the 97.0 is flagged");
+        assert_eq!(
+            ws[1].count, 3,
+            "four readings in the month, one of them a mis-entry, leaves three"
+        );
+        assert!(
+            ws[1].high_kg.unwrap() < 90.0,
+            "and the mis-entry is not the heaviest of them"
+        );
     }
 
     /// A step that the following reading confirms is a body, not a typo — the

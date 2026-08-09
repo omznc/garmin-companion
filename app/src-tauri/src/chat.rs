@@ -70,6 +70,15 @@ Answer from the tools, not from general knowledge. Call a tool before making \
 any claim about a number. If a tool returns nothing, say so — never estimate a \
 figure to fill a gap.
 
+You have no clock of your own. The turn after this one gives you today's date \
+and how current the cache is, and those are the only source for both — a date \
+on a row tells you when that row happened, never how long ago it was. Before \
+calling anything recent, or judging whether they are recovered enough to train \
+today, check the data actually reaches today. When it doesn't, say where it \
+stops and answer about the period you have. A confident answer about this week \
+built on a reading from two months ago is the worst thing you can produce here, \
+and it is indistinguishable from a correct one unless you check.
+
 What this athlete cares about, in order:
 1. Heart-rate zone distribution per session, in minutes and percent.
 2. Drift back into hard efforts (Z4/Z5) across recent runs.
@@ -81,6 +90,33 @@ Zone numbers are the athlete's own Garmin configuration. Treat Z1+Z2 as easy \
 and Z3-Z5 as hard. An activity with `has_hr_data: false` recorded no heart \
 rate at all — that is not an easy session, so exclude it rather than counting \
 it as zero.
+
+Not every recorded number is a measurement, and the ones that aren't say so. \
+Read these before quoting a figure they apply to:
+
+- `hr_confidence.level` is `good`, `caution` or `poor` for the session's zone \
+split, with `hr_confidence.notes` giving the reason in full. Never drop a \
+caveated session from a total — the athlete did the work, and a silent gap is \
+worse than a flagged number — but say the caveat the first time you lean on \
+that session, and don't build an argument about drift on a `poor` one alone.
+- `hr_confidence.cadenceLock` at `likely` means heart rate shadowed step rate \
+for most of the session. That is the wrist sensor reading arm swing as pulse, and it matters \
+most exactly where this athlete's coaching lives: a locked reading at 170 steps \
+per minute reports 170 bpm, which is their Z4. If several hard-looking runs \
+carry this flag, say plainly that the drift may be an artefact and that a chest \
+strap is the only way to settle it. Do not soften it into a training \
+observation.
+- `pace_estimated: true` means distance and pace came off the arm accelerometer \
+rather than GPS or the treadmill belt, and can be well out. Cadence and heart \
+rate on those sessions are fine. Comparing two estimated paces compares two \
+estimates — say so rather than reporting a improvement of a few seconds per \
+kilometre as though it were measured.
+- `moving_pace_min_per_km` excludes walk breaks and `pace_min_per_km` doesn't. \
+On a deliberate run/walk session the first is the one about the running.
+- `resting_hr_source` is `overnight`, `daytimeEstimate` or `unverified`. Only \
+`overnight` days are Garmin's real resting heart rate; the others are a rough \
+figure from the waking day. Never put them on one trend line without saying so, \
+and never read a jump between two kinds as a change in fitness.
 
 All of that is about running and other continuous aerobic work. It does not \
 transfer to strength training, jump rope, circuits or a tactical session: there \
@@ -107,6 +143,11 @@ Read the recent data first — a session prescribed without looking at the last 
 few runs and this morning's recovery is a guess. Say in prose why the workout \
 is shaped the way it is; the athlete sees the steps themselves on a card and \
 does not need them listed back.
+
+If the data doesn't reach today, a session built on it is a session for the \
+athlete they were then. Still build one when they ask, but pitch it off the \
+gap: someone returning after weeks away needs less than their old numbers \
+suggest, and the honest reason for that belongs in the prose.
 
 `draft_workout` does not save anything. It proposes, and the athlete presses a \
 button to send it to Garmin or edits it first. Never tell them a workout has \
@@ -727,7 +768,7 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "zone_drift",
-                "description": "Hard-effort drift across recent runs, plus the time-weighted easy/hard split for the window. Use for whether easy runs are staying easy.",
+                "description": "Hard-effort drift across recent runs, plus the time-weighted easy/hard split for the window. Use for whether easy runs are staying easy. Cross-check the runs behind a drift verdict with recent_activities: if they carry cadenceLock or a poor hrConfidence, the drift may be the wrist sensor rather than the training.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -753,11 +794,11 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "recovery",
-                "description": "Resting HR, HRV, training readiness, sleep, stress and body battery by day. Use before advising a hard session.",
+                "description": "Resting HR, HRV, training readiness, sleep, stress and body battery by day. Use before advising a hard session. The window is by date and ends today, so days the watch wasn't worn are simply absent — an empty result means nothing was recorded, not that recovery was poor. Check restingHrSource before trending resting HR, and count the days carrying hrvLastNight before trusting an HRV status: Garmin needs about four nights a week to keep the personal baseline that 'Balanced' is measured against.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "days": { "type": "integer", "description": "How many days back. Default 14, capped at 365." }
+                        "days": { "type": "integer", "description": "How many days back from today. Default 14, capped at 365." }
                     }
                 }
             }
@@ -849,8 +890,21 @@ fn tool_schemas() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "findings",
+                "description": "The deep findings — what a year of history says when asked properly, rather than what one session says. Whether fitness is moving (pace at a fixed heart rate, this account's stand-in for the VO2 max Garmin will never compute indoors), what cadence has been worth in seconds per kilometre, which recorded metric moves overnight HRV most, the easy/hard share over time, which weekday gets skipped, how rest days differ from training days, and whether a block of training has quietly stopped. Call this for 'am I getting fitter', 'what should I change', or any question about a trend rather than a session. Each finding carries `claim`, `detail`, `basis` and usually `estimate` — a bootstrap interval with `low`, `high` and `n`. Quote the interval whenever you quote the number. A finding only appears if its interval excludes zero, so an empty list means nothing cleared that bar — a normal result, not an error.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "days": { "type": "integer", "description": "How far back to look. Defaults to 365, which is what most of these need." }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "cache_status",
-                "description": "What's in the local cache and when it was last refreshed. Check if data looks stale.",
+                "description": "What's in the local cache and how current it is. `lastSync` is when the app last asked Garmin — it moves even when a watch left in a drawer had nothing to give — while `daysSinceDaily` and `stale` say how old the data itself is. The grounding turn already carries these numbers; call this only to re-check after a sync.",
                 "parameters": { "type": "object", "properties": {} }
             }
         },
@@ -1084,6 +1138,7 @@ fn describe(name: &str, args: &Value) -> String {
         "personal_records" => "Reading your personal records".into(),
         "fitness" => "Reading Garmin's training status and load balance".into(),
         "coach" => "Checking what the coach is already saying".into(),
+        "findings" => "Reading a year of it properly".into(),
         "cache_status" => "Checking what's cached".into(),
         "draft_workout" => "Putting a session together".into(),
         "list_themes" => "Reading your saved themes".into(),
@@ -1543,6 +1598,15 @@ fn run_tool(name: &str, args: &Value) -> ToolOutput {
                 &db,
                 chrono::Local::now().date_naive(),
             )?)?,
+            "findings" => {
+                let days = window(args, "days", 365, MAX_DAYS);
+                let from = garmin_core::days_ago(days);
+                serde_json::to_value(garmin_core::findings::all(
+                    &db.daily_since(&from)?,
+                    &db.activities_since(&from)?,
+                    chrono::Local::now().date_naive(),
+                ))?
+            }
             "cache_status" => serde_json::to_value(query::cache_status(&db)?)?,
             other => json!({ "error": format!("unknown tool {other}") }),
         })
@@ -1711,6 +1775,117 @@ fn trim_history(history: Vec<HistoryMessage>) -> Vec<HistoryMessage> {
     out
 }
 
+/// Today's date, as one line, for the one-shot prompts.
+///
+/// They get data handed to them rather than tools to fetch it, so they can't
+/// fall for a stale window — but every row they're given is dated, and without
+/// this they have no way to tell last night's session from one in March. The
+/// tense of the sentence they write depends on it.
+fn now_line() -> String {
+    format!(
+        "Today is {}. Every date in the data below is real; work out how long \
+         ago it was before writing about it as though it were recent.\n\n",
+        chrono::Local::now().format("%A %-d %B %Y"),
+    )
+}
+
+/// Where and when the conversation is happening, and what the cache can
+/// currently support.
+///
+/// A third system turn, for the same reason [`context_message`] is a second
+/// one: [`SYSTEM_PROMPT`] carries the cache breakpoint and is the same bytes on
+/// every request in the app, and this changes every minute. Splicing it in
+/// there would miss the prompt cache on every single turn.
+///
+/// It exists because a model has no clock. Everything the tools return is
+/// stamped with a real date, which reads as current to something with no idea
+/// what today is — so a watch that spent two months in a drawer produced
+/// answers about "this week" built on data from spring, in the model's own
+/// confident present tense. Nothing was invented; it simply had no way to
+/// notice. The freshness lines are the fix, and they lead because that is the
+/// failure they exist to prevent.
+///
+/// The rest is the standing context a coach would already know and shouldn't
+/// have to spend a tool round asking for.
+fn grounding_message(db: &Db) -> anyhow::Result<Value> {
+    let now = chrono::Local::now();
+    let status = query::cache_status(db)?;
+    let goals = garmin_core::Goals::load(db)?;
+
+    let mut s = format!(
+        "Current date and time, which you have no other way of knowing: {}, \
+         local time {} (UTC{}). Any question about \"today\", \"this week\" or \
+         \"recently\" is anchored here, not to whatever the newest row in the \
+         cache happens to be.\n\n",
+        now.format("%A %-d %B %Y"),
+        now.format("%H:%M"),
+        now.format("%:z"),
+    );
+
+    s.push_str("How current the cached data is:\n");
+    let age = |label: &str, date: &Option<String>, days: Option<i64>| match (date, days) {
+        (Some(d), Some(0)) => format!("- {label}: through {d}, which is today.\n"),
+        (Some(d), Some(1)) => format!("- {label}: through {d}, which is yesterday.\n"),
+        (Some(d), Some(n)) => format!("- {label}: through {d} — {n} days ago.\n"),
+        _ => format!("- {label}: nothing cached.\n"),
+    };
+    s.push_str(&age(
+        "Wellness (resting HR, HRV, sleep, readiness)",
+        &status.newest_daily_date,
+        status.days_since_daily,
+    ));
+    s.push_str(&age(
+        "Activities",
+        &status.newest_activity_date,
+        status.days_since_activity,
+    ));
+
+    if status.stale {
+        s.push_str(
+            "\nThe wellness data has stopped. That is the watch not being worn, \
+             not a sync fault — syncing an account whose watch is in a drawer \
+             succeeds and returns nothing. Say plainly that the data stops on \
+             that date, quote figures with the date they came from, and do not \
+             describe the newest reading as \"this morning\" or use it to judge \
+             whether they are recovered enough to train hard today. Their \
+             readiness right now is unknown, and unknown is the honest answer.\n",
+        );
+    }
+
+    s.push_str(
+        "\nEvery tool that takes a day count windows by date, so an empty result \
+         means nothing was recorded in that window — not that the athlete did \
+         nothing. Those two are told apart by the dates above.\n",
+    );
+
+    let mut targets = Vec::new();
+    if let Some(v) = goals.long_run_minutes {
+        targets.push(format!("one long easy run of {v:.0}+ minutes a week"));
+    }
+    if let Some(v) = goals.easy_share_pct {
+        targets.push(format!("{v:.0}% of weekly HR time easy (Z1+Z2)"));
+    }
+    if let Some(v) = goals.cadence_spm {
+        targets.push(format!("cadence around {v:.0} spm"));
+    }
+    if let Some(v) = goals.weekly_minutes {
+        targets.push(format!("{v:.0} training minutes a week"));
+    }
+    if let Some(v) = goals.weekly_sessions {
+        targets.push(format!("{v} sessions a week"));
+    }
+    if !targets.is_empty() {
+        s.push_str(&format!(
+            "\nThe athlete's own standing goals, which are the app's and not \
+             Garmin's: {}. Call `coach` for how the current week is going \
+             against them.\n",
+            targets.join(", "),
+        ));
+    }
+
+    Ok(json!({ "role": "system", "content": s }))
+}
+
 /// The session a conversation is about, put in front of the model.
 ///
 /// A second system turn rather than an addition to the first: the first is the
@@ -1791,7 +1966,7 @@ async fn turn_inner<R: Runtime>(
     // to know this id, the turn enrols again rather than failing.
     let mut key = auth_token(&http, provider).await?;
 
-    let mut messages = vec![system_message(provider)];
+    let mut messages = vec![system_message(provider), grounding_message(&db)?];
     if let Some(a) = context {
         messages.push(context_message(a));
     }
@@ -2156,16 +2331,46 @@ pub async fn followups(history: Vec<HistoryMessage>) -> Result<Vec<String>> {
 /* --------------------------------------------------------- weight summary --- */
 
 const WEIGHT_PROMPT: &str = "\
-You are reading one athlete's body-weight history and writing the short opening \
-paragraph of their weight page. You will be given the computed report as JSON.
+You are this athlete's coach, writing the short opening paragraph of their own \
+weight page. They are reading it. You will be given the computed report as JSON.
+
+Address them as \"you\", never as \"the athlete\" and never in the third \
+person. The page belongs to them: \"you're trending at 86.1 kg\", not \"the \
+athlete's trend weight is 86.1\".
 
 Write two or three sentences of plain prose. No headings, no bullets, no \
 markdown, no preamble — the text is dropped straight onto the page.
 
-Read the fields carefully before you write:
-- `trendKg` is the smoothed trend and is the figure to treat as their weight. \
-  `latestKg` is a single reading and is noisier; don't quote it as if it were \
-  the truth.
+Write about the recent past first. `windows` holds the last 7 days and the \
+last 30, and one of those is what someone opening this page wants to know. The \
+report's own `trendKg`, `changeKg` and `rateKgPerWeek` describe the whole \
+window — half a year — which answers a different and slower question: it is \
+context for the recent figures, worth a clause near the end, and it is not the \
+thing to open with. \"Down 2 kg since February\" is a sentence that stays true \
+on the day someone gains a kilo.
+
+So: lead with the week if it has anything in it, otherwise the month, then set \
+that against the longer trend. Each window carries its own `count`, and that \
+count is the whole story about how much it can bear:
+- `count` of 0 — the window is empty. Say nothing happened in it; do not reach \
+  back and describe an older reading as though it were this week's.
+- `count` of 1 — one reading, no direction. `changeKg` is null and there is no \
+  trend to report. Quote the reading if it is useful, and say plainly that one \
+  weigh-in is not a direction.
+- `count` of 2 or more — `changeKg` is the move across the window, and \
+  `lowKg`/`highKg` are its range. With only two or three readings, say the \
+  number and say it rests on two or three readings; do not dress it as a rate.
+
+When the two windows carry the same figures, they are the same readings — \
+every weigh-in in the month happens to fall inside the week. Say it once, as \
+the month, and note that nothing was recorded in the weeks before it. Reporting \
+the same number twice under two headings reads as two pieces of evidence when \
+there is one.
+
+Read the rest of the fields carefully before you write:
+- `trendKg` is the smoothed trend and is the figure to treat as the current \
+  weight. `latestKg` is a single reading and is noisier; don't quote it as if \
+  it were the truth.
 - A point with `outlier: true` is a reading that disagrees with both its \
   neighbours by more than a body can move — a mis-entry. Mention it only if \
   there is one, and say it looks like a typo worth fixing in Garmin.
@@ -2181,7 +2386,9 @@ Read the fields carefully before you write:
 Never invent a number that is not in the JSON. Be direct and specific, the way \
 a coach who has actually looked at the numbers would be. Do not moralise about \
 their weight, do not give diet advice, and do not congratulate or console — \
-describe what the data shows and what would make it more trustworthy.";
+describe what the data shows and what would make it more trustworthy.
+
+Written to them, not about them.";
 
 /// Three sentences of prose, with headroom for a model that reasons first.
 ///
@@ -2204,19 +2411,31 @@ pub struct WeightSummary {
 
 /// What the summary was written about.
 ///
-/// Regenerating on every visit would bill a request for walking back to a page
-/// whose numbers have not moved. This is the set of figures the prose actually
-/// depends on, so a new weigh-in or an edited goal invalidates it and a
-/// navigation does not.
+/// A weigh-in is very nearly the only thing that can change what this paragraph
+/// should say, so it is very nearly the only thing in here. `latestDate` and
+/// `count` together catch every case: a new entry moves one or both, and a
+/// correction to an existing day moves the weight under a date already counted.
+///
+/// It used to carry `trendKg`, `rateKgPerWeek` and `energy.loggedDays` too,
+/// which is why it rewrote so often. All three are derived: the first two shift
+/// a digit whenever anything upstream does, and `loggedDays` moves every time a
+/// meal is logged — most days on this account, and nothing to do with the
+/// scale. The paragraph was being rebilled for a sandwich.
+///
+/// `goal.targetKg` stays. It isn't a weigh-in, but it is a deliberate and rare
+/// edit that makes the standing prose wrong rather than merely older, and a
+/// paragraph describing the old target under the new one is the kind of error
+/// nobody thinks to check for.
+///
+/// The leading version is part of that set. The prose depends on the prompt as
+/// much as on the figures, and without it a fix to the prompt reaches nobody
+/// whose weight happens to be steady — they keep being served the sentence the
+/// old prompt wrote until they weigh in again. Bump it when `WEIGHT_PROMPT`
+/// changes in a way that should show.
 fn weight_fingerprint(report: &Value) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{}",
-        report["latestDate"],
-        report["count"],
-        report["trendKg"],
-        report["rateKgPerWeek"],
-        report["goal"]["targetKg"],
-        report["energy"]["loggedDays"],
+        "v3|{}|{}|{}",
+        report["latestDate"], report["count"], report["goal"]["targetKg"],
     )
 }
 
@@ -2260,7 +2479,7 @@ pub async fn weight_summary(days: u32, force: bool) -> Result<WeightSummary> {
     }
 
     let messages = vec![
-        json!({ "role": "system", "content": WEIGHT_PROMPT }),
+        json!({ "role": "system", "content": now_line() + WEIGHT_PROMPT }),
         json!({ "role": "user", "content": report.to_string() }),
     ];
     // Two or three sentences, which is what the prompt asks for and what the
@@ -2280,6 +2499,194 @@ pub async fn weight_summary(days: u32, force: bool) -> Result<WeightSummary> {
     db.set_sync_state("weight_summary_key", &fingerprint)?;
 
     Ok(WeightSummary {
+        text,
+        generated_at,
+        cached: false,
+    })
+}
+
+/* ----------------------------------------------------------- today summary --- */
+
+const TODAY_PROMPT: &str = "\
+You are this athlete's coach, writing the two or three sentences that open \
+their home screen. They are reading it, first thing, probably on a phone. You \
+will be given a JSON bundle of everything that screen knows.
+
+Address them as \"you\". Write plain prose — no headings, no bullets, no \
+markdown, no preamble, no greeting. The text is dropped straight under the \
+greeting the app has already written.
+
+This is the hardest part: **the screen below you already shows the numbers.** \
+Sleep, body battery, readiness, HRV, resting heart rate and the week's chart \
+are all rendered as tiles inches beneath your text. Reciting them is the one \
+way to waste this paragraph. Say the thing the tiles cannot: what these numbers \
+mean *together*, what changed, or what today should be. One number, quoted \
+because your point needs it, is right; four in a row is a worse version of the \
+tiles.
+
+The coach panel directly below you carries today's nudges, each with its \
+evidence. Do not repeat one. If `coach.nudges` is non-empty, the athlete is \
+about to read it — you may lead into it, never restate it.
+
+Read `cacheStatus` first, and read it correctly. `daysSinceActivity` and \
+`daysSinceDaily` are the **age of the newest record** — how long ago the last \
+one was, not how much history exists. The cache holds years. \
+`daysSinceActivity: 2` means the most recent session was two days ago, which is \
+an ordinary gap between sessions and not a fact about the data at all.
+
+So: when both are three or under, say nothing whatsoever about data, coverage \
+or how much you have to work with — just write about the training. Only when \
+one is well past three does the gap become the story, and then it is your \
+opening sentence: describe the period you actually have rather than \"this \
+week\". A confident paragraph about today built on a reading from two months \
+ago is the worst thing you can produce here.
+
+The caveats that apply everywhere in this app apply here:
+- `has_hr_data: false` means the session recorded no heart rate. That is not an \
+  easy session — leave it out of any easy/hard reading rather than counting it \
+  as zero.
+- `hr_confidence.level` of `caution` or `poor`, and \
+  `hr_confidence.cadenceLock` of `likely`, mean the zone split may be the wrist \
+  sensor reading arm swing as pulse. `hr_confidence.notes` gives the reason in \
+  full. Do not build a point about hard-effort drift on one of those without \
+  saying so.
+- `resting_hr_source` is only a real resting heart rate when it reads \
+  `overnight`. Never read a jump between two different sources as fitness.
+- Strength, jump rope and circuits are not continuous aerobic work. Their zone \
+  split describes work-to-rest, not a target hit or missed — keep them out of \
+  any easy/hard split, and never prescribe a heart-rate ceiling for one.
+
+Never invent a number that is not in the JSON, and never estimate one to fill \
+a gap. Be direct, specific and calm. Flag overreaching when the data shows it \
+without catastrophising, and say plainly when something is going well — the \
+recovery signal on this account usually is.";
+
+/// Two or three sentences, with headroom for a model that reasons first.
+///
+/// Same arithmetic as [`WEIGHT_MAX_TOKENS`]. This one is the first text on the
+/// first screen, so an empty return is conspicuous.
+const TODAY_MAX_TOKENS: u32 = 800;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodaySummary {
+    pub text: String,
+    /// When it was written. Regenerated at most once a day, so on a screen
+    /// opened at breakfast and again at six this can be hours old.
+    pub generated_at: String,
+    /// True when this came from the cache rather than the model just now.
+    pub cached: bool,
+}
+
+/// How many days of each series the opening paragraph is written from.
+///
+/// Wider than the paragraph can use, deliberately: "your resting heart rate is
+/// up" is a claim about a baseline, and a model handed three days has no
+/// baseline to make it against.
+const TODAY_RECOVERY_DAYS: u32 = 14;
+const TODAY_ACTIVITIES: u32 = 10;
+const TODAY_DRIFT_RUNS: u32 = 8;
+
+/// What the paragraph was written about.
+///
+/// The date is in here, so the summary rewrites once a day even when nothing
+/// synced — "you slept well" stops being true at midnight, and staleness grows
+/// on its own while the data sits still. Everything else is the figures the
+/// prose actually leans on, so a fresh sync during the day rewrites it too and
+/// merely reopening the screen does not.
+/// The recovery rows come back newest first, so `[0]` is this morning.
+///
+/// These keys are `snake_case` because `query::RecoveryDay` carries no
+/// `rename_all` — unlike `CacheStatus` and `CoachReport` beside it, which do.
+/// A key that doesn't exist reads as `null` here rather than failing, so the
+/// mixed casing has to be checked against the wire format rather than assumed:
+/// spelt wrong, every field is null, the fingerprint still looks plausible, and
+/// the paragraph silently stops rewriting when the numbers move.
+/// The leading version works as it does in [`weight_fingerprint`]: the prose
+/// depends on the prompt as much as on the figures. This one self-heals at
+/// midnight because the date is in the key, but a prompt fix shipped in the
+/// morning should not wait until then to show.
+fn today_fingerprint(bundle: &Value, today: &str) -> String {
+    let day = &bundle["recovery"][0];
+    format!(
+        "v2|{today}|{}|{}|{}|{}|{}|{}|{}",
+        bundle["cacheStatus"]["newestDailyDate"],
+        bundle["cacheStatus"]["newestActivityDate"],
+        bundle["cacheStatus"]["activitiesCached"],
+        day["sleep_hours"],
+        day["hrv_last_night"],
+        day["training_readiness"],
+        bundle["coach"]["nudges"].as_array().map_or(0, Vec::len),
+    )
+}
+
+/// The prose at the top of the Today screen.
+///
+/// `force` regenerates even when the cached paragraph still matches, which is
+/// what the screen's rewrite control does.
+pub async fn today_summary(force: bool) -> Result<TodaySummary> {
+    // The connection is opened, used and dropped inside this block: rusqlite's
+    // is not `Sync`, so holding one across the await below would make this
+    // future non-`Send` and Tauri could not spawn the command.
+    let (bundle, fingerprint, cached, creds) = {
+        let db = Db::open_default()?;
+        let today = chrono::Local::now().date_naive();
+
+        // Every one of these is the same function the screens and the chat
+        // tools call. The paragraph is written from the app's own numbers, so
+        // it cannot disagree with the tiles underneath it.
+        let bundle = json!({
+            "cacheStatus": query::cache_status(&db)?,
+            "recovery": query::recovery(&db, TODAY_RECOVERY_DAYS)?,
+            "recentActivities": query::recent_activities(&db, TODAY_ACTIVITIES, None)?,
+            "zoneDrift": query::zone_drift(&db, TODAY_DRIFT_RUNS)?,
+            "coach": garmin_core::coach::for_today(&db, today)?,
+        });
+        let fingerprint = today_fingerprint(&bundle, &today.to_string());
+
+        let cached = match (
+            db.sync_state("today_summary_text")?,
+            db.sync_state("today_summary_at")?,
+            db.sync_state("today_summary_key")?,
+        ) {
+            (Some(text), Some(at), Some(seen))
+                if !force && seen == fingerprint && !text.is_empty() =>
+            {
+                Some(TodaySummary {
+                    text,
+                    generated_at: at,
+                    cached: true,
+                })
+            }
+            _ => None,
+        };
+
+        (bundle, fingerprint, cached, creds(&db))
+    };
+
+    if let Some(hit) = cached {
+        return Ok(hit);
+    }
+
+    let messages = vec![
+        json!({ "role": "system", "content": now_line() + TODAY_PROMPT }),
+        json!({ "role": "user", "content": bundle.to_string() }),
+    ];
+    let text = one_shot(creds?, messages, None, TODAY_MAX_TOKENS)
+        .await?
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Err(anyhow!("the model returned nothing"));
+    }
+
+    let generated_at = chrono::Utc::now().to_rfc3339();
+    let db = Db::open_default()?;
+    db.set_sync_state("today_summary_text", &text)?;
+    db.set_sync_state("today_summary_at", &generated_at)?;
+    db.set_sync_state("today_summary_key", &fingerprint)?;
+
+    Ok(TodaySummary {
         text,
         generated_at,
         cached: false,
@@ -2314,6 +2721,23 @@ the one mistake that makes the whole paragraph worthless:
 On `paced` and `endurance`, `zones.percent` — the share of tracked heart-rate \
 time in Z1..Z5, where Z3 and up is hard effort — is the number that matters, \
 and on an easy session that was meant to be easy it is most of the verdict.
+
+Before you build the verdict on it, check `hrConfidence.level`. On `poor` — and \
+above all when `hrConfidence.cadenceLock` is `likely`, meaning heart rate \
+tracked step rate and the sensor was probably reading arm swing rather than \
+pulse — the zone split cannot carry the paragraph. Say that plainly, in the \
+athlete's terms, and criticise what is left: duration, cadence, how the effort \
+was structured. Criticising someone for a Z5 that a sensor artefact invented is \
+the worst thing this button can do. On `caution`, use the split but name the \
+reason once.
+
+If `zones.maxDisagreementPct` is above about 10, this app's own reading of the \
+heart-rate trace and Garmin's totals disagree by more than rounding, and no \
+number from either belongs in a confident sentence.
+
+Where `paceEstimated` is true, pace and distance were estimated from arm \
+movement, so do not criticise a pace to the second. Prefer \
+`movingPaceMinKm` when the session had walk breaks in it.
 
 On `interval` and `other` it is not, and this is not a nuance you may skip. The \
 heart rate in a session of sets and rounds climbs and falls because the work \
@@ -2408,14 +2832,15 @@ fn for_model(analysis: &garmin_core::ActivityAnalysis) -> Value {
 /// what there is to say — a re-sync correcting a duration, or a tag being
 /// added — and not by opening the page again.
 ///
-/// The leading `v3` is the prompt's version. Rows written by an earlier one
+/// The leading `v4` is the prompt's version. Rows written by an earlier one
 /// sit in the same table under the same numbers — the first described the
 /// session rather than criticising it, the second read every sport as if it
-/// were a run — and without this they would surface under a button that
-/// promises something they aren't.
+/// were a run, the third took every zone split as measurement and so could
+/// criticise an athlete for a Z5 that a sensor artefact invented — and without
+/// this they would surface under a button that promises something they aren't.
 fn activity_fingerprint(analysis: &garmin_core::ActivityAnalysis) -> String {
     format!(
-        "v3|{}|{:?}|{:?}|{:?}|{}|{}",
+        "v4|{}|{:?}|{:?}|{:?}|{}|{}",
         analysis.activity_id,
         analysis.duration_s,
         analysis.distance_m,
@@ -2460,7 +2885,7 @@ pub async fn activity_critique(
     };
 
     let messages = vec![
-        json!({ "role": "system", "content": CRITIQUE_PROMPT }),
+        json!({ "role": "system", "content": now_line() + CRITIQUE_PROMPT }),
         json!({ "role": "user", "content": for_model(analysis).to_string() }),
     ];
     let text = one_shot(creds?, messages, None, CRITIQUE_MAX_TOKENS)
@@ -2713,6 +3138,117 @@ async fn stream_completion<R: Runtime>(
 mod tests {
     use super::*;
     use tauri::Listener;
+
+    /// Resolve a dotted path against a JSON value.
+    fn at<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
+        path.split('.').try_fold(v, |acc, k| acc.get(k))
+    }
+
+    /// The prompts name fields. Nothing made them true.
+    ///
+    /// A system prompt that says "read `paceEstimated`" is a claim about the
+    /// wire format, and it is the only kind of claim in this file that fails
+    /// silently: the model looks for a key that isn't there, finds nothing, and
+    /// writes a confident paragraph with the caveat quietly missing. Every
+    /// caveat this app's honesty rests on was named in the wrong case — the
+    /// tool types are `snake_case` except `hr_confidence`'s own fields, which
+    /// are camel, and `CachedActivity`, which is camel and is *not* what the
+    /// tools return.
+    ///
+    /// So the paths are pinned against real serialized output. Rename a field
+    /// and this fails here rather than in a paragraph nobody can check.
+    #[test]
+    fn every_field_the_prompts_name_exists_in_the_tool_output() {
+        let activity: garmin_core::CachedActivity = serde_json::from_value(json!({
+            "activityId": 1_i64,
+            "name": "Treadmill Running",
+            "typeKey": "treadmill_running",
+            "startTimeLocal": "2026-08-07 17:07:39",
+            "localDate": "2026-08-07",
+            "distanceM": 1210.0,
+            "durationS": 648.0,
+            "movingDurationS": 600.0,
+            "avgHr": 149.0,
+            "maxHr": 174.0,
+            "avgCadence": 131.4,
+            "calories": 90.0,
+            "elevationGain": null,
+            "steps": 1400_i64,
+            "aerobicTe": 2.2,
+            "anaerobicTe": 0.8,
+            "zoneSecs": [24.0, 168.0, 126.0, 330.0, 0.0],
+        }))
+        .expect("activity fixture");
+
+        let view = serde_json::to_value(query::ActivityView::from(&activity)).unwrap();
+        for path in [
+            "has_hr_data",
+            "hr_confidence.level",
+            "hr_confidence.cadenceLock",
+            "hr_confidence.notes",
+            "pace_estimated",
+            "pace_min_per_km",
+            "moving_pace_min_per_km",
+        ] {
+            assert!(
+                at(&view, path).is_some(),
+                "SYSTEM_PROMPT and TODAY_PROMPT both tell the model to read \
+                 `{path}`, and an activity does not have it"
+            );
+        }
+
+        let day = serde_json::to_value(query::RecoveryDay::from(garmin_core::DailyMetrics {
+            date: "2026-08-09".into(),
+            ..Default::default()
+        }))
+        .unwrap();
+        for path in [
+            "resting_hr_source",
+            "hrv_last_night",
+            "training_readiness",
+            "sleep_hours",
+        ] {
+            assert!(
+                at(&day, path).is_some(),
+                "the prompts and `today_fingerprint` read `{path}` off a recovery day"
+            );
+        }
+    }
+
+    /// The casing that caused it, stated as an assertion so the next person to
+    /// add a prompt can see the trap rather than fall into it.
+    #[test]
+    fn the_tool_types_are_snake_case_even_though_the_cached_row_is_not() {
+        let cached = serde_json::to_value(garmin_core::CachedActivity {
+            activity_id: 1,
+            name: None,
+            type_key: Some("running".into()),
+            start_time_local: None,
+            local_date: Some("2026-08-07".into()),
+            distance_m: None,
+            duration_s: None,
+            moving_duration_s: None,
+            avg_hr: None,
+            max_hr: None,
+            avg_cadence: None,
+            calories: None,
+            elevation_gain: None,
+            steps: None,
+            aerobic_te: None,
+            anaerobic_te: None,
+            zone_secs: [0.0; 5],
+        })
+        .unwrap();
+
+        assert!(
+            cached.get("typeKey").is_some(),
+            "the cached row is camelCase"
+        );
+        assert!(
+            cached.get("type_key").is_none(),
+            "and only camelCase — which is why a prompt written against it is wrong"
+        );
+    }
 
     /// Every tool the model is offered must actually dispatch. A schema that
     /// names a tool `run_tool` doesn't handle would only surface as the model

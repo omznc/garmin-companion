@@ -18,6 +18,7 @@ import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { listen } from "@tauri-apps/api/event";
 import { chatConfig, chatSend, saveChatSession, type ChatMessage } from "../lib/api";
+import { AiMark } from "./AiMark";
 import { Markdown } from "./Markdown";
 import { ToolLoader } from "./ToolLoader";
 import { SendIcon } from "../lib/icons";
@@ -247,23 +248,25 @@ export function ActivityChat({
                 {t.question}
               </div>
               {t.answer != null && (
-                <div
-                  className="md-body selectable"
-                  style={{
-                    fontSize: "var(--fs-md)",
-                    lineHeight: 1.75,
-                    maxWidth: "68ch",
-                    textWrap: "pretty",
-                  }}
-                >
-                  <Markdown>{t.answer}</Markdown>
-                  {t.streaming &&
-                    (t.answer ? (
-                      <span className="caret" aria-hidden />
-                    ) : (
-                      <ToolLoader label={status} />
-                    ))}
-                </div>
+                <AiMark label="chat answer">
+                  <div
+                    className="md-body selectable"
+                    style={{
+                      fontSize: "var(--fs-md)",
+                      lineHeight: 1.75,
+                      maxWidth: "68ch",
+                      textWrap: "pretty",
+                    }}
+                  >
+                    <Markdown>{t.answer}</Markdown>
+                    {t.streaming &&
+                      (t.answer ? (
+                        <span className="caret" aria-hidden />
+                      ) : (
+                        <ToolLoader label={status} />
+                      ))}
+                  </div>
+                </AiMark>
               )}
             </div>
           ))}

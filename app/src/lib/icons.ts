@@ -53,6 +53,11 @@ export { FolderOpenIcon as FolderIcon } from "@phosphor-icons/react/dist/csr/Fol
  * fourth member of a set. */
 export { DotsThreeCircleIcon as MoreIcon } from "@phosphor-icons/react/dist/csr/DotsThreeCircle";
 
+/* Marks a region of the screen a model wrote, in development builds only.
+ * See `components/AiMark.tsx` for why that boundary is worth being able to
+ * see. */
+export { SparkleIcon as AiIcon } from "@phosphor-icons/react/dist/csr/Sparkle";
+
 /* ---------------------------------------------------------------- states --- */
 
 export { WarningCircleIcon as ErrorIcon } from "@phosphor-icons/react/dist/csr/WarningCircle";

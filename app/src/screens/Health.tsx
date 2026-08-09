@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cachedDaily, type DailyMetrics } from "../lib/api";
-import { dailySeries, hydrationMl, pick, sweatLossMl } from "../lib/derive";
+import { comparableRestingHr, dailySeries, hydrationMl, pick, sweatLossMl } from "../lib/derive";
 import { hasData, mean, smooth, type Point } from "../lib/chart";
 import { AxisLabels, Empty, ErrorNote, LineChart, Loading, PageHeader } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
@@ -117,7 +117,11 @@ export function Health() {
   if (isLoading) return <Loading />;
   if (error) return <ErrorNote error={error} />;
 
-  const rows = dailySeries(data ?? [], days);
+  // Resting HR is blanked on days the watch wasn't worn to bed, where Garmin
+  // reports a daytime estimate under the same name. The gap in the line is the
+  // honest shape of it — the alternative is a trend drawn through two different
+  // measurements, which is a chart about sleeping habits.
+  const rows = comparableRestingHr(dailySeries(data ?? [], days));
   const populated = TRACKS.filter((t) => hasData(read(t, rows)));
 
   const label = RANGES.find((r) => r.days === days)!.label;

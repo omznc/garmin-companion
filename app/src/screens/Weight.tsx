@@ -38,6 +38,7 @@ import {
   PageHeader,
 } from "../components/ui";
 import { SpinnerIcon } from "../lib/icons";
+import { AiMark } from "../components/AiMark";
 import { RefreshButton } from "../components/Refresh";
 import { DASH, num, parseLocal, shortDate, since } from "../lib/format";
 
@@ -163,9 +164,11 @@ function Summary({ report }: { report: WeightReport }) {
           is — this screen's opening paragraph, which happens to be written by
           a model rather than by hand. The serif is the app's heading face;
           prose is sans everywhere else and had no business differing here. */}
-      <p className="lede" style={{ fontSize: "var(--fs-lg)", lineHeight: 1.7, maxWidth: "62ch" }}>
-        {body}
-      </p>
+      <AiMark label="weight summary">
+        <p className="lede" style={{ fontSize: "var(--fs-lg)", lineHeight: 1.7, maxWidth: "62ch" }}>
+          {body}
+        </p>
+      </AiMark>
       {ready && summary.data && !regenerate.isPending && (
         <div
           style={{

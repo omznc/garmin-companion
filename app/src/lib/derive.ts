@@ -56,6 +56,40 @@ export function dailySeries(rows: DailyMetrics[], days: number): DailyMetrics[] 
 export const pick = <K extends keyof DailyMetrics>(rows: DailyMetrics[], key: K): Point[] =>
   rows.map((r) => (r[key] as number | null) ?? null);
 
+/**
+ * Garmin's minimum sleep before resting heart rate is the overnight figure.
+ *
+ * Mirrors `SLEEP_FOR_RHR_SECS` in `crates/garmin-core/src/signal.rs`, which is
+ * the source of truth — the model and the MCP server read the enum from there.
+ * Duplicated here only because the screens read `DailyMetrics` straight off the
+ * cache rather than the enriched `RecoveryDay`, and one shared constant was a
+ * smaller price than a second shape crossing the Tauri boundary.
+ */
+const SLEEP_FOR_RHR_SECS = 4 * 3600;
+
+/**
+ * Whether a day's resting heart rate is Garmin's overnight measurement.
+ *
+ * Worn overnight it is the lowest 30-minute average, which lands in deep sleep.
+ * Not worn, Garmin reports a rough estimate from the lowest waking minute under
+ * the same name — a different and weaker measurement. Plotting both on one line
+ * makes a trend out of whether the watch went to bed.
+ */
+export const restingHrIsOvernight = (d: DailyMetrics): boolean =>
+  d.sleepSecs != null && d.sleepSecs >= SLEEP_FOR_RHR_SECS;
+
+/**
+ * The window with daytime-estimate resting heart rates blanked out, so the
+ * readings that remain are comparable with each other.
+ *
+ * Blanked rather than removed: the days keep their place on the axis and their
+ * other metrics, and a gap in the line is an honest picture of a night the
+ * watch spent off the wrist. Dropping the rows would silently close that gap
+ * and draw a continuous trend through it.
+ */
+export const comparableRestingHr = (rows: DailyMetrics[]): DailyMetrics[] =>
+  rows.map((r) => (restingHrIsOvernight(r) ? r : { ...r, restingHr: null }));
+
 /** The most recent day that actually has a value for `key`. */
 export function latest<K extends keyof DailyMetrics>(
   rows: DailyMetrics[],

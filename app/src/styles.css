@@ -2506,3 +2506,43 @@ body::-webkit-scrollbar {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------- ai mark --- */
+
+/* The development-only outline around model-written regions. Never present in
+ * a release build — `AiMark` returns its children unwrapped there, so none of
+ * this has a chance to apply. See `components/AiMark.tsx`.
+ *
+ * Dashed rather than solid, and drawn from the accent at low opacity: this
+ * marks a region without competing with the content inside it, and dashes read
+ * as annotation rather than as a border the design chose. The padding is what
+ * keeps the hairline off the text; the negative margin gives it back, so
+ * wrapping something in a mark doesn't move it. */
+.ai-mark {
+  position: relative;
+  margin: 6px -10px;
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--acc) 55%, transparent);
+  border-radius: 8px;
+}
+
+/* Sits on the border it labels, with the page colour behind it punching a gap
+ * in the dash. `--bg2` cards would show a seam here, which is a fair trade for
+ * one line of CSS in a build nobody ships. */
+.ai-mark-badge {
+  position: absolute;
+  top: -7px;
+  left: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px;
+  background: var(--bg);
+  color: var(--acc);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* Selecting an answer to copy it shouldn't pick up the annotation. */
+  user-select: none;
+  pointer-events: none;
+}

@@ -1,15 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cachedActivities,
   cachedDaily,
+  chatConfig,
   garminProfile,
+  todaySummary,
   type CachedActivity,
   type DailyMetrics,
 } from "../lib/api";
 import {
   attention,
   balanceKcal,
+  comparableRestingHr,
   dailyDistance,
   dailySeries,
   easyHardSplit,
@@ -27,6 +30,8 @@ import { ZoneBar } from "../components/ZoneBar";
 import { RefreshButton } from "../components/Refresh";
 import { WeightGlance } from "../components/WeightGlance";
 import { CoachPanel } from "../components/Coach";
+import { AiMark } from "../components/AiMark";
+import { SpinnerIcon } from "../lib/icons";
 import { firstName, greeting } from "../lib/greeting";
 import { IS_MOBILE } from "../lib/platform";
 import {
@@ -54,6 +59,7 @@ import {
   pace,
   parseLocal,
   shortDate,
+  since,
   speed,
   sportLabel,
 } from "../lib/format";
@@ -115,10 +121,15 @@ export function Today() {
   const battery = latest(rows, "bodyBatteryHigh");
   const readiness = latest(rows, "trainingReadiness");
   const hrv = latest(rows, "hrvLastNight");
-  const rhr = latest(rows, "restingHr");
+  // Overnight readings only. Garmin reports a rough daytime estimate under the
+  // same name on days the watch wasn't worn to bed, and comparing this morning
+  // against a baseline that mixes the two makes a trend out of sleeping habits
+  // rather than out of fitness.
+  const comparable = comparableRestingHr(rows);
+  const rhr = latest(comparable, "restingHr");
   // The morning number is only meaningful against your own baseline, so the
   // 30-day mean travels with it.
-  const rhrBase = mean(pick(rows, "restingHr"));
+  const rhrBase = mean(pick(comparable, "restingHr"));
 
   const lastSession = activities[0] ?? null;
   // Runs with HR, newest first — the drift strip and nothing else uses these.
@@ -152,9 +163,13 @@ export function Today() {
       <PageHeader
         eyebrow={longDate(today)}
         title={greeting({ name: firstName(profile.data?.fullName ?? profile.data?.displayName) })}
-        lede={summary}
         action={<RefreshButton />}
+        // The written opening directly below is this screen's lede, so the
+        // header shouldn't reserve its usual gap on top of it.
+        space={28}
       />
+
+      <Lede fallback={summary} />
 
       <CoachPanel />
 
@@ -274,7 +289,19 @@ export function Today() {
           gives up the floor and takes whatever the column is: seven bars are
           still seven bars at 300px, and being cut off at the right isn't
           something a narrower chart can be. */}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 34, flexWrap: "wrap" }}>
+      {/* On desktop the summary sits beside the chart and wraps under it once
+          the column can't hold both. A phone never gets to make that choice —
+          the chart has no floor there, so the row stays a row and squeezes the
+          text into a two-word-per-line ribbon. Below the chart from the start. */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: IS_MOBILE ? "column" : "row",
+          alignItems: IS_MOBILE ? "stretch" : "flex-end",
+          gap: IS_MOBILE ? 20 : 34,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ flex: 1, minWidth: IS_MOBILE ? 0 : 320 }}>
           <LineChart
             series={[{ values: week, fill: true, format: (v) => `${v.toFixed(1)} km` }]}
@@ -290,7 +317,7 @@ export function Today() {
             fontSize: "var(--fs-base)",
             lineHeight: 1.6,
             color: "var(--mut)",
-            maxWidth: "26ch",
+            maxWidth: IS_MOBILE ? undefined : "26ch",
           }}
         >
           {weekTotal > 0
@@ -611,6 +638,108 @@ function loadSentence(now: number, prior: number): string {
  * underlying number exists, so a partial day reads as a shorter sentence
  * rather than one full of dashes.
  */
+/* ------------------------------------------------------------------ lede --- */
+
+/**
+ * The screen's opening paragraph.
+ *
+ * [`narrative`] below builds one by concatenation — a sentence about sleep,
+ * then one about readiness, then one about the last session, in that order
+ * forever. Every fact in it is true and it reads like a form letter, because
+ * the shape is fixed before the data is looked at: it cannot lead with the
+ * thing that actually matters this morning, and it says the same four things on
+ * the day nothing happened as on the day something did.
+ *
+ * So when a model is configured, the paragraph is written from the same
+ * figures instead — and the concatenated version stays exactly where it was, as
+ * the opening for an account with no model and the fallback for a request that
+ * fails. This screen has to open with *something*, and a spinner where the
+ * first sentence goes is worse than a plainer sentence.
+ *
+ * Written at most once a day. The backend keeps it against a fingerprint that
+ * carries the date, so opening this screen at breakfast and again at six is one
+ * request, not two — and a sync that moves the numbers in between rewrites it.
+ */
+function Lede({ fallback }: { fallback: string }) {
+  const qc = useQueryClient();
+  const config = useQuery({ queryKey: ["chatConfig"], queryFn: chatConfig });
+
+  // Only asked for once a provider exists. Without one the request fails with a
+  // message about Settings, which is a worse way to say "not set up" than not
+  // asking and quietly using the local sentences.
+  const ready = !!config.data?.provider;
+  const summary = useQuery({
+    queryKey: ["todaySummary"],
+    queryFn: () => todaySummary(),
+    enabled: ready,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const rewrite = useMutation({
+    mutationFn: () => todaySummary(true),
+    onSuccess: (fresh) => qc.setQueryData(["todaySummary"], fresh),
+  });
+
+  const written = ready && !summary.error && summary.data && !rewrite.isPending;
+  const pending = ready && (summary.isLoading || rewrite.isPending);
+
+  return (
+    <div style={{ marginBottom: 40 }}>
+      <AiMark label="today summary">
+        <p className="lede" style={{ margin: 0, maxWidth: "62ch" }}>
+          {/* The fallback stays on screen while the model writes, rather than
+              being replaced by a spinner. The paragraph is the first thing on
+              the first screen; it should never be empty. */}
+          {written ? summary.data.text : fallback}
+        </p>
+      </AiMark>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          marginTop: 14,
+          fontSize: "var(--fs-caption)",
+          color: "var(--faint)",
+          // Holds its height across every state, so the tiles below don't shift
+          // when the model's paragraph lands.
+          minHeight: 18,
+        }}
+      >
+        {pending && (
+          <span
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--mut)" }}
+          >
+            <SpinnerIcon size={13} className="spin" aria-hidden />
+            Reading this morning…
+          </span>
+        )}
+        {written && (
+          <>
+            <span>Written {since(summary.data.generatedAt)}</span>
+            <button
+              className="quiet"
+              onClick={() => rewrite.mutate()}
+              style={{ fontSize: "var(--fs-caption)", color: "var(--mut)" }}
+              title="Write it again from the same data"
+            >
+              Rewrite
+            </button>
+          </>
+        )}
+        {/* Said, not hidden. The sentences above are the local ones, and an
+            unexplained change of voice is how a model outage gets mistaken for
+            the app having less to say. */}
+        {ready && summary.error != null && !rewrite.isPending && (
+          <span>The model couldn't be reached, so this is the plain reading.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function narrative(rows: DailyMetrics[], activities: CachedActivity[]): string {
   const parts: string[] = [];
 

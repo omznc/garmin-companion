@@ -78,6 +78,23 @@ pub struct ActivityView {
     /// False when the session recorded no HR at all, in which case every zone
     /// reads zero — which is not the same as a session spent entirely in Z1.
     pub has_hr_data: bool,
+    /// `good`, `caution` or `poor`: how far the zone split above can carry an
+    /// argument. Anything other than `good` comes with `hr_caveats` saying why,
+    /// and those are worth passing on rather than quietly discounting.
+    pub hr_confidence: &'static str,
+    /// `notChecked`, `unlikely`, `possible` or `likely`. The wrist sensor can
+    /// lock onto arm swing and report step rate as pulse; `likely` means heart
+    /// rate shadowed cadence for most of the session, which no real heart rate
+    /// does.
+    pub cadence_lock: &'static str,
+    pub hr_caveats: Vec<String>,
+    /// True indoors, where distance and pace are estimated from the arm
+    /// accelerometer rather than measured. Heart rate and cadence indoors are
+    /// fine; comparing indoor paces compares two estimates.
+    pub pace_estimated: bool,
+    /// Pace over moving time. Differs from `pace_min_per_km` on a run/walk
+    /// session, where that one averages the walk breaks in.
+    pub moving_pace_min_per_km: Option<f64>,
 }
 
 impl From<query::ActivityView> for ActivityView {
@@ -98,6 +115,11 @@ impl From<query::ActivityView> for ActivityView {
             zones: a.zones.into_iter().map(ZoneSplit::from).collect(),
             easy_percent: a.easy_percent,
             has_hr_data: a.has_hr_data,
+            hr_confidence: a.hr_confidence.level.as_str(),
+            cadence_lock: a.hr_confidence.cadence_lock.as_str(),
+            hr_caveats: a.hr_confidence.notes,
+            pace_estimated: a.pace_estimated,
+            moving_pace_min_per_km: a.moving_pace_min_per_km,
         }
     }
 }
@@ -196,6 +218,13 @@ impl From<query::CadenceReport> for CadenceReport {
 pub struct RecoveryDay {
     pub date: String,
     pub resting_hr: Option<f64>,
+    /// Which measurement `resting_hr` actually is. Worn overnight, Garmin
+    /// reports the lowest 30-minute average, which lands in deep sleep and is
+    /// within about a beat of an ECG. Not worn overnight, it reports a rough
+    /// estimate from the lowest waking minute instead — the same field, a
+    /// different and weaker measurement. Only `overnight` days belong on one
+    /// trend line together.
+    pub resting_hr_source: &'static str,
     pub hrv_last_night: Option<f64>,
     pub hrv_weekly_avg: Option<f64>,
     pub hrv_status: Option<String>,
@@ -211,6 +240,7 @@ pub struct RecoveryDay {
 impl From<query::RecoveryDay> for RecoveryDay {
     fn from(d: query::RecoveryDay) -> Self {
         Self {
+            resting_hr_source: d.resting_hr_source.as_str(),
             date: d.date,
             resting_hr: d.resting_hr,
             hrv_last_night: d.hrv_last_night,
@@ -230,9 +260,23 @@ impl From<query::RecoveryDay> for RecoveryDay {
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct CacheStatus {
     pub activities_cached: i64,
+    /// When the app last asked Garmin for data. Says nothing about whether
+    /// there was any: a sync against a watch nobody wore succeeds and writes
+    /// nothing, so this moves to now while the data underneath stays where it
+    /// was. Read `days_since_daily` for that.
     pub last_sync: Option<String>,
     pub database_path: Option<String>,
     pub connected_to_garmin: bool,
+    /// Local date of the newest cached activity, and how many days back it is.
+    pub newest_activity_date: Option<String>,
+    pub days_since_activity: Option<i64>,
+    /// Same for wellness data — resting HR, HRV, sleep, readiness. A worn watch
+    /// produces a row every day, so a gap here means it was off the wrist.
+    pub newest_daily_date: Option<String>,
+    pub days_since_daily: Option<i64>,
+    /// True when no wellness data has arrived for several days. Everything the
+    /// other tools return is still real, but it describes then, not now.
+    pub stale: bool,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -798,6 +842,51 @@ impl GarminServer {
         }))
     }
 
+    #[tool(
+        description = "The deep findings — what a year of this history says when \
+                       it is asked properly, rather than what one session says. \
+                       Covers whether fitness is moving (pace at a fixed heart \
+                       rate, this account's stand-in for a VO2 max Garmin will \
+                       never compute indoors), what cadence has actually been \
+                       worth, which recorded metric moves overnight HRV most, \
+                       the easy/hard share over time, which weekday gets skipped, \
+                       how rest days differ from training days, and whether a \
+                       block of training has quietly stopped.\n\n\
+                       Each finding carries `claim` (the sentence), `detail` (the \
+                       reasoning), `basis` (what was counted) and usually \
+                       `estimate` — a bootstrap interval with `low`, `high` and \
+                       `n`. Quote the interval whenever you quote the number: \
+                       these rest on a few dozen runs, and a finding only appears \
+                       here at all if its interval excludes zero. An empty list \
+                       means nothing cleared that bar, which is a normal result \
+                       and not an error."
+    )]
+    async fn findings(
+        &self,
+        Parameters(p): Parameters<DaysParams>,
+    ) -> Result<Json<serde_json::Value>, ErrorData> {
+        // A `Value` rather than a mirrored schemars type, for the same reason
+        // `activity_analysis` is one: a finding carries an estimate, a list of
+        // charted series, a list of table rows and three enums, and the fields
+        // present vary by which finding it is. Hand-copying six shapes here
+        // would be six more definitions to keep in step with
+        // `garmin_core::findings` forever, and the descriptions above are what
+        // the model actually reads.
+        let db = db()?;
+        let days = p.days.unwrap_or(365);
+        let daily = db
+            .daily_since(&garmin_core::days_ago(days))
+            .map_err(internal)?;
+        let activities = db
+            .activities_since(&garmin_core::days_ago(days))
+            .map_err(internal)?;
+        let today = chrono::Local::now().date_naive();
+        let all = garmin_core::findings::all(&daily, &activities, today);
+        Ok(Json(serde_json::to_value(all).map_err(|e| {
+            ErrorData::internal_error(e.to_string(), None)
+        })?))
+    }
+
     #[tool(description = "Garmin's personal records across every sport: fastest \
                        distances, longest run, step records. A record with a null \
                        `label` is one this build doesn't recognise — skip it \
@@ -972,8 +1061,10 @@ impl GarminServer {
     }
 
     #[tool(
-        description = "What's in the local cache and when it was last refreshed. \
-                       Check this if data looks stale or a session seems missing."
+        description = "What's in the local cache, when it was last refreshed, and \
+                       how current the data itself is. Those last two are \
+                       different questions — check `stale` and `days_since_daily` \
+                       before describing anything as recent."
     )]
     async fn cache_status(&self) -> Result<Json<CacheStatus>, ErrorData> {
         let db = db()?;
@@ -983,6 +1074,11 @@ impl GarminServer {
             last_sync: s.last_sync,
             database_path: s.database_path,
             connected_to_garmin: s.connected_to_garmin,
+            newest_activity_date: s.newest_activity_date,
+            days_since_activity: s.days_since_activity,
+            newest_daily_date: s.newest_daily_date,
+            days_since_daily: s.days_since_daily,
+            stale: s.stale,
         }))
     }
 
@@ -1041,6 +1137,25 @@ impl ServerHandler for GarminServer {
              zone as zero and set `has_hr_data: false`. That is not a session \
              spent entirely in Z1 — exclude those before drawing a conclusion \
              about effort.\n\n\
+             Not every recorded number is a measurement. Each activity carries \
+             `hr_confidence` (`good`/`caution`/`poor`) for its zone split, with \
+             `hr_caveats` giving the reason, and `cadence_lock` for the specific \
+             failure where the wrist sensor reads arm swing as pulse. That one \
+             matters most here: a locked reading at 170 steps per minute reports \
+             170 bpm, which is this athlete's Z4 — so the hard-effort drift this \
+             account is coached on is exactly what the artefact counterfeits. \
+             Keep flagged sessions in the totals, say the caveat when you lean \
+             on one, and never build a drift argument on `poor` sessions alone. \
+             `pace_estimated` marks sessions whose distance and pace came off \
+             the arm accelerometer rather than GPS; heart rate and cadence there \
+             are still fine, but two estimated paces do not make a comparison. \
+             `moving_pace_min_per_km` excludes walk breaks where the other pace \
+             does not.\n\n\
+             In `recovery`, `resting_hr_source` says which of Garmin's two \
+             resting-heart-rate measurements a day holds. Only `overnight` \
+             values belong on one trend line; a `daytimeEstimate` is a rougher \
+             figure from the waking day, and a step between the two kinds is not \
+             a change in fitness.\n\n\
              Strength sessions carry no load. `strength_sessions` reports reps, \
              set durations and rest, because that is what the watch records — \
              the weight on the bar is not in this data and cannot be inferred, \
@@ -1050,8 +1165,15 @@ impl ServerHandler for GarminServer {
              VO2 max is null on this account because it is only computed from \
              outdoor GPS runs and the athlete runs on a treadmill. That is a \
              missing input, not poor fitness.\n\n\
-             All tools read cached data. Call `sync` first if `cache_status` \
-             shows a stale `last_sync`."
+             All tools read cached data, and every window is by date, so a tool \
+             that returns nothing means nothing was recorded in that window — \
+             not that the athlete did nothing. The two are told apart by \
+             `cache_status`: `last_sync` is when the app last asked Garmin, \
+             which moves even when a watch left in a drawer had nothing to give, \
+             while `days_since_daily` is how old the data actually is. When \
+             `stale` is set, say so and give the date the data stops, rather \
+             than describing the newest reading as current — and call `sync` \
+             before assuming anything is missing."
                 .into(),
         );
         info

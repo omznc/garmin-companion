@@ -1,17 +1,16 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { cachedActivitiesSince, cachedDaily, type CachedActivity } from "../lib/api";
-import { acuteChronic, dailySeries, easyHardSplit, insights } from "../lib/derive";
 import {
-  deepFindings,
-  loadShape,
-  nullChecks,
-  SECTIONS,
-  type Finding,
-  type FindingRow,
-  type LoadShape,
-  type Section,
-} from "../lib/analysis";
+  cachedActivitiesSince,
+  cachedDaily,
+  findings as fetchFindings,
+  type ApiFinding,
+  type ApiFindingRow,
+  type CachedActivity,
+  type FindingUnit,
+} from "../lib/api";
+import { acuteChronic, dailySeries, easyHardSplit, insights } from "../lib/derive";
+import { loadShape, nullChecks, SECTIONS, type LoadShape, type Section } from "../lib/analysis";
 import {
   AxisLabels,
   Bullet,
@@ -27,20 +26,47 @@ import { RefreshButton } from "../components/Refresh";
 import { daysAgo, isRun, num } from "../lib/format";
 import { IS_MOBILE } from "../lib/platform";
 
+/**
+ * How each charted series writes its own numbers in the hover readout.
+ *
+ * The findings now arrive from Rust, and a formatting closure can't cross that
+ * boundary — the series carries a unit name and this maps it back to the same
+ * formatters the screen always used.
+ */
+const UNIT_FORMAT: Record<FindingUnit, (v: number) => string> = {
+  spm: (v) => `${v.toFixed(0)} spm`,
+  score: (v) => v.toFixed(0),
+  pct: (v) => `${v.toFixed(0)}%`,
+  pace: (v) => `${paceText(v)} /km`,
+  perBeat: (v) => `${v.toFixed(2)} m/beat`,
+  load: (v) => `${v.toFixed(0)} TRIMP`,
+};
+
+/** "8:34", from decimal minutes per kilometre. */
+function paceText(minPerKm: number): string {
+  const m = Math.floor(minPerKm);
+  const s = Math.round((minPerKm - m) * 60);
+  return s >= 60 ? `${m + 1}:00` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function Insights() {
   const daily = useQuery({ queryKey: ["daily", 365], queryFn: () => cachedDaily(365) });
   const acts = useQuery({
     queryKey: ["activitiesSince", 365],
     queryFn: () => cachedActivitiesSince(daysAgo(365)),
   });
+  // Computed in Rust rather than here, so the coach reads the same findings.
+  const deepQ = useQuery({ queryKey: ["findings", 365], queryFn: () => fetchFindings(365) });
 
-  if (daily.isLoading || acts.isLoading) return <Loading label="Crunching the cache" />;
+  if (daily.isLoading || acts.isLoading || deepQ.isLoading)
+    return <Loading label="Crunching the cache" />;
   if (daily.error) return <ErrorNote error={daily.error} />;
   if (acts.error) return <ErrorNote error={acts.error} />;
+  if (deepQ.error) return <ErrorNote error={deepQ.error} />;
 
   const rows = dailySeries(daily.data ?? [], 365);
   const activities = acts.data ?? [];
-  const deep = deepFindings(rows, activities);
+  const deep = deepQ.data ?? [];
   const found = insights(rows, activities);
   const load = acuteChronic(activities);
   const shape = loadShape(activities);
@@ -272,7 +298,7 @@ function Split({ children, chart }: { children: ReactNode; chart?: ReactNode }) 
  * under the label in a phone's column rather than holding a column of its own
  * open at four characters wide.
  */
-function Rows({ rows }: { rows: FindingRow[] }) {
+function Rows({ rows }: { rows: ApiFindingRow[] }) {
   return (
     <div style={{ marginTop: 24 }}>
       {rows.map((r, i) => (
@@ -313,12 +339,12 @@ function Rows({ rows }: { rows: FindingRow[] }) {
   );
 }
 
-function FindingBlock({ finding }: { finding: Finding }) {
+function FindingBlock({ finding }: { finding: ApiFinding }) {
   const solo = finding.series?.length === 1;
   const series: Series[] | undefined = finding.series?.map((s) => ({
     values: s.values,
     name: s.name,
-    format: s.format,
+    format: UNIT_FORMAT[s.format],
     invert: s.invert,
     stroke: s.muted ? "var(--faint)" : "var(--acc)",
     width: s.muted ? 1 : undefined,
