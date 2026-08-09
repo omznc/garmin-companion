@@ -49,10 +49,13 @@ export function UpdateCheck() {
       )}
 
       <div style={{ display: "flex", gap: 22, marginTop: 14, fontSize: "var(--fs-small)" }}>
+        {/* "Restart now" is only honest where the new version is already on
+            disk. On a Linux system package it isn't — the button is what runs
+            the install, and what raises the password dialog. */}
         {state.at === "ready" && (
           <button className="underlined action" onClick={apply}>
             <UpdateIcon size={13} aria-hidden />
-            {IS_MOBILE ? "Install now" : "Restart now"}
+            {IS_MOBILE || state.needsRoot ? "Install now" : "Restart now"}
           </button>
         )}
         {/* Same button, second time round. Granting the permission is a trip to
@@ -107,14 +110,20 @@ function caption(s: UpdateState): string {
         : `downloading ${s.version} — ${Math.round(s.pct * 100)}%`;
     case "ready":
       // States what already happened and what's left, so the button reads as a
-      // shortcut rather than a chore you're being asked to complete. The two
-      // platforms have got to different places by here and saying so matters:
-      // a desktop build is *already* on the new version and only the running
-      // process is stale, where an Android one has the new version sitting in a
-      // file and needs permission to become it.
-      return IS_MOBILE
-        ? `${s.version} downloaded — Android will ask before replacing this app`
+      // shortcut rather than a chore you're being asked to complete. Three
+      // platforms have got to three different places by here and saying so
+      // matters: an AppImage or a macOS or Windows build is *already* on the
+      // new version and only the running process is stale; an Android one has
+      // it sitting in a file and needs permission to become it; a .deb or .rpm
+      // has it downloaded and needs root to unpack it, because it is a system
+      // package like any other. Warning about the password before it appears
+      // is the whole point of naming that third case.
+      if (IS_MOBILE) return `${s.version} downloaded — Android will ask before replacing this app`;
+      return s.needsRoot
+        ? `${s.version} downloaded — installing replaces the system package, so you'll be asked for your password`
         : `${s.version} installed — starts next time you open the app`;
+    case "installing":
+      return `installing ${s.version} — enter your password when Linux asks`;
     case "blocked":
       // Names the setting rather than the permission. "Install unknown apps" is
       // the string on the screen they were just sent to, and the one they have

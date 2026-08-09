@@ -279,6 +279,33 @@ in `AndroidManifest.xml` (see `garmin-core::secrets` for why it matters) and the
 release signing config in `app/build.gradle.kts`. Both are commented as such.
 Check `git diff` after re-running it.
 
+## Why updating asks for a password on Linux, and only sometimes
+
+Because a `.deb` or `.rpm` install is a system package, and replacing one needs
+root the same way installing it did. `tauri-plugin-updater` runs `dpkg -i` or
+`rpm -U` under `pkexec`, so what appears is polkit's dialog, not ours. There is
+no version of "replace a package under `/usr`" that doesn't ask.
+
+The AppImage is the exception, and it's the reason this looks inconsistent: it's
+a single file the user owns, so the plugin swaps it in place and nobody is asked
+anything. Same for macOS and Windows. **If you want silent updates on Linux, run
+the AppImage** — that is the whole of the fix.
+
+`latest.json` carries a `linux-x86_64-deb` and a `linux-x86_64-rpm` entry beside
+the AppImage, and the plugin picks between them by reading the bundle type the
+bundler stamped into the binary. Deleting those two entries would not remove the
+prompt, it would break updates outright: the plugin would still know it is an
+rpm, still refuse to install an AppImage over it, and fail with
+`InvalidUpdaterFormat`.
+
+What *was* worth fixing is when the prompt appears. `downloadAndInstall()` does
+both halves in one call, so a background check four seconds after launch put a
+password dialog on screen unasked. `app/src/lib/updater.ts` now splits the two
+on deb and rpm — `download()` in the background, `install()` behind the button
+in Settings — and says what the button is about to do before you press it.
+Dismissing the dialog puts the offer back rather than reporting a failure; the
+download is still there.
+
 ## Code signing — what "unsigned" actually costs
 
 Nothing here is signed with an OS vendor certificate, only with the updater's
