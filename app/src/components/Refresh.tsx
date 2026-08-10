@@ -11,10 +11,16 @@
  * `runSync` collapses concurrent callers into one pass, so pressing this while
  * a sync is already running joins it instead of queueing a second walk over the
  * same days — and both controls have to show that.
+ *
+ * It is also what makes a screen refreshable by pulling its top down on a
+ * phone: while this is mounted its action is published to `lib/refreshable`,
+ * which is the only thing the gesture in the shell knows about the screen it is
+ * sitting on. See the note there for why it's registered rather than listed.
  */
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { runSync } from "../lib/syncProgress";
+import { registerRefresh } from "../lib/refreshable";
 import { useSyncState } from "./SyncBar";
 import { RotateArrow } from "./ui";
 
@@ -41,17 +47,23 @@ export function RefreshButton({
   const sync = useSyncState();
   const [failed, setFailed] = useState(false);
 
-  const run = () => {
-    if (sync.running) return;
+  // Returns the work rather than firing and forgetting, because the pull
+  // gesture holds its spinner down for exactly as long as this takes — and
+  // swallows its own failure, because the failure is already reported in the
+  // label below and a rejection nobody catches is a console error per pull.
+  const run = useCallback(() => {
+    if (sync.running) return Promise.resolve();
     setFailed(false);
     const work = live ? Promise.resolve() : runSync(days, false);
-    work.then(() => qc.invalidateQueries()).catch(() => setFailed(true));
-  };
+    return work.then(() => qc.invalidateQueries()).catch(() => setFailed(true));
+  }, [sync.running, live, days, qc]);
+
+  useEffect(() => registerRefresh(run), [run]);
 
   return (
     <button
       className="quiet"
-      onClick={run}
+      onClick={() => void run()}
       disabled={sync.running}
       title={
         failed

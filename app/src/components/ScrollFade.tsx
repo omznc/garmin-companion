@@ -17,11 +17,13 @@
  * right edge, since the nav is sticky and has nothing to fade; the phone has no
  * nav beside the column and passes 0.
  *
- * On a phone the edges are different edges, and `styles.css` moves them there.
- * Android draws the status bar over the webview rather than above it, and the
- * tab bar covers the bottom of the screen — so what content actually disappears
- * behind is the status bar's lower lip and the tab bar's top hairline, not the
- * screen edges.
+ * On a phone there is only a top one, and `styles.css` moves it to where the
+ * phone's real edge is: Android draws the status bar over the webview rather
+ * than above it, so what content disappears behind up there is the status bar's
+ * lower lip, not the screen edge. The bottom fade is not drawn at all — the tab
+ * bar is opaque and full-width, so the page already ends against a solid
+ * surface rather than at a cut, and a gradient above it only washed out the row
+ * of content sitting closest to the thumb.
  */
 import { useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -101,7 +103,11 @@ export function ScrollFade({
   const fades = (
     <>
       <div ref={top} className="scroll-fade scroll-fade-top" style={{ left }} aria-hidden />
-      <div ref={bottom} className="scroll-fade scroll-fade-bottom" style={{ left }} aria-hidden />
+      {/* Top only on a phone — see the note above. The ref simply stays null,
+          which the reader already guards for. */}
+      {!IS_MOBILE && (
+        <div ref={bottom} className="scroll-fade scroll-fade-bottom" style={{ left }} aria-hidden />
+      )}
     </>
   );
 

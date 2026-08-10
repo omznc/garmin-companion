@@ -1792,25 +1792,21 @@ body::-webkit-scrollbar {
   );
 }
 
-/* A phone's two edges are not the window's two edges.
+/* A phone's top edge is not the window's top edge, and its bottom edge needs no
+ * fade at all.
  *
  * The top one is the status bar, which Android draws over the webview — so the
  * fade covers that band plus a short ramp below it, rather than the flat 88px
  * the desktop uses. 88 on a phone is an eighth of the screen washed out, which
  * reads as a broken heading rather than as depth.
  *
- * The bottom one is the tab bar, not the bottom of the display: the bar is
- * opaque and sits over the page, so the line content actually vanishes at is
- * its top hairline. Anchoring the fade there puts the softening where the cut
- * is. It stays at z 40, under the bar's 60 and the sync card's 61, so neither
- * picks up a wash. */
+ * There is no bottom one. The desktop needs it because the window ends in a
+ * hard cut with nothing under it; a phone ends in the tab bar, which is opaque,
+ * full-width and has a hairline of its own — the page already stops against a
+ * surface rather than mid-word, and a gradient stacked on top of that only
+ * greyed out the row nearest the thumb. `ScrollFade` doesn't render the node. */
 :root[data-mobile] .scroll-fade-top {
   height: calc(env(safe-area-inset-top, 0px) + 44px);
-}
-
-:root[data-mobile] .scroll-fade-bottom {
-  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h));
-  height: 56px;
 }
 
 /* ------------------------------------------------------------ markdown --- */
@@ -2185,15 +2181,25 @@ body::-webkit-scrollbar {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The document must not overscroll, whatever `#root` does.
+ *
+ * `#root` has said `none` for as long as it has been the scroller, and on the
+ * WebViews that stretch it was not enough: the drag chained out to the document
+ * anyway, and the document's stretch is applied to the compositor's root layer
+ * — which is where `position: fixed` elements live, tab bar included. So a flick
+ * back to the top of a long screen bounced the navigation, the one part of the
+ * app that is supposed to be nailed down.
+ *
+ * Said here as well as on `#root` because these are two different scrollers
+ * being asked the same thing, and the outer one is the one that moves the
+ * chrome. What replaces the top of it is `PullRefresh` — a real gesture in the
+ * place the bounce used to be, on the screens that have something to refresh.
+ *
+ * The tab bar and the sync bar still portal out to `document.body`; see the
+ * note at the top of `TabBar.tsx` for the half of this that is about `#root`. */
+:root[data-mobile],
+:root[data-mobile] body,
 :root[data-mobile] #root {
-  /* No chaining outwards: the page rubber-banding is the platform's, and worth
-   * keeping, but it should stop at the app rather than continue into whatever
-   * the WebView would do with it.
-   *
-   * What it does *not* do is keep the fixed chrome still — Android's overscroll
-   * is a stretch of the whole scrolling layer, and anything `position: fixed`
-   * inside the scroller stretches with it. The tab bar and the sync bar portal
-   * out to `document.body` for that; see the note at the top of `TabBar.tsx`. */
   overscroll-behavior-y: none;
 }
 
@@ -2222,6 +2228,47 @@ body::-webkit-scrollbar {
    * `env()` alone leaves content under the tab bar on a phone with no notch. */
   padding-top: calc(env(safe-area-inset-top, 0px) + 26px);
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h) + 28px);
+}
+
+/* ------------------------------------------------------ pull to refresh --- */
+
+/* The spinner that comes down when you pull the top of a screen. See
+ * `PullRefresh.tsx` for the gesture; everything here is where it sits, and the
+ * component writes the travel, the opacity and the turn.
+ *
+ * It starts tucked behind the status bar rather than at the top of the column,
+ * so the first millimetre of the pull reveals it from under an edge instead of
+ * fading it in over the words below. Height plus a little, so a slow pull that
+ * gets abandoned doesn't leave a sliver showing.
+ *
+ * z 55: over the top fade at 40, which it has to be read against, and under the
+ * tab bar at 60 and the sync card at 61, which are the surfaces that narrate the
+ * sync it starts. */
+.pull-dial {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) - 42px);
+  left: 50%;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  /* A hairline on the page's own colour — the same surface the sync card and
+   * the sheet are made of, rather than a shadow the app doesn't use. */
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--mut);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-50%, 0, 0);
+  will-change: transform, opacity;
+}
+
+/* Wound up by the pull, a full turn by the point releasing would sync. Once it
+ * is running, `.spin` takes the transform over and it simply rotates. */
+.pull-dial > svg {
+  transform: rotate(var(--turn, 0deg));
 }
 
 /* --------------------------------------------------------------- tabs --- */

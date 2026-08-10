@@ -20,6 +20,7 @@ import { IS_MOBILE } from "./lib/platform";
 import { Sidebar, SIDEBAR_W } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
 import { ScrollFade } from "./components/ScrollFade";
+import { PullRefresh } from "./components/PullRefresh";
 import { Today } from "./screens/Today";
 import { Activities } from "./screens/Activities";
 import { ActivityDetail } from "./screens/ActivityDetail";
@@ -95,13 +96,14 @@ function DesktopShell() {
  * built out of. Without the fade, a heading scrolling up doesn't end: it carries
  * on behind the clock and the battery until it runs out of screen.
  *
- * The bottom is the same story with a different lid. The tab bar is opaque and
- * fixed, so content meets its hairline at full strength and stops mid-word.
+ * Only the top one, though. At the bottom the tab bar is opaque, full-width and
+ * carries a hairline of its own, so the page already ends against a surface
+ * rather than at a cut — `ScrollFade` draws nothing there.
  *
  * The padding is in CSS rather than inline like the desktop shell's, because it
  * has to compose with `env(safe-area-inset-*)` — a notch, a punch-hole, the
  * gesture bar — and those are only readable from a stylesheet. The fade's own
- * two edges are placed there for the same reason.
+ * edge is placed there for the same reason.
  */
 function MobileShell() {
   const shell = useRef<HTMLDivElement>(null);
@@ -110,6 +112,10 @@ function MobileShell() {
     <div className="shell-mobile" ref={shell}>
       {/* Full width: there is no nav beside the column to clear. */}
       <ScrollFade left="0" track={shell} />
+      {/* Here rather than per screen: it is a property of the shell, and which
+          screens answer it is decided by whether they publish a refresh — see
+          `lib/refreshable`. */}
+      <PullRefresh />
       <main>
         <Page />
       </main>
