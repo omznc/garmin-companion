@@ -325,6 +325,187 @@ pub struct DaysParams {
     pub days: Option<u32>,
 }
 
+/* -------------------------------------------------------------------- sleep --- */
+
+/// One night, in the units a reader thinks in.
+///
+/// Deliberately not a mirror of `sleep::SleepNight`. That type carries the
+/// hypnogram and the overnight heart-rate curve, which exist for the app's
+/// charts — a hundred points per night is noise in a conversation, and ninety
+/// nights of it would crowd out everything worth saying. Seconds become minutes
+/// and hours for the same reason.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SleepNightView {
+    /// The date woken up on, which is how Garmin keys a night.
+    pub date: String,
+    pub score: Option<f64>,
+    /// Garmin's word for the score: `EXCELLENT`, `GOOD`, `FAIR`, `POOR`.
+    pub score_qualifier: Option<String>,
+    /// Garmin's own verdict on the night, as a shouted enum.
+    pub feedback: Option<String>,
+    pub hours_asleep: Option<f64>,
+    pub deep_mins: Option<f64>,
+    pub light_mins: Option<f64>,
+    pub rem_mins: Option<f64>,
+    pub awake_mins: Option<f64>,
+    /// Local wall clock, `HH:MM`.
+    pub bedtime: Option<String>,
+    pub wake_time: Option<String>,
+    /// What Garmin reckoned this athlete needed that night.
+    pub need_hours: Option<f64>,
+    /// Share of time in bed actually spent asleep. Below 85% is worth noting.
+    pub efficiency_pct: Option<f64>,
+    pub overnight_hrv: Option<f64>,
+    /// Measured across the night, so this is the trustworthy kind of resting
+    /// HR rather than the daytime estimate — see `recovery`.
+    pub resting_hr: Option<f64>,
+    pub avg_stress: Option<f64>,
+    pub respiration: Option<f64>,
+    pub lowest_spo2: Option<f64>,
+    pub restless_count: Option<f64>,
+    /// The components Garmin itself marked `FAIR` or `POOR` on this night —
+    /// `deepPercentage`, `remPercentage`, `awakeCount` and the like. Empty
+    /// means Garmin was happy with every part of it.
+    pub garmin_flagged: Vec<String>,
+}
+
+fn round1(v: f64) -> f64 {
+    (v * 10.0).round() / 10.0
+}
+
+impl From<garmin_core::sleep::SleepNight> for SleepNightView {
+    fn from(n: garmin_core::sleep::SleepNight) -> Self {
+        let mins = |s: Option<f64>| s.map(|v| round1(v / 60.0));
+        let hours = |s: Option<f64>| s.map(|v| round1(v / 3600.0));
+        let clock = |t: &Option<String>| t.as_ref().and_then(|s| s.get(11..16)).map(str::to_string);
+
+        Self {
+            hours_asleep: hours(n.total_secs),
+            deep_mins: mins(n.deep_secs),
+            light_mins: mins(n.light_secs),
+            rem_mins: mins(n.rem_secs),
+            awake_mins: mins(n.awake_secs),
+            bedtime: clock(&n.start_local),
+            wake_time: clock(&n.end_local),
+            need_hours: hours(n.need_secs),
+            efficiency_pct: n.efficiency().map(round1),
+            garmin_flagged: n
+                .score_parts
+                .iter()
+                .filter(|p| matches!(p.qualifier.as_deref(), Some("FAIR" | "POOR")))
+                .map(|p| p.key.clone())
+                .collect(),
+            date: n.date,
+            score: n.score,
+            score_qualifier: n.score_qualifier,
+            feedback: n.feedback,
+            overnight_hrv: n.avg_overnight_hrv,
+            resting_hr: n.resting_hr,
+            avg_stress: n.avg_stress,
+            respiration: n.avg_respiration,
+            lowest_spo2: n.lowest_spo2,
+            restless_count: n.restless_count,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SleepAverages {
+    pub nights: usize,
+    pub hours_asleep: Option<f64>,
+    pub score: Option<f64>,
+    pub deep_pct: Option<f64>,
+    pub rem_pct: Option<f64>,
+    pub efficiency_pct: Option<f64>,
+    pub overnight_hrv: Option<f64>,
+    /// Typical bedtime and wake time, `HH:MM`, with the spread either side of
+    /// them in minutes. The spread is the interesting half: regularity moves
+    /// sleep quality more reliably than duration does.
+    pub bedtime: Option<String>,
+    pub bedtime_swing_mins: Option<f64>,
+    pub wake_time: Option<String>,
+    pub wake_swing_mins: Option<f64>,
+    pub nights_under_seven_hours: usize,
+}
+
+/// Minutes past 18:00 back into a clock face, which is how the averages store
+/// bedtimes so that midnight doesn't split them.
+fn clock_from_mins(mins: f64) -> String {
+    let t = (mins.round() as i64 + 18 * 60).rem_euclid(24 * 60);
+    format!("{:02}:{:02}", t / 60, t % 60)
+}
+
+impl From<garmin_core::sleep::SleepAverages> for SleepAverages {
+    fn from(a: garmin_core::sleep::SleepAverages) -> Self {
+        Self {
+            nights: a.nights,
+            hours_asleep: a.total_secs.map(|s| round1(s / 3600.0)),
+            score: a.score.map(round1),
+            deep_pct: a.deep_pct.map(round1),
+            rem_pct: a.rem_pct.map(round1),
+            efficiency_pct: a.efficiency.map(round1),
+            overnight_hrv: a.overnight_hrv.map(round1),
+            bedtime: a.bedtime_mins.map(clock_from_mins),
+            bedtime_swing_mins: a.bedtime_sd_mins.map(|m| m.round()),
+            wake_time: a.wake_mins.map(clock_from_mins),
+            wake_swing_mins: a.wake_sd_mins.map(|m| m.round()),
+            nights_under_seven_hours: a.short_nights,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SleepInsight {
+    pub id: String,
+    /// `good`, `note` or `watch`.
+    pub tone: String,
+    pub claim: String,
+    pub detail: String,
+    /// How many nights the claim rests on.
+    pub nights: usize,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SleepReport {
+    pub last_night: Option<SleepNightView>,
+    /// The window, newest first.
+    pub nights: Vec<SleepNightView>,
+    pub averages: SleepAverages,
+    /// What this window says, computed from the rows rather than written by a
+    /// model. Quote these rather than re-deriving them.
+    pub insights: Vec<SleepInsight>,
+    /// True when hours and scores are cached but the detail behind them isn't
+    /// — an unsynced cache, not a run of sleepless nights.
+    pub needs_backfill: bool,
+}
+
+impl From<garmin_core::sleep::SleepReport> for SleepReport {
+    fn from(r: garmin_core::sleep::SleepReport) -> Self {
+        Self {
+            last_night: r.last_night.map(SleepNightView::from),
+            nights: r.nights.into_iter().map(SleepNightView::from).collect(),
+            averages: r.averages.into(),
+            insights: r
+                .insights
+                .into_iter()
+                .map(|i| SleepInsight {
+                    id: i.id,
+                    tone: match i.tone {
+                        garmin_core::sleep::Tone::Good => "good",
+                        garmin_core::sleep::Tone::Note => "note",
+                        garmin_core::sleep::Tone::Watch => "watch",
+                    }
+                    .into(),
+                    claim: i.claim,
+                    detail: i.detail,
+                    nights: i.nights,
+                })
+                .collect(),
+            needs_backfill: r.needs_backfill,
+        }
+    }
+}
+
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct NutritionDay {
     pub date: String,
@@ -664,7 +845,12 @@ async fn analysis_for(activity_id: Option<i64>) -> anyhow::Result<serde_json::Va
 impl GarminServer {
     #[tool(
         description = "List recent activities with per-zone HR breakdown, pace, \
-                       cadence and training effect. Start here for 'how am I doing'."
+                       cadence and training effect. Start here for 'how am I \
+                       doing'. Every row carries an `activity_id`, which is how \
+                       one session is named to `activity_zones` or \
+                       `activity_analysis` — so this is also the first call when \
+                       the question is about a particular run and its id isn't \
+                       known yet."
     )]
     async fn recent_activities(
         &self,
@@ -677,7 +863,10 @@ impl GarminServer {
     }
 
     #[tool(description = "Full HR zone breakdown for one activity: minutes and \
-                       percent in each of zones 1-5. Defaults to the latest activity.")]
+                       percent in each of zones 1-5, and nothing else. Defaults \
+                       to the latest activity. This is the cheap, shallow read — \
+                       when the question is about how a session went rather than \
+                       what its split was, call `activity_analysis` instead.")]
     async fn activity_zones(
         &self,
         Parameters(p): Parameters<ActivityParams>,
@@ -734,6 +923,33 @@ impl GarminServer {
         let db = db()?;
         let days = query::recovery(&db, p.days.unwrap_or(14)).map_err(internal)?;
         Ok(Json(days.into_iter().map(RecoveryDay::from).collect()))
+    }
+
+    #[tool(
+        description = "Sleep in detail, which `recovery` only summarises: last \
+                       night's stage split (deep, light, REM, awake), when they \
+                       fell asleep and woke, sleep efficiency, overnight HRV, \
+                       resting HR, respiration, SpO2 and restlessness — plus the \
+                       window behind it, the typical bedtime and how far it \
+                       swings, and which score components Garmin itself marked \
+                       short. `insights` are computed from the rows, not \
+                       written by a model: quote them rather than re-deriving \
+                       the same claim. Call this \
+                       for anything about sleep quality, bedtime, stages or why \
+                       a night scored badly; `recovery` remains the right call \
+                       for the day-by-day recovery picture."
+    )]
+    async fn sleep(
+        &self,
+        Parameters(p): Parameters<DaysParams>,
+    ) -> Result<Json<SleepReport>, ErrorData> {
+        let db = db()?;
+        let days = p.days.unwrap_or(30);
+        let report = query::sleep(&db, days).map_err(internal)?;
+        // The window is capped independently of `days`: thirty nights is
+        // already more than any answer quotes, and the averages above them
+        // cover the rest of whatever was asked for.
+        Ok(Json(report.brief(30).into()))
     }
 
     #[tool(description = "Calories eaten against calories burned by day, plus \

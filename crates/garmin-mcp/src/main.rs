@@ -196,6 +196,7 @@ async fn sync(days: u32, full: bool) -> Result<()> {
         report.activities_seen, report.activities_written
     );
     println!("Days:       {} written", report.days_written);
+    println!("Nights:     {} written", report.nights_written);
     for w in &report.warnings {
         eprintln!("  warning: {w}");
     }
