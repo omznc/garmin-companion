@@ -19,13 +19,14 @@ import { useQuery } from "@tanstack/react-query";
 import { chatConfig } from "../lib/api";
 import { useChat } from "../lib/useChat";
 import { scroller } from "../lib/scroller";
-import { Composer } from "../components/chat/Composer";
+import { Composer, type ComposerHandle } from "../components/chat/Composer";
 import { Recents } from "../components/chat/Recents";
 import { Thread } from "../components/chat/Thread";
 import { Drawer } from "../components/Drawer";
-import { Empty, ErrorNote, Loading } from "../components/ui";
+import { Empty, ErrorNote, Loading, PageHeader } from "../components/ui";
 import { greeting } from "../lib/greeting";
 import { NewIcon, PinIcon, UnpinIcon } from "../lib/icons";
+import { IS_MOBILE } from "../lib/platform";
 
 /**
  * Openers for a conversation that hasn't started, drawn from before the model
@@ -132,16 +133,17 @@ export function Ask() {
   /**
    * The opening screen, pinned to where it was, for as long as it takes to go.
    *
-   * `empty` flips on the frame you press send, and the hero is most of a
-   * viewport — dropped from the tree there, a screenful of the app disappears
-   * between two frames while the first turn fades up into the hole it left. So
-   * the pixels it occupied are measured on the way out and redrawn as a fixed
-   * copy that fades, over the top of the thread that has already taken the
-   * space. Fading it in place instead would hold that viewport of height open
-   * for the length of the fade, and the collapse this exists to soften would
-   * simply happen a beat later.
+   * `empty` flips on the frame you press send — dropped from the tree there,
+   * the whole header vanishes between two frames while the first turn fades up
+   * into the hole it left. So the pixels it occupied are measured on the way
+   * out and redrawn as a fixed copy that fades, over the top of the thread that
+   * has already taken the space. Fading it in place instead would hold its
+   * height open for the length of the fade, and the collapse this exists to
+   * soften would simply happen a beat later.
    */
   const hero = useRef<HTMLDivElement>(null);
+  /** The box, for the one moment the box can't know about. See "New" below. */
+  const composer = useRef<ComposerHandle>(null);
   const [ghost, setGhost] = useState<{
     top: number;
     left: number;
@@ -269,6 +271,7 @@ export function Ask() {
         <Thread
           history={chat.history}
           pending={chat.pending}
+          blocks={chat.blocks}
           steps={chat.steps}
           drafting={chat.drafting}
           asking={chat.asking}
@@ -321,6 +324,10 @@ export function Ask() {
         onStop={chat.stop}
         busy={chat.busy}
         blocked={blocked}
+        // This screen is the box. Not on a phone, where taking the caret raises
+        // the keyboard over the greeting before anyone has decided to type.
+        autoFocus={!IS_MOBILE}
+        ref={composer}
         above={
           showChips && (
             <div className="chip-row" data-leaving={chipsLeaving || undefined}>
@@ -381,7 +388,14 @@ export function Ask() {
                   fontSize: "var(--fs-caption)",
                 }}
                 disabled={chat.busy}
-                onClick={chat.reset}
+                onClick={() => {
+                  chat.reset();
+                  // Back to the empty screen, so back to where the caret was
+                  // when you arrived at it. Not done from the drawer's own New,
+                  // where the drawer returns focus to whatever opened it as it
+                  // closes and would take it straight back off the box.
+                  composer.current?.focus();
+                }}
               >
                 <NewIcon size={12} style={{ flex: "none" }} aria-hidden />
                 New
@@ -408,21 +422,28 @@ export function Ask() {
 /**
  * What the screen says before it has been asked anything.
  *
- * Its own component only because it is drawn twice for a fraction of a second —
- * once in the flow, and once as the fixed copy that fades as the thread takes
- * its place. Two copies of the same words, so they have to come from one place.
+ * It is the same `PageHeader` every other screen opens with, at the top of the
+ * column where every other screen puts it. It used to sit low, just above the
+ * composer, on the reasoning that the two read as one thing — but that made Ask
+ * the one screen whose title wasn't where the eye goes first, and a person
+ * arriving from Today had to find it. Consistency wins: the greeting is a page
+ * title like any other, and the composer is chrome docked to the bottom
+ * regardless of what is written at the top.
+ *
+ * No action beside it. Recents and New live under the box, where the note there
+ * explains why.
+ *
+ * Its own component because it is drawn twice for a fraction of a second — once
+ * in the flow, and once as the fixed copy that fades as the thread takes its
+ * place. Two copies of the same words, so they have to come from one place.
  */
 function Hero() {
   return (
-    <>
-      <h1 className="h1" style={{ margin: 0 }}>
-        {greeting()}
-      </h1>
-      <p className="lede" style={{ maxWidth: "48ch", margin: "14px 0 0" }}>
-        Ask about your training. It reads your cached activities, zones, cadence and recovery — only
-        the metrics a question needs are sent.
-      </p>
-    </>
+    <PageHeader
+      eyebrow="Ask"
+      title={greeting()}
+      lede="Ask about your training. It reads your cached activities, zones, cadence and recovery — only the metrics a question needs are sent."
+    />
   );
 }
 

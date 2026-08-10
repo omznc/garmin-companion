@@ -952,7 +952,33 @@ export interface ChatMessage {
    * longer") has no antecedent without them.
    */
   asks?: AskRecord[];
+  /**
+   * The order the turn happened in: what it said, what it went and read, what it
+   * asked, and what it drafted, interleaved as they arrived.
+   *
+   * The three arrays above say *what* a turn produced and this says *when*, and
+   * the two are kept apart because only this one is allowed to be missing.
+   * Messages written before this existed have no `blocks`, and the transcript
+   * still has to draw them — see `Thread`, which falls back to the old fixed
+   * order of summary, questions, answer, cards.
+   *
+   * A turn that reads before it speaks and then reads again is the normal shape
+   * here, and a transcript that stacks every tool row above one block of prose
+   * reports it as something that happened in an order it didn't. The references
+   * are by position because the arrays are appended to in the same order the
+   * blocks are: `ask` and `draft` index into `asks` and `drafts`, and a `tool`
+   * carries its own label, since `sources` is deduplicated and no longer lines
+   * up one-to-one with the calls that were made.
+   */
+  blocks?: TurnBlock[];
 }
+
+/** One thing a turn did, in the order it did it. See `ChatMessage.blocks`. */
+export type TurnBlock =
+  | { kind: "text"; text: string }
+  | { kind: "tool"; label: string; ok: boolean }
+  | { kind: "ask"; index: number }
+  | { kind: "draft"; index: number };
 
 /** One answer the model offered, as it wrote it. */
 export interface AskOption {

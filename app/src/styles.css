@@ -2634,16 +2634,17 @@ body::-webkit-scrollbar {
   --col-w: calc(100vw - 40px);
 }
 
-/* Before anything has been asked. Sits in the space the conversation will
- * eventually fill, close enough to the box that the two read as one thing —
- * pinned to the top of the screen it would be a page header, and centred in the
- * window it would be a splash. */
+/* Before anything has been asked.
+ *
+ * It *is* a page header now — the greeting and its lede sit at the top of the
+ * column, the same block in the same place as every other screen's, so Ask
+ * stops being the one screen you have to look down the page to identify. It
+ * used to be held low against the composer, which read well in isolation and
+ * read as a different app next to Today.
+ *
+ * Nothing left here but the entrance, then: the header brings its own spacing,
+ * and the composer is fixed, so there is no height to reserve above it. */
 .chat-hero {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  min-height: calc(100dvh - var(--composer-h) - 210px);
-  padding-bottom: calc(var(--composer-h) + 26px);
   animation: turn-in var(--dur-slow) var(--ease-out) backwards;
 }
 
@@ -2653,9 +2654,11 @@ body::-webkit-scrollbar {
  * Fixed, at coordinates measured in JS rather than recomputed from `--col-left`
  * and friends, because the only version of this that is certainly right is the
  * one that copies down where the element actually was. And out of flow rather
- * than faded where it stood: this block is most of a viewport tall, so leaving
- * it in would hold that height open for the length of the fade and the collapse
- * it exists to soften would just happen a beat later instead.
+ * than faded where it stood: leaving it in would hold its height open for the
+ * length of the fade, and the collapse it exists to soften would just happen a
+ * beat later instead. Now that the header sits at the top rather than filling
+ * the screen, the two blocks occupy the same corner and this reads as the
+ * header being replaced by the first question, which is what happened.
  *
  * Up and out. It isn't travelling anywhere — it is being replaced — so the
  * distance is small enough to read as making way rather than as departing. */
@@ -2986,11 +2989,15 @@ body::-webkit-scrollbar {
  * the moment prose started arriving — which meant the most interesting thing
  * the app does, going and reading your actual data, was visible for about two
  * seconds and never afterwards. */
+/* No margin of its own: a group of rows is one item among the turn's others and
+ * is spaced by `.chat-turn`'s gap like everything else in it. It used to carry
+ * 16px underneath, from when the whole timeline sat above the answer and needed
+ * pushing off it — kept now, with groups of rows falling between paragraphs, it
+ * would space one side of a group at twice the other. */
 .tool-steps {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  margin-bottom: 16px;
 }
 
 .tool-step {
@@ -3106,8 +3113,11 @@ body::-webkit-scrollbar {
 
 /* A row's own entrance is for a timeline arriving live, one call at a time. In
  * here they are already there and the panel is what is moving; both at once is
- * two animations narrating one event. */
-.tool-summary-panel .tool-step {
+ * two animations narrating one event. The same goes for a turn that has landed,
+ * where the rows are redrawn from the saved message: nothing arrived, the turn
+ * simply stopped being the one in flight. */
+.tool-summary-panel .tool-step,
+.tool-steps[data-landed] .tool-step {
   animation: none;
 }
 

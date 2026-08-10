@@ -26,6 +26,7 @@ import {
   type AskOption,
   type AskRecord,
   type ChatMessage,
+  type TurnBlock,
   type WorkoutDraft,
 } from "./api";
 
@@ -63,6 +64,27 @@ export interface ToolStep {
   endedAt?: number;
 }
 
+/**
+ * One thing the turn in flight has done, in the order it did it.
+ *
+ * The live counterpart of `ChatMessage.blocks`, and the reason the two shapes
+ * differ is what they have to point at. While the turn runs a tool row is a
+ * moving thing — running, then done, with a clock on it — so a block names the
+ * call and the row is looked up in `steps`; a question is looked up the same way
+ * because its answer arrives later. Once the turn lands none of that moves any
+ * more, and the saved block carries the label itself.
+ *
+ * Prose accumulates into the last block when it is already text, so a paragraph
+ * interrupted by nothing stays one paragraph. A tool call, a question or a
+ * drafted workout arriving is what closes it: the next word after one of those
+ * starts a new block, below it, which is the whole point of this list.
+ */
+export type LiveBlock =
+  | { kind: "text"; text: string }
+  | { kind: "tool"; callId: string }
+  | { kind: "ask"; callId: string }
+  | { kind: "draft"; index: number };
+
 /** A question the model is waiting on an answer to, right now. */
 export interface PendingAsk {
   callId: string;
@@ -75,8 +97,16 @@ export interface PendingAsk {
 export interface Chat {
   /** The transcript as it will be saved. The turn in flight is not in here. */
   history: ChatMessage[];
-  /** Prose arriving for the turn in flight; null when no turn is running. */
+  /**
+   * Whether a turn is running, and everything it has written so far.
+   *
+   * No longer what the thread draws — `blocks` is, because the prose comes in
+   * more than one piece and where the pieces fall matters. This stays as the
+   * flag every screen already gates on, and as the answer's full text.
+   */
   pending: string | null;
+  /** What the turn has done so far, in order. The thread draws this. */
+  blocks: LiveBlock[];
   /** Tool calls this turn, oldest first. Cleared when the next turn starts. */
   steps: ToolStep[];
   /** Workouts drafted this turn, before they are part of the transcript. */
@@ -106,6 +136,40 @@ export interface Chat {
 /** Short, unique enough for a channel name and a row id. */
 const rid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+/**
+ * The turn's running order, resolved into the form that goes in the transcript.
+ *
+ * Everything a live block points at by id is looked up here, once, while the
+ * things it points at are still in hand. A block whose target has gone is
+ * dropped rather than saved broken — that only happens to a question the turn
+ * never got as far as registering, and half a question in a transcript is worse
+ * than none.
+ */
+function persistedBlocks(
+  live: LiveBlock[],
+  labels: Map<string, { label: string; ok: boolean }>,
+  asked: Array<{ callId: string }>,
+): TurnBlock[] {
+  return live.flatMap<TurnBlock>((b) => {
+    if (b.kind === "text") {
+      // Trimmed here and nowhere else: the whitespace around a paragraph is an
+      // artefact of where the tool call interrupted it, and the blank line that
+      // replaces it is put back when the blocks are joined.
+      const text = b.text.trim();
+      return text ? [{ kind: "text", text }] : [];
+    }
+    if (b.kind === "tool") {
+      const seen = labels.get(b.callId);
+      return seen ? [{ kind: "tool", label: seen.label, ok: seen.ok }] : [];
+    }
+    if (b.kind === "ask") {
+      const index = asked.findIndex((a) => a.callId === b.callId);
+      return index < 0 ? [] : [{ kind: "ask", index }];
+    }
+    return [{ kind: "draft", index: b.index }];
+  });
+}
+
 /** What a conversation is "about": the question that started it. */
 export function title(messages: ChatMessage[]): string {
   const first = messages.find((m) => m.role === "user")?.content.trim() ?? "Untitled";
@@ -125,6 +189,7 @@ export function useChat(options?: {
 
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<LiveBlock[]>([]);
   const [steps, setSteps] = useState<ToolStep[]>([]);
   const [drafting, setDrafting] = useState<WorkoutDraft[]>([]);
   const [asking, setAsking] = useState<Array<PendingAsk & { answers: string[] | null }>>([]);
@@ -164,6 +229,33 @@ export function useChat(options?: {
   }, []);
 
   /**
+   * The running order, in a ref as well as in state, for the third reason in the
+   * list above: the message is built the moment the turn lands, and the order it
+   * happened in has to be in that message.
+   *
+   * Appending through a ref rather than a state updater also keeps the deltas
+   * honest. Prose arrives a token at a time and a tool event can land between
+   * two of them, so "is the last block still text?" has to be asked of what is
+   * there now, not of what the last render saw.
+   */
+  const timeline = useRef<LiveBlock[]>([]);
+
+  const pushBlock = useCallback((block: LiveBlock) => {
+    timeline.current = [...timeline.current, block];
+    setBlocks(timeline.current);
+  }, []);
+
+  /** A token of prose, onto the open paragraph or into a new one under it. */
+  const pushText = useCallback((text: string) => {
+    const last = timeline.current[timeline.current.length - 1];
+    timeline.current =
+      last?.kind === "text"
+        ? [...timeline.current.slice(0, -1), { kind: "text", text: last.text + text }]
+        : [...timeline.current, { kind: "text", text }];
+    setBlocks(timeline.current);
+  }, []);
+
+  /**
    * A workout sent to Garmin from a card that is still part of the turn in
    * flight, before the transcript has a message to write it into.
    *
@@ -182,6 +274,8 @@ export function useChat(options?: {
 
   const clearTurn = useCallback(() => {
     setPending(null);
+    timeline.current = [];
+    setBlocks([]);
     setSteps([]);
     setDrafts([]);
     setAsks([]);
@@ -303,6 +397,16 @@ export function useChat(options?: {
       turn.current = id;
       let answered = "";
       const sources: string[] = [];
+      /**
+       * Each call's label and how it ended, by id.
+       *
+       * The saved blocks carry the label rather than an id, because nothing in a
+       * landed message has ids in it — `sources` is deduplicated for the summary
+       * line and a turn that read the same thing twice has fewer of those than
+       * it made calls. Written twice per call; the second write is the one that
+       * knows whether it worked.
+       */
+      const labels = new Map<string, { label: string; ok: boolean }>();
       // Held here as well as in state: the handler below and the history written
       // when the turn ends both need the current list, and a state variable read
       // from this closure would be the one captured when the turn started.
@@ -312,7 +416,13 @@ export function useChat(options?: {
         if (ev.type === "delta") {
           answered += ev.text;
           setPending(answered);
+          pushText(ev.text);
         } else if (ev.type === "tool") {
+          // The first of the pair, which is always the one that opens the row.
+          // The second only changes a row that is already on screen and in the
+          // order, and appending on it would draw every call twice.
+          if (ev.running) pushBlock({ kind: "tool", callId: ev.callId });
+          labels.set(ev.callId, { label: ev.label, ok: ev.ok });
           setSteps((prev) => {
             const at = prev.findIndex((s) => s.callId === ev.callId);
             if (at < 0) {
@@ -333,8 +443,10 @@ export function useChat(options?: {
           });
         } else if (ev.type === "draft") {
           // Straight onto the screen, under the answer that is still arriving.
+          pushBlock({ kind: "draft", index: drafts.current.length });
           setDrafts([...drafts.current, ev.draft]);
         } else if (ev.type === "ask") {
+          pushBlock({ kind: "ask", callId: ev.callId });
           setAsks([
             ...asks.current,
             {
@@ -365,13 +477,20 @@ export function useChat(options?: {
           multi: a.multi,
           answers: a.answers ?? [],
         }));
-        if (answered.trim()) {
+        const saved = persistedBlocks(timeline.current, labels, asks.current);
+        // Rebuilt from the blocks rather than taken from `answered`, which is
+        // every token in arrival order with nothing between them: a turn that
+        // says "let me look" and then writes its answer would otherwise be
+        // saved with the two run together into one sentence.
+        const content = saved.flatMap((b) => (b.kind === "text" ? [b.text] : [])).join("\n\n");
+        if (content) {
           const done: ChatMessage[] = [
             ...next,
             {
               role: "assistant",
-              content: answered,
+              content,
               sources,
+              blocks: saved,
               ...(drafts.current.length > 0 && { drafts: drafts.current }),
               ...(asked.length > 0 && { asks: asked }),
             },
@@ -398,12 +517,14 @@ export function useChat(options?: {
         setBusy(false);
         // These live in history from here; leaving them here as well would
         // render each one twice.
+        timeline.current = [];
+        setBlocks([]);
         setSteps([]);
         setDrafts([]);
         setAsks([]);
       }
     },
-    [activityId, busy, clearTurn, history, persist, setAsks, wantFollowups],
+    [activityId, busy, clearTurn, history, persist, pushBlock, pushText, setAsks, wantFollowups],
   );
 
   // A turn outlives the screen that started it — the Rust side keeps streaming
@@ -419,6 +540,7 @@ export function useChat(options?: {
   return {
     history,
     pending,
+    blocks,
     steps,
     drafting,
     asking,

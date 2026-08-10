@@ -80,6 +80,26 @@ function Step({ step }: { step: ToolStep }) {
 }
 
 /**
+ * A call that is over: the label, and whether it worked.
+ *
+ * The same row [`Step`] draws, without the parts of it that were only ever
+ * about a call in flight — no pulse, and no clock, because how long a read took
+ * is worth knowing while you are waiting on it and is noise underneath a
+ * finished answer. Used by everything that draws a turn after the fact: the
+ * blocks in a landed message, and the panel behind [`ToolSummary`].
+ */
+export function DoneStep({ label, ok = true }: { label: string; ok?: boolean }) {
+  return (
+    <div className="tool-step" data-running="false">
+      <span className="tool-step-mark" aria-hidden>
+        <DoneIcon size={13} weight="bold" style={{ color: ok ? undefined : "var(--warn)" }} />
+      </span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/**
  * The turn is running and has nothing on screen to show for it.
  *
  * Two waits look like this, and until now both were blank. The seconds between
@@ -152,12 +172,7 @@ export function ToolSummary({ sources }: { sources: string[] }) {
       <div className="tool-summary-panel" data-open={open || undefined} aria-hidden={!open}>
         <div className="tool-steps" style={{ marginTop: -6 }}>
           {unique.map((label) => (
-            <div key={label} className="tool-step" data-running="false">
-              <span className="tool-step-mark" aria-hidden>
-                <DoneIcon size={13} weight="bold" />
-              </span>
-              <span>{label}</span>
-            </div>
+            <DoneStep key={label} label={label} />
           ))}
         </div>
       </div>

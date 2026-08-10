@@ -93,6 +93,7 @@ export function ActivityChat({
         <Thread
           history={chat.history}
           pending={chat.pending}
+          blocks={chat.blocks}
           steps={chat.steps}
           drafting={chat.drafting}
           asking={chat.asking}

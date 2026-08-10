@@ -13,9 +13,22 @@
  * `position: fixed` children included. Left in the tree, this bounced along
  * with the conversation it is supposed to sit still in front of.
  */
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 import { SendIcon } from "../../lib/icons";
+
+/** What a screen holding a composer can do to it. */
+export interface ComposerHandle {
+  focus: () => void;
+}
 
 /** How tall the textarea may grow before it starts scrolling instead. Matches
  *  the `max-height` in the stylesheet; both are here so neither is a surprise. */
@@ -30,6 +43,29 @@ export function Composer({
   /** Set while the model is waiting on an answer to a question it asked. */
   blocked = false,
   placeholder = "Ask about your training…",
+  /**
+   * Whether the box takes the caret on its own.
+   *
+   * For the screen whose whole purpose is this box: arriving at Ask and having
+   * to click into it before typing is a step that exists for no reason. Off by
+   * default, because the strip under an activity is not that screen — you came
+   * to read the session, and a composer that grabs the caret on the way in is
+   * one that has decided for you what the page is for.
+   *
+   * Off on Android too, from the caller. Focus there raises the keyboard, which
+   * would cover most of the screen you just navigated to before you had asked
+   * for it.
+   */
+  autoFocus = false,
+  /**
+   * For the one thing the box can't see coming: starting a new conversation.
+   *
+   * Mounting and becoming usable again are both changes to the composer, so it
+   * notices them itself. "New" is a change to the screen behind it — the same
+   * empty page you arrive at, with the same next move — and only the screen
+   * knows it happened.
+   */
+  ref,
   /** The suggestion row, drawn above the box. */
   above,
   /** The provider note, drawn under it. */
@@ -42,6 +78,8 @@ export function Composer({
   busy: boolean;
   blocked?: boolean;
   placeholder?: string;
+  autoFocus?: boolean;
+  ref?: Ref<ComposerHandle>;
   above?: ReactNode;
   note?: ReactNode;
 }) {
@@ -96,6 +134,61 @@ export function Composer({
       document.documentElement.style.setProperty("--kb", "0px");
     };
   }, []);
+
+  const focus = useCallback(() => {
+    const el = area.current;
+    if (!el || el.disabled) return;
+    // `preventScroll` because the thread does its own scrolling — it sticks to
+    // the bottom while an answer streams — and the browser's idea of bringing a
+    // fixed element into view is a fight it would win at the wrong moment.
+    el.focus({ preventScroll: true });
+    // Caret after whatever is in the box rather than before it. A question
+    // handed over from another screen arrives already written, and the useful
+    // version of it usually has a clause of your own on the end.
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+  }, []);
+
+  useEffect(() => {
+    if (autoFocus) focus();
+  }, [autoFocus, focus]);
+
+  useImperativeHandle(ref, () => ({ focus }), [focus]);
+
+  /**
+   * Take the caret back when the box stops being unusable — but only if it was
+   * this box that lost it.
+   *
+   * Two things take focus away without you asking. `disabled` while a question
+   * is on screen drops it to the body outright; and sending with the mouse
+   * leaves it on the send button, so the next thing you type after an answer
+   * goes nowhere. Both are the box's own doing and both are worth undoing.
+   *
+   * What is not worth undoing is focus that something else is *using*, which is
+   * a narrower thing than focus something else merely has. A button you pressed
+   * a moment ago holds the caret without needing it — the model's own question
+   * card is exactly that, and refusing to move off it would mean the box never
+   * came back after a turn that asked you something. Another text field, or
+   * anything inside an open drawer, is different: there the caret is the point,
+   * and taking it would interrupt you to offer you a second text box.
+   */
+  const was = useRef({ busy, blocked });
+  useEffect(() => {
+    const before = was.current;
+    was.current = { busy, blocked };
+    if (!autoFocus) return;
+    if (!((before.blocked && !blocked) || (before.busy && !busy))) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !box.current?.contains(active)) {
+      const inUse =
+        active.isContentEditable ||
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active.closest('[role="dialog"]') !== null;
+      if (inUse) return;
+    }
+    focus();
+  }, [autoFocus, busy, blocked, focus]);
 
   const canSend = value.trim().length > 0 && !busy && !blocked;
 
