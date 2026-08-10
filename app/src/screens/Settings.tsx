@@ -1818,8 +1818,8 @@ function NotificationSettings() {
         label="Daily nudge"
         note={
           IS_MOBILE
-            ? "One notification, only on days the coach has something to say."
-            : "One notification, only on days the coach has something to say. Keeps the app in the tray when you close the window, so it can arrive."
+            ? "One notification, written for the day, only when the coach judges it worth interrupting for."
+            : "One notification, written for the day, only when the coach judges it worth interrupting for. Keeps the app in the tray when you close the window, so it can arrive."
         }
       />
 
@@ -1932,7 +1932,10 @@ function NudgeQueue({ plan, enabled }: { plan: NudgeSchedule; enabled: boolean }
 
   if (!plan.planned.length) {
     return note(
-      <>Nothing is queued: the coach has nothing to say right now, which is the usual state.</>,
+      <>
+        Nothing is queued: today's brief decided this isn't worth interrupting for, which is the
+        usual answer. It's still on Today.
+      </>,
     );
   }
 
@@ -1973,10 +1976,10 @@ function NudgeQueue({ plan, enabled }: { plan: NudgeSchedule; enabled: boolean }
           marginTop: 14,
         }}
       >
-        These are handed to the system in advance, because nothing evaluates the coach while the app
-        is closed. Opening the app or syncing rebuilds the list from what the cache knows then; the
-        later ones say out loud that they were worked out today, and after these the phone goes
-        quiet until the app is next opened.
+        These are handed to the system in advance, because nothing runs while the app is closed —
+        the text has to be written while it's still open. Opening the app or syncing rebuilds the
+        list from what the cache knows then; the later one says out loud that it was worked out
+        today, and after these the phone goes quiet until the app is next opened.
       </div>
     </div>
   );

@@ -592,15 +592,32 @@ impl CoachReport {
 
 const NOTIFY_KEY: &str = "coach_notifications";
 
+/// Where the day's brief is kept, alongside the fingerprint of the data it was
+/// written from and the date it was last opened.
+const BRIEF_KEY: &str = "daily_brief";
+const BRIEF_FINGERPRINT_KEY: &str = "daily_brief_key";
+const BRIEF_READ_KEY: &str = "daily_brief_read";
+
+/// The brief's identity in the `nudges` table.
+///
+/// One id for all time rather than one per day. Everything that table is asked
+/// about the brief — has today's notification gone out, was it put away this
+/// morning — is a question about *today*, answered by comparing a stored date
+/// against today's. A stable key answers it in one row instead of accumulating
+/// one per day forever.
+pub const BRIEF_ID: &str = "daily-brief";
+
 /// How many days ahead the plan reaches.
 ///
 /// The app cannot run in the background, so every notification has to be handed
-/// to the system in advance, from a plan that is only refreshed when the app is
-/// next opened or synced. One day ahead would mean the chain dies the first time
-/// a nudge is ignored; a repeating alarm would mean text frozen forever. Four
-/// covers a weekend of not opening the app and then stops, which is the right
+/// to the system in advance and its text frozen at the moment it was queued.
+/// That text is now a paragraph written about one particular day, and it ages
+/// faster than a rule's did: "you went hard yesterday on six hours of sleep" is
+/// wrong by Thursday in a way that "the long run hasn't happened yet" is not.
+/// Two covers a day of not opening the app — tonight, and tomorrow night saying
+/// out loud how old it is — and then the phone goes quiet, which is the right
 /// behaviour for an app that has been abandoned.
-const HORIZON_DAYS: u32 = 4;
+const HORIZON_DAYS: u32 = 2;
 
 /// When the coach is allowed to interrupt.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -643,6 +660,163 @@ impl NotifySettings {
     }
 }
 
+/* ------------------------------------------------------------ daily brief --- */
+
+/// Who wrote the brief.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BriefSource {
+    /// A model, handed the day's data and whatever the rules noticed in it.
+    Model,
+    /// The rules alone — no model is configured, or the call failed.
+    Rules,
+}
+
+/// What the coach has to say today, written once and read in two places.
+///
+/// The notification and the block on the Today screen are the same text by
+/// construction rather than by discipline: `alert` is what the system shows,
+/// `body` is what the screen shows, and both come out of one decision. Tapping
+/// the one cannot land on a screen saying something else, because there is
+/// nothing else for it to say.
+///
+/// The rules in [`evaluate`] still run and still decide what is *true*; what
+/// they no longer decide is which of it is worth saying, or in what words. They
+/// arrive here as `signals`, evidence handed to a writer, and the writer is
+/// allowed to conclude that today is not worth interrupting for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyBrief {
+    /// The local date this was written about. A brief is about a day, and it
+    /// stops being about today at midnight.
+    pub date: String,
+    /// Whether this is worth interrupting for. False is the common answer and
+    /// not a failure: an app that notifies every day is one whose notifications
+    /// get switched off in a fortnight. A brief with `notify: false` still
+    /// shows on Today — it just doesn't knock.
+    pub notify: bool,
+    /// One line, written to fit a notification title.
+    pub title: String,
+    /// One sentence, written to fit a notification body.
+    pub alert: String,
+    /// The whole thing, which is what tapping the notification opens.
+    pub body: String,
+    pub tone: Tone,
+    /// The numbers behind it, each already formatted for display. Same contract
+    /// as [`Nudge::evidence`]: nothing is asserted that this can't show.
+    pub evidence: Vec<String>,
+    /// The rule ids that fired today, whether or not the brief spoke about
+    /// them. What the writer was looking at, kept so the screen can show it —
+    /// a brief that quietly ignored a real signal should be visible as that.
+    pub signals: Vec<String>,
+    pub source: BriefSource,
+    /// RFC3339, when it was written.
+    pub generated_at: String,
+    /// True when it was put away today. Resolved on load from the `nudges`
+    /// table rather than stored in the blob, so dismissing doesn't rewrite it.
+    #[serde(default)]
+    pub dismissed: bool,
+    /// True once the block has actually been opened.
+    ///
+    /// With `notify`, this is what lets a tap that launched the app from cold
+    /// still land on the block. That tap arrives before there is any JavaScript
+    /// listening for it and the plugin does not replay it, so the screen asks
+    /// the question from the other end instead: today's brief judged itself
+    /// worth interrupting for and has not been opened since, so open it.
+    ///
+    /// Deliberately not "a notification actually fired", which is the fact this
+    /// would ideally turn on and the one neither platform can supply. Android
+    /// hands the whole plan to the system days ahead and is never told which
+    /// ones went off; desktop shows it and knows, but desktop is not where a
+    /// tap arrives at a process that isn't running. What both platforms do
+    /// agree on is whether the brief asked to knock at all — and on a day it
+    /// didn't there is nothing to have been tapped.
+    #[serde(default)]
+    pub read: bool,
+}
+
+impl DailyBrief {
+    /// The brief the cache is holding for today, with this morning's dismissal
+    /// and read state applied.
+    ///
+    /// `None` when none has been written, when the stored one is about a day
+    /// that has ended, or when it no longer parses — all three mean the same
+    /// thing to every caller, which is that one needs writing.
+    pub fn load(db: &crate::Db, today: NaiveDate) -> anyhow::Result<Option<Self>> {
+        let today = today.format("%Y-%m-%d").to_string();
+        let Some(raw) = db.sync_state(BRIEF_KEY)?.filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        let Ok(mut brief) = serde_json::from_str::<Self>(&raw) else {
+            return Ok(None);
+        };
+        if brief.date != today {
+            return Ok(None);
+        }
+
+        brief.dismissed = db
+            .nudge_state(BRIEF_ID)?
+            .and_then(|s| s.dismissed_on)
+            .is_some_and(|d| d == today);
+        brief.read = db.sync_state(BRIEF_READ_KEY)?.is_some_and(|d| d == today);
+        Ok(Some(brief))
+    }
+
+    /// Store this brief and the fingerprint of the data behind it.
+    pub fn save(&self, db: &crate::Db, fingerprint: &str) -> anyhow::Result<()> {
+        db.set_sync_state(BRIEF_KEY, &serde_json::to_string(self)?)?;
+        db.set_sync_state(BRIEF_FINGERPRINT_KEY, fingerprint)?;
+        // The `nudges` row has to exist before anything can claim or dismiss
+        // the brief: both are `UPDATE`s, and an update that matches no row is
+        // indistinguishable from one that found nothing left to do. Without
+        // this, the desktop's once-a-day claim reads as "already notified" on
+        // every single call and the nudge never arrives.
+        db.saw_nudge(BRIEF_ID, &self.date)?;
+        Ok(())
+    }
+
+    /// The fingerprint the stored brief was written from, for the caller
+    /// deciding whether to write another.
+    pub fn stored_fingerprint(db: &crate::Db) -> anyhow::Result<Option<String>> {
+        db.sync_state(BRIEF_FINGERPRINT_KEY)
+    }
+
+    /// Record that the block has been opened, so it stops presenting itself as
+    /// something not yet read.
+    pub fn mark_read(db: &crate::Db, today: NaiveDate) -> anyhow::Result<()> {
+        db.set_sync_state(BRIEF_READ_KEY, &today.format("%Y-%m-%d").to_string())
+    }
+}
+
+/// The brief the rules can write on their own.
+///
+/// This is what the coach used to be, in full: the highest-priority rule's own
+/// copy, straight through. It stays because the two things that can stop a
+/// model writing — none configured, and one that couldn't be reached — are both
+/// ordinary, and an evening with no coach at all is worse than an evening with
+/// the plainer one. The rules still write honest, evidenced sentences. What
+/// they can't do is look at a day and decide it isn't worth one.
+pub fn rules_brief(report: &CoachReport, generated_at: String) -> DailyBrief {
+    let headline = report.headline();
+    DailyBrief {
+        date: report.date.clone(),
+        // Exactly the old behaviour: a notification on the days a rule fired,
+        // silence on the days none did. `headline` has already dropped
+        // anything dismissed this morning.
+        notify: headline.is_some(),
+        title: headline.map_or_else(String::new, |n| n.nudge.title.clone()),
+        alert: headline.map_or_else(String::new, |n| first_sentence(&n.nudge.body)),
+        body: headline.map_or_else(String::new, |n| n.nudge.body.clone()),
+        tone: headline.map_or(Tone::Neutral, |n| n.nudge.tone),
+        evidence: headline.map_or_else(Vec::new, |n| n.nudge.evidence.clone()),
+        signals: report.nudges.iter().map(|n| n.nudge.id.clone()).collect(),
+        source: BriefSource::Rules,
+        generated_at,
+        dismissed: false,
+        read: false,
+    }
+}
+
 /// One notification the system has been asked to deliver, and when.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -656,47 +830,62 @@ pub struct PlannedNudge {
     pub day: u32,
 }
 
-/// The notification body: one sentence, and after the first day an admission of
-/// how old it is.
+/// Up to the first full stop. What a rule's two sentences of body reduce to
+/// when they have to fit under a notification title.
+fn first_sentence(text: &str) -> String {
+    text.split_once(". ")
+        .map_or(text, |(first, _)| first)
+        .trim()
+        .to_string()
+}
+
+/// The notification body: the brief's one sentence, and after the first day an
+/// admission of how old it is.
 ///
 /// Everything scheduled beyond the first is text frozen at planning time, and
-/// the honest framing is that this is exactly as stale as the app itself — no
+/// the honest framing is that it is exactly as stale as the app itself — no
 /// sync has happened either, so opening the app right then would say the same
 /// thing. Saying when it was worked out lets that be checked rather than
 /// assumed.
-fn notification_body(nudge: &Nudge, planned_on: NaiveDate, day: u32) -> String {
-    let first = nudge
-        .body
-        .split_once(". ")
-        .map(|(a, _)| a)
-        .unwrap_or(&nudge.body)
-        .to_string();
+fn notification_body(brief: &DailyBrief, day: u32) -> String {
     if day == 0 {
-        first
-    } else {
-        format!(
-            "{first} (worked out {}, and nothing has synced since.)",
-            planned_on.format("%A")
-        )
+        return brief.alert.clone();
+    }
+    match NaiveDate::parse_from_str(&brief.date, "%Y-%m-%d") {
+        Ok(written_on) => format!(
+            "{} (worked out {}, and nothing has synced since.)",
+            brief.alert,
+            written_on.format("%A")
+        ),
+        // A brief with an unparseable date is a bug elsewhere, and dropping the
+        // parenthetical is a better answer than dropping the notification.
+        Err(_) => brief.alert.clone(),
     }
 }
 
-/// What to hand the system, given today's report.
+/// What to hand the system, given today's brief.
 ///
-/// Pure, so the awkward parts — an hour that has already passed, a report with
-/// nothing to say, notifications switched off — are decided here and testable,
-/// leaving the platform layer with nothing but the scheduling calls.
+/// Pure, so the awkward parts — an hour that has already passed, a brief that
+/// chose to stay quiet, one already put away this morning, notifications
+/// switched off — are decided here and testable, leaving the platform layer
+/// with nothing but the scheduling calls.
+///
+/// Note what is *not* decided here any more: whether today is worth a
+/// notification at all. That is `brief.notify`, and it was settled when the
+/// brief was written, by whoever wrote it.
 pub fn plan_notifications(
-    report: &CoachReport,
+    brief: &DailyBrief,
     settings: &NotifySettings,
     now: NaiveDateTime,
 ) -> Vec<PlannedNudge> {
-    if !settings.enabled {
+    if !settings.enabled || !brief.notify || brief.dismissed {
         return Vec::new();
     }
-    let Some(headline) = report.headline() else {
+    // A brief that wants to notify but has nothing to put in the notification
+    // is a malformed one. Silence beats an empty banner.
+    if brief.title.trim().is_empty() || brief.alert.trim().is_empty() {
         return Vec::new();
-    };
+    }
     let Some(at_hour) = now.date().and_hms_opt(settings.hour(), 0, 0) else {
         return Vec::new();
     };
@@ -711,9 +900,9 @@ pub fn plan_notifications(
 
     (0..HORIZON_DAYS)
         .map(|day| PlannedNudge {
-            nudge_id: headline.nudge.id.clone(),
-            title: headline.nudge.title.clone(),
-            body: notification_body(&headline.nudge, now.date(), day),
+            nudge_id: BRIEF_ID.to_string(),
+            title: brief.title.clone(),
+            body: notification_body(brief, day),
             at: first + chrono::Duration::days(day as i64),
             day,
         })
@@ -768,6 +957,27 @@ pub fn for_today(db: &crate::Db, today: NaiveDate) -> anyhow::Result<CoachReport
 mod notification_tests {
     use super::*;
 
+    /// A brief that wants to speak, of the shape a model returns.
+    fn brief() -> DailyBrief {
+        DailyBrief {
+            date: "2026-08-08".into(),
+            notify: true,
+            title: "The long easy run hasn't happened yet".into(),
+            alert: "Longest run this week is 11 minutes against a 30 minute goal".into(),
+            body: "Longest run this week is 11 minutes against a 30 minute goal. \
+                   There are two days left to put one in, and yesterday's readiness \
+                   of 81 says you have the room for it."
+                .into(),
+            tone: Tone::Watch,
+            evidence: vec!["Longest run: 11 min".into()],
+            signals: vec!["long-run-missing".into()],
+            source: BriefSource::Model,
+            generated_at: "2026-08-08T07:00:00Z".into(),
+            dismissed: false,
+            read: false,
+        }
+    }
+
     fn report(nudges: Vec<(&str, bool)>) -> CoachReport {
         CoachReport {
             date: "2026-08-08".into(),
@@ -805,19 +1015,22 @@ mod notification_tests {
     #[test]
     fn the_plan_starts_today_when_the_hour_is_still_ahead() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings::default(),
             at("2026-08-08 09:00:00"),
         );
         assert_eq!(plan.len(), HORIZON_DAYS as usize);
         assert_eq!(plan[0].at, at("2026-08-08 18:00:00"));
-        assert_eq!(plan[3].at, at("2026-08-11 18:00:00"));
+        assert_eq!(
+            plan[HORIZON_DAYS as usize - 1].at,
+            at("2026-08-09 18:00:00")
+        );
     }
 
     #[test]
     fn the_plan_starts_tomorrow_once_the_hour_has_gone() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings::default(),
             at("2026-08-08 20:30:00"),
         );
@@ -829,7 +1042,7 @@ mod notification_tests {
     #[test]
     fn the_hour_exactly_now_is_treated_as_gone() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings::default(),
             at("2026-08-08 18:00:00"),
         );
@@ -837,11 +1050,11 @@ mod notification_tests {
     }
 
     /// Only the first is current. The rest have to say so, because by then no
-    /// sync has happened and the numbers in them are days old.
+    /// sync has happened and the brief in them is about a day that has ended.
     #[test]
     fn only_the_first_notification_speaks_as_of_today() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings::default(),
             at("2026-08-08 09:00:00"),
         );
@@ -853,10 +1066,16 @@ mod notification_tests {
         assert!(plan[1].body.contains("nothing has synced since"));
     }
 
+    /// The whole point of the rewrite: the writer decides, and it is allowed to
+    /// decide that today is not worth a notification even though it still has a
+    /// block's worth to say on the screen.
     #[test]
-    fn a_dismissed_nudge_is_not_scheduled() {
+    fn a_brief_that_chose_to_stay_quiet_schedules_nothing() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", true)]),
+            &DailyBrief {
+                notify: false,
+                ..brief()
+            },
             &NotifySettings::default(),
             at("2026-08-08 09:00:00"),
         );
@@ -864,19 +1083,45 @@ mod notification_tests {
     }
 
     #[test]
-    fn nothing_to_say_schedules_nothing() {
+    fn a_dismissed_brief_is_not_scheduled() {
         let plan = plan_notifications(
-            &report(vec![]),
+            &DailyBrief {
+                dismissed: true,
+                ..brief()
+            },
             &NotifySettings::default(),
             at("2026-08-08 09:00:00"),
         );
         assert!(plan.is_empty());
+    }
+
+    /// A model that returns `notify: true` and then nothing to put in the
+    /// banner shouldn't produce an empty one.
+    #[test]
+    fn a_brief_with_no_words_in_it_schedules_nothing() {
+        for malformed in [
+            DailyBrief {
+                alert: "  ".into(),
+                ..brief()
+            },
+            DailyBrief {
+                title: String::new(),
+                ..brief()
+            },
+        ] {
+            let plan = plan_notifications(
+                &malformed,
+                &NotifySettings::default(),
+                at("2026-08-08 09:00:00"),
+            );
+            assert!(plan.is_empty());
+        }
     }
 
     #[test]
     fn switched_off_schedules_nothing() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings {
                 enabled: false,
                 hour: 18,
@@ -891,7 +1136,7 @@ mod notification_tests {
     #[test]
     fn an_impossible_hour_is_clamped_rather_than_dropped() {
         let plan = plan_notifications(
-            &report(vec![("long-run-missing", false)]),
+            &brief(),
             &NotifySettings {
                 enabled: true,
                 hour: 99,
@@ -899,6 +1144,59 @@ mod notification_tests {
             at("2026-08-08 09:00:00"),
         );
         assert_eq!(plan[0].at, at("2026-08-08 23:00:00"));
+    }
+
+    /* ----------------------------------------------------- the fallback --- */
+
+    /// With no model, the coach has to behave exactly as it did before: a
+    /// notification on the days a rule fired, carrying that rule's own words.
+    #[test]
+    fn the_rules_fallback_reproduces_the_old_behaviour() {
+        let fallback = rules_brief(
+            &report(vec![("long-run-missing", false)]),
+            "2026-08-08T07:00:00Z".into(),
+        );
+        assert!(fallback.notify);
+        assert_eq!(fallback.source, BriefSource::Rules);
+        assert_eq!(fallback.title, "The long easy run hasn't happened yet");
+        assert_eq!(
+            fallback.alert,
+            "Longest run this week is 11 minutes against a 30 minute goal"
+        );
+        assert_eq!(fallback.evidence, vec!["Longest run: 11 min".to_string()]);
+
+        let plan = plan_notifications(
+            &fallback,
+            &NotifySettings::default(),
+            at("2026-08-08 09:00:00"),
+        );
+        assert_eq!(plan.len(), HORIZON_DAYS as usize);
+        assert_eq!(plan[0].nudge_id, BRIEF_ID);
+    }
+
+    #[test]
+    fn the_rules_fallback_stays_quiet_when_no_rule_fired() {
+        let fallback = rules_brief(&report(vec![]), "2026-08-08T07:00:00Z".into());
+        assert!(!fallback.notify);
+        assert!(plan_notifications(
+            &fallback,
+            &NotifySettings::default(),
+            at("2026-08-08 09:00:00")
+        )
+        .is_empty());
+    }
+
+    /// `headline` already drops what was put away this morning, so the fallback
+    /// inherits dismissal without having to know about it.
+    #[test]
+    fn the_rules_fallback_stays_quiet_when_the_only_rule_was_dismissed() {
+        let fallback = rules_brief(
+            &report(vec![("long-run-missing", true)]),
+            "2026-08-08T07:00:00Z".into(),
+        );
+        assert!(!fallback.notify);
+        // The rule still fired, and the brief still says so.
+        assert_eq!(fallback.signals, vec!["long-run-missing".to_string()]);
     }
 }
 

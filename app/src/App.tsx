@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { RouterProvider } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { garminStatus, scheduleNudges } from "./lib/api";
+import { focusBrief, onBriefTap } from "./lib/notificationTap";
 import { router } from "./router";
 import { Setup } from "./screens/Setup";
 import { useTypeface } from "./lib/useTypeface";
@@ -36,17 +37,29 @@ export function App() {
   // have data for.
   //
   // Launch is one of only two moments this can happen — the other is after a
-  // sync — because nothing evaluates the rules while the app is closed. So each
-  // launch replaces the queued days with a plan built from what the cache knows
-  // now, and the phone keeps nudging for a few days after this without the app
-  // ever running again.
+  // sync — because nothing runs while the app is closed. So each launch writes
+  // today's brief and queues it, and the phone keeps nudging for a day or two
+  // after this without the app ever running again.
   useEffect(() => {
     if (!status.data?.connected) return;
     void scheduleNudges().catch(() => {
       // A refused notification permission is not worth interrupting a launch
-      // over. The same nudge is on Today either way.
+      // over. The same brief is on Today either way.
     });
   }, [status.data?.connected]);
+
+  // A tap on that notification should land on the block it came from, not just
+  // open the app. Subscribed for the life of the process rather than from
+  // Today, which may well not be mounted when the tap arrives.
+  useEffect(() => {
+    const subscription = onBriefTap(() => {
+      focusBrief();
+      void router.navigate({ to: "/today" });
+    });
+    return () => {
+      void subscription.then((off) => off());
+    };
+  }, []);
 
   // The window has no decorations, so the chrome renders on every branch below
   // — including the loading one, where an undraggable window would look hung.

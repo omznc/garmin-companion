@@ -912,6 +912,75 @@ export const setGoals = (goals: Goals) => invoke<Goals>("set_goals", { goals });
 export const coach = () => invoke<CoachReport>("coach");
 export const dismissNudge = (id: string) => invoke<void>("dismiss_nudge", { id });
 
+/* ----------------------------------------------------------- daily brief --- */
+
+/**
+ * Who wrote the brief. `rules` means no model was configured or the call
+ * failed, and the text is the rules' own — worth saying on screen rather than
+ * letting a change of voice go unexplained.
+ */
+export type BriefSource = "model" | "rules";
+
+/**
+ * What the coach has to say today, written once and read in two places.
+ *
+ * The notification and the block on Today are the same piece of writing:
+ * `alert` is what the system shows under `title`, `body` is what the screen
+ * shows, and both come out of one call. That is what makes tapping the
+ * notification land on something rather than merely opening the app.
+ */
+export interface DailyBrief {
+  /** The local date this is about. It stops being about today at midnight. */
+  date: string;
+  /**
+   * Whether it was worth a notification. False is the ordinary answer — the
+   * block still renders, it just doesn't knock.
+   */
+  notify: boolean;
+  title: string;
+  /** One sentence, written to stand alone on a lock screen. */
+  alert: string;
+  /** The whole thing, which is what tapping the notification opens. */
+  body: string;
+  tone: NudgeTone;
+  /** The numbers behind it, already formatted. */
+  evidence: string[];
+  /** The rule ids that fired today, whether or not the brief spoke about them. */
+  signals: string[];
+  source: BriefSource;
+  generatedAt: string;
+  dismissed: boolean;
+  /**
+   * False until the block has been opened. With `notify`, this is what lets a
+   * tap that launched the app from cold still land on the block: the event was
+   * gone before anything could hear it, but "today's brief asked to knock and
+   * hasn't been opened since" says the same thing.
+   */
+  read: boolean;
+}
+
+/**
+ * The brief's id in the nudge table — stable for all time, so `dismissNudge`
+ * works on it like any other. Must match `coach::BRIEF_ID`.
+ */
+export const BRIEF_ID = "daily-brief";
+
+/**
+ * What the coach has to say today.
+ *
+ * Never fails for want of a model: with none configured, or one that can't be
+ * reached, the rules write it instead and `source` says so. Kept against a
+ * fingerprint of the data behind it, so this is one model call a day plus one
+ * per sync that actually moved the numbers — not one per screen open.
+ *
+ * `force` rewrites it from the same data, which is what the block's rewrite
+ * control does.
+ */
+export const dailyBrief = (force?: boolean) => invoke<DailyBrief>("daily_brief", { force });
+
+/** Record that the block has been opened. */
+export const markBriefRead = () => invoke<void>("mark_brief_read");
+
 export interface NotifySettings {
   enabled: boolean;
   /** Local hour, 0–23. */

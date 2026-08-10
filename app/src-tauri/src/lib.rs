@@ -438,6 +438,10 @@ struct NudgeSchedule {
     resident: bool,
 }
 
+/// The key the brief's id travels under in a notification's `extra`, so a tap
+/// can be recognised as one. Matched by the frontend's `notificationTap`.
+const BRIEF_TAP_KEY: &str = "brief";
+
 /// The id block the coach's scheduled notifications occupy.
 ///
 /// Fixed and contiguous so rescheduling is cancel-then-schedule over a known
@@ -446,35 +450,68 @@ struct NudgeSchedule {
 #[cfg(mobile)]
 const NUDGE_NOTIFICATION_IDS: std::ops::Range<i32> = 7100..7116;
 
-/// Hand the system the coach's next few days of nudges.
+/// Hand the system the coach's next couple of days of nudges.
 ///
 /// This is the whole proactive half of the coach, and it works the way it does
-/// because the app has no background execution: nothing evaluates the rules
-/// while the app is closed, so every notification has to be queued in advance
-/// from the last plan that was made. Called on launch and after every sync, and
-/// each call cancels the previous plan before laying down a new one — so the
-/// text is never older than the last time the app was open.
+/// because the app has no background execution: nothing runs while the app is
+/// closed, so every notification has to be queued in advance from the last plan
+/// that was made. Called on launch and after every sync, and each call cancels
+/// the previous plan before laying down a new one — so the text is never older
+/// than the last time the app was open.
 ///
-/// Desktop takes the other path. The plugin ignores `schedule` there, so the
-/// nudge is shown when its hour arrives and the app is the thing awake to notice
-/// — which is what `background` exists to make possible. Called on launch, after
-/// every sync, and once a minute by the background loop.
+/// The text is now [`chat::daily_brief`], which means a phone notification is
+/// something a model wrote about that particular day rather than a rule's fixed
+/// copy. Awaiting it here is what makes that possible at all: a notification
+/// due at six in the evening has to be written while the app is still running,
+/// and the last moment that is true is now. It cannot fail in a way worth
+/// handling — with no model configured, or one that couldn't be reached, it
+/// comes back as the rules' own words, which is exactly what this used to send.
+///
+/// Desktop takes the other path from `deliver` on. The plugin ignores
+/// `schedule` there, so the nudge is shown when its hour arrives and the app is
+/// the thing awake to notice — which is what `background` exists to make
+/// possible. Called on launch, after every sync, and by the background loop.
 #[tauri::command]
 async fn schedule_nudges(app: tauri::AppHandle) -> CmdResult<NudgeSchedule> {
     let now = chrono::Local::now().naive_local();
 
-    // Read first, and let the connection go before anything can block: what
-    // follows may sit on a permission dialog for as long as it takes someone to
-    // notice their phone.
-    let (settings, planned) = {
+    let brief = chat::daily_brief(false).await.map_err(to_msg)?;
+
+    // Read, and let the connection go before anything can block: what follows
+    // may sit on a permission dialog for as long as it takes someone to notice
+    // their phone.
+    let settings = {
         let db = Db::open_default().map_err(to_msg)?;
-        let settings = garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)?;
-        let report = garmin_core::coach::for_today(&db, now.date()).map_err(to_msg)?;
-        let planned = garmin_core::coach::plan_notifications(&report, &settings, now);
-        (settings, planned)
+        garmin_core::coach::NotifySettings::load(&db).map_err(to_msg)?
     };
+    let planned = garmin_core::coach::plan_notifications(&brief, &settings, now);
 
     deliver(app, planned, settings).await
+}
+
+/// What the coach has to say today, for the screen that shows it.
+///
+/// The same call the notification is built from, and deliberately so: the block
+/// on Today and the banner on the lock screen are one piece of writing, and a
+/// tap has to land on the thing it promised.
+#[tauri::command]
+async fn daily_brief(force: Option<bool>) -> CmdResult<garmin_core::coach::DailyBrief> {
+    chat::daily_brief(force.unwrap_or(false))
+        .await
+        .map_err(to_msg)
+}
+
+/// Record that the brief's block has been opened.
+///
+/// Half of what makes tapping a notification work. The other half is a live
+/// event, and a tap that launched the app from cold arrives before there is any
+/// JavaScript listening for it — so the screen also asks "has today's brief
+/// been read yet", and opens itself if not.
+#[tauri::command]
+fn mark_brief_read() -> CmdResult<()> {
+    let db = Db::open_default().map_err(to_msg)?;
+    garmin_core::coach::DailyBrief::mark_read(&db, chrono::Local::now().date_naive())
+        .map_err(to_msg)
 }
 
 #[cfg(mobile)]
@@ -532,6 +569,10 @@ async fn deliver(
             .id(id)
             .title(&nudge.title)
             .body(&nudge.body)
+            // Comes back on the tap event, so the frontend can tell this from
+            // whatever else might one day be sending notifications rather than
+            // treating every tap as a request to open the brief.
+            .extra(BRIEF_TAP_KEY, &nudge.nudge_id)
             .schedule(Schedule::At {
                 date: at,
                 repeating: false,
@@ -633,6 +674,7 @@ async fn deliver(
         .builder()
         .title(&nudge.title)
         .body(&nudge.body)
+        .extra(BRIEF_TAP_KEY, &nudge.nudge_id)
         .show()
         .map_err(|e| format!("could not show the notification: {e}"))?;
 
@@ -1783,6 +1825,8 @@ pub fn run() {
             set_goals,
             coach,
             dismiss_nudge,
+            daily_brief,
+            mark_brief_read,
             schedule_nudges,
             notification_settings,
             set_notification_settings,

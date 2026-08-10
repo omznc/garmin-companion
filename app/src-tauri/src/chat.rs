@@ -3010,9 +3010,13 @@ mean *together*, what changed, or what today should be. One number, quoted \
 because your point needs it, is right; four in a row is a worse version of the \
 tiles.
 
-The coach panel directly below you carries today's nudges, each with its \
-evidence. Do not repeat one. If `coach.nudges` is non-empty, the athlete is \
-about to read it — you may lead into it, never restate it.
+Directly below you is the coach's brief for today, and `brief` is that exact \
+text. The athlete is about to read it. Whatever it says is taken: the thing it \
+flagged, the number it leads on, the advice it gives are all spoken for, and \
+your paragraph restating any of it wastes both. You have the different job — \
+the brief decides what is worth *doing* about today, and you say what this \
+morning *is*. Set it up if that helps; never say it twice. When `brief` is \
+null, nothing has been written yet and this paragraph is on its own.
 
 Read `cacheStatus` first, and read it correctly. `daysSinceActivity` and \
 `daysSinceDaily` are the **age of the newest record** — how long ago the last \
@@ -3092,17 +3096,21 @@ const TODAY_DRIFT_RUNS: u32 = 8;
 /// depends on the prompt as much as on the figures. This one self-heals at
 /// midnight because the date is in the key, but a prompt fix shipped in the
 /// morning should not wait until then to show.
+/// The brief's timestamp rather than its text: it is the one input here that
+/// can be a paragraph long, and it only moves when the brief is rewritten,
+/// which is exactly when this paragraph needs rewriting to stop colliding with
+/// the new one.
 fn today_fingerprint(bundle: &Value, today: &str) -> String {
     let day = &bundle["recovery"][0];
     format!(
-        "v2|{today}|{}|{}|{}|{}|{}|{}|{}",
+        "v3|{today}|{}|{}|{}|{}|{}|{}|{}",
         bundle["cacheStatus"]["newestDailyDate"],
         bundle["cacheStatus"]["newestActivityDate"],
         bundle["cacheStatus"]["activitiesCached"],
         day["sleep_hours"],
         day["hrv_last_night"],
         day["training_readiness"],
-        bundle["coach"]["nudges"].as_array().map_or(0, Vec::len),
+        bundle["brief"]["generatedAt"],
     )
 }
 
@@ -3111,6 +3119,16 @@ fn today_fingerprint(bundle: &Value, today: &str) -> String {
 /// `force` regenerates even when the cached paragraph still matches, which is
 /// what the screen's rewrite control does.
 pub async fn today_summary(force: bool) -> Result<TodaySummary> {
+    // Awaited first, and quoted into the bundle below. The two blocks sit
+    // inches apart on the same screen and are written by the same model from
+    // the same figures, so left to race they arrive at the same sentence twice.
+    // Ordering them is what lets the prompt say "do not repeat this" and mean
+    // something. It is nearly free after the first call of the day — the brief
+    // is kept against its own fingerprint — and `force` is deliberately not
+    // passed through: rewriting the paragraph is not a reason to rewrite the
+    // brief the screen is already showing.
+    let brief = daily_brief(false).await.ok();
+
     // The connection is opened, used and dropped inside this block: rusqlite's
     // is not `Sync`, so holding one across the await below would make this
     // future non-`Send` and Tauri could not spawn the command.
@@ -3127,6 +3145,7 @@ pub async fn today_summary(force: bool) -> Result<TodaySummary> {
             "recentActivities": query::recent_activities(&db, TODAY_ACTIVITIES, None)?,
             "zoneDrift": query::zone_drift(&db, TODAY_DRIFT_RUNS)?,
             "coach": garmin_core::coach::for_today(&db, today)?,
+            "brief": brief,
         });
         let fingerprint = today_fingerprint(&bundle, &today.to_string());
 
@@ -3177,6 +3196,325 @@ pub async fn today_summary(force: bool) -> Result<TodaySummary> {
         generated_at,
         cached: false,
     })
+}
+
+/* ------------------------------------------------------------ daily brief --- */
+
+const BRIEF_PROMPT: &str = "\
+You are this athlete's coach, and you are deciding whether to interrupt their \
+evening. You will be given a JSON bundle of everything the app knows about \
+today and the day before it.
+
+Answer with a single JSON object and nothing else. No prose around it, no \
+markdown fence, no explanation of your reasoning. The fields are:
+
+- `notify` — boolean. Whether this is worth a phone notification.
+- `title` — one short line, under about fifty characters, no full stop at the \
+  end. It has to work as a notification title on a lock screen.
+- `alert` — one sentence, under about a hundred and forty characters. It has to \
+  stand completely on its own under that title, read by someone who will not \
+  open the app. Put the number in it.
+- `body` — two to four sentences. This is the block on their home screen and \
+  what opens when they tap the notification, so it is where the reasoning goes: \
+  what you saw, what it means together, and what today or tomorrow should be. \
+  Do not open by restating `alert` — carry on from it.
+- `tone` — `good`, `neutral` or `watch`. `good` when the thing you are saying \
+  is that something went right, `watch` when it is worth acting on, `neutral` \
+  otherwise.
+- `evidence` — an array of up to five short strings, each one figure and its \
+  label, already formatted: `\"Z5: 14 min of 22 (64%)\"`, `\"Resting HR: 51 \
+  bpm, 7-day avg 49\"`. Every claim in `title`, `alert` and `body` has to be \
+  supported by something in here. If you cannot put the number in this array, \
+  do not make the claim.
+
+**`notify: false` is the ordinary answer, and it is not a failure.** An app \
+that sends a notification every day is one whose notifications get switched off \
+inside a fortnight, and then it has nothing. A day where the training was \
+unremarkable and the recovery numbers sat where they always sit is a day to say \
+nothing. Interrupt when there is something the athlete would actually want \
+pulling their phone out for: a session that went much harder than it was meant \
+to, a recovery signal that has moved, a week about to run out with its long run \
+undone, a genuinely good sign after a bad stretch. Silence still needs a `body` \
+— write the quiet version, one or two sentences, because the home screen shows \
+it either way. It just doesn't knock.
+
+`coach.nudges` is a rules engine that has already been over the same data. \
+Treat it as a colleague's notes, not as your copy. Each entry carries an `id`, \
+a `tone`, a `priority` and its own `evidence`, and those findings are reliable \
+— they are arithmetic. What they cannot do is judge whether today is the day to \
+say it, or say it in words that fit this particular evening, which is what you \
+are for. Use their evidence freely. Do not quote their `title` or `body` back. \
+And an empty `coach.nudges` is not a reason to stay quiet if you can see \
+something in the data yourself, just as a full one is not a reason to speak.
+
+Read `yesterday` and match it against `local_date` on the activities: what \
+happened yesterday, and how they slept and recovered from it, is usually the \
+most useful thing in the bundle. `recovery` comes back newest first, so \
+`recovery[0]` is this morning and `recovery[1]` is yesterday morning.
+
+Read `cacheStatus` first, and read it correctly. `daysSinceActivity` and \
+`daysSinceDaily` are the **age of the newest record** — how long ago the last \
+one was, not how much history exists. The cache holds years. \
+`daysSinceActivity: 2` means the most recent session was two days ago, which is \
+an ordinary gap between sessions. When either is well past three, the gap is \
+the story: say what period you actually have, and do not describe a reading \
+from a fortnight ago as though it were this morning.
+
+The caveats that apply everywhere in this app apply here:
+- `has_hr_data: false` means the session recorded no heart rate. That is not an \
+  easy session — leave it out of any easy/hard reading rather than counting it \
+  as zero.
+- `hr_confidence.level` of `caution` or `poor`, and \
+  `hr_confidence.cadenceLock` of `likely`, mean the zone split may be the wrist \
+  sensor reading arm swing as pulse. `hr_confidence.notes` gives the reason in \
+  full. Do not build a nudge on one of those without saying so.
+- `resting_hr_source` is only a real resting heart rate when it reads \
+  `overnight`. Never read a jump between two different sources as fitness.
+- Strength, jump rope and circuits are not continuous aerobic work. Their zone \
+  split describes work-to-rest, not a target hit or missed — keep them out of \
+  any easy/hard split, and never prescribe a heart-rate ceiling for one.
+
+Address them as \"you\". Be direct, specific and calm. Never invent a number \
+that is not in the JSON and never estimate one to fill a gap. Flag overreaching \
+when the data shows it without catastrophising, and say plainly when something \
+is going well — the recovery signal on this account usually is.";
+
+/// Room for a title, a sentence, a short paragraph and five evidence lines,
+/// with the same headroom for a model that reasons first as [`TODAY_MAX_TOKENS`].
+const BRIEF_MAX_TOKENS: u32 = 1200;
+
+/// How much of each series the brief is written from.
+///
+/// Shorter than the Today paragraph's windows on purpose. This is a decision
+/// about tonight, and the two things it turns on — what happened yesterday, and
+/// whether this morning's numbers are where they usually are — need enough
+/// history to have a baseline and no more. `zoneDrift` is the exception: drift
+/// is the whole point of the rule it backs up.
+const BRIEF_RECOVERY_DAYS: u32 = 10;
+const BRIEF_ACTIVITIES: u32 = 8;
+const BRIEF_DRIFT_RUNS: u32 = 6;
+const BRIEF_SLEEP_DAYS: u32 = 7;
+const BRIEF_FITNESS_DAYS: u32 = 7;
+
+/// What the brief was written about.
+///
+/// The same contract as [`today_fingerprint`], and for the same reason: the
+/// date is in the key, so a brief self-heals at midnight and staleness grows on
+/// its own while the data sits still. The rest is the figures a nudge would
+/// actually turn on, so a sync that moves them rewrites it and merely opening
+/// the screen does not.
+///
+/// The signal list is in here rather than a count. Two rules firing instead of
+/// two different rules firing is the same number and a completely different
+/// evening, and a count would hold the old brief through the change.
+fn brief_fingerprint(bundle: &Value, today: &str) -> String {
+    let day = &bundle["recovery"][0];
+    let signals: Vec<&str> = bundle["coach"]["nudges"]
+        .as_array()
+        .map(|n| n.iter().filter_map(|n| n["id"].as_str()).collect())
+        .unwrap_or_default();
+    format!(
+        "v1|{today}|{}|{}|{}|{}|{}|{}|{}",
+        bundle["cacheStatus"]["newestDailyDate"],
+        bundle["cacheStatus"]["newestActivityDate"],
+        bundle["cacheStatus"]["activitiesCached"],
+        day["sleep_hours"],
+        day["hrv_last_night"],
+        day["training_readiness"],
+        signals.join(","),
+    )
+}
+
+/// The `response_format` for a brief.
+fn brief_schema() -> Value {
+    json!({
+        "type": "json_schema",
+        "json_schema": {
+            "name": "daily_brief",
+            "strict": true,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "notify": { "type": "boolean" },
+                    "title": { "type": "string" },
+                    "alert": { "type": "string" },
+                    "body": { "type": "string" },
+                    "tone": { "type": "string", "enum": ["good", "neutral", "watch"] },
+                    "evidence": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["notify", "title", "alert", "body", "tone", "evidence"],
+                "additionalProperties": false
+            }
+        }
+    })
+}
+
+/// The object out of whatever the model wrapped it in.
+///
+/// The same problem [`parse_followups`] has: the schema is only sent to
+/// providers recorded as taking one, so on the hosted coach this is the only
+/// thing standing between a fenced code block and a brief that fails to parse.
+fn brief_object(text: &str) -> Option<Value> {
+    let (open, close) = (text.find('{')?, text.rfind('}')?);
+    (close > open)
+        .then(|| serde_json::from_str::<Value>(&text[open..=close]).ok())
+        .flatten()
+        .filter(Value::is_object)
+}
+
+/// A model's answer as a brief, with every field coerced rather than trusted.
+///
+/// The one field worth a hard default is `notify`: a model that omitted it, or
+/// sent a string where a boolean goes, has not decided to interrupt, and
+/// reading that as a decision to interrupt is the failure mode this whole
+/// design is trying to avoid. Missing means quiet.
+fn brief_from(
+    answer: &Value,
+    date: String,
+    signals: Vec<String>,
+    generated_at: String,
+) -> Result<garmin_core::coach::DailyBrief> {
+    use garmin_core::coach::{BriefSource, DailyBrief, Tone};
+
+    let text = |key: &str| answer[key].as_str().unwrap_or_default().trim().to_string();
+    let body = text("body");
+    if body.is_empty() {
+        return Err(anyhow!("the model returned a brief with nothing in it"));
+    }
+
+    Ok(DailyBrief {
+        date,
+        notify: answer["notify"].as_bool().unwrap_or(false),
+        title: text("title"),
+        alert: text("alert"),
+        body,
+        tone: match answer["tone"].as_str() {
+            Some("good") => Tone::Good,
+            Some("watch") => Tone::Watch,
+            _ => Tone::Neutral,
+        },
+        evidence: answer["evidence"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|e| e.as_str())
+                    .map(|e| e.trim().to_string())
+                    .filter(|e| !e.is_empty())
+                    .take(5)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        signals,
+        source: BriefSource::Model,
+        generated_at,
+        dismissed: false,
+        read: false,
+    })
+}
+
+/// What the coach has to say today: the notification and the block on Today,
+/// written together in one call.
+///
+/// Falls back to [`garmin_core::coach::rules_brief`] rather than failing, on
+/// both the paths that can stop a model writing — none configured, and one that
+/// couldn't be reached. Every caller of this either shows a screen or schedules
+/// an evening's notification, and neither has anything useful to do with an
+/// error.
+///
+/// `force` rewrites even when the stored brief still matches, which is what the
+/// screen's rewrite control does.
+pub async fn daily_brief(force: bool) -> Result<garmin_core::coach::DailyBrief> {
+    use garmin_core::coach::DailyBrief;
+
+    // One writer at a time, for the whole read-decide-write, because Today asks
+    // for this twice at once: `CoachPanel` renders the block, and `Lede` awaits
+    // the same brief so its paragraph can avoid repeating it. Both fire on the
+    // same mount. Without this they both miss the cache, both call the model,
+    // and the screen pays twice to have one of the two answers thrown away —
+    // and the paragraph is then written against a brief that is not the one
+    // underneath it. The loser of the race takes the lock, finds the
+    // fingerprint already matching, and returns the winner's brief.
+    //
+    // Tokio's mutex rather than `std`'s, unlike everything else in this file:
+    // this one is deliberately held across the model call.
+    static WRITING: tauri::async_runtime::Mutex<()> = tauri::async_runtime::Mutex::const_new(());
+    let _writing = WRITING.lock().await;
+
+    // Opened, used and dropped before the await, for the reason spelt out in
+    // `today_summary`: rusqlite's connection is not `Sync`.
+    let (bundle, fingerprint, report, stored, creds) = {
+        let db = Db::open_default()?;
+        let today = chrono::Local::now().date_naive();
+        let report = garmin_core::coach::for_today(&db, today)?;
+
+        let bundle = json!({
+            "today": today.to_string(),
+            "weekday": today.format("%A").to_string(),
+            "yesterday": (today - chrono::Duration::days(1)).to_string(),
+            "cacheStatus": query::cache_status(&db)?,
+            "recovery": query::recovery(&db, BRIEF_RECOVERY_DAYS)?,
+            "recentActivities": query::recent_activities(&db, BRIEF_ACTIVITIES, None)?,
+            "zoneDrift": query::zone_drift(&db, BRIEF_DRIFT_RUNS)?,
+            "sleep": query::sleep(&db, BRIEF_SLEEP_DAYS)?,
+            "fitness": query::fitness(&db, BRIEF_FITNESS_DAYS)?,
+            "goals": garmin_core::goals::Goals::load(&db)?,
+            "coach": report,
+        });
+        let fingerprint = brief_fingerprint(&bundle, &today.to_string());
+
+        let stored = match DailyBrief::load(&db, today)? {
+            Some(brief)
+                if !force && DailyBrief::stored_fingerprint(&db)? == Some(fingerprint.clone()) =>
+            {
+                Some(brief)
+            }
+            _ => None,
+        };
+
+        (bundle, fingerprint, report, stored, creds(&db))
+    };
+
+    if let Some(hit) = stored {
+        return Ok(hit);
+    }
+
+    let generated_at = chrono::Utc::now().to_rfc3339();
+    let signals: Vec<String> = report.nudges.iter().map(|n| n.nudge.id.clone()).collect();
+
+    let written = match creds {
+        Ok(creds) => {
+            let messages = vec![
+                json!({ "role": "system", "content": now_line() + BRIEF_PROMPT }),
+                json!({ "role": "user", "content": bundle.to_string() }),
+            ];
+            match one_shot(creds, messages, Some(brief_schema()), BRIEF_MAX_TOKENS).await {
+                Ok(text) => brief_object(&text).and_then(|answer| {
+                    brief_from(
+                        &answer,
+                        report.date.clone(),
+                        signals.clone(),
+                        generated_at.clone(),
+                    )
+                    .ok()
+                }),
+                Err(_) => None,
+            }
+        }
+        Err(_) => None,
+    };
+
+    // The fallback is stored too, and against the same fingerprint. A model
+    // that is down at six is usually still down at seven, and retrying the
+    // whole call every time a screen opens costs a request per open to arrive
+    // at the same sentence.
+    let brief = written.unwrap_or_else(|| garmin_core::coach::rules_brief(&report, generated_at));
+
+    let db = Db::open_default()?;
+    brief.save(&db, &fingerprint)?;
+    // `save` reaches the `nudges` table, and this morning's dismissal lives
+    // there — so read it back rather than returning the unresolved copy.
+    Ok(DailyBrief::load(&db, chrono::Local::now().date_naive())?.unwrap_or(brief))
 }
 
 /* ------------------------------------------------------ activity critique --- */
@@ -3691,8 +4029,8 @@ mod tests {
         ] {
             assert!(
                 at(&view, path).is_some(),
-                "SYSTEM_PROMPT and TODAY_PROMPT both tell the model to read \
-                 `{path}`, and an activity does not have it"
+                "SYSTEM_PROMPT, TODAY_PROMPT and BRIEF_PROMPT all tell the \
+                 model to read `{path}`, and an activity does not have it"
             );
         }
 
@@ -3712,6 +4050,66 @@ mod tests {
                 "the prompts and `today_fingerprint` read `{path}` off a recovery day"
             );
         }
+    }
+
+    /// The same trap, one level worse, in [`brief_fingerprint`].
+    ///
+    /// A prompt naming a key that isn't there produces a paragraph with a
+    /// caveat quietly missing. A *fingerprint* naming one produces a constant:
+    /// every term reads as `null`, every day hashes the same, and the brief
+    /// stops being rewritten — so the coach keeps saying Monday's thing on
+    /// Thursday and there is nothing on screen to suggest anything is wrong.
+    /// The date term would mask even that, since it changes on its own at
+    /// midnight and makes the key look alive.
+    ///
+    /// `coach.nudges[].id` is the one that carries real risk: `CoachReport`
+    /// renames to camel while the recovery rows beside it do not, and the
+    /// signal list is the term that distinguishes two rules firing from two
+    /// *different* rules firing.
+    #[test]
+    fn the_brief_fingerprint_reads_keys_that_exist() {
+        let report = garmin_core::coach::CoachReport {
+            date: "2026-08-10".into(),
+            week: garmin_core::goals::week_progress(
+                &garmin_core::goals::Goals::default(),
+                &[],
+                "2026-08-10".parse().unwrap(),
+            ),
+            nudges: vec![],
+        };
+        let bundle = json!({
+            "cacheStatus": { "newestDailyDate": "2026-08-10", "newestActivityDate": "2026-08-09", "activitiesCached": 412 },
+            "recovery": [{ "sleep_hours": 7.4, "hrv_last_night": 82.0, "training_readiness": 81.0 }],
+            "coach": report,
+        });
+
+        for path in [
+            "cacheStatus.newestDailyDate",
+            "cacheStatus.newestActivityDate",
+            "cacheStatus.activitiesCached",
+            "coach.nudges",
+        ] {
+            assert!(
+                at(&bundle, path).is_some(),
+                "`brief_fingerprint` reads `{path}` and it is not there"
+            );
+        }
+
+        // And the term that matters most: the fingerprint has to move when a
+        // different rule fires, not merely when a different number of them do.
+        let with = |ids: &[&str]| {
+            let nudges: Vec<Value> = ids.iter().map(|id| json!({ "id": id })).collect();
+            let mut bundle = bundle.clone();
+            bundle["coach"]["nudges"] = json!(nudges);
+            brief_fingerprint(&bundle, "2026-08-10")
+        };
+        assert_ne!(
+            with(&["hard-drift"]),
+            with(&["cadence-low"]),
+            "two different single rules must not fingerprint the same"
+        );
+        assert_eq!(with(&["hard-drift"]), with(&["hard-drift"]));
+        assert_ne!(with(&[]), with(&["hard-drift"]));
     }
 
     /// The casing that caused it, stated as an assertion so the next person to
@@ -3851,6 +4249,95 @@ mod tests {
                 "{name} is offered to the model but has no dispatch arm"
             );
         }
+    }
+
+    /* ---------------------------------------------------------- brief --- */
+
+    fn parse_brief(text: &str) -> Option<garmin_core::coach::DailyBrief> {
+        brief_object(text).and_then(|answer| {
+            brief_from(
+                &answer,
+                "2026-08-10".into(),
+                vec!["hard-drift".into()],
+                "2026-08-10T17:00:00Z".into(),
+            )
+            .ok()
+        })
+    }
+
+    /// The schema is only sent to providers recorded as taking one, and the
+    /// hosted coach is not one of them — so on the default setup a fence is not
+    /// an edge case, it is the wire format.
+    #[test]
+    fn a_brief_parses_out_of_whatever_the_model_wrapped_it_in() {
+        let object = r#"{"notify":true,"title":"Z5 crept back up","alert":"Three runs, Z5 share 12% to 31%","body":"The last three runs moved from 12% Z5 to 31%. Readiness is still 81, so this isn't damage yet — it's the drift you said you'd watch for.","tone":"watch","evidence":["Z5 share: 12% -> 19% -> 31%","Readiness: 81"]}"#;
+
+        for wrapped in [
+            object.to_string(),
+            format!("```json\n{object}\n```"),
+            format!("Here is the brief:\n\n{object}\n\nLet me know if you want it rewritten."),
+        ] {
+            let brief = parse_brief(&wrapped).expect("every wrapping should parse");
+            assert!(brief.notify);
+            assert_eq!(brief.title, "Z5 crept back up");
+            assert_eq!(brief.tone, garmin_core::coach::Tone::Watch);
+            assert_eq!(brief.evidence.len(), 2);
+            // Not the model's to decide — it comes from the report, so a model
+            // that invented a signal list couldn't launder it through here.
+            assert_eq!(brief.signals, vec!["hard-drift".to_string()]);
+            assert_eq!(brief.source, garmin_core::coach::BriefSource::Model);
+        }
+    }
+
+    /// The one field where a wrong default is actively harmful.
+    ///
+    /// Everything else in a malformed brief degrades to something duller than
+    /// intended. `notify` degrades to *interrupting someone's evening*, which
+    /// is the exact behaviour this whole design exists to stop being automatic,
+    /// so anything that isn't a clear yes has to read as no.
+    #[test]
+    fn a_brief_that_didnt_clearly_ask_to_interrupt_doesnt() {
+        for answer in [
+            json!({ "body": "Nothing much to flag today." }),
+            json!({ "notify": "true", "body": "A string is not a decision." }),
+            json!({ "notify": null, "body": "Nor is null." }),
+            json!({ "notify": 1, "body": "Nor is one." }),
+        ] {
+            let brief = parse_brief(&answer.to_string()).expect("a body is all that's required");
+            assert!(!brief.notify, "{answer} should not have notified");
+        }
+    }
+
+    /// A brief with no body is not a quiet day, it's a failed call — and the
+    /// difference matters, because `daily_brief` falls back to the rules on the
+    /// second and stores the first as today's answer.
+    #[test]
+    fn a_brief_with_no_body_is_rejected_rather_than_stored() {
+        assert!(parse_brief(r#"{"notify":false}"#).is_none());
+        assert!(parse_brief(r#"{"notify":false,"body":"   "}"#).is_none());
+        assert!(parse_brief("I couldn't work out what to say.").is_none());
+        // A bare array is valid JSON and not a brief.
+        assert!(parse_brief("[1, 2, 3]").is_none());
+    }
+
+    /// An unrecognised tone shouldn't colour the block as a warning, and
+    /// shouldn't drop the brief either.
+    #[test]
+    fn an_unknown_tone_lands_on_neutral() {
+        let brief = parse_brief(r#"{"notify":false,"tone":"urgent","body":"Steady day."}"#)
+            .expect("an odd tone is not a reason to lose the brief");
+        assert_eq!(brief.tone, garmin_core::coach::Tone::Neutral);
+    }
+
+    /// Five is what the prompt asks for and what the block is laid out around.
+    #[test]
+    fn evidence_is_capped_and_emptied_of_blanks() {
+        let brief = parse_brief(
+            r#"{"notify":true,"title":"t","alert":"a","body":"b","tone":"good",
+                "evidence":["one","","  ","two","three","four","five","six","seven"]}"#,
+        )
+        .expect("should parse");
+        assert_eq!(brief.evidence, ["one", "two", "three", "four", "five"]);
     }
 
     /// The shape the schema documents, and the three sloppier ones the small

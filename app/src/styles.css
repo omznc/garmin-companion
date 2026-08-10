@@ -2684,6 +2684,49 @@ body::-webkit-scrollbar {
   pointer-events: none;
 }
 
+/* ================================================================= coach === */
+
+/* The daily brief, for the couple of seconds after it has opened itself.
+ *
+ * A notification promises there is something behind it, and on a phone the tap
+ * lands you on a screen you were not looking at a moment ago. Scrolling the
+ * block into view answers "where", and this answers "which" — without it the
+ * reader arrives somewhere in the middle of Today with no idea which paragraph
+ * was the one that knocked.
+ *
+ * A wash rather than an outline: the block already carries a coloured stripe
+ * for its tone, and a second border around it would read as a different kind of
+ * element rather than as the same one, briefly pointed at. It fades in over the
+ * duration `Coach.tsx` holds the class for and is gone by the time anyone has
+ * finished reading, which is the point — a highlight that outstays the moment
+ * becomes part of how the thing looks. */
+.brief-lit {
+  border-radius: 6px;
+  animation: brief-lit 2600ms var(--ease-out) forwards;
+}
+
+@keyframes brief-lit {
+  from {
+    background: color-mix(in srgb, var(--acc) 16%, transparent);
+  }
+  60% {
+    background: color-mix(in srgb, var(--acc) 16%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* Reduced motion still wants the answer to "which one", so the wash stays and
+ * only the fade goes. Holding it and cutting it is not motion in the sense the
+ * setting is about — nothing travels, and there is nothing to track. */
+@media (prefers-reduced-motion: reduce) {
+  .brief-lit {
+    animation: none;
+    background: color-mix(in srgb, var(--acc) 16%, transparent);
+  }
+}
+
 /* ================================================================== chat === */
 
 /* The reading column, as two numbers anything fixed can be placed against.

@@ -145,23 +145,34 @@ one click if you have one.
 
 ### The coach
 
-The one part of the app that speaks first. It looks at the week against the
-goals you set in Settings and decides whether anything is worth raising — most
-days nothing is, which is the design rather than a failure. What it does raise
-carries the numbers behind it, and one nudge a day can become a system
-notification.
+The one part of the app that speaks first. Once a day it writes a **brief** —
+one short piece about that day and the one before it, from your sleep, your
+recovery numbers, what you actually did, and the week against the goals you set
+in Settings. Everything it says carries the numbers behind it, one tap away.
 
-On Android that notification arrives without the app running. Nothing evaluates
-the rules in the background, so instead the next few days are queued with the
-system in advance, from a plan rebuilt on every launch and after every sync.
-Anything queued beyond the first day says in its own text when it was worked
-out, because by then it is reporting the last thing the cache was told rather
-than something current — and after those days the phone goes quiet until the app
-is opened again. Desktop has no way to queue a notification at all, so there it
-is shown on launch, at most once a day.
+The brief also decides whether it is worth interrupting you for, and most days
+it isn't. That is the design rather than a failure: an app that notifies every
+evening is one whose notifications get switched off in a fortnight. A quiet
+brief still shows up on Today; it just doesn't knock. When it does knock, the
+notification and the block on Today are the same piece of writing, so tapping
+one opens the rest of it rather than merely opening the app.
 
-The rules are stateless and live in `crates/garmin-core/src/coach.rs`; what a
-nudge has already said, and for how many days, lives in the cache.
+Underneath, the rules in `crates/garmin-core/src/coach.rs` still run and still
+decide what is *true* — the drift, the load ratio, the missing long run. What
+they no longer decide is which of it is worth saying tonight, or in what words.
+They arrive as evidence, and the block will show you what they noticed next to
+what the brief chose to say about it. With no model configured, or one that
+can't be reached, the rules write the block themselves and it says so — which
+is exactly how the coach worked before.
+
+On Android the notification arrives without the app running. Nothing runs in the
+background, so the brief has to be written while the app is still open and
+handed to the system in advance, rebuilt on every launch and after every sync.
+Tomorrow's copy says in its own text when it was worked out, because by then it
+is reporting the last thing the cache was told rather than something current —
+and after that the phone goes quiet until the app is opened again. Desktop has
+no way to queue a notification at all, so there it is shown at its hour by
+whatever is awake to notice, at most once a day.
 
 There's also a headless sync, useful for a cron job:
 
