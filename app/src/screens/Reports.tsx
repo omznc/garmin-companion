@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cachedActivitiesSince, cachedDaily } from "../lib/api";
 import {
@@ -25,6 +25,7 @@ import {
   Unit,
 } from "../components/ui";
 import { RefreshButton } from "../components/Refresh";
+import { IS_MOBILE } from "../lib/platform";
 import { DASH, daysAgo, duration, hoursMinutes, km, num, parseLocal } from "../lib/format";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -89,6 +90,104 @@ export function Reports() {
     );
   });
 
+  // The three parts of the write-up, built once and arranged twice — the phone
+  // stacks them in a different order than the desktop sets them in, and that is
+  // the only difference between the two.
+  const headlineEl = (
+    <div
+      className="serif"
+      style={{ fontSize: IS_MOBILE ? 23 : 26, lineHeight: 1.3, marginBottom: 14 }}
+    >
+      {headline(week, prior, split)}
+    </div>
+  );
+
+  const proseEl = (
+    <>
+      <p
+        style={{
+          fontSize: "var(--fs-md)",
+          lineHeight: 1.72,
+          margin: "0 0 14px",
+          textWrap: "pretty",
+        }}
+      >
+        {body(week, prior)}
+      </p>
+      <p
+        style={{
+          fontSize: "var(--fs-md)",
+          lineHeight: 1.72,
+          color: "var(--mut)",
+          margin: 0,
+          textWrap: "pretty",
+        }}
+      >
+        {recoveryBody(avgSleep, avgRhr, split, food, water)}
+      </p>
+    </>
+  );
+
+  // A rail of five on a desktop, two abreast on a phone. Written as a list
+  // rather than as two blocks of markup so the figures themselves — and which
+  // of them are there at all — can't drift between the two.
+  const figures: { label: string; value: ReactNode; accent?: boolean }[] = [
+    {
+      label: "Distance",
+      value:
+        week.distanceM > 0 ? (
+          <>
+            {(week.distanceM / 1000).toFixed(1)}
+            <Unit size={16}> km</Unit>
+          </>
+        ) : (
+          DASH
+        ),
+    },
+    { label: "Time", value: hoursMinutes(week.durationS) },
+    { label: "Sessions", value: num(week.activities.length) },
+    { label: "Avg sleep", value: avgSleep ? hoursMinutes(avgSleep) : DASH },
+    ...(split
+      ? [
+          {
+            label: "Time above Z2",
+            value: `${split.hardPct.toFixed(0)}%`,
+            accent: split.hardPct > 30,
+          },
+        ]
+      : []),
+  ];
+
+  const numbersEl = (
+    <div
+      style={
+        IS_MOBILE
+          ? {
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "20px 22px",
+              // The hairline the desktop draws down the side of these, laid
+              // flat: stacked, what they need separating from is the headline
+              // above and the paragraphs below, not a column beside them.
+              borderTop: "1px solid var(--line)",
+              paddingTop: 20,
+              marginBottom: 26,
+            }
+          : { display: "flex", flexDirection: "column", gap: 24 }
+      }
+    >
+      {figures.map((f) => (
+        <Metric
+          key={f.label}
+          size={IS_MOBILE ? 24 : 26}
+          label={f.label}
+          value={f.value}
+          accent={f.accent}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <div className="screen">
       {/* Which issue you're looking at goes in the header's eyebrow. This used
@@ -102,69 +201,44 @@ export function Reports() {
         action={<RefreshButton />}
       />
 
+      {/* Two columns on a desktop — the write-up beside the figures it's
+          written from, the way a page of a magazine would set them.
+
+          A phone gets the same three parts in one column instead of two narrow
+          ones. Held side by side at that width the report was two squeezed
+          things rather than one: a `1.35fr` column of prose down to a handful of
+          words a line, and beside it a rail of 26px numbers with barely room
+          for "Time above Z2" under them.
+
+          Stacked, the order changes as well. The figures move up under the
+          headline, because a column you scroll has a top and a bottom where two
+          columns have neither — and the numbers are what the week is, where the
+          paragraphs are what it means. */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1.35fr 1fr",
-          gap: 44,
+          gridTemplateColumns: IS_MOBILE ? "1fr" : "1.35fr 1fr",
+          gap: IS_MOBILE ? 26 : 44,
         }}
       >
-        <div>
-          <div className="serif" style={{ fontSize: 26, lineHeight: 1.3, marginBottom: 14 }}>
-            {headline(week, prior, split)}
+        {IS_MOBILE ? (
+          <div>
+            {headlineEl}
+            {numbersEl}
+            {proseEl}
           </div>
-          <p
-            style={{
-              fontSize: "var(--fs-md)",
-              lineHeight: 1.72,
-              margin: "0 0 14px",
-              textWrap: "pretty",
-            }}
-          >
-            {body(week, prior)}
-          </p>
-          <p
-            style={{
-              fontSize: "var(--fs-md)",
-              lineHeight: 1.72,
-              color: "var(--mut)",
-              margin: 0,
-              textWrap: "pretty",
-            }}
-          >
-            {recoveryBody(avgSleep, avgRhr, split, food, water)}
-          </p>
-        </div>
-
-        <div style={{ borderLeft: "1px solid var(--line)", paddingLeft: 28 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            <Metric
-              size={26}
-              label="Distance"
-              value={
-                week.distanceM > 0 ? (
-                  <>
-                    {(week.distanceM / 1000).toFixed(1)}
-                    <Unit size={16}> km</Unit>
-                  </>
-                ) : (
-                  DASH
-                )
-              }
-            />
-            <Metric size={26} label="Time" value={hoursMinutes(week.durationS)} />
-            <Metric size={26} label="Sessions" value={num(week.activities.length)} />
-            <Metric size={26} label="Avg sleep" value={avgSleep ? hoursMinutes(avgSleep) : DASH} />
-            {split && (
-              <Metric
-                size={26}
-                label="Time above Z2"
-                value={`${split.hardPct.toFixed(0)}%`}
-                accent={split.hardPct > 30}
-              />
-            )}
-          </div>
-        </div>
+        ) : (
+          <>
+            <div>
+              {headlineEl}
+              {proseEl}
+            </div>
+            {/* The rule that separates the two columns belongs to the second
+                one, and there is no second one on a phone — the stack's own
+                hairlines do that job there. */}
+            <div style={{ borderLeft: "1px solid var(--line)", paddingLeft: 28 }}>{numbersEl}</div>
+          </>
+        )}
       </div>
 
       <div className="eyebrow" style={{ margin: "58px 0 14px" }}>
@@ -201,7 +275,19 @@ export function Reports() {
         </div>
       ))}
 
-      <div style={{ display: "flex", gap: 24, marginTop: 40, fontSize: "var(--fs-small)" }}>
+      {/* Wrapping, because the two buttons and the note beside them are wider
+          than a phone and the note is the part that should drop to its own
+          line — flexed on one line, it squeezed the two controls instead. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 24,
+          rowGap: 12,
+          marginTop: 40,
+          fontSize: "var(--fs-small)",
+        }}
+      >
         <button
           className="quiet"
           style={{ color: "var(--mut)" }}
