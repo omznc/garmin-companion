@@ -85,6 +85,7 @@ export { CheckCircleIcon as DoneIcon } from "@phosphor-icons/react/dist/csr/Chec
 export { HouseIcon as NavToday } from "@phosphor-icons/react/dist/csr/House";
 export { SneakerMoveIcon as NavActivities } from "@phosphor-icons/react/dist/csr/SneakerMove";
 export { HeartbeatIcon as NavHealth } from "@phosphor-icons/react/dist/csr/Heartbeat";
+export { MoonStarsIcon as NavSleep } from "@phosphor-icons/react/dist/csr/MoonStars";
 export { ForkKnifeIcon as NavFood } from "@phosphor-icons/react/dist/csr/ForkKnife";
 export { ScalesIcon as NavWeight } from "@phosphor-icons/react/dist/csr/Scales";
 export { ChatCircleDotsIcon as NavAsk } from "@phosphor-icons/react/dist/csr/ChatCircleDots";

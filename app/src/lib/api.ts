@@ -745,6 +745,110 @@ export interface FitnessReport {
 
 export const fitness = (days = 90) => invoke<FitnessReport>("fitness", { days });
 
+/* ----------------------------------------------------------------- sleep --- */
+
+export type SleepStage = "deep" | "light" | "rem" | "awake" | "unmeasurable";
+
+/** One bar of the hypnogram. `fromStartMins` is the axis every chart lays out on. */
+export interface StageSlice {
+  stage: SleepStage;
+  startLocal: string;
+  endLocal: string;
+  fromStartMins: number;
+  secs: number;
+}
+
+export interface HrSample {
+  fromStartMins: number;
+  bpm: number;
+}
+
+/**
+ * One component of Garmin's sleep score, with the band Garmin wants it in.
+ * The band moves with the length of the night, so it can't be a constant here.
+ */
+export interface ScorePart {
+  key: string;
+  value: number | null;
+  qualifier: string | null;
+  optimalStart: number | null;
+  optimalEnd: number | null;
+}
+
+export interface SleepNight {
+  /** The date woken up on, which is how Garmin keys a night. */
+  date: string;
+  score: number | null;
+  scoreQualifier: string | null;
+  feedback: string | null;
+  insight: string | null;
+  totalSecs: number | null;
+  deepSecs: number | null;
+  lightSecs: number | null;
+  remSecs: number | null;
+  awakeSecs: number | null;
+  napSecs: number | null;
+  /** Local wall clock, `YYYY-MM-DDTHH:MM:SS`. */
+  startLocal: string | null;
+  endLocal: string | null;
+  needSecs: number | null;
+  needBaselineSecs: number | null;
+  awakeCount: number | null;
+  restlessCount: number | null;
+  avgOvernightHrv: number | null;
+  restingHr: number | null;
+  avgHr: number | null;
+  avgStress: number | null;
+  bodyBatteryChange: number | null;
+  avgRespiration: number | null;
+  lowRespiration: number | null;
+  highRespiration: number | null;
+  avgSpo2: number | null;
+  lowestSpo2: number | null;
+  scoreParts: ScorePart[];
+  stages: StageSlice[];
+  hr: HrSample[];
+}
+
+export interface SleepAverages {
+  nights: number;
+  totalSecs: number | null;
+  score: number | null;
+  deepPct: number | null;
+  remPct: number | null;
+  lightPct: number | null;
+  awakeSecs: number | null;
+  efficiency: number | null;
+  overnightHrv: number | null;
+  restingHr: number | null;
+  restlessCount: number | null;
+  /** Minutes past 18:00, so bedtimes either side of midnight stay in order. */
+  bedtimeMins: number | null;
+  bedtimeSdMins: number | null;
+  wakeMins: number | null;
+  wakeSdMins: number | null;
+  shortNights: number;
+}
+
+export interface SleepInsight {
+  id: string;
+  tone: "good" | "note" | "watch";
+  claim: string;
+  detail: string;
+  nights: number;
+}
+
+export interface SleepReport {
+  lastNight: SleepNight | null;
+  nights: SleepNight[];
+  averages: SleepAverages;
+  insights: SleepInsight[];
+  /** Wellness rows exist but no detail behind them — a sync away from fixed. */
+  needsBackfill: boolean;
+}
+
+export const sleep = (days = 30) => invoke<SleepReport>("sleep", { days });
+
 /* ----------------------------------------------------------------- coach --- */
 
 export interface Goals {

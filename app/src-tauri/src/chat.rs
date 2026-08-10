@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::sync::oneshot;
 
 const OPENROUTER_BASE: &str = "https://openrouter.ai/api/v1";
@@ -754,7 +754,7 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "recent_activities",
-                "description": "List recent activities with per-zone HR breakdown, pace, cadence and training effect. Start here for 'how am I doing'.",
+                "description": "List recent activities with per-zone HR breakdown, pace, cadence and training effect. Start here for 'how am I doing'. Each row carries an `activity_id`, which is how you name one session to `activity_zones` or `activity_analysis` afterwards — so this is also the first call when a question is about a particular run and you don't know its id yet.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -768,11 +768,24 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "activity_zones",
-                "description": "Full HR zone breakdown for one activity: minutes and percent in zones 1-5. Omit activity_id for the most recent.",
+                "description": "Full HR zone breakdown for one activity: minutes and percent in zones 1-5, and nothing else. Omit activity_id for the most recent. This is the cheap, shallow read — if the question is about how the session went rather than what the split was, call `activity_analysis` instead and get the laps and the shape of the run with it.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "activity_id": { "type": "integer" }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "activity_analysis",
+                "description": "One session read closely, and far more than `activity_zones` gives: the lap splits, how heart rate and pace and cadence moved through the run, drift within the session itself, how it compares with recent sessions of the same sport, and the specific moments worth noticing with where in the session they happened. This is the tool for any question about one particular run — why it felt hard, what happened in the second half, whether the pacing held. Take the id from `recent_activities`; omit it for the most recent session. The first read of a session costs a few requests to Garmin and is slower than the other tools here; after that it is served from the cache. Without a connection it still returns the laps and zones, with the series missing rather than the whole answer.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "activity_id": { "type": "integer", "description": "As reported by recent_activities. Omit for the latest session." }
                     }
                 }
             }
@@ -817,7 +830,7 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "cadence_trend",
-                "description": "Running cadence across recent runs.",
+                "description": "Running cadence across recent runs, for whether step rate is low or improving. `runs_with_cadence` against `runs_examined` is worth reading before drawing a line through it: a treadmill run without a footpod records no cadence at all, and those runs are absent rather than zero.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -868,8 +881,21 @@ fn tool_schemas() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "sleep",
+                "description": "Sleep in detail, which `recovery` only summarises: last night's stage split (deep, light, REM, awake), when they fell asleep and woke, sleep efficiency, overnight HRV and resting HR, respiration, SpO2, restlessness — plus the window behind it, the typical bedtime and how far it swings, and which score components Garmin itself marked short. `insights` are computed from the rows rather than written by a model, so quote them instead of re-deriving the same claim. Call this for anything about sleep quality, bedtime, stages, or why a night scored badly. `needsBackfill: true` means the detail hasn't been synced yet, not that they slept badly.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "days": { "type": "integer", "description": "How many nights of context. Default 30, capped at 365." }
+                    }
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "workouts",
-                "description": "The athlete's saved Garmin workouts. There is no training plan or goal race on the account, so these are the closest thing to a plan.",
+                "description": "The athlete's saved Garmin workouts — the structured sessions they built themselves. There is no training plan or goal race on the account, so these are the closest thing to a plan; read them before drafting one, both to see what they already have and to compare a saved session against what was actually run.",
                 "parameters": { "type": "object", "properties": {} }
             }
         },
@@ -877,7 +903,7 @@ fn tool_schemas() -> Value {
             "type": "function",
             "function": {
                 "name": "routes",
-                "description": "Routes grouped from cached GPS traces. Only outdoor activities have a trace; treadmill sessions never will.",
+                "description": "Routes built from cached GPS traces, grouped when outings start and finish in the same place over a similar distance — so the count against a route is how often that loop has been run. Only outdoor activities have a trace; treadmill sessions never will, and an empty result on a treadmill history is the expected answer rather than missing data.",
                 "parameters": { "type": "object", "properties": {} }
             }
         },
@@ -1177,6 +1203,7 @@ fn describe(name: &str, args: &Value) -> String {
             }
         }
         "activity_zones" => "Reading one activity's zone breakdown".into(),
+        "activity_analysis" => "Reading one session closely".into(),
         "list_tags" => "Reading the tags you've used".into(),
         "tagged_activities" => match args["tag"].as_str() {
             Some(t) => format!("Reading your “{t}” sessions"),
@@ -1195,6 +1222,10 @@ fn describe(name: &str, args: &Value) -> String {
         "weight" => {
             let d = window(args, "days", 180, MAX_WEIGHT_DAYS);
             format!("Reading {d} days of weigh-ins")
+        }
+        "sleep" => {
+            let d = window(args, "days", 30, MAX_DAYS);
+            format!("Reading last night and {d} nights behind it")
         }
         "workouts" => "Reading your saved Garmin workouts".into(),
         "routes" => "Reading your cached GPS routes".into(),
@@ -1626,6 +1657,59 @@ async fn ask_athlete<R: Runtime>(
     }
 }
 
+/// One session, read as closely as the activity screen reads it.
+///
+/// The deep read the model previously only got when the athlete asked from an
+/// activity page, where [`context_message`] hands it over. Asking the same
+/// question from the Ask screen used to leave it with `activity_zones` — five
+/// numbers where the page it can't see has the laps, the drift within the run
+/// and the moments worth naming — so a question about one run was answered
+/// thinner than the same question asked one screen over.
+///
+/// It goes through `crate::analysis_for`, which is what the screen calls, so
+/// there is one analysis of a session rather than two that can disagree. That
+/// also means it may reach Garmin: the first read of a session costs three
+/// requests and is the slowest tool here, and every read after it is the cache.
+///
+/// Trimmed by [`for_model`] on the way out, for the same two reasons the
+/// activity context is — five hundred sampled rows are most of a context
+/// window, and the coordinates among them are the one part of this data that
+/// says where the athlete lives.
+async fn activity_analysis<R: Runtime>(app: &AppHandle<R>, args: &Value) -> Value {
+    // Resolved in its own block, and before anything is awaited: a rusqlite
+    // connection isn't `Send` and cannot be held across the fetch below.
+    let chosen = (|| -> Result<Option<i64>> {
+        if let Some(id) = args["activity_id"].as_i64() {
+            return Ok(Some(id));
+        }
+        // No id means the latest session, matching `activity_zones`.
+        let db = Db::open_default()?;
+        Ok(db
+            .recent_activities(1, None)?
+            .first()
+            .map(|a| a.activity_id))
+    })();
+
+    let id = match chosen {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            return json!({
+                "error": "there are no activities in the cache at all, so there \
+                          is no session to read. Say so rather than answering.",
+            })
+        }
+        Err(e) => return json!({ "error": format!("could not open the cache: {e}") }),
+    };
+
+    let state = app.state::<crate::AppState>();
+    match crate::analysis_for(&state, id, false).await {
+        Ok(analysis) => for_model(&analysis),
+        // Every failure here is about one session — a wrong id, or Garmin being
+        // unreachable — and the model can carry on with the other tools.
+        Err(e) => json!({ "error": e }),
+    }
+}
+
 /// The theme tools, or `None` when `name` isn't one of them.
 ///
 /// `save_theme` is the only tool in this app that writes anything, and it is
@@ -1825,6 +1909,13 @@ fn run_tool(name: &str, args: &Value) -> ToolOutput {
                 }
                 None => json!({ "error": "tagged_activities needs a tag" }),
             },
+            "sleep" => {
+                let days = window(args, "days", 30, MAX_DAYS);
+                // Trimmed before it goes anywhere near the context: the nights
+                // carry a hypnogram and an overnight heart-rate curve for the
+                // Sleep screen's charts, and neither is readable as JSON.
+                serde_json::to_value(query::sleep(&db, days)?.brief(30))?
+            }
             "workouts" => serde_json::to_value(db.workouts()?)?,
             "routes" => serde_json::to_value(query::route_summaries(&db)?)?,
             "strength_sessions" => serde_json::to_value(query::strength_trend(
@@ -2431,15 +2522,17 @@ async fn turn_inner<R: Runtime>(
                 sources.push(label.clone());
             }
 
-            // The one tool that waits on a person, and the one that therefore
-            // can't go through `run_tool` — it needs the channel to ask on and
-            // the turn id to be answered against.
-            let out = if call.name == "ask_athlete" {
-                ask_athlete(app, id, channel, &call.id, &args, &mut asks_used)
+            // Two tools don't go through `run_tool`, for the same underlying
+            // reason: it is synchronous and reads the cache, and these two
+            // await something outside it. `ask_athlete` waits on a person, and
+            // needs the channel to ask on and the turn id to be answered
+            // against; `activity_analysis` may go to Garmin for the samples.
+            let out = match call.name.as_str() {
+                "ask_athlete" => ask_athlete(app, id, channel, &call.id, &args, &mut asks_used)
                     .await
-                    .into()
-            } else {
-                run_tool(&call.name, &args)
+                    .into(),
+                "activity_analysis" => activity_analysis(app, &args).await.into(),
+                _ => run_tool(&call.name, &args),
             };
 
             emit(
@@ -3741,11 +3834,13 @@ mod tests {
                 "{name} has no description in `describe`"
             );
 
-            // `ask_athlete` is the exception, and deliberately so: it waits on a
-            // person, so it is dispatched by the turn loop where the channel and
-            // the turn id are, and `run_tool` has never heard of it. Routing it
-            // here would be routing it nowhere.
-            if name == "ask_athlete" {
+            // Two exceptions, and deliberately so: both await something
+            // `run_tool` can't, since it is synchronous and reads the cache.
+            // `ask_athlete` waits on a person and needs the channel and the turn
+            // id; `activity_analysis` may go to Garmin for the samples. Both are
+            // dispatched by the turn loop, where those things are, and routing
+            // them here would be routing them nowhere.
+            if name == "ask_athlete" || name == "activity_analysis" {
                 continue;
             }
 

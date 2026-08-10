@@ -309,6 +309,18 @@ fn fitness(days: Option<u32>) -> CmdResult<query::FitnessReport> {
     query::fitness(&db, days.unwrap_or(90)).map_err(to_msg)
 }
 
+/* ----------------------------------------------------------------- sleep --- */
+
+/// Last night in full, the window behind it, and what the two say.
+///
+/// A month by default: long enough for bedtime consistency to mean something,
+/// short enough that the answer is about how you're sleeping now.
+#[tauri::command]
+fn sleep(days: Option<u32>) -> CmdResult<garmin_core::sleep::SleepReport> {
+    let db = Db::open_default().map_err(to_msg)?;
+    query::sleep(&db, days.unwrap_or(30)).map_err(to_msg)
+}
+
 /* ----------------------------------------------------------------- coach --- */
 
 #[tauri::command]
@@ -899,6 +911,21 @@ async fn activity_analysis(
     activity_id: i64,
     force: Option<bool>,
 ) -> CmdResult<garmin_core::ActivityAnalysis> {
+    analysis_for(&state, activity_id, force.unwrap_or(false)).await
+}
+
+/// The body of the command above, callable without a `tauri::State`.
+///
+/// Split out for `chat::activity_analysis`, which offers the same read to the
+/// model as a tool. The alternative was a second implementation, and the
+/// difference between two of these is exactly the kind that goes unnoticed: the
+/// athlete reads one number on the activity screen and the coach quotes another
+/// for the same session.
+pub(crate) async fn analysis_for(
+    state: &AppState,
+    activity_id: i64,
+    force: bool,
+) -> CmdResult<garmin_core::ActivityAnalysis> {
     // The connection is opened and dropped inside each block: rusqlite's isn't
     // `Sync`, so a handle held across an await makes the future non-`Send`.
     let (activity, tags, key, cached) = {
@@ -909,7 +936,7 @@ async fn activity_analysis(
             .ok_or_else(|| "That activity isn't in the local cache.".to_string())?;
         let tags = db.activity_tags(activity_id).map_err(to_msg)?;
         let key = garmin_core::analysis::fingerprint(&activity, &tags);
-        let cached = if force.unwrap_or(false) {
+        let cached = if force {
             None
         } else {
             db.activity_analysis(activity_id, &key).map_err(to_msg)?
@@ -1751,6 +1778,7 @@ pub fn run() {
             strength_session,
             personal_records,
             fitness,
+            sleep,
             goals,
             set_goals,
             coach,

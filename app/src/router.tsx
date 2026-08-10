@@ -24,6 +24,7 @@ import { Today } from "./screens/Today";
 import { Activities } from "./screens/Activities";
 import { ActivityDetail } from "./screens/ActivityDetail";
 import { Health } from "./screens/Health";
+import { Sleep } from "./screens/Sleep";
 import { Ask } from "./screens/Ask";
 import { Insights } from "./screens/Insights";
 import { Gear } from "./screens/Gear";
@@ -181,9 +182,20 @@ const routeTree = rootRoute.addChildren([
     component: ActivityDetail,
   }),
   createRoute({ getParentRoute: () => rootRoute, path: "/health", component: Health }),
+  createRoute({ getParentRoute: () => rootRoute, path: "/sleep", component: Sleep }),
   createRoute({ getParentRoute: () => rootRoute, path: "/food", component: Food }),
   createRoute({ getParentRoute: () => rootRoute, path: "/weight", component: Weight }),
-  createRoute({ getParentRoute: () => rootRoute, path: "/ask", component: Ask }),
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/ask",
+    component: Ask,
+    // `?q=` seeds the composer, so a screen can hand a question over with the
+    // subject already filled in. Validated rather than trusted: search params
+    // survive a reload and are the one part of the URL a person can type into.
+    validateSearch: (search: Record<string, unknown>) => ({
+      q: typeof search.q === "string" ? search.q.slice(0, 400) : undefined,
+    }),
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: "/insights", component: Insights }),
   createRoute({ getParentRoute: () => rootRoute, path: "/strength", component: Strength }),
   createRoute({ getParentRoute: () => rootRoute, path: "/fitness", component: Fitness }),

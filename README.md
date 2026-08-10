@@ -20,6 +20,10 @@ mid-conversation. Sync is the only thing that talks to Garmin.
 - **Activities / Activity** — the history, and per-lap splits and charts for
   one session
 - **Health** — resting HR, HRV, sleep, stress, body battery over time
+- **Sleep** — last night at full resolution: the hypnogram, the stage mix
+  against Garmin's own target bands, overnight heart rate, HRV, respiration and
+  SpO2 — then bedtime consistency across the window, and what your own nights
+  say about duration, regularity and stage mix
 - **Food** — calories in against out, hydration
 - **Ask** — questions answered by a model you choose, given only the metrics
   the question needs

@@ -14,7 +14,7 @@
  * and what to say when no model has been chosen yet.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { chatConfig } from "../lib/api";
 import { useChat } from "../lib/useChat";
@@ -122,7 +122,18 @@ export function Ask() {
   // putting the row back is this flag and the `empty` gate on `showChips`.
   const chat = useChat({ followups: false });
   const { pins, full, toggle } = usePins();
-  const [draft, setDraft] = useState("");
+  /**
+   * A question handed over from another screen arrives in the box rather than
+   * already sent. Sleep is the screen that does it, and what it hands over is a
+   * starting point — the useful version of that question usually has a clause
+   * of your own on the end, and there is no way to add one to a turn that has
+   * already gone.
+   *
+   * Read once, as the initial state, so editing it doesn't fight the URL and
+   * a re-render can't put the original back under your cursor.
+   */
+  const seeded = useSearch({ from: "/ask" }).q;
+  const [draft, setDraft] = useState(seeded ?? "");
   const [recents, setRecents] = useState(false);
   /** Whether the conversation has been scrolled away from its bottom. */
   const [away, setAway] = useState(false);
