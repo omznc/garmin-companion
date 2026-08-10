@@ -147,6 +147,38 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.8.0" date="2026-08-10">
+      <description>
+        <p>
+          Sleep has a screen of its own. It opens on last night at full
+          resolution — the stages hour by hour, the mix against the bands
+          Garmin wants them in, and overnight heart rate, HRV, respiration and
+          oxygen saturation — then widens to the nights behind it for how far
+          your bedtime swings and what a month of them says. All of it was
+          already arriving with the two numbers the app used to keep, and being
+          thrown away; an existing cache fills itself in on the next sync.
+        </p>
+        <p>
+          A session, or where things stand today, can be shared as a card: the
+          figures, the time in each heart-rate zone, and the shape of the route
+          where there was one. On Linux it goes to the clipboard and to your
+          Pictures folder, ready to paste wherever the conversation already is.
+        </p>
+        <p>
+          The coach reads a run as closely from the chat as it does from the
+          activity page — the lap splits, how heart rate and pace moved through
+          it, where the pacing went — instead of the five numbers it used to
+          get, and it can now read a night in the same detail the sleep screen
+          shows.
+        </p>
+        <p>
+          An answer is drawn in the order it happened. What the coach said, the
+          data it went and read, the questions it asked and the workouts it
+          drafted now sit in sequence rather than being sorted into a summary
+          line and one block of prose.
+        </p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-08-09">
       <description>
         <p>
