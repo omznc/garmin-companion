@@ -42,10 +42,11 @@ async fn main() -> Result<()> {
     let report = sync::sync_all_with(&client, &db, days, full, &on).await?;
 
     println!(
-        "activities: {} seen, {} written\ndays: {}\nworkouts: {}\ntracks: {}",
+        "activities: {} seen, {} written\ndays: {}\nnights: {}\nworkouts: {}\ntracks: {}",
         report.activities_seen,
         report.activities_written,
         report.days_written,
+        report.nights_written,
         report.workouts_written,
         report.tracks_written,
     );

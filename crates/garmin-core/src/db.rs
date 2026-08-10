@@ -60,6 +60,15 @@ const NOT_NOISE: &str = "NOT (type_key = 'other'
 const MAX_TAG_CHARS: usize = 32;
 const MAX_TAGS_PER_ACTIVITY: usize = 12;
 
+/// One of a sleep row's JSON columns, back into its list.
+///
+/// A column that won't parse was written by a build whose shape has since
+/// changed. The scalars beside it are still good, so a bad column degrades to a
+/// night without a chart rather than to an error on a screen.
+fn json_list<T: serde::de::DeserializeOwned>(raw: String) -> Vec<T> {
+    serde_json::from_str(&raw).unwrap_or_default()
+}
+
 fn map_activity(r: &rusqlite::Row) -> rusqlite::Result<CachedActivity> {
     Ok(CachedActivity {
         activity_id: r.get(0)?,
@@ -348,6 +357,56 @@ impl Db {
                 -- The date a system notification last went out for it, so a
                 -- day's notification fires once however often the app opens.
                 notified_on  TEXT
+            );
+
+            -- One night, in the detail the sleep endpoint actually sends.
+            --
+            -- Apart from `daily_metrics` even though it is keyed by the same
+            -- date, for the reason `activity_tracks` is apart from
+            -- `activities`: the hypnogram and the overnight heart-rate curve
+            -- are orders of magnitude bigger than the summary, and every
+            -- screen that reads a run of days would otherwise drag them along.
+            --
+            -- `daily_metrics.sleep_secs` and `sleep_score` stay where they are.
+            -- They are the two figures the Health chart and every recovery
+            -- reading want, and they predate this table by a long way; this is
+            -- the detail behind them, not a replacement for them.
+            CREATE TABLE IF NOT EXISTS sleep_nights (
+                -- The calendar date the athlete woke on, which is how Garmin
+                -- keys it — so this joins to `daily_metrics` for free.
+                date            TEXT PRIMARY KEY,
+                score           REAL,
+                score_qualifier TEXT,
+                feedback        TEXT,
+                insight         TEXT,
+                total_secs      REAL,
+                deep_secs       REAL,
+                light_secs      REAL,
+                rem_secs        REAL,
+                awake_secs      REAL,
+                nap_secs        REAL,
+                -- Local wall clock, offset already folded in.
+                start_local     TEXT,
+                end_local       TEXT,
+                need_secs       REAL,
+                need_baseline_secs REAL,
+                awake_count     REAL,
+                restless_count  REAL,
+                avg_overnight_hrv REAL,
+                resting_hr      REAL,
+                avg_hr          REAL,
+                avg_stress      REAL,
+                body_battery_change REAL,
+                avg_respiration REAL,
+                low_respiration REAL,
+                high_respiration REAL,
+                avg_spo2        REAL,
+                lowest_spo2     REAL,
+                -- JSON: Garmin's per-component scores with their target bands,
+                -- the stage timeline, and the thinned overnight HR curve.
+                score_parts     TEXT NOT NULL DEFAULT '[]',
+                stages          TEXT NOT NULL DEFAULT '[]',
+                hr              TEXT NOT NULL DEFAULT '[]'
             );
 
             -- The computed analysis for one session, kept because building it
@@ -712,6 +771,114 @@ impl Db {
         Ok(rows)
     }
 
+    /// Write one night, replacing whatever was there.
+    ///
+    /// A plain replace rather than the field-by-field `COALESCE` merge
+    /// `upsert_daily` does, and the difference is deliberate: a daily row is
+    /// assembled from five independent endpoints that each fail separately, so
+    /// a later sync must not blank what an earlier one managed to fetch. A
+    /// night comes from one response, whole. If Garmin has revised it —
+    /// and it does, for a day or two, as the watch syncs late data — the
+    /// revision is the truth and merging would preserve the stale half.
+    pub fn upsert_sleep_night(&self, n: &crate::sleep::SleepNight) -> Result<()> {
+        self.conn.execute(
+            r#"
+            INSERT OR REPLACE INTO sleep_nights (
+                date, score, score_qualifier, feedback, insight,
+                total_secs, deep_secs, light_secs, rem_secs, awake_secs, nap_secs,
+                start_local, end_local, need_secs, need_baseline_secs,
+                awake_count, restless_count, avg_overnight_hrv, resting_hr, avg_hr,
+                avg_stress, body_battery_change, avg_respiration, low_respiration,
+                high_respiration, avg_spo2, lowest_spo2, score_parts, stages, hr
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
+                      ?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)
+            "#,
+            params![
+                n.date,
+                n.score,
+                n.score_qualifier,
+                n.feedback,
+                n.insight,
+                n.total_secs,
+                n.deep_secs,
+                n.light_secs,
+                n.rem_secs,
+                n.awake_secs,
+                n.nap_secs,
+                n.start_local,
+                n.end_local,
+                n.need_secs,
+                n.need_baseline_secs,
+                n.awake_count,
+                n.restless_count,
+                n.avg_overnight_hrv,
+                n.resting_hr,
+                n.avg_hr,
+                n.avg_stress,
+                n.body_battery_change,
+                n.avg_respiration,
+                n.low_respiration,
+                n.high_respiration,
+                n.avg_spo2,
+                n.lowest_spo2,
+                serde_json::to_string(&n.score_parts).unwrap_or_else(|_| "[]".into()),
+                serde_json::to_string(&n.stages).unwrap_or_else(|_| "[]".into()),
+                serde_json::to_string(&n.hr).unwrap_or_else(|_| "[]".into()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Nights on or after `from`, newest first.
+    pub fn sleep_nights_since(&self, from: &str) -> Result<Vec<crate::sleep::SleepNight>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT date, score, score_qualifier, feedback, insight,
+                    total_secs, deep_secs, light_secs, rem_secs, awake_secs, nap_secs,
+                    start_local, end_local, need_secs, need_baseline_secs,
+                    awake_count, restless_count, avg_overnight_hrv, resting_hr, avg_hr,
+                    avg_stress, body_battery_change, avg_respiration, low_respiration,
+                    high_respiration, avg_spo2, lowest_spo2, score_parts, stages, hr
+             FROM sleep_nights WHERE date >= ?1 ORDER BY date DESC",
+        )?;
+        let rows = stmt
+            .query_map(params![from], |r| {
+                Ok(crate::sleep::SleepNight {
+                    date: r.get(0)?,
+                    score: r.get(1)?,
+                    score_qualifier: r.get(2)?,
+                    feedback: r.get(3)?,
+                    insight: r.get(4)?,
+                    total_secs: r.get(5)?,
+                    deep_secs: r.get(6)?,
+                    light_secs: r.get(7)?,
+                    rem_secs: r.get(8)?,
+                    awake_secs: r.get(9)?,
+                    nap_secs: r.get(10)?,
+                    start_local: r.get(11)?,
+                    end_local: r.get(12)?,
+                    need_secs: r.get(13)?,
+                    need_baseline_secs: r.get(14)?,
+                    awake_count: r.get(15)?,
+                    restless_count: r.get(16)?,
+                    avg_overnight_hrv: r.get(17)?,
+                    resting_hr: r.get(18)?,
+                    avg_hr: r.get(19)?,
+                    avg_stress: r.get(20)?,
+                    body_battery_change: r.get(21)?,
+                    avg_respiration: r.get(22)?,
+                    low_respiration: r.get(23)?,
+                    high_respiration: r.get(24)?,
+                    avg_spo2: r.get(25)?,
+                    lowest_spo2: r.get(26)?,
+                    score_parts: json_list(r.get(27)?),
+                    stages: json_list(r.get(28)?),
+                    hr: json_list(r.get(29)?),
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
     /// The dates on or after `from` that already have a row.
     ///
     /// A row is only written for a day that came back with something in it, so
@@ -722,6 +889,23 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare("SELECT date FROM daily_metrics WHERE date >= ?1")?;
+        let rows = stmt
+            .query_map(params![from], |r| r.get::<_, String>(0))?
+            .collect::<rusqlite::Result<HashSet<_>>>()?;
+        Ok(rows)
+    }
+
+    /// Days on or after `from` that recorded sleep but have no night stored.
+    ///
+    /// The cue for a sync to go back and fetch the detail behind a figure it
+    /// already has — see `sync::wellness_dates`, which is the only caller and
+    /// where the reasoning for asking it this way lives.
+    pub fn dates_missing_sleep_detail(&self, from: &str) -> Result<HashSet<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT d.date FROM daily_metrics d
+             LEFT JOIN sleep_nights s ON s.date = d.date
+             WHERE d.date >= ?1 AND d.sleep_secs IS NOT NULL AND s.date IS NULL",
+        )?;
         let rows = stmt
             .query_map(params![from], |r| r.get::<_, String>(0))?
             .collect::<rusqlite::Result<HashSet<_>>>()?;

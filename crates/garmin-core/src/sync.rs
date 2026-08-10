@@ -49,6 +49,11 @@ pub struct SyncReport {
     pub activities_seen: usize,
     pub activities_written: usize,
     pub days_written: usize,
+    /// Nights of detailed sleep written. Counted apart from `days_written`
+    /// because they land in their own table and a day can produce one without
+    /// the other — a watch worn only overnight writes a night and almost no
+    /// day, and one left charging writes the reverse.
+    pub nights_written: usize,
     pub workouts_written: usize,
     pub tracks_written: usize,
     pub weigh_ins_written: usize,
@@ -220,6 +225,26 @@ pub async fn sync_daily(
                 metrics.sleep_secs = num(&v, &["dailySleepDTO", "sleepTimeSeconds"]);
                 metrics.sleep_score =
                     num(&v, &["dailySleepDTO", "sleepScores", "overall", "value"]);
+
+                // The same response, kept whole this time. The two figures
+                // above are what a recovery reading needs; the night behind
+                // them — stages, timings, overnight vitals — was being parsed
+                // and dropped, and it costs no extra request to keep.
+                //
+                // Written outside `has_data()` below because it is its own
+                // table: a day whose only content is a nap still has a night
+                // worth recording, and a night's failure to write must not
+                // stop the wellness row.
+                let night = crate::sleep::SleepNight::from_payload(&date_str, &v);
+                if night.has_data() {
+                    if let Err(e) = db.upsert_sleep_night(&night) {
+                        report
+                            .warnings
+                            .push(format!("sleep detail {date_str}: {e}"));
+                    } else {
+                        report.nights_written += 1;
+                    }
+                }
             }
             Err(e) => report.warnings.push(format!("sleep {date_str}: {e}")),
         }
@@ -646,12 +671,23 @@ fn wellness_dates(db: &Db, days: u32, full: bool) -> Result<Vec<NaiveDate>> {
     }
 
     let oldest = today - Duration::days(days.saturating_sub(1) as i64);
-    let have = db.daily_dates_since(&oldest.format("%Y-%m-%d").to_string())?;
+    let oldest_str = oldest.format("%Y-%m-%d").to_string();
+    let have = db.daily_dates_since(&oldest_str)?;
+    // Days whose wellness row records that there *was* a night, but whose
+    // detail this cache doesn't hold — every day of every install that
+    // predates the `sleep_nights` table.
+    //
+    // Asking on the strength of `sleep_secs` rather than on the absence of a
+    // night is what makes this self-limiting: a day the watch wasn't worn has
+    // no sleep seconds either, so it is never a hole and never re-fetched. A
+    // day that is one gets filled on the next sync and stops being one.
+    let missing_detail = db.dates_missing_sleep_detail(&oldest_str)?;
 
     Ok(all
         .enumerate()
         .filter(|(offset, date)| {
-            *offset < RECHECK_DAYS as usize || !have.contains(&date.format("%Y-%m-%d").to_string())
+            let key = date.format("%Y-%m-%d").to_string();
+            *offset < RECHECK_DAYS as usize || !have.contains(&key) || missing_detail.contains(&key)
         })
         .map(|(_, date)| date)
         .collect())

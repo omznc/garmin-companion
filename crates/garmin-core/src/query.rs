@@ -1212,6 +1212,17 @@ pub fn fitness(db: &Db, days: u32) -> Result<FitnessReport> {
     })
 }
 
+/* -------------------------------------------------------------------- sleep --- */
+
+/// Last night in full, the window behind it, and what the two say.
+///
+/// A thin pass-through to [`crate::sleep::report`], here so that every screen
+/// and every tool reaches analysis the same way — through `query` — rather than
+/// some of them knowing which module a thing happens to live in.
+pub fn sleep(db: &Db, days: u32) -> Result<crate::sleep::SleepReport> {
+    crate::sleep::report(db, days)
+}
+
 /// Days without a wellness row past which the cache is called stale.
 ///
 /// A worn watch writes one every day, so a gap this size is the watch being off

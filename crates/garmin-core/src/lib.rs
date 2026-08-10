@@ -15,6 +15,7 @@ pub mod query;
 pub mod records;
 pub mod secrets;
 pub mod signal;
+pub mod sleep;
 pub mod stats;
 pub mod store;
 pub mod strength;
