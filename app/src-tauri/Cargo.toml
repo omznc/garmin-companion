@@ -36,6 +36,9 @@ tauri-plugin-os = "2"
 tauri-plugin-notification = "2"
 
 anyhow = { workspace = true }
+# How a rendered share card reaches Rust — see `share.rs` for why it isn't a
+# plain byte array.
+base64 = { workspace = true }
 chrono = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -63,10 +66,17 @@ tauri-plugin-autostart = "2"
 # One copy at a time. Only matters once the app can outlive its window: a second
 # launch would otherwise be a second background loop syncing into the same file.
 tauri-plugin-single-instance = "2"
+# A desktop has no sharesheet, so sharing a card means putting the image itself
+# on the clipboard. Android's `share.rs` hands a file to the system instead and
+# needs none of this.
+tauri-plugin-clipboard-manager = "2"
 # The tray icon the app lives in once its window is closed, which is the only
 # thing on a desktop that can still be awake at six in the evening. See
 # `background`.
-tauri = { version = "2", features = ["tray-icon"] }
+#
+# `image-png` is for the clipboard above, which takes raw RGBA — without it
+# there is no way to turn the PNG the frontend rendered back into pixels.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 
 # The notification plugin hands `Schedule::At` a `time::OffsetDateTime`, and
 # everything else in this workspace keeps time in chrono. Mobile only: desktop

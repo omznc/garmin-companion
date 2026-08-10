@@ -3,6 +3,7 @@ package com.omznc.garmincompanion
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -18,6 +19,7 @@ import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
@@ -51,6 +53,9 @@ class MainActivity : TauriActivity() {
     // Bound here for company rather than for timing — unlike the palette,
     // nothing about an update has to be answerable before the first paint.
     webView.addJavascriptInterface(ApkInstaller(this, webView), "__GARMIN_INSTALL__")
+    // Same reasoning as the installer above: bound here for company, not for
+    // timing. Nothing about sharing has to be answerable before first paint.
+    webView.addJavascriptInterface(ShareSheet(this), "__GARMIN_SHARE__")
     handleBack(webView)
   }
 
@@ -486,5 +491,53 @@ class ApkInstaller(private val activity: Activity, private val webView: WebView)
   private companion object {
     /** The name of the APK *inside* the session; the installer picks its own path. */
     const val NAME = "update.apk"
+  }
+}
+
+/**
+ * The system sharesheet, over a card the frontend rendered.
+ *
+ * The whole class is the file handover, because that's the only hard part.
+ * `share.rs` writes the PNG into this app's private cache, which is a path no
+ * other process can open — handing a raw `file://` to another app has thrown
+ * `FileUriExposedException` since Android 7. `FileProvider` turns it into a
+ * `content://` URI backed by this app, and the read flag grants exactly the app
+ * the user picks, for exactly as long as the share lasts.
+ *
+ * Nothing comes back. Android does not tell the sender which target was chosen,
+ * or whether the sheet was dismissed without choosing one, so the button says
+ * the sheet went up and stops there rather than claiming a share it can't see.
+ */
+class ShareSheet(private val activity: Activity) {
+  @JavascriptInterface
+  fun share(path: String): String {
+    val card = File(path)
+    if (!card.isFile) return "the card is no longer there"
+
+    return try {
+      val uri = FileProvider.getUriForFile(
+        activity,
+        "${activity.packageName}.fileprovider",
+        card,
+      )
+      val send = Intent(Intent.ACTION_SEND).apply {
+        type = MIME
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // The extra alone is enough for apps that read it, and there are
+        // enough that don't — the preview in the sheet itself is drawn from
+        // the clip data, so without this the user picks a target for an image
+        // they can't see.
+        clipData = ClipData.newUri(activity.contentResolver, "Card", uri)
+      }
+      activity.startActivity(Intent.createChooser(send, null))
+      ""
+    } catch (e: Exception) {
+      e.message ?: e.javaClass.simpleName
+    }
+  }
+
+  private companion object {
+    const val MIME = "image/png"
   }
 }

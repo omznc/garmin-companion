@@ -1,5 +1,9 @@
 mod chat;
 mod login;
+/// The last step of turning a screen into a shareable image — the sharesheet on
+/// Android, the clipboard on a desktop. The card itself is drawn in the
+/// frontend; see `components/ShareCard.tsx`.
+mod share;
 
 /// The tray, the login item, and the loop that fires the coach's nudge at the
 /// hour it was asked for. Desktop only — the phone has the system do all three.
@@ -1602,6 +1606,9 @@ pub fn run() {
         builder = builder
             .plugin(tauri_plugin_updater::Builder::new().build())
             .plugin(tauri_plugin_process::init())
+            // Where "share" lands on a desktop, which has no sharesheet to
+            // hand an image to — see `share.rs`.
+            .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_autostart::init(
                 tauri_plugin_autostart::MacosLauncher::LaunchAgent,
                 Some(vec![BACKGROUND_FLAG]),
@@ -1753,6 +1760,7 @@ pub fn run() {
             set_notification_settings,
             start_at_login,
             set_start_at_login,
+            share::share_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

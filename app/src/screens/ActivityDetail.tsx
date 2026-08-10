@@ -28,6 +28,9 @@ import {
   Unit,
 } from "../components/ui";
 import { ActivityMap } from "../components/ActivityMap";
+import { ShareButton } from "../components/Share";
+import { hasRoute, RouteTrace } from "../components/RouteTrace";
+import { ZoneBar } from "../components/ZoneBar";
 import { ActivityChat } from "../components/ActivityChat";
 import { AiMark } from "../components/AiMark";
 import { SignalNote, ZoneDisagreement } from "../components/SignalNote";
@@ -112,6 +115,59 @@ export function ActivityDetail() {
           </>
         }
         title={a.name ?? "Untitled"}
+        // The one screen with no refresh beside it — an activity that's already
+        // in the cache doesn't change — so share stands on its own here.
+        action={
+          <ShareButton
+            name={`${sportLabel(a.typeKey)}-${a.localDate ?? a.activityId}`}
+            content={() => ({
+              eyebrow: [sportLabel(a.typeKey), start && longDate(start)]
+                .filter(Boolean)
+                .join(" · "),
+              title: a.name ?? "Untitled",
+              // Distance leads on anything that covered ground, and duration
+              // on everything else — a strength session's headline figure is
+              // how long it went on for, and "0.00 km" is not a headline.
+              headline:
+                a.distanceM != null && a.distanceM > 0
+                  ? { value: km(a.distanceM, 2), caption: "Distance" }
+                  : { value: duration(a.durationS), caption: "Duration" },
+              metrics: [
+                ...(a.distanceM != null && a.distanceM > 0
+                  ? [
+                      { label: "Duration", value: duration(a.durationS) },
+                      {
+                        label: paced ? "Avg pace" : "Avg speed",
+                        value: paced
+                          ? pace(a.distanceM, a.durationS)
+                          : speed(a.distanceM, a.durationS),
+                        unit: paced ? " /km" : undefined,
+                      },
+                    ]
+                  : []),
+                { label: "Avg HR", value: num(a.avgHr), unit: " bpm" },
+                { label: "Max HR", value: num(a.maxHr), unit: " bpm" },
+                { label: "Cadence", value: num(a.avgCadence), unit: " spm" },
+                {
+                  label: "Training effect",
+                  value: a.aerobicTe != null ? a.aerobicTe.toFixed(1) : DASH,
+                },
+              ],
+              // Only outdoor sessions have one, and only once the analysis has
+              // come back — the cached summary the rest of this card is built
+              // from carries no GPS. A card shared before then is the same card
+              // without the shape, rather than one that waits.
+              route: hasRoute(data?.series)
+                ? (h: number) => <RouteTrace series={data!.series} height={h} />
+                : undefined,
+              // The zone bar is the point of the card. It's the thing the
+              // screen is read for, and the one figure that means anything to
+              // someone who wasn't there.
+              chart: zoneTotal(a) > 0 ? <ZoneBar activity={a} height={12} /> : undefined,
+              chartLabel: zoneTotal(a) > 0 ? "Time in heart-rate zones" : undefined,
+            })}
+          />
+        }
         space={30}
       />
 

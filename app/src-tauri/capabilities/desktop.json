@@ -12,6 +12,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "clipboard-manager:allow-write-image"
   ]
 }

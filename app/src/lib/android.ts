@@ -29,6 +29,10 @@ interface Installer {
   install(path: string): string;
 }
 
+interface Sharer {
+  share(path: string): string;
+}
+
 function bridge(): Bridge | null {
   const w = window as { __GARMIN_ANDROID__?: Bridge };
   return w.__GARMIN_ANDROID__ ?? null;
@@ -37,6 +41,11 @@ function bridge(): Bridge | null {
 function installer(): Installer | null {
   const w = window as { __GARMIN_INSTALL__?: Installer };
   return w.__GARMIN_INSTALL__ ?? null;
+}
+
+function sharer(): Sharer | null {
+  const w = window as { __GARMIN_SHARE__?: Sharer };
+  return w.__GARMIN_SHARE__ ?? null;
 }
 
 /**
@@ -134,6 +143,24 @@ export function installApk(path: string): string {
  * installer. Success never arrives — this process is replaced by the version
  * that would have received it.
  */
+/**
+ * Open the system sharesheet on a rendered card.
+ *
+ * The path is one Rust wrote into this app's private cache, which no other app
+ * can read by path — the bridge wraps it in a `FileProvider` URI and grants the
+ * chosen app a one-shot read. Same mechanism as `installApk`, and for the same
+ * reason: handing another process a raw path stopped working in Android 7.
+ *
+ * Returns "" when the sheet went up, or a sentence when it didn't. Which app
+ * the user picks, or whether they pick one at all, never comes back — Android
+ * doesn't say, and the button doesn't claim to know.
+ */
+export function shareFile(path: string): string {
+  const bound = sharer();
+  if (!bound) return "this build can't share";
+  return bound.share(path);
+}
+
 export function onInstallFailed(fn: (message: string) => void): void {
   (window as { __GARMIN_INSTALL_FAILED__?: (m: string) => void }).__GARMIN_INSTALL_FAILED__ = fn;
 }

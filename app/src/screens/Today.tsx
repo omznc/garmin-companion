@@ -28,6 +28,7 @@ import {
 import { mean } from "../lib/chart";
 import { ZoneBar } from "../components/ZoneBar";
 import { RefreshButton } from "../components/Refresh";
+import { ScreenActions } from "../components/Share";
 import { WeightGlance } from "../components/WeightGlance";
 import { CoachPanel } from "../components/Coach";
 import { AiMark } from "../components/AiMark";
@@ -53,6 +54,7 @@ import {
   duration,
   hoursMinutes,
   isRun,
+  isoDate,
   km,
   longDate,
   num,
@@ -163,7 +165,50 @@ export function Today() {
       <PageHeader
         eyebrow={longDate(today)}
         title={greeting({ name: firstName(profile.data?.fullName ?? profile.data?.displayName) })}
-        action={<RefreshButton />}
+        action={
+          <ScreenActions
+            name={`today-${isoDate(today)}`}
+            share={() => ({
+              eyebrow: longDate(today),
+              // Not the greeting above it. "Good evening, Omar" is right on
+              // your own machine and wrong in an image going somewhere else.
+              title: "Where things stand",
+              // Readiness first because it's the number that answers the
+              // question the screen is for, and body battery when the watch
+              // didn't produce one — a card with a dash in 92pt type is worse
+              // than a card built around the next figure down.
+              headline: readiness
+                ? { value: num(readiness.value), caption: "Training readiness" }
+                : battery
+                  ? { value: num(battery.value), caption: "Body battery" }
+                  : undefined,
+              metrics: [
+                { label: "Sleep", value: hoursMinutes(sleep?.value) },
+                { label: "Resting HR", value: bpm(rhr?.value), unit: " bpm" },
+                { label: "HRV", value: num(hrv?.value), unit: " ms" },
+                // Whichever of the pair the headline didn't take.
+                readiness
+                  ? { label: "Body battery", value: num(battery?.value) }
+                  : { label: "Readiness", value: DASH },
+                { label: "This week", value: weekTotal.toFixed(1), unit: " km" },
+                {
+                  label: sessions === 1 ? "Session" : "Sessions",
+                  value: String(sessions),
+                },
+              ],
+              chart: (
+                <LineChart
+                  series={[{ values: week, fill: true }]}
+                  height={58}
+                  viewWidth={440}
+                  pad={6}
+                  labels={axis}
+                />
+              ),
+              chartLabel: "Last seven days · km",
+            })}
+          />
+        }
         // The written opening directly below is this screen's lede, so the
         // header shouldn't reserve its usual gap on top of it.
         space={28}
