@@ -7,7 +7,7 @@ import { runSync } from "../lib/syncProgress";
 import { since } from "../lib/format";
 import { loadNavOrder, move, saveNavOrder, type NavEntry } from "../lib/nav";
 import { Spring, rubberband } from "../lib/spring";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { apply } from "../lib/updater";
 import { Swatch } from "./ui";
 import { useUpdateState } from "./UpdateCheck";
 import { useContextMenu } from "./ContextMenu";
@@ -585,10 +585,17 @@ export function Sidebar() {
       )}
 
       {/* An installed update should be findable from wherever you are, not
-          only from the screen you'd have to think to open. */}
+          only from the screen you'd have to think to open.
+
+          Through `apply` rather than straight to `relaunch`, because "installed"
+          isn't true everywhere by this point: on a Linux .deb or .rpm the new
+          version is downloaded and nothing has unpacked it yet, and a bare
+          relaunch there restarted the same version it started with. `apply`
+          knows which case this is — see `lib/updater`. The wording follows it,
+          so the row never promises a restart that would achieve nothing. */}
       {update.at === "ready" && (
         <button
-          onClick={() => void relaunch()}
+          onClick={apply}
           style={{
             display: "flex",
             alignItems: "center",
@@ -597,11 +604,34 @@ export function Sidebar() {
             padding: "3.5px 0",
             color: "var(--acc)",
           }}
-          title={`Version ${update.version} is installed and starts on restart`}
+          title={
+            update.needsRoot
+              ? `Version ${update.version} is downloaded — installing it replaces the system package, so you'll be asked for your password`
+              : `Version ${update.version} is installed and starts on restart`
+          }
         >
           <UpdateIcon size={14} style={{ flex: "none" }} aria-hidden />
-          Restart to update
+          {update.needsRoot ? "Install update" : "Restart to update"}
         </button>
+      )}
+      {/* The password dialog is Linux's, drawn over the app, and it can sit
+          there for as long as it takes to find the password. Without this the
+          row simply vanished on the press — so the one moment the button needs
+          to say something is the one it said nothing. */}
+      {update.at === "installing" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12.5,
+            padding: "3.5px 0",
+            color: "var(--mut)",
+          }}
+        >
+          <UpdateIcon size={14} style={{ flex: "none" }} aria-hidden />
+          Installing {update.version}…
+        </div>
       )}
 
       {/* A palette settles light and dark for itself, so there's nothing left

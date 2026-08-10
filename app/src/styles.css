@@ -2596,9 +2596,51 @@ body::-webkit-scrollbar {
   box-shadow: var(--lift);
 }
 
+/* ----------------------------------------------------- mobile: update bar --- */
+
+/* The third card in that one slot, and the reason the phone needed one at all:
+ * on a desktop a downloaded update announces itself in the sidebar, which a
+ * phone doesn't have — so before this, an update sat in Settings waiting to be
+ * gone looking for.
+ *
+ * Same geometry and surface as the two above, and it stands down for both of
+ * them (see `UpdateBar`): a sync is happening now and a broken provider is
+ * breaking something now, where an update is only ever an offer.
+ *
+ * It rises in the way the sync bar does, because unlike the other two it can
+ * appear seconds after launch, mid-read — arriving is worth showing when the
+ * thing arriving wasn't asked for. */
+.update-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h) + 10px);
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 13px;
+  border-radius: 9px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  box-shadow: var(--lift);
+  animation: update-bar-in var(--dur-slow) var(--ease-out) both;
+}
+
+@keyframes update-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sync-bar[data-mobile] {
     transform: none;
+  }
+
+  .update-bar {
+    animation: none;
   }
 }
 

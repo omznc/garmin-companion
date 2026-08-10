@@ -9,6 +9,7 @@ import { IS_MOBILE } from "./lib/platform";
 import { WindowChrome } from "./components/WindowChrome";
 import { SyncBar } from "./components/SyncBar";
 import { AiBar } from "./components/AiBar";
+import { UpdateBar } from "./components/UpdateBar";
 
 const SETUP_DONE = "garmin-companion:setup-complete";
 
@@ -65,6 +66,12 @@ export function App() {
           A broken model provider is worth saying once for the whole app rather
           than three times in three different words on three screens. */}
       {!needsSetup && <AiBar />}
+      {/* And the phone's version of the sidebar's update row, in the same slot
+          as the two above. Held back until setup is done for the same reason
+          they are: it draws above a tab bar that only exists once there's a
+          router, and an app you haven't connected yet has no business
+          interrupting the connecting with an offer to replace itself. */}
+      {!needsSetup && <UpdateBar />}
       {status.isLoading ? null : needsSetup ? (
         <Setup
           onDone={() => {

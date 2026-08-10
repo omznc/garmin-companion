@@ -44,12 +44,14 @@ import { useSyncState } from "./SyncBar";
  */
 const POLL_MS = 4000;
 
-export function AiBar() {
-  const sync = useSyncState();
-  /** The failure the athlete has already read. Cleared by a new one. */
-  const [dismissed, setDismissed] = useState<string | null>(null);
-
-  const health = useQuery({
+/**
+ * The provider's last verdict. Exported because the phone's bottom slot holds
+ * one card and the others have to know what's already in it — `UpdateBar` reads
+ * this to stand down while a failure is on screen. One query key, so the two
+ * subscribe to a single poll rather than each running their own.
+ */
+export function useChatHealth() {
+  return useQuery({
     queryKey: ["chatHealth"],
     queryFn: chatHealth,
     refetchInterval: POLL_MS,
@@ -57,6 +59,14 @@ export function AiBar() {
     // while the app was in the background should be on screen when it returns.
     refetchOnWindowFocus: true,
   });
+}
+
+export function AiBar() {
+  const sync = useSyncState();
+  /** The failure the athlete has already read. Cleared by a new one. */
+  const [dismissed, setDismissed] = useState<string | null>(null);
+
+  const health = useChatHealth();
 
   const broken = health.data && !health.data.ok ? health.data : null;
 
