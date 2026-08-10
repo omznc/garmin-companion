@@ -147,6 +147,39 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.9.0" date="2026-08-10">
+      <description>
+        <p>
+          The coach writes a brief once a day now, rather than picking a line
+          out of a rulebook. It reads today and the day before it — how you
+          slept, where your recovery numbers sat, what you actually did, and
+          the week against the goals you set — and writes one short piece
+          about it, with the figures behind it a tap away.
+        </p>
+        <p>
+          It also decides whether that is worth interrupting you for, and most
+          days it isn't. A quiet brief still appears on Today; it just doesn't
+          send anything. When it does, the notification and the block on the
+          screen are the same piece of writing, so opening the notification
+          lands on the rest of it rather than merely opening the app.
+        </p>
+        <p>
+          The rules underneath still run and still decide what is true — the
+          drift, the load, the long run you haven't done. What they no longer
+          decide is which of it is worth saying tonight. You can see what they
+          noticed next to what the brief chose to say about it. With no model
+          configured, or one that can't be reached, they write the block
+          themselves and it says so.
+        </p>
+        <p>
+          Installing an update from the sidebar works on Debian and RPM systems
+          again. It restarted into the same version before, because a system
+          package is downloaded rather than installed by that point and nothing
+          had unpacked it; it now says a password is coming, and stays on
+          screen while the dialog is up.
+        </p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-08-10">
       <description>
         <p>
