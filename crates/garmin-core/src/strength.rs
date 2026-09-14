@@ -22,6 +22,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashSet;
 
 /// How sure the watch has to be about an exercise before its guess is carried
 /// through. Below this the set is simply unlabelled — which is honest, and
@@ -63,12 +64,27 @@ pub struct ExerciseSet {
 
 /// Parse the `exerciseSets` payload for one activity.
 pub fn parse_sets(activity_id: i64, v: &Value) -> Vec<ExerciseSet> {
-    v["exerciseSets"]
+    let entries: Vec<(i64, &Value)> = v["exerciseSets"]
         .as_array()
         .into_iter()
         .flatten()
         .enumerate()
-        .map(|(i, s)| {
+        .map(|(i, s)| (s["messageIndex"].as_i64().unwrap_or(i as i64), s))
+        .collect();
+
+    // A repeated `messageIndex` — or an entry without one whose array position
+    // lands on another entry's real index — gives two sets the same `set_index`,
+    // which the (activity_id, set_index) primary key rejects and the whole sync
+    // dies with it. Garmin's numbering is only trusted when it is actually
+    // unique; otherwise the payload's own order is the session order. A
+    // well-formed payload keeps the numbers exactly as Garmin sent them.
+    let mut seen = HashSet::with_capacity(entries.len());
+    let numbered_by_garmin = entries.iter().all(|(idx, _)| seen.insert(*idx));
+
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, (candidate, s))| {
             // `UNKNOWN` is dropped before ranking, so a confident UNKNOWN
             // doesn't beat a plausible real guess. What survives is sorted, and
             // the top one only counts if it beat the runner-up by more than a
@@ -90,7 +106,7 @@ pub fn parse_sets(activity_id: i64, v: &Value) -> Vec<ExerciseSet> {
 
             ExerciseSet {
                 activity_id,
-                set_index: s["messageIndex"].as_i64().unwrap_or(i as i64),
+                set_index: if numbered_by_garmin { candidate } else { i as i64 },
                 active: s["setType"].as_str() != Some("REST"),
                 duration_s: s["duration"].as_f64(),
                 reps: s["repetitionCount"].as_i64(),
@@ -320,5 +336,50 @@ mod tests {
         assert_eq!(s.work_sets, 0);
         assert_eq!(s.median_rest_s, None);
         assert_eq!(s.work_rest_ratio, None);
+    }
+
+    fn indices_are_unique(sets: &[ExerciseSet]) -> bool {
+        let mut seen: Vec<i64> = sets.iter().map(|s| s.set_index).collect();
+        let len = seen.len();
+        seen.sort();
+        seen.dedup();
+        seen.len() == len
+    }
+
+    #[test]
+    fn a_repeated_message_index_does_not_produce_a_duplicate_set_index() {
+        let v = json!({ "exerciseSets": [
+            { "messageIndex": 0, "setType": "ACTIVE", "duration": 30.0,
+              "repetitionCount": 10, "exercises": [] },
+            { "messageIndex": 1, "setType": "REST", "duration": 60.0, "exercises": [] },
+            { "messageIndex": 1, "setType": "ACTIVE", "duration": 40.0,
+              "repetitionCount": 8, "exercises": [] },
+            { "messageIndex": 2, "setType": "REST", "duration": 90.0, "exercises": [] }
+        ]});
+        let sets = parse_sets(1, &v);
+        assert_eq!(sets.len(), 4);
+        assert!(indices_are_unique(&sets), "set_index values: {:?}",
+            sets.iter().map(|s| s.set_index).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_missing_message_index_falling_back_onto_a_real_one_does_not_collide() {
+        let v = json!({ "exerciseSets": [
+            { "messageIndex": 3, "setType": "ACTIVE", "duration": 30.0,
+              "repetitionCount": 10, "exercises": [] },
+            { "messageIndex": 2, "setType": "REST", "duration": 60.0, "exercises": [] },
+            { "setType": "ACTIVE", "duration": 40.0, "repetitionCount": 8, "exercises": [] },
+            { "messageIndex": 5, "setType": "REST", "duration": 90.0, "exercises": [] }
+        ]});
+        let sets = parse_sets(1, &v);
+        assert_eq!(sets.len(), 4);
+        assert!(indices_are_unique(&sets), "set_index values: {:?}",
+            sets.iter().map(|s| s.set_index).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_well_formed_payload_keeps_garmins_own_numbering() {
+        let sets = parse_sets(1, &payload());
+        assert!(sets.iter().enumerate().all(|(i, s)| s.set_index == i as i64));
     }
 }
