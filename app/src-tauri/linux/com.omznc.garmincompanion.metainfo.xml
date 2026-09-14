@@ -147,6 +147,16 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="0.9.1" date="2026-09-14">
+      <description>
+        <p>
+          A strength session whose sets Garmin numbered twice, or left without
+          a number, no longer stops the whole sync. Garmin's own numbering is
+          kept when it holds up; otherwise the sets are taken in the order the
+          watch recorded them.
+        </p>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-08-10">
       <description>
         <p>
