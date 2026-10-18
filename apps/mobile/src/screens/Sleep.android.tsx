@@ -19,6 +19,7 @@ import {
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { useState } from "react";
+import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
   BarLabels,
@@ -204,6 +205,7 @@ function SleepBody({ view }: { view: SleepView }) {
           {view.insights.length > 0 ? <Insights md={md} items={view.insights} /> : null}
         </>
       )}
+      <View style={{ height: 32 }} />
     </>
   );
 }
