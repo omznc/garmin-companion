@@ -8,6 +8,7 @@
 //! Garmin over the network.
 
 pub mod activities;
+pub mod body;
 mod derive;
 mod dispatch;
 mod error;

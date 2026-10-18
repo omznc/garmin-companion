@@ -8,6 +8,7 @@
 //! - `garmin-api-fixture --sample [output file]` seeds a temporary database
 //!   with made-up rows and writes `crates/garmin-api/fixtures/today.sample.json` by default.
 //!   The sample is safe to commit. Its date is fixed, so the output is stable.
+//! - `garmin-api-fixture --body` writes `body.sample.json` and `body.empty.json` (Weight, Food, Strength).
 //! - `garmin-api-fixture --personas` writes all the made-up persona files
 //!   (`today.sample.json`, `today.golfer.json`, `today.gym.json`,
 //!   `today.health_only.json`, `today.new_user.json`). All are safe to commit.
@@ -32,6 +33,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         return Ok(());
     }
+    if first == "--body" {
+        return write_body();
+    }
     if first == "--sample" {
         let out = args.next().map_or_else(
             || fixtures_dir().join(Persona::Sample.file_name()),
@@ -49,6 +53,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|d| d.parse::<NaiveDate>().ok())
         .unwrap_or_else(garmin_core::today);
     write_view(&today_view(&db, day)?, &out)
+}
+
+/// Write `body.sample.json` and `body.empty.json`, the Weight, Food and Strength views.
+fn write_body() -> Result<(), Box<dyn std::error::Error>> {
+    let today = garmin_core::today();
+    for (name, filled) in [("sample", true), ("empty", false)] {
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-body-{name}-{}", std::process::id()));
+        let db = open_db(&dir.join("cache.sqlite3"))?;
+        if filled {
+            garmin_api::body::seed_body(&db, today)?;
+        }
+        let views = garmin_api::body::body_views(&db, today)?;
+        let out = fixtures_dir().join(format!("body.{name}.json"));
+        std::fs::write(&out, serde_json::to_string_pretty(&views)? + "\n")?;
+        eprintln!("wrote {}", out.display());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    Ok(())
 }
 
 fn write_persona(persona: Persona, out: &Path) -> Result<(), Box<dyn std::error::Error>> {

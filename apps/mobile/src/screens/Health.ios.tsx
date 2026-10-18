@@ -2,6 +2,7 @@
 // The core sends the metrics that the watch records, with a trend sentence for each.
 import { useRouter } from "expo-router";
 import { PlatformColor, Pressable, ScrollView, Text, View } from "react-native";
+import { BodyLinks } from "../components/BodyLinks";
 import { ErrorGroup, Group, Loading, Note, Row, secondary } from "../components/Grouped";
 import { MiniBars } from "../components/MiniBars";
 import { type MetricTrend, scaled, useHealth, useSleep } from "../data/wellness";
@@ -60,6 +61,7 @@ export function HealthScreen() {
             <Note>{data.note}</Note>
           </Group>
           <SleepGroup />
+          <BodyLinks />
           {data.metrics.map((m) => (
             <MetricGroup key={m.key} m={m} />
           ))}

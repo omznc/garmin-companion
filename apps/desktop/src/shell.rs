@@ -7,6 +7,7 @@ use gpui::{
 };
 
 use crate::activities::{self, Page, Store};
+use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::Today;
 use crate::motion;
@@ -32,6 +33,7 @@ pub struct Root {
     today: Today,
     /// Health and Sleep. `None` leaves both entries as placeholders.
     wellness: Option<Wellness>,
+    body: BodyData,
     palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
@@ -43,10 +45,11 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(today: Today, palette: Palette, store: Store) -> Self {
+    pub fn new(today: Today, palette: Palette, store: Store, body: BodyData) -> Self {
         Self {
             today,
             wellness: None,
+            body,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
@@ -131,6 +134,9 @@ impl Root {
             }
         }
         let label = NAV[self.sidebar.active].0;
+        if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
+            return screen;
+        }
         div()
             .child(block_in(self.visits, 0, eyebrow_lg("Not built yet", t)))
             .child(block_in(self.visits, 0, h1(label).mt(px(18.0))))

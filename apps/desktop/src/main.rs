@@ -5,9 +5,10 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--screen <name>` opens on a sidebar entry, for example `sleep` or `activities`. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight` or `activities`. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
 mod activities;
+mod body;
 mod chrome;
 mod data;
 mod icons;
@@ -114,6 +115,7 @@ fn main() -> anyhow::Result<()> {
     let today = data::load_today(&source)?;
     let store = activities::Store::for_source(&source)?;
     let wellness = wellness::load(&source)?;
+    let body = body::load_body(&source)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -147,7 +149,8 @@ fn main() -> anyhow::Result<()> {
             };
             let opened = cx.open_window(options, |_, cx| {
                 cx.new(|cx| {
-                    let mut root = shell::Root::new(today, palette, store).with_wellness(wellness);
+                    let mut root =
+                        shell::Root::new(today, palette, store, body).with_wellness(wellness);
                     if let Some(name) = &screen {
                         root = root.with_screen(name);
                     }

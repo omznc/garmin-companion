@@ -4,6 +4,7 @@ import { Card, Column, Row, Text } from "@expo/ui/jetpack-compose";
 import { clickable, fillMaxWidth, paddingAll, weight } from "@expo/ui/jetpack-compose/modifiers";
 import { useRouter } from "expo-router";
 import { View } from "react-native";
+import { BodyLinks } from "../components/BodyLinks";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Block, Body, Caption, ErrorBlock, Heading, Loading } from "../components/MdBlocks";
 import { MiniBars } from "../components/MiniBars";
@@ -77,6 +78,7 @@ function HealthBody() {
         <Body md={md}>{data.note}</Body>
       </Block>
       <SleepCard md={md} />
+      <BodyLinks />
       {data.metrics.map((m) => (
         <MetricBlock key={m.key} md={md} m={m} />
       ))}
