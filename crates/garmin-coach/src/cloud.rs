@@ -140,6 +140,59 @@ pub fn error_kind(e: &anyhow::Error) -> Option<&str> {
     e.downcast_ref::<CloudError>().map(|c| c.kind.as_str())
 }
 
+/// The sentence for each error type that needs no number in it.
+const FIXED: &[(&str, &str)] = &[
+    (
+        "coach_paused",
+        "The cloud coach is paused. Try again later, or use your own key.",
+    ),
+    ("login_required", "Sign in with your email to use this."),
+    (
+        "session_expired",
+        "Your sign-in expired. Sign in again in the coach settings.",
+    ),
+    (
+        "blocked",
+        "The cloud coach is blocked for this install or account.",
+    ),
+    (
+        "upstream_error",
+        "The model provider failed. Nothing was charged. Try again.",
+    ),
+    (
+        "context_too_large",
+        "This chat is too long. Start a new chat.",
+    ),
+    (
+        "duplicate_request",
+        "That request was already sent. Try again.",
+    ),
+    (
+        "unknown_install",
+        "The cloud coach does not know this install. Try again.",
+    ),
+    ("mail_unavailable", "Email sign-in is not available yet."),
+    (
+        "mail_failed",
+        "The code email could not be sent. Try again later.",
+    ),
+    ("bad_email", "Enter a valid email address."),
+    (
+        "invalid_code",
+        "That code is wrong or it expired. Check it, or ask for a new one.",
+    ),
+    ("already_premium", "This account is already premium."),
+    ("no_customer", "This account has no purchase to manage."),
+    (
+        "billing_unavailable",
+        "Billing is not available now. Try again later.",
+    ),
+    (
+        "billing_failed",
+        "Billing is not available now. Try again later.",
+    ),
+];
+
 fn explain(
     kind: &str,
     status: u16,
@@ -160,26 +213,12 @@ fn explain(
             Some(s) => format!("Too many requests. Wait {s} seconds, then try again."),
             None => "Too many requests. Wait a minute, then try again.".into(),
         },
-        "coach_paused" => "The cloud coach is paused. Try again later, or use your own key.".into(),
-        "login_required" => "Sign in with your email to use this.".into(),
-        "session_expired" => "Your sign-in expired. Sign in again in the coach settings.".into(),
-        "blocked" => "The cloud coach is blocked for this install or account.".into(),
-        "upstream_error" => "The model provider failed. Nothing was charged. Try again.".into(),
-        "context_too_large" => "This chat is too long. Start a new chat.".into(),
-        "duplicate_request" => "That request was already sent. Try again.".into(),
-        "unknown_install" => "The cloud coach does not know this install. Try again.".into(),
-        "mail_unavailable" => "Email sign-in is not available yet.".into(),
-        "mail_failed" => "The code email could not be sent. Try again later.".into(),
-        "bad_email" => "Enter a valid email address.".into(),
-        "invalid_code" => "That code is wrong or it expired. Check it, or ask for a new one.".into(),
-        "already_premium" => "This account is already premium.".into(),
-        "no_customer" => "This account has no purchase to manage.".into(),
-        "billing_unavailable" | "billing_failed" => {
-            "Billing is not available now. Try again later.".into()
-        }
-        _ => server.map_or_else(
-            || format!("The cloud coach returned an error ({status})."),
-            |m| format!("The cloud coach said: {m}"),
+        _ => FIXED.iter().find(|(k, _)| *k == kind).map_or_else(
+            || match server {
+                Some(m) => format!("The cloud coach said: {m}"),
+                None => format!("The cloud coach returned an error ({status})."),
+            },
+            |(_, text)| (*text).into(),
         ),
     }
 }
@@ -269,7 +308,10 @@ impl Balance {
                 None => format!("Free plan: {} credits a day.", self.daily_grant),
             };
         }
-        let date = self.renews_at.as_deref().map_or("", |d| d.get(..10).unwrap_or(d));
+        let date = self
+            .renews_at
+            .as_deref()
+            .map_or("", |d| d.get(..10).unwrap_or(d));
         let verb = if self.cancels_at_period_end {
             "It ends on"
         } else {
