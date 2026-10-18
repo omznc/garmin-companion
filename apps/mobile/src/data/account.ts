@@ -1,7 +1,7 @@
 // Typed calls for sign-in, sync and Settings. The core owns the sentences.
 import { File, Paths } from "expo-file-system";
 import { Appearance } from "react-native";
-import { callJson } from "./source";
+import { callJson, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
 export const getStatus = () => callJson<Status>("status");
@@ -9,6 +9,7 @@ export const getSignInUrl = () => callJson<string>("sign_in_url");
 export const redeemTicket = async (ticket: string) => {
   const status = await callJson<Status>("redeem_ticket", { ticket });
   clearSkipSetup();
+  leaveSampleData();
   return status;
 };
 export const signOut = () => callJson<Status>("sign_out");

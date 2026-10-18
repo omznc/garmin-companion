@@ -89,7 +89,17 @@ impl Subscription {
 #[uniffi::export]
 pub fn init(base_dir: String, fixture_mode: bool) {
     garmin_api::init(base_dir);
-    FIXTURE_MODE.store(fixture_mode, Ordering::Relaxed);
+    // A signed-in account always reads real data, also when no sync has run yet.
+    let signed_in = garmin_core::store::load_tokens().is_ok_and(|t| t.is_some());
+    FIXTURE_MODE.store(fixture_mode && !signed_in, Ordering::Relaxed);
+}
+
+/// Sign-in worked, so the process leaves sample mode for good.
+fn leave_fixture_mode() {
+    FIXTURE_MODE.store(false, Ordering::Relaxed);
+    if let Ok(dir) = garmin_core::paths::base_dir() {
+        let _ = std::fs::remove_file(dir.join("sample-mode"));
+    }
 }
 
 /// A synchronous call. It proves the plain function path.
@@ -128,6 +138,24 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "weight_view" | "food_view" | "strength_view" if fixture => Ok(fixture_body(cmd)),
         "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
         "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
+        // These commands open the cache, and opening it creates the file.
+        "cached_daily"
+        | "cached_activities"
+        | "cached_activities_since"
+        | "cached_activity"
+        | "nutrition"
+        | "weight"
+            if fixture =>
+        {
+            Err(FfiError::BadArgs {
+                reason: "sample mode has no cache".into(),
+            })
+        }
+        "redeem_ticket" if fixture => {
+            let out = run_api(cmd.to_owned(), args.to_string()).await?;
+            leave_fixture_mode();
+            Ok(out)
+        }
         "sync" if fixture => Ok(run_sync(args).await),
         "sync" => run_real_sync(args).await,
         // Demo only: `today` for a chosen day, for a cache that is not current.
@@ -320,6 +348,39 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&d).unwrap()["activityId"],
             42
         );
+    }
+
+    #[tokio::test]
+    async fn fixture_commands_create_no_cache() {
+        let dir = std::env::temp_dir().join(format!("garmin-ffi-fixture-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        init(dir.to_string_lossy().into_owned(), true);
+        let none = serde_json::json!({});
+        let save = serde_json::json!({ "provider": "openrouter", "key": "k" });
+        let cmds = [
+            ("today", &none),
+            ("activities", &none),
+            ("activity_detail", &none),
+            ("health_view", &none),
+            ("sleep_view", &none),
+            ("weight_view", &none),
+            ("food_view", &none),
+            ("strength_view", &none),
+            ("cached_daily", &none),
+            ("cached_activities", &none),
+            ("cached_activities_since", &none),
+            ("cached_activity", &none),
+            ("nutrition", &none),
+            ("weight", &none),
+            ("settings", &none),
+            ("ask_config", &none),
+            ("ask_save_config", &save),
+        ];
+        for (cmd, args) in cmds {
+            let _ = dispatch(cmd, args, true).await;
+            assert!(!dir.join("cache.sqlite3").exists(), "{cmd} made the cache");
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

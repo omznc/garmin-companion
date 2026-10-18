@@ -24,6 +24,10 @@ impl EventSink for HubSink {
 
 static RUNNING: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 
+/// The coach choice in sample mode: provider and model. It stays in memory,
+/// because a real save would create the cache and end sample mode.
+static SAMPLE_CONFIG: Mutex<Option<(String, String)>> = Mutex::new(None);
+
 fn bad(e: impl ToString) -> FfiError {
     FfiError::BadArgs {
         reason: e.to_string(),
@@ -68,7 +72,7 @@ pub(crate) async fn handle(
             Ok("{}".into())
         }
         "ask_config" => config(fixture).await,
-        "ask_save_config" => save(args),
+        "ask_save_config" => save(args, fixture),
         _ => return None,
     })
 }
@@ -134,8 +138,10 @@ async fn fixture_turn(stop: Arc<AtomicBool>) {
 
 async fn config(fixture: bool) -> Result<String, FfiError> {
     if fixture {
+        let saved = SAMPLE_CONFIG.lock().unwrap_or_else(|e| e.into_inner());
+        let (provider, model) = saved.clone().unwrap_or(("ollama".into(), "sample".into()));
         return Ok(
-            json!({ "provider": "ollama", "model": "sample", "hasKey": false,
+            json!({ "provider": provider, "model": model, "hasKey": false,
             "ollamaReachable": true, "ollamaModels": ["sample"] })
             .to_string(),
         );
@@ -160,10 +166,17 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
     .map_err(failed)
 }
 
-fn save(args: &Value) -> Result<String, FfiError> {
+fn save(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: Save = serde_json::from_value(args.clone()).map_err(bad)?;
     let provider =
         garmin_coach::Provider::parse(&a.provider).ok_or_else(|| bad("unknown provider"))?;
+    if fixture {
+        // The key is dropped on purpose: sample mode stores no secret.
+        let model = a.model.unwrap_or_default();
+        *SAMPLE_CONFIG.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some((provider.as_str().to_owned(), model));
+        return Ok("{}".into());
+    }
     if let Some(key) = a.key.as_deref().filter(|k| !k.is_empty()) {
         garmin_core::store::save_openrouter_key(key).map_err(failed)?;
     }
