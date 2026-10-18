@@ -13,6 +13,7 @@ import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
 import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { presentToday } from "./present";
+import { trainingFixture } from "./trainingFixtures";
 import { wellnessFixture } from "./wellnessFixtures";
 import type { BridgeEvent, SettingsView, Status, SyncSummary, Today, TodayView } from "./types";
 
@@ -112,7 +113,7 @@ const fixtureSource: Source = {
     }
     const account = fixtureAccountCall(cmd, args);
     if (account !== undefined) return JSON.stringify(account);
-    const recorded = wellnessFixture(cmd);
+    const recorded = wellnessFixture(cmd) ?? trainingFixture(cmd, args);
     if (recorded) return JSON.stringify(recorded);
     const body = bodyCommands[cmd];
     if (body) return JSON.stringify(bodyViews[body]);
@@ -194,7 +195,8 @@ function bridgeSource(): Source | null {
   }
 }
 
-const bridgeImpl = bridgeSource();
+// Dev only: EXPO_PUBLIC_JS_FIXTURE=1 reads the JSON fixtures, to check the screens in a build with an old native core.
+const bridgeImpl = __DEV__ && process.env.EXPO_PUBLIC_JS_FIXTURE === "1" ? null : bridgeSource();
 const unavailable: Source = {
   call: () => Promise.reject(new Error("The Rust bridge is not available in this build.")),
   subscribe: () => () => {},

@@ -38,6 +38,7 @@ mod sidebar;
 mod spring;
 mod theme;
 mod today;
+mod training;
 mod ui;
 mod wellness;
 
@@ -206,6 +207,7 @@ fn main() -> anyhow::Result<()> {
     let store = activities::Store::for_source(&source)?;
     let wellness = wellness::load(&source)?;
     let body = body::load_body(&source)?;
+    let training = training::load(&source, 0)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -252,7 +254,8 @@ fn main() -> anyhow::Result<()> {
                     let ask = shell::new_ask(ask_start, palette, cx);
                     let mut root =
                         shell::Root::new(today, palette, store, body, source, account, ask)
-                            .with_wellness(wellness);
+                            .with_wellness(wellness)
+                            .with_training(training);
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }

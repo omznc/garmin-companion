@@ -1,10 +1,18 @@
 // Weight, Food and Strength on iOS: grouped lists, system colours, Dynamic Type.
 // The core sends the text. This file draws the blocks of `data/body.ts`.
 import { Stack } from "expo-router";
-import type { ReactNode } from "react";
-import { ActivityIndicator, Button, PlatformColor, ScrollView, Text, View } from "react-native";
+import { type ReactNode, useState } from "react";
+import {
+  ActivityIndicator,
+  Button,
+  PlatformColor,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { TrendBars } from "../components/TrendBars";
-import { type Block, type BodyKind, useBody } from "../data/body";
+import { type Block, type ScreenKind, useBody } from "../data/body";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -98,7 +106,7 @@ function Note({ children, strong }: { children: string; strong?: boolean }) {
   );
 }
 
-function BlockView({ b }: { b: Block }) {
+function BlockView({ b, onAction }: { b: Block; onAction: (id: string) => void }) {
   switch (b.kind) {
     case "text":
       if (b.tone === "heading") return <Group title={b.text} />;
@@ -147,6 +155,27 @@ function BlockView({ b }: { b: Block }) {
           ))}
         </Group>
       );
+    case "actions":
+      return (
+        <Group>
+          {b.actions.map((a, i) => (
+            <Pressable
+              key={a.id}
+              accessibilityRole="button"
+              onPress={() => onAction(a.id)}
+              style={{
+                minHeight: 44,
+                justifyContent: "center",
+                paddingHorizontal: 16,
+                borderBottomWidth: i === b.actions.length - 1 ? 0 : 0.5,
+                borderBottomColor: separator,
+              }}
+            >
+              <Text style={{ fontSize: 17, color: tint }}>{a.label}</Text>
+            </Pressable>
+          ))}
+        </Group>
+      );
     case "empty":
       return (
         <Group>
@@ -159,8 +188,12 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
-  const { data, error, refetch } = useBody(kind);
+export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string }) {
+  // The weekly report pages through its weeks. Offset 0 is the newest week.
+  const [offset, setOffset] = useState(0);
+  const { data, error, refetch } = useBody(kind, offset);
+  const onAction = (id: string) =>
+    setOffset((o) => (id === "earlier" ? o + 1 : Math.max(o - 1, 0)));
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -170,7 +203,7 @@ export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
       <Stack.Screen options={{ title }} />
       {data?.blocks.map((b, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
-        <BlockView key={i} b={b} />
+        <BlockView key={i} b={b} onAction={onAction} />
       ))}
       {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? (

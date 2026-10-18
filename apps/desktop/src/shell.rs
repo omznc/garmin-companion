@@ -17,6 +17,7 @@ use crate::motion;
 use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
+use crate::training::{self, Training};
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
 use crate::{settings, setup, today};
@@ -69,6 +70,8 @@ pub struct Root {
     /// Health and Sleep. `None` leaves both entries as placeholders.
     pub(crate) wellness: Option<Wellness>,
     pub(crate) body: BodyData,
+    /// Insights, Fitness and Reports. `None` leaves the entries as placeholders.
+    pub(crate) training: Option<Training>,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
@@ -100,6 +103,7 @@ impl Root {
             list,
             today,
             wellness: None,
+            training: None,
             body,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
@@ -149,6 +153,20 @@ impl Root {
     pub fn with_wellness(mut self, wellness: Wellness) -> Self {
         self.wellness = Some(wellness);
         self
+    }
+
+    pub fn with_training(mut self, training: Training) -> Self {
+        self.training = Some(training);
+        self
+    }
+
+    /// Show another week of the report. The page keeps its scroll position.
+    pub fn show_report(&mut self, offset: usize, cx: &mut Context<Self>) {
+        match training::load(&self.source, offset) {
+            Ok(training) => self.training = Some(training),
+            Err(e) => eprintln!("could not load the week: {e:#}"),
+        }
+        cx.notify();
     }
 
     fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -203,6 +221,11 @@ impl Root {
         let label = NAV[self.sidebar.active].0;
         if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
             return screen;
+        }
+        if let Some(data) = &self.training {
+            if let Some(screen) = training::screen(label, data, self.visits, t, cx) {
+                return screen;
+            }
         }
         div()
             .child(block_in(self.visits, 0, eyebrow_lg("Not built yet", t)))
