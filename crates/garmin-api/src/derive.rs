@@ -109,6 +109,10 @@ pub struct Fuel {
     pub avg_balance: Option<f64>,
     /// Burn comes from the device, so it exists on days with no food log.
     pub avg_burn: Option<f64>,
+    /// Eaten minus burned for `day`. `None` unless both sides exist.
+    pub balance: Option<f64>,
+    /// True for a deficit of 500 kcal or more.
+    pub accent: bool,
 }
 
 /// The food side of the last `days` of `rows`.
@@ -120,8 +124,12 @@ pub fn fuel(rows: &[DailyMetrics], days: usize) -> Fuel {
         .collect();
     let last_idx = window.iter().rposition(|d| d.consumed_kcal.is_some());
 
+    let day = last_idx.map(|i| window[i].clone());
+    let balance = day.as_ref().and_then(DailyMetrics::calorie_balance);
     Fuel {
-        day: last_idx.map(|i| window[i].clone()),
+        balance,
+        accent: balance.is_some_and(|b| b <= -500.0),
+        day,
         age: last_idx.map(|i| window.len() - 1 - i),
         window: window.len(),
         logged: logged.len(),
@@ -408,13 +416,13 @@ fn fuel_note(daily: &[DailyMetrics]) -> Option<Observation> {
     };
     if balance <= -500.0 {
         let text = format!(
-            "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to train on - under-fuelling shows up as a stalled easy pace and a resting heart rate that won't settle.",
+            "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to train on — under-fuelling shows up as a stalled easy pace and a resting heart rate that won't settle.",
             balance.abs()
         );
         Some(with_link(note(true, text), "Food", "/food"))
     } else if balance >= 700.0 {
         let text = format!(
-            "You're averaging a {balance:.0} kcal daily surplus{over}. Worth knowing rather than worth fixing - at {:.0} kcal burned a day it's a choice, not a slip.",
+            "You're averaging a {balance:.0} kcal daily surplus{over}. Worth knowing rather than worth fixing — at {:.0} kcal burned a day it's a choice, not a slip.",
             f.avg_burn.unwrap_or(0.0)
         );
         Some(with_link(note(false, text), "Food", "/food"))
@@ -520,6 +528,8 @@ mod tests {
         assert_eq!(f.age, Some(3));
         assert_eq!(f.avg_balance, Some(-500.0));
         assert_eq!(f.avg_burn, Some((2500.0 * 2.0 + 3000.0) / 3.0));
+        assert_eq!(f.balance, Some(-500.0));
+        assert!(f.accent);
     }
 
     #[test]

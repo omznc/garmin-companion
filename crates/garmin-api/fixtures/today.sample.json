@@ -1,7 +1,7 @@
 {
   "date": "2026-03-11",
   "empty": false,
-  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was 6.0 km running. Across your last 5 runs with heart-rate data, 42% of the time was above Z2 - still the thing most worth fixing.",
+  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was 6.0 km running. Across your last 5 runs with heart-rate data, 42% of the time was above Z2 — still the thing most worth fixing.",
   "sleep": {
     "value": 25200.0,
     "date": "2026-03-11"
@@ -51,9 +51,11 @@
     "window": 7,
     "logged": 2,
     "avgBalance": -875.0,
-    "avgBurn": 2668.5714285714284
+    "avgBurn": 2668.5714285714284,
+    "balance": -880.0,
+    "accent": true
   },
-  "fuelSentence": "Yesterday: 1,800 kcal in against 2,680 burned - a 880 kcal deficit.",
+  "fuelSentence": "Yesterday: 1,800 kcal in against 2,680 burned — a 880 kcal deficit.",
   "hydration": null,
   "hydrationSentence": null,
   "weight": null,
@@ -209,6 +211,6 @@
     "totalKm": 26.7,
     "priorKm": 24.75,
     "sessions": 4,
-    "sentence": "26.7 km across 4 sessions. Distance is up 8% on the previous week - steady."
+    "sentence": "26.7 km across 4 sessions. Distance is up 8% on the previous week — steady."
   }
 }

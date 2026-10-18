@@ -3,10 +3,10 @@
 //! Usage:
 //!
 //! - `garmin-api-fixture <database copy> [output file]` reads a real cache.
-//!   The output goes to `fixtures/today.json` by default. That file holds real
+//!   The output goes to `crates/garmin-api/fixtures/today.json` by default. That file holds real
 //!   data. The repository ignores it. Never commit it.
 //! - `garmin-api-fixture --sample [output file]` seeds a temporary database
-//!   with made-up rows and writes `fixtures/today.sample.json` by default.
+//!   with made-up rows and writes `crates/garmin-api/fixtures/today.sample.json` by default.
 //!   The sample is safe to commit. Its date is fixed, so the output is stable.
 
 use chrono::{Duration, NaiveDate};
@@ -29,15 +29,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!("garmin-api-sample-{}", std::process::id()));
         let db = open_db(&dir.join("cache.sqlite3"))?;
         seed(&db, day)?;
-        (db, day, "fixtures/today.sample.json", Some(dir))
+        (db, day, "today.sample.json", Some(dir))
     } else {
         let db = open_db(Path::new(&first))?;
-        (db, garmin_core::today(), "fixtures/today.json", None)
+        (db, garmin_core::today(), "today.json", None)
     };
 
     let out = args
         .next()
-        .map_or_else(|| PathBuf::from(default_out), PathBuf::from);
+        .map_or_else(|| fixtures_dir().join(default_out), PathBuf::from);
     let view = today_view(&db, today)?;
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
@@ -48,6 +48,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     eprintln!("wrote {}", out.display());
     Ok(())
+}
+
+/// Anchored to the crate, so a run from any folder writes to the ignored path.
+fn fixtures_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
 }
 
 /// Made-up rows: 40 days of recovery data, a food log on four days, and a run

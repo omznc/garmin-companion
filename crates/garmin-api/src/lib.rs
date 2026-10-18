@@ -4,7 +4,7 @@
 //! and the view models that the old TypeScript `derive.ts` computed. A UI calls
 //! the functions directly (desktop) or sends JSON to [`call`] (mobile bridge).
 //!
-//! Only read paths for the Today screen exist for now. Nothing here talks to
+//! Only read paths exist for now: the Today view model and the cache reads. Nothing here talks to
 //! Garmin over the network.
 
 mod derive;
@@ -13,7 +13,7 @@ mod error;
 mod text;
 pub mod today;
 
-pub use derive::{Fuel, Hydration, Link, Observation};
+pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;
 pub use today::{today_view, TodayView};

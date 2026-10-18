@@ -8,7 +8,7 @@ use garmin_core::{days_ago, query};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Days {
     days: Option<u32>,
@@ -104,7 +104,18 @@ mod tests {
     }
 
     #[test]
-    fn bad_arguments_are_reported_before_the_database_opens() {
+    fn commands_return_json_from_the_base_dir() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-dispatch-{}", std::process::id()));
+        crate::init(&dir);
+        let today: serde_json::Value = serde_json::from_str(&call("today", "").unwrap()).unwrap();
+        assert_eq!(today["empty"], true);
+        let rows = call("cached_activities", r#"{"limit":1,"typeKey":"running"}"#).unwrap();
+        assert_eq!(rows, "[]");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bad_arguments_are_rejected() {
         assert!(matches!(
             call("cached_activity", r#"{"activityId":"x"}"#),
             Err(ApiError::BadArguments(_))

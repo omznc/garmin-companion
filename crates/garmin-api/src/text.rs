@@ -58,7 +58,7 @@ pub fn hydration_sentence(h: &Hydration) -> String {
     };
     let against = today.map_or(h.avg_ml, |l| l.ml);
     format!(
-        "{head} - {:.0}% of your {} goal.",
+        "{head} — {:.0}% of your {} goal.",
         against / goal * 100.0,
         litres(goal)
     )
@@ -70,7 +70,7 @@ pub fn fuel_sentence(f: &Fuel) -> String {
     let burn = f.avg_burn.map(|b| format!("{} kcal a day", num(b)));
     let (Some(day), Some(age)) = (&f.day, f.age) else {
         return match burn {
-            Some(b) => format!("No food logged in the last {} days. You've burned an average of {b} over the same stretch - the intake side is what's missing, not the day.", f.window),
+            Some(b) => format!("No food logged in the last {} days. You've burned an average of {b} over the same stretch — the intake side is what's missing, not the day.", f.window),
             None => format!("No food logged in the last {} days.", f.window),
         };
     };
@@ -84,7 +84,7 @@ pub fn fuel_sentence(f: &Fuel) -> String {
     let head = match day.calorie_balance() {
         None => format!("{when}: {eaten} kcal logged."),
         Some(b) => format!(
-            "{when}: {eaten} kcal in against {} burned - a {} kcal {}.",
+            "{when}: {eaten} kcal in against {} burned — a {} kcal {}.",
             day.total_burn_kcal.map_or(String::new(), num),
             num(b.abs().round()),
             if b < 0.0 { "deficit" } else { "surplus" }
@@ -121,7 +121,7 @@ pub fn load_sentence(now: f64, prior: f64) -> String {
         "inside a sensible range"
     };
     format!(
-        "Distance is {} {:.0}% on the previous week - {verdict}.",
+        "Distance is {} {:.0}% on the previous week — {verdict}.",
         if change >= 0.0 { "up" } else { "down" },
         change.abs()
     )
@@ -171,7 +171,7 @@ fn last_session_clause(last: &CachedActivity, today: NaiveDate) -> String {
     let ago = match days_since(last, today) {
         Some(0) => "Today's".to_string(),
         Some(1) => "Yesterday's".to_string(),
-        Some(n) if n != 0 => format!("{n} days ago, your"),
+        Some(n) => format!("{n} days ago, your"),
         _ => "Your last".to_string(),
     };
     let dist = last
@@ -194,9 +194,9 @@ fn zones_clause(activities: &[CachedActivity]) -> Option<String> {
         .collect();
     let split = easy_hard_split(&runs)?;
     Some(if split.hard_pct > 40.0 {
-        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2 - still the thing most worth fixing.", split.counted, split.hard_pct)
+        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2 — still the thing most worth fixing.", split.counted, split.hard_pct)
     } else {
-        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was in Z1-Z2, which is where you want it.", split.counted, split.easy_pct)
+        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was in Z1–Z2, which is where you want it.", split.counted, split.easy_pct)
     })
 }
 
@@ -268,7 +268,7 @@ mod tests {
         let rows = [d, DailyMetrics::default()];
         let s = fuel_sentence(&fuel(&rows, 7));
         assert!(
-            s.starts_with("Yesterday: 1,800 kcal in against 2,600 burned - a 800 kcal deficit.")
+            s.starts_with("Yesterday: 1,800 kcal in against 2,600 burned — a 800 kcal deficit.")
         );
         assert!(s.ends_with("so there's no average worth quoting."));
     }
@@ -284,7 +284,7 @@ mod tests {
         };
         assert_eq!(
             hydration_sentence(&h),
-            "You've logged 1.25 L of water today - 50% of your 2.50 L goal."
+            "You've logged 1.25 L of water today — 50% of your 2.50 L goal."
         );
         let h = Hydration {
             latest: None,

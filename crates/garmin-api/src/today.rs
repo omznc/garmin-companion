@@ -115,7 +115,8 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
     let from = date_key(today - chrono::Duration::days(DAILY_DAYS as i64 - 1));
     let stored = db.daily_since(&from)?;
     let activities = db.recent_activities(ACTIVITY_LIMIT, None)?;
-    let weight = query::weight(db, 180)?;
+    // A weight failure must not hide the rest of the screen.
+    let weight = query::weight(db, 180).ok();
 
     let empty = stored.is_empty() && activities.is_empty();
     let rows = daily_series(stored, DAILY_DAYS, today);
@@ -136,7 +137,7 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
         fuel: food,
         hydration_sentence: water.as_ref().map(hydration_sentence),
         hydration: water,
-        weight: (weight.count > 0).then_some(WeightGlance {
+        weight: weight.filter(|w| w.count > 0).map(|weight| WeightGlance {
             trend_kg: weight.trend_kg,
             days_since_latest: weight.days_since_latest,
             rate_kg_per_week: weight.rate_kg_per_week,
