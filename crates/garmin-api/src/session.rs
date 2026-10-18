@@ -158,9 +158,10 @@ pub fn sync(
     full: bool,
     on: &(dyn Fn(SyncEvent) + Send + Sync),
 ) -> Result<SyncSummary, ApiError> {
-    let client = garmin_core::client_from_keyring()?.ok_or(ApiError::NotConnected)?;
     // A poisoned lock only means that an earlier sync panicked.
     let _busy = SYNCING.lock().unwrap_or_else(|e| e.into_inner());
+    // Load the client after the lock, so a sign-out in between is seen.
+    let client = garmin_core::client_from_keyring()?.ok_or(ApiError::NotConnected)?;
     let db = crate::open_default_db()?;
     let sink = |p: SyncProgress| on(event_of(&p));
     let report = block_on(async {
