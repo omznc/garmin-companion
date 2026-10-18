@@ -30,7 +30,7 @@ function Swatch({
       accessibilityLabel={label}
       accessibilityState={{ checked: selected }}
       onPress={onPress}
-      style={{ width: 72, alignItems: "center", gap: 6 }}
+      style={{ width: "25%", alignItems: "center", gap: 6 }}
     >
       <View
         style={{
