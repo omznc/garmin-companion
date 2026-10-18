@@ -2,6 +2,8 @@
 // The Rust bridge is the source when the native module is in the build.
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
+import bodyEmpty from "../../../../crates/garmin-api/fixtures/body.empty.json";
+import bodySample from "../../../../crates/garmin-api/fixtures/body.sample.json";
 import fixture from "../../../../crates/garmin-api/fixtures/today.sample.json";
 import golfer from "../../../../crates/garmin-api/fixtures/today.golfer.json";
 import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
@@ -16,9 +18,21 @@ type Source = {
   version: () => string;
 };
 
+// Weight, Food and Strength read one fixture each. Only the runner and the gym persona log a body.
+const bodyViews = ["sample", "gym", undefined].includes(process.env.EXPO_PUBLIC_PERSONA)
+  ? bodySample
+  : bodyEmpty;
+const bodyCommands: Record<string, keyof typeof bodySample> = {
+  weight_view: "weight",
+  food_view: "food",
+  strength_view: "strength",
+};
+
 const fixtureSource: Source = {
   async call(cmd) {
     if (cmd === "today") return JSON.stringify(fixture);
+    const body = bodyCommands[cmd];
+    if (body) return JSON.stringify(bodyViews[body]);
     throw new Error(`no fixture for command: ${cmd}`);
   },
   subscribe: () => () => {},
