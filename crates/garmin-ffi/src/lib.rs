@@ -17,6 +17,8 @@ const TODAY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/today.sample.
 
 const ACTIVITIES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activities.sample.json");
 const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.sample.json");
+const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
+const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -117,6 +119,8 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
         "activities" if fixture => Ok(ACTIVITIES_SAMPLE.to_owned()),
         "activity_detail" if fixture => Ok(ACTIVITY_SAMPLE.to_owned()),
+        "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
+        "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
         "sync" => Ok(run_sync(args).await),
         // Demo only: `today` for a chosen day, for a cache that is not current.
         "today" if args.get("date").is_some() => run_today_on(args).await,

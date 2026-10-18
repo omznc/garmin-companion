@@ -14,7 +14,8 @@
 
 use chrono::NaiveDate;
 use garmin_api::personas::{activity_fixtures, sample_day, seed, Persona};
-use garmin_api::{open_db, today_view};
+use garmin_api::sleep_view::seed_sleep;
+use garmin_api::{health_view, open_db, sleep_view, today_view};
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,9 +60,14 @@ fn write_persona(persona: Persona, out: &Path) -> Result<(), Box<dyn std::error:
     ));
     let db = open_db(&dir.join("cache.sqlite3"))?;
     seed(&db, persona, day)?;
+    seed_sleep(&db, persona, day)?;
+    // The Health and Sleep views sit next to the Today file.
+    let beside = |kind: &str| out.with_file_name(format!("{kind}.{}.json", persona.name()));
     let result = today_view(&db, day)
         .map_err(Into::into)
         .and_then(|v| write_view(&v, out))
+        .and_then(|()| write_view(&health_view(&db, day)?, &beside("health")))
+        .and_then(|()| write_view(&sleep_view(&db, day)?, &beside("sleep")))
         .and_then(|()| write_activities(&db, persona, out.parent()));
     let _ = std::fs::remove_dir_all(dir);
     result
@@ -75,10 +81,10 @@ fn write_activities(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = dir.map_or_else(fixtures_dir, Path::to_path_buf);
     let (list, detail) = activity_fixtures(db)?;
-    write_json(&list, &dir.join(persona.activities_file_name()))?;
+    write_view(&list, &dir.join(persona.activities_file_name()))?;
     let path = dir.join(persona.detail_file_name());
     match detail {
-        Some(d) => write_json(&d, &path),
+        Some(d) => write_view(&d, &path),
         None => {
             let _ = std::fs::remove_file(&path);
             Ok(())
@@ -86,11 +92,7 @@ fn write_activities(
     }
 }
 
-fn write_view(view: &garmin_api::TodayView, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    write_json(view, out)
-}
-
-fn write_json(value: &impl serde::Serialize, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_view(value: &impl serde::Serialize, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }

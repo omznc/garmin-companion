@@ -5,7 +5,7 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--screen activities` opens the Activities list. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen <name>` opens on a sidebar entry, for example `sleep` or `activities`. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
 mod activities;
 mod chrome;
@@ -20,6 +20,7 @@ mod spring;
 mod theme;
 mod today;
 mod ui;
+mod wellness;
 
 use std::borrow::Cow;
 
@@ -94,6 +95,7 @@ fn main() -> anyhow::Result<()> {
         })
         .transpose()?;
     let persona = required(&args, "--persona")?;
+    let screen = required(&args, "--screen")?;
     let source = match (db, date, persona) {
         (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
         (Some(path), date, None) => data::Source::Db {
@@ -109,9 +111,9 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("--activity needs a number, got {v}"))
         })
         .transpose()?;
-    let start_list = required(&args, "--screen")?.as_deref() == Some("activities");
     let today = data::load_today(&source)?;
     let store = activities::Store::for_source(&source)?;
+    let wellness = wellness::load(&source)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -145,12 +147,12 @@ fn main() -> anyhow::Result<()> {
             };
             let opened = cx.open_window(options, |_, cx| {
                 cx.new(|cx| {
-                    let mut root = shell::Root::new(today, palette, store);
-                    // For screenshots: `--screen activities` and `--activity <id>`.
+                    let mut root = shell::Root::new(today, palette, store).with_wellness(wellness);
+                    if let Some(name) = &screen {
+                        root = root.with_screen(name);
+                    }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
-                    } else if start_list {
-                        root.start_at_activity_list(cx);
                     }
                     root
                 })

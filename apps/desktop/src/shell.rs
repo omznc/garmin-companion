@@ -15,6 +15,7 @@ use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::today;
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
+use crate::wellness::{self, Wellness};
 
 /// The sidebar and the column, as a pair, are never wider than this.
 /// On an ultrawide the pair stays together in the middle.
@@ -29,6 +30,8 @@ const FADE_H: f32 = 44.0;
 
 pub struct Root {
     today: Today,
+    /// Health and Sleep. `None` leaves both entries as placeholders.
+    wellness: Option<Wellness>,
     palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
@@ -43,6 +46,7 @@ impl Root {
     pub fn new(today: Today, palette: Palette, store: Store) -> Self {
         Self {
             today,
+            wellness: None,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
@@ -67,11 +71,6 @@ impl Root {
         self.open_activity(id, cx);
     }
 
-    pub fn start_at_activity_list(&mut self, cx: &mut Context<Self>) {
-        self.sidebar.select(1);
-        cx.notify();
-    }
-
     pub fn close_activity(&mut self, cx: &mut Context<Self>) {
         self.page = Page::List;
         self.restart_page(cx);
@@ -81,6 +80,19 @@ impl Root {
         self.visits += 1;
         self.scroll = SmoothScroll::new(motion::reduced());
         cx.notify();
+    }
+
+    pub fn with_wellness(mut self, wellness: Wellness) -> Self {
+        self.wellness = Some(wellness);
+        self
+    }
+
+    /// Open on the entry with this label, for a screenshot. An unknown name keeps Today.
+    pub fn with_screen(mut self, name: &str) -> Self {
+        if let Some(i) = NAV.iter().position(|(l, _)| l.eq_ignore_ascii_case(name)) {
+            self.sidebar.select(i);
+        }
+        self
     }
 
     fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -110,6 +122,13 @@ impl Root {
         }
         if self.sidebar.active == 1 {
             return self.activities_screen(t, cx);
+        }
+        if let Some(w) = &self.wellness {
+            match self.sidebar.active {
+                2 => return wellness::render_health(&w.health, self.visits, t).into_any_element(),
+                3 => return wellness::render_sleep(&w.sleep, self.visits, t).into_any_element(),
+                _ => {}
+            }
         }
         let label = NAV[self.sidebar.active].0;
         div()
