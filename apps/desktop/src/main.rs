@@ -3,7 +3,8 @@
 //! Phase 1 of the rewrite: one live screen, Today, in the look of the current
 //! app. Run it with `cargo run -p garmin-companion-desktop`. Options:
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
-//! window size.
+//! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
+//! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
 
 mod chrome;
 mod data;
@@ -25,13 +26,13 @@ use gpui::{
 
 use theme::Palette;
 
-/// The fonts of the current app, in the binary. The files are the Latin subsets
-/// that `@fontsource` ships, converted to TrueType.
-const FONTS: [&[u8]; 8] = [
+/// The fonts of the current app, in the binary. They are static TrueType
+/// instances of the upstream variable fonts, with the Latin Extended-A glyphs
+/// that Bosnian names need.
+const FONTS: [&[u8]; 7] = [
     include_bytes!("../assets/fonts/InstrumentSans-Regular.ttf"),
     include_bytes!("../assets/fonts/InstrumentSans-Medium.ttf"),
     include_bytes!("../assets/fonts/InstrumentSans-SemiBold.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSans-Italic.ttf"),
     include_bytes!("../assets/fonts/InstrumentSerif-Regular.ttf"),
     include_bytes!("../assets/fonts/InstrumentSerif-Italic.ttf"),
     include_bytes!("../assets/fonts/GeistMono-Regular.ttf"),
@@ -41,11 +42,12 @@ const FONTS: [&[u8]; 8] = [
 const DEFAULT_SIZE: (f32, f32) = (1100.0, 780.0);
 const MIN_SIZE: (f32, f32) = (720.0, 540.0);
 
-/// The value after `flag` in the arguments, if there is one.
+/// The value after `flag` in the arguments, if there is one. Another flag is not a value.
 fn option(args: &[String], flag: &str) -> Option<String> {
     args.iter()
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
+        .filter(|v| !v.starts_with("--"))
         .cloned()
 }
 
@@ -68,7 +70,14 @@ fn main() -> anyhow::Result<()> {
     let (width, height) = option(&args, "--size")
         .and_then(|s| parse_size(&s))
         .unwrap_or(DEFAULT_SIZE);
-    let source = option(&args, "--db").map_or(data::Source::Sample, |p| data::Source::Db(p.into()));
+    let source = match option(&args, "--db") {
+        Some(path) => data::Source::Db {
+            path: path.into(),
+            date: option(&args, "--date").and_then(|d| d.parse().ok()),
+        },
+        None if args.iter().any(|a| a == "--db") => anyhow::bail!("--db needs a path"),
+        None => data::Source::Sample,
+    };
     let today = data::load_today(&source)?;
 
     gpui_platform::application()

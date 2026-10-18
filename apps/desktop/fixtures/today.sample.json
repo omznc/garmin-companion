@@ -46,6 +46,7 @@
     ]
   },
   "zoneDrift": {
+    "noun": "runs",
     "target": 20.0,
     "summary": "31% above Z2 lately · 20% is the target",
     "runs": [

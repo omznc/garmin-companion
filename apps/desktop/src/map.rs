@@ -12,6 +12,9 @@ use crate::data::{Attention, Drift, DriftRun, Link, Metric, Part, Session, Stat,
 
 const DASH: &str = "—";
 
+/// The age at which `WeightGlance.tsx` stops calling a weight reading current.
+const STALE_WEIGHT_DAYS: i64 = 21;
+
 fn text(value: impl Into<String>) -> Part {
     Part {
         text: value.into(),
@@ -81,51 +84,50 @@ fn metrics(view: &TodayView) -> Vec<Metric> {
         }
         None => vec![text(DASH)],
     };
-    vec![
-        Metric {
-            label: "Sleep".into(),
-            value: view
-                .sleep
-                .as_ref()
-                .map_or(vec![text(DASH)], |s| sleep_value(s.value)),
-            accent: false,
-        },
-        Metric {
-            label: "Body battery".into(),
-            value: latest(&view.body_battery),
-            accent: false,
-        },
-        Metric {
-            label: "Readiness".into(),
-            value: latest(&view.readiness),
-            accent: false,
-        },
-        Metric {
-            label: "HRV".into(),
-            value: view
-                .hrv
-                .as_ref()
-                .map_or(vec![text(DASH)], |h| vec![text(num(h.value)), unit(" ms")]),
-            accent: false,
-        },
-        Metric {
-            label: resting_label,
-            value: plain(view.resting_hr.as_ref().map(|r| r.value)),
-            accent: view.resting_hr.as_ref().is_some_and(|r| r.accent),
-        },
-        Metric {
-            label: fuel_label,
-            value: fuel_value,
-            accent: view.fuel.accent,
-        },
+    let tile = |label: &str, value: Vec<Part>, accent: bool| Metric {
+        label: label.to_string(),
+        value,
+        accent,
+    };
+    // A tile with no figure is left out, so a user without the sensor sees no dash.
+    [
+        view.sleep
+            .as_ref()
+            .map(|s| tile("Sleep", sleep_value(s.value), false)),
+        view.body_battery
+            .as_ref()
+            .map(|_| tile("Body battery", latest(&view.body_battery), false)),
+        view.readiness
+            .as_ref()
+            .map(|_| tile("Readiness", latest(&view.readiness), false)),
+        view.hrv
+            .as_ref()
+            .map(|h| tile("HRV", vec![text(num(h.value)), unit(" ms")], false)),
+        view.resting_hr
+            .as_ref()
+            .map(|r| tile(&resting_label, plain(Some(r.value)), r.accent)),
+        view.fuel
+            .balance
+            .map(|_| tile(&fuel_label, fuel_value, view.fuel.accent)),
     ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
-fn weight_note(view: &TodayView) -> Option<String> {
-    let w = view.weight.as_ref().filter(|w| w.count > 0)?;
+fn weight_note(w: &garmin_api::today::WeightGlance) -> Option<String> {
+    if w.count == 0 {
+        return None;
+    }
     let trend = w
         .trend_kg
         .map_or(DASH.to_string(), |t| format!("{t:.1} kg"));
+    // A reading older than three weeks is a memory, not a trend.
+    if let Some(days) = w.days_since_latest.filter(|d| *d > STALE_WEIGHT_DAYS) {
+        return Some(format!(
+            "Your weight trend last read {trend}, {days} days ago."
+        ));
+    }
     Some(match w.rate_kg_per_week {
         Some(rate) => format!(
             "Weight trend {trend}, {} {:.2} kg a week.",
@@ -187,11 +189,21 @@ fn sport(a: &CachedActivity) -> String {
 }
 
 fn session(a: &CachedActivity, has_zones: bool, above_z2: f64) -> Session {
-    let secs = a.moving_duration_s.or(a.duration_s);
+    let secs = a.moving_duration_s.or(a.duration_s).filter(|s| *s > 0.0);
     let dist = a.distance_m.filter(|d| *d > 0.0);
     let is_run = a.type_key.as_deref().is_some_and(|k| k.contains("running"));
-    let pace_or_speed = match (dist, secs) {
-        (Some(d), Some(s)) if is_run => ("Pace", format!("{} /km", clock(s / (d / 1000.0)))),
+    // Under 50 m there is no pace worth showing, and over 60 min/km it is a walk
+    // with the watch left on.
+    let pace_or_speed = match (dist.filter(|d| *d >= 50.0), secs) {
+        (Some(d), Some(s)) if is_run => {
+            let per_km = s / (d / 1000.0);
+            let shown = if per_km > 3600.0 {
+                DASH.to_string()
+            } else {
+                format!("{} /km", clock(per_km))
+            };
+            ("Pace", shown)
+        }
         (Some(d), Some(s)) => ("Speed", format!("{:.1} km/h", d / 1000.0 / (s / 3600.0))),
         _ => (if is_run { "Pace" } else { "Speed" }, DASH.to_string()),
     };
@@ -231,7 +243,9 @@ fn session(a: &CachedActivity, has_zones: bool, above_z2: f64) -> Session {
             ),
             stat(
                 "Aerobic TE",
-                a.aerobic_te.map_or(DASH.to_string(), |t| format!("{t:.1}")),
+                a.aerobic_te
+                    .filter(|t| *t > 0.0)
+                    .map_or(DASH.to_string(), |t| format!("{t:.1}")),
             ),
         ],
     }
@@ -248,7 +262,12 @@ fn drift(view: &TodayView) -> Option<Drift> {
             d.target_pct
         )
     });
+    let all_runs = d
+        .runs
+        .iter()
+        .all(|r| r.type_key.as_deref().is_some_and(|k| k.contains("running")));
     Some(Drift {
+        noun: if all_runs { "runs" } else { "sessions" }.to_string(),
         target: d.target_pct as f32,
         summary,
         runs: d
@@ -282,22 +301,24 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
         title: format!("{weekday}."),
         lede: view.lede.clone(),
         metrics: metrics(view),
-        fuel_note: match &view.hydration_sentence {
+        empty: view.empty,
+        fuel_note: (!view.empty).then(|| match &view.hydration_sentence {
             Some(h) => format!("{} {h}", view.fuel_sentence),
             None => view.fuel_sentence.clone(),
-        },
-        weight_note: weight_note(view),
+        }),
+        weight_note: view.weight.as_ref().and_then(weight_note),
         attention: attention(view),
         last_session: view
             .last_session
             .as_ref()
             .map(|l| session(&l.activity, l.has_zone_data, l.above_z2_pct)),
         zone_drift: drift(view),
-        week: Week {
+        // A week with no distance has nothing to chart, and the summary is about activities.
+        week: view.week.daily_km.iter().any(|k| *k > 0.0).then(|| Week {
             km: view.week.daily_km.iter().map(|k| *k as f32).collect(),
             axis: week_axis(day.unwrap_or_else(|| chrono::Local::now().date_naive())),
             summary: view.week.sentence.clone(),
-        },
+        }),
     }
 }
 
@@ -319,6 +340,20 @@ mod tests {
         let joined: String = parts.iter().map(|p| p.text.as_str()).collect();
         assert_eq!(joined, "7h 02m");
         assert!(parts[1].unit && parts[3].unit);
+    }
+
+    #[test]
+    fn an_old_weight_reading_is_not_called_a_trend() {
+        let w = |days| garmin_api::today::WeightGlance {
+            trend_kg: Some(80.0),
+            days_since_latest: Some(days),
+            rate_kg_per_week: Some(-0.2),
+            count: 5,
+        };
+        assert!(weight_note(&w(3))
+            .unwrap()
+            .starts_with("Weight trend 80.0 kg, down"));
+        assert!(weight_note(&w(40)).unwrap().contains("40 days ago"));
     }
 
     #[test]
@@ -344,7 +379,7 @@ mod tests {
         let view = garmin_api::today_view(&db, day).unwrap();
         let mapped = today(&view, None);
         assert_eq!(mapped.title, "Saturday.");
-        assert_eq!(mapped.metrics.len(), 6);
+        assert!(mapped.empty && mapped.metrics.is_empty() && mapped.week.is_none());
         drop(db);
         let _ = std::fs::remove_dir_all(dir);
     }

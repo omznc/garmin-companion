@@ -46,3 +46,5 @@ resized straight through `XConfigureWindow`, which is what makes every shot the
 same size. Two consequences worth knowing: nothing composites the transparent
 corners, so the capture is square and the radius is added afterwards, and GTK
 draws its own resize grip into the bottom-right corner, which is painted out.
+
+The folder `desktop/` holds images of the gpui desktop app. They come from the synthetic fixture only. Never add a screenshot of real data.

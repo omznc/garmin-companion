@@ -5,7 +5,7 @@
 
 use gpui::{div, prelude::*, px, relative, ColorExt as _, Div, Hsla};
 
-use crate::data::{Drift, Session, Today};
+use crate::data::{Drift, Session, Today, Week};
 use crate::icons::{icon_hover, Icon};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_MICRO, FS_SMALL};
 use crate::ui::{
@@ -209,7 +209,7 @@ fn zone_drift(drift: &Drift, t: &Theme) -> impl IntoElement {
                 .mt(px(72.0))
                 .mb(px(18.0))
                 .child(eyebrow(
-                    format!("Zone drift · last {} runs", drift.runs.len()),
+                    format!("Zone drift · last {} {}", drift.runs.len(), drift.noun),
                     t,
                 ))
                 .child(body(drift.summary.clone(), FS_SMALL, t.mutd)),
@@ -217,8 +217,7 @@ fn zone_drift(drift: &Drift, t: &Theme) -> impl IntoElement {
         .child(bars)
 }
 
-fn last_seven_days(view: &Today, t: &Theme) -> impl IntoElement {
-    let week = &view.week;
+fn last_seven_days(week: &Week, t: &Theme) -> impl IntoElement {
     let chart = div()
         .flex_1()
         .min_w(px(320.0))
@@ -265,14 +264,24 @@ pub fn render(view: &Today, key: usize, t: &Theme) -> impl IntoElement {
                     .child(view.lede.clone()),
             ),
         ))
-        .child(block_in(key, 2, metrics))
-        .child(block_in(
+        .child(block_in(key, 2, metrics));
+
+    if view.empty {
+        return screen.child(block_in(
             key,
             3,
-            body(view.fuel_note.clone(), FS_BASE, t.mutd)
+            body("Nothing cached yet.".to_string(), FS_BASE, t.mutd).mt(px(26.0)),
+        ));
+    }
+    if let Some(note) = &view.fuel_note {
+        screen = screen.child(block_in(
+            key,
+            3,
+            body(note.clone(), FS_BASE, t.mutd)
                 .mt(px(26.0))
                 .max_w(ch(58.0, FS_BASE)),
         ));
+    }
 
     if let Some(note) = &view.weight_note {
         let weight = div()
@@ -313,5 +322,8 @@ pub fn render(view: &Today, key: usize, t: &Theme) -> impl IntoElement {
     if let Some(drift) = view.zone_drift.as_ref().filter(|d| d.runs.len() >= 2) {
         screen = screen.child(block_in(key, 7, zone_drift(drift, t)));
     }
-    screen.child(block_in(key, 8, last_seven_days(view, t)))
+    if let Some(week) = &view.week {
+        screen = screen.child(block_in(key, 8, last_seven_days(week, t)));
+    }
+    screen
 }

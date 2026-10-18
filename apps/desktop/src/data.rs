@@ -7,7 +7,8 @@
 
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
+use chrono::NaiveDate;
 use serde::Deserialize;
 
 /// The synthetic sample. It holds no real data.
@@ -18,7 +19,11 @@ pub enum Source {
     Sample,
     /// A copy of the cache. Never point this at the live file: opening a
     /// database runs migrations.
-    Db(PathBuf),
+    Db {
+        path: PathBuf,
+        /// The day to read. `None` is today. Only a demo on an old cache sets it.
+        date: Option<NaiveDate>,
+    },
 }
 
 /// A piece of a metric value. A unit draws smaller, as in "6h 24m".
@@ -77,10 +82,18 @@ pub struct DriftRun {
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Drift {
+    /// What the bars count, such as "runs". It comes from the view model, so
+    /// the screen has no sport words of its own.
+    #[serde(default = "sessions")]
+    pub noun: String,
     pub target: f32,
     pub summary: String,
     /// Oldest first.
     pub runs: Vec<DriftRun>,
+}
+
+fn sessions() -> String {
+    "sessions".into()
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -100,13 +113,17 @@ pub struct Today {
     pub eyebrow: String,
     pub title: String,
     pub lede: String,
+    /// True when the cache holds nothing. The screen then says so.
+    #[serde(default)]
+    pub empty: bool,
+    /// The tiles that have a figure. A user without a heart rate watch gets no tile.
     pub metrics: Vec<Metric>,
-    pub fuel_note: String,
+    pub fuel_note: Option<String>,
     pub weight_note: Option<String>,
     pub attention: Vec<Attention>,
     pub last_session: Option<Session>,
     pub zone_drift: Option<Drift>,
-    pub week: Week,
+    pub week: Option<Week>,
 }
 
 /// The Today view. The single switch point between the fixture and the API.
@@ -115,9 +132,11 @@ pub fn load_today(source: &Source) -> Result<Today> {
         Source::Sample => {
             serde_json::from_str(SAMPLE).context("the sample Today fixture does not parse")
         }
-        Source::Db(path) => {
+        Source::Db { path, date } => {
+            // `open_db` creates a missing file, so a wrong path must stop here.
+            ensure!(path.is_file(), "no cache copy at {}", path.display());
             let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
-            let today = chrono::Local::now().date_naive();
+            let today = date.unwrap_or_else(|| chrono::Local::now().date_naive());
             let view = garmin_api::today_view(&db, today).context("cannot build the Today view")?;
             Ok(crate::map::today(&view, None))
         }
@@ -129,10 +148,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_missing_cache_copy_is_an_error_and_makes_no_file() {
+        let path = std::env::temp_dir().join("gc-desktop-missing/none.sqlite3");
+        let source = Source::Db {
+            path: path.clone(),
+            date: None,
+        };
+        assert!(load_today(&source).is_err());
+        assert!(!path.exists());
+    }
+
+    #[test]
     fn the_sample_fixture_parses_and_is_internally_consistent() {
         let today = load_today(&Source::Sample).unwrap();
         assert_eq!(today.metrics.len(), 6);
-        assert_eq!(today.week.km.len(), today.week.axis.len());
+        let week = today.week.as_ref().unwrap();
+        assert_eq!(week.km.len(), week.axis.len());
         let zones: f32 = today.last_session.unwrap().zones.iter().sum();
         assert!((zones - 100.0).abs() < 0.5, "zones sum to {zones}");
         let drift = today.zone_drift.unwrap();
