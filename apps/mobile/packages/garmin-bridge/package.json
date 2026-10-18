@@ -10,6 +10,8 @@
     "ubrn:ios": "ubrn build ios --and-generate --config ubrn.config.yaml"
   },
   "license": "MIT",
+  "homepage": "https://github.com/omznc/garmin-companion",
+  "author": "Omar Zunic",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/omznc/garmin-companion.git"
