@@ -13,7 +13,7 @@ use crate::derive::{
     Hydration, Latest, Observation,
 };
 use crate::profile::{activity_profile, ActivityProfile};
-use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence};
+use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence, weight_sentence};
 use crate::ApiError;
 use chrono::NaiveDate;
 use garmin_core::analysis::{discipline, Discipline};
@@ -81,6 +81,7 @@ pub struct WeightGlance {
     pub days_since_latest: Option<i64>,
     pub rate_kg_per_week: Option<f64>,
     pub count: usize,
+    pub sentence: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +182,11 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
             days_since_latest: weight.days_since_latest,
             rate_kg_per_week: weight.rate_kg_per_week,
             count: weight.count,
+            sentence: weight_sentence(
+                weight.trend_kg,
+                weight.days_since_latest,
+                weight.rate_kg_per_week,
+            ),
         }),
         attention: attention(&rows, &visible, today),
         last_session: activities.first().map(last_session),

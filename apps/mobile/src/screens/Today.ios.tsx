@@ -1,0 +1,209 @@
+// Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
+// The core sends the sections in order. A section that has no data is not drawn.
+import type { ReactNode } from "react";
+import { ActivityIndicator, Button, PlatformColor, ScrollView, Text, View } from "react-native";
+import type { Section, Today } from "../data/types";
+import { useToday } from "../data/useToday";
+
+const label = PlatformColor("label");
+const secondary = PlatformColor("secondaryLabel");
+const cell = PlatformColor("secondarySystemGroupedBackground");
+const separator = PlatformColor("separator");
+const tint = PlatformColor("systemOrange");
+
+function Group({ title, children }: { title?: string; children: ReactNode }) {
+  return (
+    <View style={{ marginTop: 24 }}>
+      {title ? (
+        <Text
+          accessibilityRole="header"
+          style={{
+            fontSize: 13,
+            color: secondary,
+            textTransform: "uppercase",
+            marginLeft: 32,
+            marginBottom: 6,
+          }}
+        >
+          {title}
+        </Text>
+      ) : null}
+      <View
+        style={{
+          backgroundColor: cell,
+          borderRadius: 26,
+          marginHorizontal: 16,
+          overflow: "hidden",
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function Row({
+  left,
+  right,
+  accent,
+  last,
+}: {
+  left: string;
+  right?: string;
+  accent?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        minHeight: 44,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderBottomWidth: last ? 0 : 0.5,
+        borderBottomColor: separator,
+      }}
+    >
+      <Text style={{ fontSize: 17, color: label, flexShrink: 1 }}>{left}</Text>
+      {right ? (
+        <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function Note({ children }: { children: string }) {
+  return (
+    <Group>
+      <View style={{ padding: 16 }}>
+        <Text style={{ fontSize: 15, color: secondary }}>{children}</Text>
+      </View>
+    </Group>
+  );
+}
+
+function SessionGroup({ s }: { s: Extract<Section, { kind: "session" }> }) {
+  const { session } = s;
+  const when = [session.when, session.zones ? `${session.zones.aboveZ2Pct}% above Z2` : ""];
+  return (
+    <Group title={`Last session, ${session.name}`}>
+      <Row left={session.sport} right={when.filter(Boolean).join(", ")} />
+      {session.stats.map((stat, i) => (
+        <Row
+          key={stat.label}
+          left={stat.label}
+          right={stat.value}
+          last={i === session.stats.length - 1}
+        />
+      ))}
+    </Group>
+  );
+}
+
+function WeekGroups({ s }: { s: Extract<Section, { kind: "week" }> }) {
+  return (
+    <>
+      {s.minutes.some((m) => m > 0) && (
+        <Group title="Last seven days">
+          {s.labels.map((d, i) => (
+            <Row
+              key={d}
+              left={d}
+              right={`${Math.round(s.minutes[i] ?? 0)} min`}
+              last={i === s.labels.length - 1}
+            />
+          ))}
+        </Group>
+      )}
+      <Note>{s.summary}</Note>
+    </>
+  );
+}
+
+function SectionView({ s }: { s: Section }) {
+  switch (s.kind) {
+    case "health":
+      return (
+        <Group title="Health">
+          {s.metrics.map((m, i) => (
+            <Row
+              key={m.id}
+              left={m.label}
+              right={m.unit ? `${m.value} ${m.unit}` : m.value}
+              accent={m.accent}
+              last={i === s.metrics.length - 1}
+            />
+          ))}
+        </Group>
+      );
+    case "attention":
+      return (
+        <Group title="Attention">
+          {s.notes.map((n, i) => (
+            <Row key={n.text} left={n.text} accent={n.accent} last={i === s.notes.length - 1} />
+          ))}
+        </Group>
+      );
+    case "text":
+      return <Note>{s.text}</Note>;
+    case "session":
+      return <SessionGroup s={s} />;
+    case "week":
+      return <WeekGroups s={s} />;
+    case "drift":
+      return (
+        <Group title="Zone drift">
+          <Row left={s.summary} />
+          {s.runs.map((r, i) => (
+            <Row
+              // biome-ignore lint/suspicious/noArrayIndexKey: the runs never reorder
+              key={i}
+              left={r.label}
+              right={`${Math.round(r.aboveZ2Pct)}% above Z2`}
+              last={i === s.runs.length - 1}
+            />
+          ))}
+        </Group>
+      );
+  }
+}
+
+function TodayBody({ today }: { today: Today }) {
+  return (
+    <>
+      <Group>
+        <View style={{ padding: 16 }}>
+          <Text style={{ fontSize: 15, color: secondary }}>{today.dateLabel}</Text>
+          <Text style={{ fontSize: 17, color: label, marginTop: 6 }}>{today.lede}</Text>
+        </View>
+      </Group>
+      {today.sections.map((s) => (
+        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} />
+      ))}
+    </>
+  );
+}
+
+export function TodayScreen() {
+  const { data, error, refetch } = useToday();
+  return (
+    <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
+      style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
+      contentContainerStyle={{ paddingBottom: 32 }}
+    >
+      {data ? <TodayBody today={data} /> : null}
+      {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
+      {error ? (
+        <Group>
+          <View style={{ padding: 16 }}>
+            <Text style={{ fontSize: 15, color: secondary }}>{String(error)}</Text>
+            <Button title="Try again" onPress={() => refetch()} />
+          </View>
+        </Group>
+      ) : null}
+    </ScrollView>
+  );
+}

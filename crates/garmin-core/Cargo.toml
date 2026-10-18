@@ -19,13 +19,17 @@ tokio = { workspace = true }
 # The keyring is the secret store everywhere it exists. Android has no backend
 # for it, so that target gets the encrypted-file implementation in `secrets`
 # instead — and pulling the crate in there anyway would only compile a keyring
-# that refuses every call.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# that refuses every call. iOS takes the same file store for now: the keyring
+# backend there needs the `protected` feature and a signed app. Revisit it
+# with the iOS device build.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 keyring = { workspace = true }
 
-[target.'cfg(target_os = "android")'.dependencies]
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 aes-gcm = { workspace = true }
 getrandom = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
 
 # Not used from Rust — pulled in purely so the `vendored` feature reaches the
 # single `openssl-sys` in the graph and OpenSSL gets built from source with the

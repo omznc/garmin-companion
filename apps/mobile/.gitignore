@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+# CNG: "expo prebuild" makes these.
+/android/
+/ios/
+*.apk
+*.aab
+expo-env.d.ts

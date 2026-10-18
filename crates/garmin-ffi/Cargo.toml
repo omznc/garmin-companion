@@ -1,0 +1,18 @@
+[package]
+name = "garmin-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "The native bridge of the mobile app: one async call and one event over JSON"
+
+[lib]
+# "staticlib" and "cdylib" are for the mobile builds. "lib" is for the tests.
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "garmin_ffi"
+
+[dependencies]
+chrono = { workspace = true }
+garmin-api = { path = "../garmin-api" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uniffi = { version = "0.31", features = ["tokio"] }
