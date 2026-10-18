@@ -204,6 +204,15 @@ fn to<T: serde::Serialize>(v: T) -> Result<Value> {
     Ok(serde_json::to_value(v)?)
 }
 
+/// The cache status. Tests must not read the OS keyring, so they report
+/// "not connected" without looking.
+pub(crate) fn cache_status(db: &Db) -> Result<query::CacheStatus> {
+    if cfg!(test) {
+        return query::cache_status_with(db, false);
+    }
+    query::cache_status(db)
+}
+
 fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
     Ok(match name {
         "recent_activities" => to(query::recent_activities(
@@ -256,7 +265,7 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
                 chrono::Local::now().date_naive(),
             ))?
         }
-        "cache_status" => to(query::cache_status(db)?)?,
+        "cache_status" => to(cache_status(db)?)?,
         other => json!({ "error": format!("unknown tool {other}") }),
     })
 }

@@ -1,7 +1,7 @@
 //! What the model is told before the conversation starts.
 
 use anyhow::Result;
-use garmin_core::{db::Db, query};
+use garmin_core::db::Db;
 use serde_json::{json, Value};
 
 use crate::turn::HistoryMessage;
@@ -75,7 +75,7 @@ changes your advice and no tool can supply it.";
 /// the fixed prompt above keeps a stable prefix.
 pub(crate) fn grounding_message(db: &Db) -> Result<Value> {
     let now = chrono::Local::now();
-    let status = query::cache_status(db)?;
+    let status = crate::tools::cache_status(db)?;
     let goals = garmin_core::Goals::load(db)?;
 
     let mut s = format!(
