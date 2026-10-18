@@ -2,17 +2,13 @@
 //!
 //! [`load_today`] is the only function the rest of the app calls. The view
 //! model below is the formatted form that the screen draws. It comes from one
-//! of two sources: the synthetic sample fixture, or `garmin-api` run against a
-//! copy of the cache (`--db <path>`).
+//! of two sources: a made-up `garmin-api` persona (`sample` by default), or
+//! `garmin-api` run against a copy of the cache (`--db <path>`).
 
 use std::path::PathBuf;
 
 use anyhow::{ensure, Context, Result};
 use chrono::NaiveDate;
-use serde::Deserialize;
-
-/// The synthetic sample. It holds no real data.
-const SAMPLE: &str = include_str!("../fixtures/today.sample.json");
 
 /// The made-up users of `garmin-api`, in the form that the API returns.
 pub const PERSONAS: [(&str, &str); 5] = [
@@ -40,8 +36,8 @@ pub const PERSONAS: [(&str, &str); 5] = [
 
 /// Where the Today view comes from.
 pub enum Source {
-    Sample,
-    /// One of the `garmin-api` personas, by name, such as `golfer`.
+    /// One of the `garmin-api` personas, by name, such as `golfer`. The
+    /// default is `sample`. The persona files hold made-up data only.
     Persona(String),
     /// A copy of the cache. Never point this at the live file: opening a
     /// database runs migrations.
@@ -53,45 +49,41 @@ pub enum Source {
 }
 
 /// A piece of a metric value. A unit draws smaller, as in "6h 24m".
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Part {
     pub text: String,
-    #[serde(default)]
     pub unit: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Metric {
     pub label: String,
     pub value: Vec<Part>,
     /// Only a worse than usual figure takes the accent colour.
-    #[serde(default)]
     pub accent: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub label: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attention {
     pub text: String,
-    #[serde(default)]
     pub accent: bool,
     /// A missing day is `None`, and the chart leaves a gap there.
-    #[serde(default)]
     pub spark: Vec<Option<f32>>,
     pub link: Option<Link>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Stat {
     pub label: String,
     pub value: String,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Session {
     pub name: String,
     pub detail: String,
@@ -99,24 +91,22 @@ pub struct Session {
     /// zone verdict does not suit, or one with no heart rate data.
     pub zones: Option<[f32; 5]>,
     /// Said in place of the zone bar when the verdict suits but no data exists.
-    #[serde(default)]
     pub zone_note: Option<String>,
     /// Only the figures that exist. A session with no distance has no distance tile.
     pub stats: Vec<Stat>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DriftRun {
     pub date: String,
     /// Percent of the run above Z2.
     pub above_z2: f32,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Drift {
-    /// What the bars count, such as "runs". It comes from the view model, so
-    /// the screen has no sport words of its own.
-    #[serde(default = "sessions")]
+    /// What the bars count, such as "runs". It comes from `ZoneDrift.noun` in
+    /// the API, so the screen has no sport words of its own.
     pub noun: String,
     pub target: f32,
     pub summary: String,
@@ -124,11 +114,7 @@ pub struct Drift {
     pub runs: Vec<DriftRun>,
 }
 
-fn sessions() -> String {
-    "sessions".into()
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Week {
     /// Active minutes for each day. Every sport has minutes.
     pub minutes: Vec<f32>,
@@ -140,30 +126,14 @@ pub struct Week {
 }
 
 /// The fuel balance, with the sentence under it.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Fuel {
     /// The balance as a tile. `None` when no day has a balance.
     pub tile: Option<Metric>,
     pub note: String,
 }
 
-/// The sections in the order that the API sends them.
-pub const DEFAULT_SECTIONS: [&str; 7] = [
-    "health_tiles",
-    "attention",
-    "fuel",
-    "weight",
-    "last_session",
-    "week",
-    "zone_drift",
-];
-
-fn default_sections() -> Vec<String> {
-    DEFAULT_SECTIONS.iter().map(|s| s.to_string()).collect()
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Today {
     /// The athlete's name, for the top of the sidebar.
     pub who: Option<String>,
@@ -172,11 +142,9 @@ pub struct Today {
     pub title: String,
     pub lede: String,
     /// True when the cache holds nothing. The screen then says so.
-    #[serde(default)]
     pub empty: bool,
     /// The section keys in drawing order. A key that the screen does not know,
     /// or one with no data, is skipped.
-    #[serde(default = "default_sections")]
     pub sections: Vec<String>,
     /// The health tiles that have a figure. A user without the sensor gets no tile.
     pub metrics: Vec<Metric>,
@@ -188,12 +156,9 @@ pub struct Today {
     pub week: Option<Week>,
 }
 
-/// The Today view. The single switch point between the fixture and the API.
+/// The Today view. The single switch point between the personas and the cache.
 pub fn load_today(source: &Source) -> Result<Today> {
     match source {
-        Source::Sample => {
-            serde_json::from_str(SAMPLE).context("the sample Today fixture does not parse")
-        }
         Source::Persona(name) => {
             let (_, json) = PERSONAS
                 .iter()
@@ -230,15 +195,16 @@ mod tests {
     }
 
     #[test]
-    fn the_sample_fixture_parses_and_is_internally_consistent() {
-        let today = load_today(&Source::Sample).unwrap();
-        assert_eq!(today.metrics.len(), 7);
+    fn the_default_persona_parses_and_is_internally_consistent() {
+        let today = load_today(&Source::Persona("sample".into())).unwrap();
+        assert!(today.metrics.len() >= 5);
         assert!(today.fuel.as_ref().unwrap().tile.is_some());
         let week = today.week.as_ref().unwrap();
         assert_eq!(week.minutes.len(), week.axis.len());
         let zones: f32 = today.last_session.unwrap().zones.unwrap().iter().sum();
         assert!((zones - 100.0).abs() < 0.5, "zones sum to {zones}");
         let drift = today.zone_drift.unwrap();
+        assert_eq!(drift.noun, "runs");
         assert!(drift
             .runs
             .iter()

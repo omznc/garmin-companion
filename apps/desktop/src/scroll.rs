@@ -1,10 +1,16 @@
 //! A scroll container with smooth wheel notches.
 //!
-//! A mouse wheel sends whole lines, so the page would jump. The container keeps
-//! a target offset and moves the real offset toward it with a critically damped
-//! spring. A new notch moves the target, so fast notches add up and the motion
-//! stays continuous. A touchpad sends exact pixels, with kinetic momentum where
-//! gpui makes it. Those pass through to gpui untouched.
+//! A mouse wheel sends whole notches, so the page would jump. The container
+//! keeps a target offset and moves the real offset toward it with a critically
+//! damped spring. A new notch moves the target, so fast notches add up and the
+//! motion stays continuous.
+//!
+//! Only a whole notch is smoothed: a line delta that is a multiple of
+//! `LINES_PER_NOTCH`. Everything else passes through to gpui untouched. That is
+//! a touchpad on Wayland (pixel deltas, with kinetic momentum where gpui makes
+//! it), a touchpad on X11 (gpui sends it as fractional lines), and a wheel with
+//! fine steps. Such a wheel scrolls without easing. An X11 touchpad delta that is
+//! exactly a whole notch would be eased, which is rare.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -22,8 +28,14 @@ const NOTCH_PX: f32 = 80.0;
 
 /// gpui sends 3 lines for one notch on Linux and, by default, on Windows
 /// (`SCROLL_LINES` in `gpui_ce_linux`). macOS sends about 1 line, so a notch is
-/// shorter there.
-const LINE_PX: f32 = NOTCH_PX / 3.0;
+/// shorter there and is not smoothed: it is not a multiple of this.
+const LINES_PER_NOTCH: f32 = 3.0;
+const LINE_PX: f32 = NOTCH_PX / LINES_PER_NOTCH;
+
+/// True for a delta of one or more whole notches.
+fn is_notch(lines: f32) -> bool {
+    lines != 0.0 && (lines.abs() / LINES_PER_NOTCH).fract() < 1e-3
+}
 
 /// Critically damped. About 230 ms from a notch to rest.
 const WHEEL: SpringConfig = SpringConfig {
@@ -125,7 +137,8 @@ impl SmoothScroll {
                         return;
                     };
                     if phase != DispatchPhase::Bubble
-                        || lines.y == 0.0
+                        || !is_notch(lines.y)
+                        || lines.x != 0.0
                         || !hitbox.should_handle_scroll(window)
                     {
                         return;
@@ -209,6 +222,12 @@ mod tests {
         let mut short = Inner::new(false);
         short.notch(-3.0, 0.0);
         assert_eq!(short.spring.target, 0.0);
+    }
+
+    #[test]
+    fn only_whole_notches_are_smoothed() {
+        assert!(is_notch(3.0) && is_notch(-3.0) && is_notch(-6.0));
+        assert!(!is_notch(0.0) && !is_notch(0.4) && !is_notch(-1.5) && !is_notch(4.0));
     }
 
     #[test]

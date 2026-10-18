@@ -26,9 +26,59 @@ opt-level = "s"
 panic = "abort"
 strip = true
 
-# The desktop app draws every frame on its own thread, so here throughput
-# matters more than bytes. This is why it differs from the size-first default.
+# The desktop app does work on every frame: layout (taffy), text (cosmic-text,
+# swash), path tessellation (lyon) and the GPU backend (wgpu, naga). Those
+# crates and the app itself get opt-level 3. The size-first default stays for
+# everything else, because `[profile.release.package."*"]` would also speed up
+# the Tauri app and the MCP server, where bytes matter more. None of the
+# crates below are in those two builds.
 [profile.release.package.garmin-companion-desktop]
+opt-level = 3
+[profile.release.package."gpui-ce"]
+opt-level = 3
+[profile.release.package.gpui_ce_linux]
+opt-level = 3
+[profile.release.package.gpui_ce_wgpu]
+opt-level = 3
+[profile.release.package.gpui_ce_sum_tree]
+opt-level = 3
+[profile.release.package.taffy]
+opt-level = 3
+[profile.release.package."cosmic-text"]
+opt-level = 3
+[profile.release.package.swash]
+opt-level = 3
+[profile.release.package.skrifa]
+opt-level = 3
+[profile.release.package."read-fonts"]
+opt-level = 3
+[profile.release.package."ttf-parser"]
+opt-level = 3
+[profile.release.package.zeno]
+opt-level = 3
+[profile.release.package.etagere]
+opt-level = 3
+[profile.release.package.wgpu]
+opt-level = 3
+[profile.release.package."wgpu-core"]
+opt-level = 3
+[profile.release.package."wgpu-hal"]
+opt-level = 3
+[profile.release.package.naga]
+opt-level = 3
+[profile.release.package.lyon_path]
+opt-level = 3
+[profile.release.package.lyon_geom]
+opt-level = 3
+[profile.release.package.lyon_algorithms]
+opt-level = 3
+[profile.release.package.lyon_tessellation]
+opt-level = 3
+[profile.release.package.resvg]
+opt-level = 3
+[profile.release.package.usvg]
+opt-level = 3
+[profile.release.package."tiny-skia"]
 opt-level = 3
 
 # Shared across the Tauri app and the MCP server so the two can never drift

@@ -5,7 +5,7 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--persona golfer` shows a made-up user from `garmin-api`.
+//! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
 mod chrome;
 mod data;
@@ -92,16 +92,15 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("--date needs YYYY-MM-DD, got {d}"))
         })
         .transpose()?;
-    let source = match (db, date) {
-        (None, None) if option(&args, "--persona").is_some() => {
-            data::Source::Persona(option(&args, "--persona").unwrap_or_default())
-        }
-        (Some(path), date) => data::Source::Db {
+    let persona = required(&args, "--persona")?;
+    let source = match (db, date, persona) {
+        (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
+        (Some(path), date, None) => data::Source::Db {
             path: path.into(),
             date,
         },
-        (None, Some(_)) => anyhow::bail!("--date needs --db"),
-        (None, None) => data::Source::Sample,
+        (None, Some(_), _) => anyhow::bail!("--date needs --db"),
+        (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
     };
     let today = data::load_today(&source)?;
 

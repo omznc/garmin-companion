@@ -76,10 +76,10 @@ pub fn underlined(
     size: f32,
     t: &Theme,
 ) -> gpui::Stateful<Div> {
-    let (line, fg) = (t.line, t.fg);
+    // A link with no target yet has no pointer and no hover style.
+    let line = t.line;
     div()
         .id(id)
-        .cursor_pointer()
         .font_family(SANS)
         .text_size(px(size))
         .line_height(relative(LH_NORMAL))
@@ -88,7 +88,6 @@ pub fn underlined(
         .border_b_1()
         .border_color(line)
         .whitespace_nowrap()
-        .hover(move |s| s.text_color(fg))
         .child(text.into())
 }
 

@@ -240,7 +240,6 @@ pub fn render<V: 'static>(
         .unwrap_or_default();
     let sync = quiet_row(t)
         .id("sync")
-        .cursor_pointer()
         .text_color(t.mutd)
         .child(icon(Icon::Sync, 14.0, t, t.mutd))
         .child("Sync")

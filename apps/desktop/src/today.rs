@@ -6,7 +6,7 @@
 use gpui::{div, prelude::*, px, relative, AnyElement, ColorExt as _, Div, Hsla};
 
 use crate::data::{Attention, Drift, Metric, Session, Today, Week};
-use crate::icons::{icon_hover, Icon};
+use crate::icons::{icon, Icon};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_MICRO, FS_SMALL};
 use crate::ui::{
     axis_labels, block_in, body, bullet, ch, eyebrow, eyebrow_lg, h1, line_chart, metric,
@@ -32,21 +32,18 @@ fn section_eyebrow(text: &str, below: f32, t: &Theme) -> Div {
         .child(eyebrow(text.to_string(), t))
 }
 
-/// The refresh control at the right of the page header.
+/// The refresh control at the right of the page header. It has no pointer or
+/// hover style until it does something.
 fn refresh(t: &Theme) -> impl IntoElement {
-    let (mutd, fg) = (t.mutd, t.fg);
+    let mutd = t.mutd;
     div()
-        .id("refresh")
-        .group("refresh")
-        .cursor_pointer()
         .flex()
         .items_center()
         .gap(px(8.0))
         .font_family(SANS)
         .text_size(px(FS_CAPTION))
         .text_color(mutd)
-        .hover(move |s| s.text_color(fg))
-        .child(icon_hover(Icon::Sync, 14.0, t, mutd, Some(("refresh", fg))))
+        .child(icon(Icon::Sync, 14.0, t, mutd))
         .child("Refresh")
 }
 

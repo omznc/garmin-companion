@@ -262,7 +262,7 @@ fn drift(view: &TodayView) -> Option<Drift> {
         )
     });
     Some(Drift {
-        noun: "sessions".to_string(),
+        noun: d.noun.clone(),
         target: d.target_pct as f32,
         summary,
         runs: d
