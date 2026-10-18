@@ -149,6 +149,7 @@
     "sportLabel": "Running"
   },
   "zoneDrift": {
+    "noun": "runs",
     "targetPct": 20.0,
     "recentAvgPct": 34.21448895930249,
     "runs": [

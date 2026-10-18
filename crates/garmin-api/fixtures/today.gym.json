@@ -102,6 +102,7 @@
     "sportLabel": "Strength training"
   },
   "zoneDrift": {
+    "noun": "runs",
     "targetPct": 20.0,
     "recentAvgPct": null,
     "runs": []

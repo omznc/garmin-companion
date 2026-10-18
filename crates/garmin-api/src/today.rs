@@ -112,6 +112,10 @@ pub struct DriftRun {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneDrift {
+    /// What the strip counts, for the heading. Always "runs" today, because
+    /// the strip holds runs only.
+    #[serde(default = "drift_noun")]
+    pub noun: String,
     pub target_pct: f64,
     /// Mean of the newest three runs. `None` with no run.
     pub recent_avg_pct: Option<f64>,
@@ -263,6 +267,10 @@ fn last_session(a: &CachedActivity) -> LastSession {
     }
 }
 
+fn drift_noun() -> String {
+    "runs".to_string()
+}
+
 fn zone_drift(activities: &[CachedActivity]) -> ZoneDrift {
     let mut runs: Vec<DriftRun> = activities
         .iter()
@@ -280,6 +288,7 @@ fn zone_drift(activities: &[CachedActivity]) -> ZoneDrift {
     runs.reverse();
     let recent = &runs[runs.len().saturating_sub(3)..];
     ZoneDrift {
+        noun: drift_noun(),
         target_pct: DRIFT_TARGET_PCT,
         recent_avg_pct: mean(recent.iter().map(|r| Some(r.above_z2_pct))),
         runs,
