@@ -186,9 +186,13 @@ impl Root {
 
     /// Show another week of the report. The page keeps its scroll position.
     pub fn show_report(&mut self, offset: usize, cx: &mut Context<Self>) {
-        match training::load(&self.source, offset) {
-            Ok(training) => self.training = Some(training),
-            Err(e) => eprintln!("could not load the week: {e:#}"),
+        match (
+            training::load_report(&self.source, offset),
+            &mut self.training,
+        ) {
+            (Ok(report), Some(training)) => training.report = report,
+            (Err(e), _) => eprintln!("could not load the week: {e:#}"),
+            _ => {}
         }
         cx.notify();
     }

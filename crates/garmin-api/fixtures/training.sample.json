@@ -108,7 +108,7 @@
             "id": "load",
             "tone": "note",
             "claim": "Your training load is building.",
-            "detail": "You trained 2.5 h in the last seven days. Your weekly average over 28 days is 1.8 h. That is a steady ratio.",
+            "detail": "You trained 2.5 h in the last seven days. Your weekly average over 28 days is 1.8 h. That is a step up from your recent norm.",
             "basis": "Weekly load is Edwards' training impulse: the minutes in each heart-rate zone, weighted one to five. A session with no heart rate counts as easy. At 0.63, monotony is under the usual limit of 2.0. Your hard days and easy days differ.",
             "figures": [
               {
@@ -290,7 +290,7 @@
       "eyebrow": "No. 17 · 09 Mar - 15 Mar",
       "headline": "A steady week",
       "paragraphs": [
-        "2 sessions, 12.4 km, 1h 12m of recorded time. That is 40% less time than the week before. The longest was Morning Run at 37 min.",
+        "2 sessions, 12.4 km, 1h 12m of recorded time. The week is not over yet, so it has no comparison. The longest was Morning Run at 37 min.",
         "Sleep averaged 7h 30m. Resting heart rate averaged 56 bpm. Food was logged on 1 of 3 days. That is too little to average. 30% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
       ],
       "figures": [
@@ -1747,9 +1747,9 @@
       "hasEarlier": false,
       "hasLater": true,
       "eyebrow": "No. 1 · 17 Nov - 23 Nov",
-      "headline": "Your first week in the cache",
+      "headline": "A steady week",
       "paragraphs": [
-        "2 sessions, 14.0 km, 1h 35m of recorded time. The longest was Easy Run at 55 min.",
+        "2 sessions, 14.0 km, 1h 35m of recorded time. The week before had no sessions. The longest was Easy Run at 55 min.",
         "34% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
       ],
       "figures": [

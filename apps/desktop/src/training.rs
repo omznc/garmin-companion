@@ -97,6 +97,32 @@ pub fn load(source: &Source, offset: usize) -> Result<Training> {
     }
 }
 
+/// Read only the report, for a click on another week.
+pub fn load_report(source: &Source, offset: usize) -> Result<ReportView> {
+    let report = |db: &garmin_core::Db, day| {
+        garmin_api::reports::report_view(db, day, offset).context("cannot build the report")
+    };
+    match source {
+        Source::Default => {
+            let db = garmin_api::open_default_db().context("cannot open the cache")?;
+            report(&db, chrono::Local::now().date_naive())
+        }
+        Source::Persona(name) => {
+            let mut views = persona(name)?;
+            let at = offset.min(views.reports.len().saturating_sub(1));
+            Ok(views.reports.swap_remove(at))
+        }
+        Source::Db { path, date } => {
+            ensure!(path.is_file(), "no cache copy at {}", path.display());
+            let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
+            report(
+                &db,
+                date.unwrap_or_else(|| chrono::Local::now().date_naive()),
+            )
+        }
+    }
+}
+
 /// The screen for a sidebar label, or `None` for a label that this file does not draw.
 pub fn screen(
     label: &str,

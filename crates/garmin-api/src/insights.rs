@@ -93,11 +93,15 @@ pub struct InsightsView {
 /// True when the user runs now. Run-only copy needs this.
 pub fn runs_now(activities: &[CachedActivity], today: NaiveDate) -> bool {
     let profile = activity_profile(activities, 0, today);
-    profile.active.contains(&Family::Endurance)
-        && activities.iter().any(|a| {
+    let recent_runs = activities
+        .iter()
+        .filter(|a| {
             is_run(&a.type_key)
                 && days_since(a, today).is_some_and(|d| (0..RUN_WINDOW_DAYS).contains(&d))
         })
+        .count();
+    // The audience plan: gate every run note on 3 or more runs in the window.
+    profile.active.contains(&Family::Endurance) && recent_runs >= 3
 }
 
 fn ends(labels: &[String]) -> Vec<String> {
@@ -198,12 +202,11 @@ fn load_status(ratio: f64) -> &'static str {
 }
 
 fn ratio_sentence(ratio: f64) -> &'static str {
-    if ratio > 1.5 {
-        "That is a sharp step up. In this range the risk of injury climbs."
-    } else if ratio < 0.8 {
-        "You train less than your recent norm, as in a down week."
-    } else {
-        "That is a steady ratio."
+    match load_status(ratio) {
+        "spiking" => "That is a sharp step up. In this range the risk of injury climbs.",
+        "building" => "That is a step up from your recent norm.",
+        "easing" => "You train less than your recent norm, as in a down week.",
+        _ => "That is a steady ratio.",
     }
 }
 
@@ -233,17 +236,25 @@ pub fn load_shape(activities: &[CachedActivity], weeks: usize) -> Option<Vec<Wee
         let days = buckets.entry(monday(d)).or_insert([0.0; 7]);
         days[d.weekday().num_days_from_monday() as usize] += edwards_trimp(a);
     }
-    let skip = buckets.len().saturating_sub(weeks);
-    let out: Vec<WeekLoad> = buckets
-        .into_iter()
-        .skip(skip)
-        .map(|(start, days)| WeekLoad {
-            start,
-            trimp: days.iter().fold(0.0, |t, v| t + v),
-            monotony: monotony(&days),
+    if buckets.len() < 4 {
+        return None;
+    }
+    let first = *buckets.keys().next()?;
+    let last = *buckets.keys().next_back()?;
+    // A week with no session stays in the series as a zero, so a break shows.
+    let all = (0..=(last - first).num_weeks()).map(|w| first + Duration::weeks(w));
+    let mut out: Vec<WeekLoad> = all
+        .map(|start| {
+            let days = buckets.get(&start).copied().unwrap_or([0.0; 7]);
+            WeekLoad {
+                start,
+                trimp: days.iter().fold(0.0, |t, v| t + v),
+                monotony: monotony(&days),
+            }
         })
         .collect();
-    (out.len() >= 4).then_some(out)
+    out.drain(..out.len().saturating_sub(weeks));
+    Some(out)
 }
 
 fn monotony_sentence(shape: &[WeekLoad]) -> String {
@@ -253,7 +264,7 @@ fn monotony_sentence(shape: &[WeekLoad]) -> String {
         .filter(|w| w.monotony.is_some_and(|m| m >= 2.0))
         .count();
     let mut out = match latest {
-        None => "Monotony is undefined this week, because all the load fell on one day.".into(),
+        None => "Monotony is undefined this week, because the load was the same on every day.".into(),
         Some(m) if m >= 2.0 => format!("At {m:.2}, the week had no real recovery day. Weeks like this grind more than they build."),
         Some(m) => format!("At {m:.2}, monotony is under the usual limit of 2.0. Your hard days and easy days differ."),
     };
@@ -494,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn a_week_of_one_day_has_no_monotony() {
+    fn monotony_is_undefined_only_for_a_flat_week() {
         assert_eq!(
             monotony(&[60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).map(|m| m > 0.0),
             Some(true)
@@ -513,6 +524,9 @@ mod tests {
             .map(|w| act(&date_key(today() - Duration::days(w * 7)), "golf", 60.0))
             .collect();
         assert_eq!(load_shape(&more, 12).unwrap().len(), 5);
+        let gap =
+            [0, 7, 14, 21, 77].map(|d| act(&date_key(today() - Duration::days(d)), "golf", 60.0));
+        assert_eq!(load_shape(&gap, 12).unwrap().len(), 12);
     }
 
     #[test]
@@ -527,7 +541,13 @@ mod tests {
             act("2025-11-03", "running", 30.0),
         ];
         assert!(!runs_now(&stopped, today()));
-        let runner = [act("2026-03-10", "running", 30.0)];
+        let one_run = [act("2026-03-10", "running", 30.0)];
+        assert!(!runs_now(&one_run, today()));
+        let runner = [
+            act("2026-03-10", "running", 30.0),
+            act("2026-03-08", "running", 30.0),
+            act("2026-03-06", "running", 30.0),
+        ];
         assert!(runs_now(&runner, today()));
     }
 }

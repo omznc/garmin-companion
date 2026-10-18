@@ -142,14 +142,27 @@ fn hard_share(week: &Week) -> Option<(f64, f64, usize)> {
     easy_hard_split(&week.runs()).map(|s| (s.hard_pct, s.easy_pct, s.counted))
 }
 
-fn headline(week: &Week, prior: Option<&Week>) -> String {
-    let Some(prior) = prior else {
-        return "Your first week in the cache".into();
+/// What the week is set against.
+enum Compare<'a> {
+    /// No earlier session exists in the cache.
+    First,
+    /// The week is not over, so a whole week is no fair match.
+    Partial,
+    /// The week before had no session.
+    Gap,
+    Week(&'a Week<'a>),
+}
+
+fn headline(week: &Week, compare: &Compare) -> String {
+    let prior = match compare {
+        Compare::First => return "Your first week in the cache".into(),
+        Compare::Week(p) => Some(*p),
+        _ => None,
     };
     let share = hard_share(week);
     if share.is_some_and(|(hard, ..)| hard <= 25.0) && week.runs().len() >= 2 {
         "A week close to the 80/20 split".into()
-    } else if week.duration_s > prior.duration_s * 1.25 && prior.duration_s > 0.0 {
+    } else if prior.is_some_and(|p| p.duration_s > 0.0 && week.duration_s > p.duration_s * 1.25) {
         "A bigger week than the one before".into()
     } else if share.is_some_and(|(hard, ..)| hard > 60.0) {
         "A hard week, front to back".into()
@@ -158,7 +171,7 @@ fn headline(week: &Week, prior: Option<&Week>) -> String {
     }
 }
 
-fn body(week: &Week, prior: Option<&Week>) -> String {
+fn body(week: &Week, compare: &Compare) -> String {
     let mut parts = vec![plural(week.activities.len(), "session", "sessions")];
     if week.distance_m > 0.0 {
         parts.push(format!("{:.1} km", week.distance_m / 1000.0));
@@ -168,13 +181,18 @@ fn body(week: &Week, prior: Option<&Week>) -> String {
         hours_minutes(week.duration_s)
     ));
     let mut out = format!("{}.", parts.join(", "));
-    if let Some(p) = prior.filter(|p| p.duration_s > 0.0) {
-        let change = (week.duration_s - p.duration_s) / p.duration_s * 100.0;
-        out.push_str(&format!(
-            " That is {:.0}% {} time than the week before.",
-            change.abs(),
-            if change >= 0.0 { "more" } else { "less" }
-        ));
+    match compare {
+        Compare::Week(p) if p.duration_s > 0.0 => {
+            let change = (week.duration_s - p.duration_s) / p.duration_s * 100.0;
+            out.push_str(&format!(
+                " That is {:.0}% {} time than the week before.",
+                change.abs(),
+                if change >= 0.0 { "more" } else { "less" }
+            ));
+        }
+        Compare::Gap => out.push_str(" The week before had no sessions."),
+        Compare::Partial => out.push_str(" The week is not over yet, so it has no comparison."),
+        _ => {}
     }
     let longest = week.activities.iter().max_by(|a, b| {
         a.duration_s
@@ -384,6 +402,28 @@ fn empty_view(today: NaiveDate) -> ReportView {
     }
 }
 
+fn from_day(key: &str) -> NaiveDate {
+    NaiveDate::parse_from_str(key, "%Y-%m-%d").unwrap_or(NaiveDate::MIN)
+}
+
+fn compare_for<'a>(
+    week: &Week,
+    older: Option<&'a Week<'a>>,
+    today: NaiveDate,
+    window_start: NaiveDate,
+) -> Compare<'a> {
+    if week.end() >= today {
+        return Compare::Partial;
+    }
+    match older {
+        Some(o) if o.start == week.start - Duration::days(7) => Compare::Week(o),
+        Some(_) => Compare::Gap,
+        // The window is 120 days. A week at its edge may have an earlier week outside it.
+        None if week.start > window_start + Duration::days(7) => Compare::First,
+        None => Compare::Gap,
+    }
+}
+
 /// Build the report for the week at `offset`. 0 is the newest week with a
 /// session. An offset past the oldest week gives the oldest week.
 pub fn report_view(db: &Db, today: NaiveDate, offset: usize) -> Result<ReportView, ApiError> {
@@ -399,7 +439,8 @@ pub fn report_view(db: &Db, today: NaiveDate, offset: usize) -> Result<ReportVie
     }
     let rows = daily_series(db.daily_since(&from)?, HISTORY_DAYS as u32, today);
     let offset = offset.min(weeks.len() - 1);
-    let (week, prior) = (&weeks[offset], weeks.get(offset + 1));
+    let week = &weeks[offset];
+    let compare = compare_for(week, weeks.get(offset + 1), today, from_day(&from));
     let (daily_title, daily) = daily(week);
     Ok(ReportView {
         date: date_key(today),
@@ -415,8 +456,8 @@ pub fn report_view(db: &Db, today: NaiveDate, offset: usize) -> Result<ReportVie
             short(week.start),
             short(week.end())
         ),
-        headline: headline(week, prior),
-        paragraphs: vec![body(week, prior), recovery(week, &rows)],
+        headline: headline(week, &compare),
+        paragraphs: vec![body(week, &compare), recovery(week, &rows)],
         figures: figures(week, &rows),
         daily_title,
         daily,
@@ -484,10 +525,28 @@ mod tests {
     fn the_body_says_one_session_in_the_singular() {
         let acts = [act(1, "2026-03-10", "golf", 60.0, 0.0)];
         let weeks = by_week(&acts);
-        let text = body(&weeks[0], None);
+        let text = body(&weeks[0], &Compare::First);
         assert!(
             text.starts_with("1 session, 1h 00m of recorded time."),
             "{text}"
         );
+    }
+
+    #[test]
+    fn the_week_before_is_the_calendar_week() {
+        let acts = [
+            act(1, "2026-03-03", "golf", 60.0, 0.0),
+            act(2, "2026-02-10", "golf", 60.0, 0.0),
+        ];
+        let weeks = by_week(&acts);
+        let day = |d: &str| NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap();
+        let start = day("2025-11-01");
+        let today = day("2026-03-20");
+        let gap = compare_for(&weeks[0], weeks.get(1), today, start);
+        assert!(matches!(gap, Compare::Gap));
+        let first = compare_for(&weeks[1], None, today, start);
+        assert!(matches!(first, Compare::First));
+        let partial = compare_for(&weeks[0], weeks.get(1), day("2026-03-05"), start);
+        assert!(matches!(partial, Compare::Partial));
     }
 }

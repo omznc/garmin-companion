@@ -1,7 +1,7 @@
 // Weight, Food and Strength. The core builds the numbers and the sentences
 // (`garmin_api::body`). This file types the JSON and turns it into blocks.
 // The screens draw the blocks and have no other copy.
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { callJson } from "./source";
 import {
   type FitnessView,
@@ -255,6 +255,16 @@ export const useBody = (kind: ScreenKind, offset = 0) =>
   useQuery({
     queryKey: ["body", kind, offset],
     queryFn: () => fetchBody(kind, offset),
+    // Keep the old week on screen while the next one loads.
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+
+// Fitness shows only when the cache has a training status or a record.
+export const useFitnessShown = () =>
+  useQuery({
+    queryKey: ["body", "fitness-shown"],
+    queryFn: async () => (await callJson<FitnessView>("fitness_view")).empty == null,
     retry: false,
   });
 
