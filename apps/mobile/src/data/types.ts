@@ -51,7 +51,7 @@ export type TodayView = {
   fuel: { balance: number | null; accent: boolean };
   fuelSentence: string;
   hydrationSentence: string | null;
-  weight: { trendKg: number | null; rateKgPerWeek: number | null; count: number } | null;
+  weight: { count: number; sentence: string } | null;
   attention: Observation[];
   lastSession: {
     activity: Activity;

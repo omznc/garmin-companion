@@ -15,9 +15,6 @@ use crate::data::{
 
 const DASH: &str = "—";
 
-/// The age at which `WeightGlance.tsx` stops calling a weight reading current.
-const STALE_WEIGHT_DAYS: i64 = 21;
-
 fn text(value: impl Into<String>) -> Part {
     Part {
         text: value.into(),
@@ -127,29 +124,6 @@ fn fuel(view: &TodayView) -> Option<Fuel> {
         None => view.fuel_sentence.clone(),
     };
     Some(Fuel { tile, note })
-}
-
-fn weight_note(w: &garmin_api::today::WeightGlance) -> Option<String> {
-    if w.count == 0 {
-        return None;
-    }
-    let trend = w
-        .trend_kg
-        .map_or(DASH.to_string(), |t| format!("{t:.1} kg"));
-    // A reading older than three weeks is a memory, not a trend.
-    if let Some(days) = w.days_since_latest.filter(|d| *d > STALE_WEIGHT_DAYS) {
-        return Some(format!(
-            "Your weight trend last read {trend}, {days} days ago."
-        ));
-    }
-    Some(match w.rate_kg_per_week {
-        Some(rate) => format!(
-            "Weight trend {trend}, {} {:.2} kg a week.",
-            if rate < 0.0 { "down" } else { "up" },
-            rate.abs()
-        ),
-        None => format!("Weight trend {trend}."),
-    })
 }
 
 fn attention(view: &TodayView) -> Vec<Attention> {
@@ -299,7 +273,7 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
         sections: view.sections.clone(),
         metrics: metrics(view),
         fuel: fuel(view),
-        weight_note: view.weight.as_ref().and_then(weight_note),
+        weight_note: view.weight.as_ref().map(|w| w.sentence.clone()),
         attention: attention(view),
         last_session: view.last_session.as_ref().map(session),
         zone_drift: drift(view),
@@ -341,20 +315,6 @@ mod tests {
         let joined: String = parts.iter().map(|p| p.text.as_str()).collect();
         assert_eq!(joined, "7h 02m");
         assert!(parts[1].unit && parts[3].unit);
-    }
-
-    #[test]
-    fn an_old_weight_reading_is_not_called_a_trend() {
-        let w = |days| garmin_api::today::WeightGlance {
-            trend_kg: Some(80.0),
-            days_since_latest: Some(days),
-            rate_kg_per_week: Some(-0.2),
-            count: 5,
-        };
-        assert!(weight_note(&w(3))
-            .unwrap()
-            .starts_with("Weight trend 80.0 kg, down"));
-        assert!(weight_note(&w(40)).unwrap().contains("40 days ago"));
     }
 
     #[test]

@@ -65,6 +65,30 @@ pub fn hydration_sentence(h: &Hydration) -> String {
     )
 }
 
+/// A reading older than three weeks is a memory, not a trend.
+const STALE_WEIGHT_DAYS: i64 = 21;
+
+/// The weight line. A null trend reads as a dash, and an old reading says how
+/// old it is.
+pub fn weight_sentence(
+    trend_kg: Option<f64>,
+    days_since: Option<i64>,
+    rate: Option<f64>,
+) -> String {
+    let trend = trend_kg.map_or("—".to_string(), |t| format!("{t:.1} kg"));
+    if let Some(days) = days_since.filter(|d| *d > STALE_WEIGHT_DAYS) {
+        return format!("Your weight trend last read {trend}, {days} days ago.");
+    }
+    match rate {
+        Some(r) => format!(
+            "Weight trend {trend}, {} {:.2} kg a week.",
+            if r < 0.0 { "down" } else { "up" },
+            r.abs()
+        ),
+        None => format!("Weight trend {trend}."),
+    }
+}
+
 /// The fuel line. It always says something, because burn comes off the watch
 /// whether or not anyone logged food.
 pub fn fuel_sentence(f: &Fuel) -> String {
@@ -317,5 +341,22 @@ mod tests {
             narrative(&[], &[], today),
             "No metrics recorded for the last few days. No sleep, readiness or activity data was found."
         );
+    }
+
+    #[test]
+    fn weight_sentence_marks_an_old_reading() {
+        assert_eq!(
+            weight_sentence(Some(82.3), Some(90), Some(-0.2)),
+            "Your weight trend last read 82.3 kg, 90 days ago."
+        );
+        assert_eq!(
+            weight_sentence(Some(80.0), Some(3), Some(-0.2)),
+            "Weight trend 80.0 kg, down 0.20 kg a week."
+        );
+    }
+
+    #[test]
+    fn weight_sentence_shows_a_dash_for_a_null_trend() {
+        assert_eq!(weight_sentence(None, Some(2), None), "Weight trend —.");
     }
 }

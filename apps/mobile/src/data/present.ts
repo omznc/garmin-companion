@@ -98,17 +98,6 @@ function weekLabels(today: Date): string[] {
   });
 }
 
-function weightLine(v: TodayView): string | null {
-  const w = v.weight;
-  if (!w || w.trendKg == null) return null;
-  const rate = w.rateKgPerWeek;
-  const move =
-    rate == null || Math.abs(rate) < 0.05
-      ? ", steady"
-      : `, ${rate > 0 ? "up" : "down"} ${Math.abs(rate).toFixed(1)} kg a week`;
-  return `Weight trend ${w.trendKg.toFixed(1)} kg${move}.`;
-}
-
 function driftSection(v: TodayView): Section | null {
   const drift = v.zoneDrift;
   if (drift.runs.length < 2 || drift.recentAvgPct == null) return null;
@@ -136,8 +125,7 @@ function buildSection(v: TodayView, key: string, day: Date): Section | null {
       return text ? { kind: "text", key: "fuel", text } : null;
     }
     case "weight": {
-      const text = weightLine(v);
-      return text ? { kind: "text", key: "weight", text } : null;
+      return v.weight ? { kind: "text", key: "weight", text: v.weight.sentence } : null;
     }
     case "last_session": {
       const session = lastSession(v);
