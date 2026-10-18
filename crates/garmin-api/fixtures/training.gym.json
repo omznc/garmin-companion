@@ -1,0 +1,581 @@
+{
+  "insights": {
+    "date": "2026-03-11",
+    "eyebrow": "Last 365 days",
+    "lede": "What a year of your own data says. Each insight shows the sample behind it, so you can judge how far to trust it. These are patterns, not causes.",
+    "empty": null,
+    "sections": [
+      {
+        "key": "load",
+        "title": "Training load",
+        "items": [
+          {
+            "id": "load",
+            "tone": "note",
+            "claim": "Your training load is steady.",
+            "detail": "You trained 2.9 h in the last seven days. Your weekly average over 28 days is 2.9 h. That is a steady ratio.",
+            "basis": "Weekly load is Edwards' training impulse: the minutes in each heart-rate zone, weighted one to five. A session with no heart rate counts as easy. At 0.63, monotony is under the usual limit of 2.0. Your hard days and easy days differ.",
+            "figures": [
+              {
+                "label": "Acute / chronic",
+                "value": "0.97",
+                "accent": false
+              },
+              {
+                "label": "Monotony",
+                "value": "0.63",
+                "accent": false
+              }
+            ],
+            "series": [
+              {
+                "name": "Weekly load",
+                "values": [
+                  118.0,
+                  355.0,
+                  355.0,
+                  355.0,
+                  237.0
+                ],
+                "muted": false
+              }
+            ],
+            "ends": [
+              "09 Feb",
+              "09 Mar"
+            ],
+            "rows": []
+          }
+        ]
+      }
+    ]
+  },
+  "fitness": {
+    "date": "2026-03-11",
+    "empty": null,
+    "lede": "Garmin rates your training status as productive.",
+    "figures": [
+      {
+        "label": "Acute load",
+        "value": "412",
+        "accent": false
+      },
+      {
+        "label": "Chronic load",
+        "value": "368",
+        "accent": false
+      },
+      {
+        "label": "Acute : chronic (optimal)",
+        "value": "1.12",
+        "accent": false
+      }
+    ],
+    "notes": [],
+    "balance": {
+      "intro": "Garmin splits the work of the last month into three kinds. Each has a range that Garmin wants. Its verdict: balanced.",
+      "bars": [
+        {
+          "label": "Low aerobic: easy work",
+          "value": 210.0,
+          "min": 150.0,
+          "max": 280.0,
+          "state": "in",
+          "text": "210 of 150 to 280"
+        },
+        {
+          "label": "High aerobic: tempo and threshold",
+          "value": 190.0,
+          "min": 120.0,
+          "max": 250.0,
+          "state": "in",
+          "text": "190 of 120 to 250"
+        },
+        {
+          "label": "Anaerobic: hard and short",
+          "value": 95.0,
+          "min": 20.0,
+          "max": 80.0,
+          "state": "over",
+          "text": "95 of 20 to 80"
+        }
+      ]
+    },
+    "predictions": null,
+    "records": [
+      {
+        "label": "Most steps in a day",
+        "value": "17,840",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Most steps in a week",
+        "value": "71,200",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Longest step-goal streak",
+        "value": "9 days",
+        "date": "18 Jan"
+      }
+    ]
+  },
+  "reports": [
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 0,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": false,
+      "eyebrow": "No. 5 · 09 Mar - 15 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "2 sessions, 1h 52m of recorded time. That is 39% less time than the week before. The longest was Strength at 57 min.",
+        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. Food was logged on 1 of 3 days. That is too little to average."
+      ],
+      "figures": [
+        {
+          "label": "Time",
+          "value": "1h 52m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "2",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 30m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily active time",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 57.0,
+          "text": "57 min"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Wed",
+          "value": 55.0,
+          "text": "55 min"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sat",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0 min"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9300000,
+          "name": "Strength",
+          "day": "Wed 11 Mar",
+          "sport": "",
+          "distance": "",
+          "duration": "55 min"
+        },
+        {
+          "activityId": 9300001,
+          "name": "Strength",
+          "day": "Mon 09 Mar",
+          "sport": "",
+          "distance": "",
+          "duration": "57 min"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 1,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 4 · 02 Mar - 08 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "3 sessions, 3h 03m of recorded time. That is 7% more time than the week before. The longest was Strength at 1h 03m.",
+        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. Food was logged on 2 of 7 days. That is too little to average."
+      ],
+      "figures": [
+        {
+          "label": "Time",
+          "value": "3h 03m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "3",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 30m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily active time",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 63.0,
+          "text": "63 min"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Wed",
+          "value": 61.0,
+          "text": "61 min"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sat",
+          "value": 59.0,
+          "text": "59 min"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0 min"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9300002,
+          "name": "Strength",
+          "day": "Sat 07 Mar",
+          "sport": "",
+          "distance": "",
+          "duration": "59 min"
+        },
+        {
+          "activityId": 9300003,
+          "name": "Strength",
+          "day": "Wed 04 Mar",
+          "sport": "",
+          "distance": "",
+          "duration": "1h 01m"
+        },
+        {
+          "activityId": 9300004,
+          "name": "Strength",
+          "day": "Mon 02 Mar",
+          "sport": "",
+          "distance": "",
+          "duration": "1h 03m"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 2,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 3 · 23 Feb - 01 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "3 sessions, 2h 51m of recorded time. That is 4% less time than the week before. The longest was Strength at 59 min.",
+        "Sleep averaged 7h 26m. Resting heart rate averaged 51 bpm. Food was logged on 1 of 7 days. That is too little to average."
+      ],
+      "figures": [
+        {
+          "label": "Time",
+          "value": "2h 51m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "3",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 26m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily active time",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 59.0,
+          "text": "59 min"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Wed",
+          "value": 57.0,
+          "text": "57 min"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sat",
+          "value": 55.0,
+          "text": "55 min"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0 min"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9300005,
+          "name": "Strength",
+          "day": "Sat 28 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "55 min"
+        },
+        {
+          "activityId": 9300006,
+          "name": "Strength",
+          "day": "Wed 25 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "57 min"
+        },
+        {
+          "activityId": 9300007,
+          "name": "Strength",
+          "day": "Mon 23 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "59 min"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 3,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 2 · 16 Feb - 22 Feb",
+      "headline": "A bigger week than the one before",
+      "paragraphs": [
+        "3 sessions, 2h 59m of recorded time. That is 214% more time than the week before. The longest was Strength at 1h 03m.",
+        "Sleep averaged 7h 32m. Resting heart rate averaged 51 bpm. No food was logged, against 2,686 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Time",
+          "value": "2h 59m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "3",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 32m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily active time",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 55.0,
+          "text": "55 min"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Wed",
+          "value": 63.0,
+          "text": "63 min"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sat",
+          "value": 61.0,
+          "text": "61 min"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0 min"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9300008,
+          "name": "Strength",
+          "day": "Sat 21 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "1h 01m"
+        },
+        {
+          "activityId": 9300009,
+          "name": "Strength",
+          "day": "Wed 18 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "1h 03m"
+        },
+        {
+          "activityId": 9300010,
+          "name": "Strength",
+          "day": "Mon 16 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "55 min"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 4,
+      "weeks": 5,
+      "hasEarlier": false,
+      "hasLater": true,
+      "eyebrow": "No. 1 · 09 Feb - 15 Feb",
+      "headline": "Your first week in the cache",
+      "paragraphs": [
+        "1 session, 0h 57m of recorded time. The longest was Strength at 57 min.",
+        "Sleep averaged 7h 28m. Resting heart rate averaged 51 bpm. No food was logged, against 2,674 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Time",
+          "value": "0h 57m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "1",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 28m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily active time",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Wed",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0 min"
+        },
+        {
+          "label": "Sat",
+          "value": 57.0,
+          "text": "57 min"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0 min"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9300011,
+          "name": "Strength",
+          "day": "Sat 14 Feb",
+          "sport": "",
+          "distance": "",
+          "duration": "57 min"
+        }
+      ]
+    }
+  ]
+}

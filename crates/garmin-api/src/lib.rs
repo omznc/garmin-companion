@@ -12,14 +12,18 @@ pub mod body;
 mod derive;
 mod dispatch;
 mod error;
+pub mod fitness;
 pub mod health;
+pub mod insights;
 pub mod personas;
 mod profile;
+pub mod reports;
 pub mod session;
 pub mod settings;
 pub mod sleep_view;
 mod text;
 pub mod today;
+pub mod training_fixtures;
 
 pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};

@@ -1,0 +1,574 @@
+{
+  "insights": {
+    "date": "2026-03-11",
+    "eyebrow": "Last 365 days",
+    "lede": "What a year of your own data says. Each insight shows the sample behind it, so you can judge how far to trust it. These are patterns, not causes.",
+    "empty": null,
+    "sections": [
+      {
+        "key": "load",
+        "title": "Training load",
+        "items": [
+          {
+            "id": "load",
+            "tone": "note",
+            "claim": "Your training load is steady.",
+            "detail": "You trained 8.4 h in the last seven days. Your weekly average over 28 days is 7.6 h. That is a steady ratio.",
+            "basis": "Weekly load is Edwards' training impulse: the minutes in each heart-rate zone, weighted one to five. A session with no heart rate counts as easy. At 0.41, monotony is under the usual limit of 2.0. Your hard days and easy days differ.",
+            "figures": [
+              {
+                "label": "Acute / chronic",
+                "value": "1.10",
+                "accent": false
+              },
+              {
+                "label": "Monotony",
+                "value": "0.41",
+                "accent": false
+              }
+            ],
+            "series": [
+              {
+                "name": "Weekly load",
+                "values": [
+                  713.0,
+                  713.0,
+                  713.0,
+                  357.0,
+                  357.0
+                ],
+                "muted": false
+              }
+            ],
+            "ends": [
+              "09 Feb",
+              "09 Mar"
+            ],
+            "rows": []
+          }
+        ]
+      }
+    ]
+  },
+  "fitness": {
+    "date": "2026-03-11",
+    "empty": null,
+    "lede": "Garmin rates your training status as productive.",
+    "figures": [
+      {
+        "label": "Acute load",
+        "value": "412",
+        "accent": false
+      },
+      {
+        "label": "Chronic load",
+        "value": "368",
+        "accent": false
+      },
+      {
+        "label": "Acute : chronic (optimal)",
+        "value": "1.12",
+        "accent": false
+      }
+    ],
+    "notes": [],
+    "balance": {
+      "intro": "Garmin splits the work of the last month into three kinds. Each has a range that Garmin wants. Its verdict: balanced.",
+      "bars": [
+        {
+          "label": "Low aerobic: easy work",
+          "value": 210.0,
+          "min": 150.0,
+          "max": 280.0,
+          "state": "in",
+          "text": "210 of 150 to 280"
+        },
+        {
+          "label": "High aerobic: tempo and threshold",
+          "value": 190.0,
+          "min": 120.0,
+          "max": 250.0,
+          "state": "in",
+          "text": "190 of 120 to 250"
+        },
+        {
+          "label": "Anaerobic: hard and short",
+          "value": 95.0,
+          "min": 20.0,
+          "max": 80.0,
+          "state": "over",
+          "text": "95 of 20 to 80"
+        }
+      ]
+    },
+    "predictions": null,
+    "records": [
+      {
+        "label": "Most steps in a day",
+        "value": "17,840",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Most steps in a week",
+        "value": "71,200",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Longest step-goal streak",
+        "value": "9 days",
+        "date": "18 Jan"
+      }
+    ]
+  },
+  "reports": [
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 0,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": false,
+      "eyebrow": "No. 5 · 09 Mar - 15 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "1 session, 6.5 km, 4h 10m of recorded time. That is 2% less time than the week before. The longest was Golf at 4h 10m.",
+        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. No food was logged, against 2,680 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Distance",
+          "value": "6.5 km",
+          "accent": false
+        },
+        {
+          "label": "Time",
+          "value": "4h 10m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "1",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 30m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily distance",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 6.5,
+          "text": "6.5 km"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Wed",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sat",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0.0 km"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9100000,
+          "name": "Golf",
+          "day": "Mon 09 Mar",
+          "sport": "",
+          "distance": "6.5 km",
+          "duration": "4h 10m"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 1,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 4 · 02 Mar - 08 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "1 session, 6.8 km, 4h 14m of recorded time. That is 51% less time than the week before. The longest was Golf at 4h 14m.",
+        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. No food was logged, against 2,680 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Distance",
+          "value": "6.8 km",
+          "accent": false
+        },
+        {
+          "label": "Time",
+          "value": "4h 14m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "1",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 30m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily distance",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Wed",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Thu",
+          "value": 6.8,
+          "text": "6.8 km"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sat",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0.0 km"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9100001,
+          "name": "Golf",
+          "day": "Thu 05 Mar",
+          "sport": "",
+          "distance": "6.8 km",
+          "duration": "4h 14m"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 2,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 3 · 23 Feb - 01 Mar",
+      "headline": "A steady week",
+      "paragraphs": [
+        "2 sessions, 14.5 km, 8h 40m of recorded time. That is 3% less time than the week before. The longest was Golf at 4h 22m.",
+        "Sleep averaged 7h 26m. Resting heart rate averaged 51 bpm. No food was logged, against 2,669 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Distance",
+          "value": "14.5 km",
+          "accent": false
+        },
+        {
+          "label": "Time",
+          "value": "8h 40m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "2",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 26m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily distance",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Wed",
+          "value": 7.4,
+          "text": "7.4 km"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sat",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sun",
+          "value": 7.1,
+          "text": "7.1 km"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9100002,
+          "name": "Golf",
+          "day": "Sun 01 Mar",
+          "sport": "",
+          "distance": "7.1 km",
+          "duration": "4h 18m"
+        },
+        {
+          "activityId": 9100003,
+          "name": "Golf",
+          "day": "Wed 25 Feb",
+          "sport": "",
+          "distance": "7.4 km",
+          "duration": "4h 22m"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 3,
+      "weeks": 5,
+      "hasEarlier": true,
+      "hasLater": true,
+      "eyebrow": "No. 2 · 16 Feb - 22 Feb",
+      "headline": "A steady week",
+      "paragraphs": [
+        "2 sessions, 14.2 km, 8h 56m of recorded time. That is 3% less time than the week before. The longest was Golf at 4h 30m.",
+        "Sleep averaged 7h 32m. Resting heart rate averaged 51 bpm. No food was logged, against 2,686 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Distance",
+          "value": "14.2 km",
+          "accent": false
+        },
+        {
+          "label": "Time",
+          "value": "8h 56m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "2",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 32m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily distance",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Tue",
+          "value": 6.5,
+          "text": "6.5 km"
+        },
+        {
+          "label": "Wed",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Fri",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sat",
+          "value": 7.7,
+          "text": "7.7 km"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0.0 km"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9100004,
+          "name": "Golf",
+          "day": "Sat 21 Feb",
+          "sport": "",
+          "distance": "7.7 km",
+          "duration": "4h 26m"
+        },
+        {
+          "activityId": 9100005,
+          "name": "Golf",
+          "day": "Tue 17 Feb",
+          "sport": "",
+          "distance": "6.5 km",
+          "duration": "4h 30m"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-11",
+      "empty": null,
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 4,
+      "weeks": 5,
+      "hasEarlier": false,
+      "hasLater": true,
+      "eyebrow": "No. 1 · 09 Feb - 15 Feb",
+      "headline": "Your first week in the cache",
+      "paragraphs": [
+        "2 sessions, 13.9 km, 9h 12m of recorded time. The longest was Golf at 4h 38m.",
+        "Sleep averaged 7h 28m. Resting heart rate averaged 51 bpm. No food was logged, against 2,674 kcal burned each day."
+      ],
+      "figures": [
+        {
+          "label": "Distance",
+          "value": "13.9 km",
+          "accent": false
+        },
+        {
+          "label": "Time",
+          "value": "9h 12m",
+          "accent": false
+        },
+        {
+          "label": "Sessions",
+          "value": "2",
+          "accent": false
+        },
+        {
+          "label": "Avg sleep",
+          "value": "7h 28m",
+          "accent": false
+        }
+      ],
+      "dailyTitle": "Daily distance",
+      "daily": [
+        {
+          "label": "Mon",
+          "value": 7.1,
+          "text": "7.1 km"
+        },
+        {
+          "label": "Tue",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Wed",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Thu",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Fri",
+          "value": 6.8,
+          "text": "6.8 km"
+        },
+        {
+          "label": "Sat",
+          "value": 0.0,
+          "text": "0.0 km"
+        },
+        {
+          "label": "Sun",
+          "value": 0.0,
+          "text": "0.0 km"
+        }
+      ],
+      "sessions": [
+        {
+          "activityId": 9100006,
+          "name": "Golf",
+          "day": "Fri 13 Feb",
+          "sport": "",
+          "distance": "6.8 km",
+          "duration": "4h 34m"
+        },
+        {
+          "activityId": 9100007,
+          "name": "Golf",
+          "day": "Mon 09 Feb",
+          "sport": "",
+          "distance": "7.1 km",
+          "duration": "4h 38m"
+        }
+      ]
+    }
+  ]
+}

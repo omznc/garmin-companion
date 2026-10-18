@@ -24,6 +24,7 @@ const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.s
 const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
 const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
 const BODY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/body.sample.json");
+const TRAINING_SAMPLE: &str = include_str!("../../garmin-api/fixtures/training.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -142,6 +143,9 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "weight_view" | "food_view" | "strength_view" if fixture => Ok(fixture_body(cmd)),
         "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
         "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
+        "insights_view" | "fitness_view" | "report_view" if fixture => {
+            Ok(fixture_training(cmd, args))
+        }
         // These commands open the cache, and opening it creates the file.
         "cached_daily"
         | "cached_activities"
@@ -182,6 +186,20 @@ fn fixture_body(cmd: &str) -> String {
     let part = cmd.trim_end_matches("_view");
     let body: serde_json::Value = serde_json::from_str(BODY_SAMPLE).unwrap_or_default();
     body[part].to_string()
+}
+
+/// One part of `training.sample.json`. The report picks its week by `offset`.
+fn fixture_training(cmd: &str, args: &serde_json::Value) -> String {
+    let all: serde_json::Value = serde_json::from_str(TRAINING_SAMPLE).unwrap_or_default();
+    match cmd {
+        "insights_view" => all["insights"].to_string(),
+        "fitness_view" => all["fitness"].to_string(),
+        _ => {
+            let weeks = all["reports"].as_array().map_or(0, Vec::len);
+            let offset = args["offset"].as_u64().unwrap_or(0) as usize;
+            all["reports"][offset.min(weeks.saturating_sub(1))].to_string()
+        }
+    }
 }
 
 async fn run_today_on(args: &serde_json::Value) -> Result<String, FfiError> {
@@ -341,6 +359,14 @@ mod tests {
         assert!(serde_json::from_str::<serde_json::Value>(&w)
             .unwrap()
             .is_object());
+        for cmd in ["insights_view", "fitness_view", "report_view"] {
+            let v = dispatch(cmd, &serde_json::json!({ "offset": 99 }), true)
+                .await
+                .unwrap();
+            assert!(serde_json::from_str::<serde_json::Value>(&v)
+                .unwrap()
+                .is_object());
+        }
         let d = dispatch(
             "activity_detail",
             &serde_json::json!({ "activityId": 42 }),
