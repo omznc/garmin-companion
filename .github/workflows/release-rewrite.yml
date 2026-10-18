@@ -163,7 +163,7 @@ jobs:
           echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
           # The NDK has only llvm-ranlib. The vendored OpenSSL needs RANLIB.
           LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          for target in aarch64_linux_android x86_64_linux_android; do
+          for target in aarch64_linux_android armv7_linux_androideabi; do
             echo "RANLIB_$target=$LLVM_BIN/llvm-ranlib" >> "$GITHUB_ENV"
           done
 
@@ -171,7 +171,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
       - uses: taiki-e/install-action@v2
         with:
@@ -197,7 +197,8 @@ jobs:
 
       - name: Build the Rust bridge
         working-directory: apps/mobile
-        run: pnpm bridge:android
+        # The same two ABIs as the old APK. No x86_64: that is an emulator ABI.
+        run: pnpm bridge:android --targets arm64-v8a,armeabi-v7a
 
       - name: Make the Android project
         working-directory: apps/mobile
@@ -205,7 +206,8 @@ jobs:
 
       - name: Build the APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease --no-daemon
+        # The -P value replaces buildArchs of app.json (that list has x86_64 for dev).
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 
       # The Expo template signs a release build with the debug key. Sign it
       # again with the key of the old app. The apksigner command replaces the
@@ -222,7 +224,11 @@ jobs:
             --out "$APK" apps/mobile/android/app/build/outputs/apk/release/app-release.apk
           rm -f "$RUNNER_TEMP/release.jks"
           "$BT/apksigner" verify --print-certs "$APK"
-          "$BT/aapt2" dump badging "$APK" | head -n 1
+          "$BT/aapt2" dump badging "$APK" > badging.txt
+          head -n 1 badging.txt
+          # The old app: minSdk 24, arm64-v8a and armeabi-v7a.
+          grep -q "^sdkVersion:'24'" badging.txt
+          grep -q "native-code: 'arm64-v8a' 'armeabi-v7a'" badging.txt || grep -q "native-code: 'armeabi-v7a' 'arm64-v8a'" badging.txt
 
       # The same file that release.yml writes. The old app reads it to find a new APK.
       - name: Write latest-android.json
