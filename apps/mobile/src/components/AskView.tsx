@@ -1,6 +1,8 @@
 // The Ask screen body, shared by Android and iOS. The platform files give the colours and the top.
 // The text input is the native one. Answers stream in through `useAsk`.
-import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   type ColorValue,
   KeyboardAvoidingView,
@@ -13,6 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { blocks, inline } from "../data/markdown";
+import { type CloudAccount, PREMIUM_LATER, useCloudAccount } from "../data/useCloud";
 import {
   type Step,
   type Turn,
@@ -200,6 +203,41 @@ function Setup({ theme, onSaved }: { theme: AskTheme; onSaved: () => void }) {
   );
 }
 
+// The credits under the messages. Premium is not on sale in the app yet, so it only explains.
+function CreditLine({
+  theme,
+  account,
+  onOwnKey,
+}: {
+  theme: AskTheme;
+  account: CloudAccount;
+  onOwnKey: () => void;
+}) {
+  const [info, setInfo] = useState(false);
+  const colour = account.out ? theme.warn : account.low ? theme.muted : theme.faint;
+  const explain = !account.premium && (info || account.out);
+  return (
+    <View style={{ paddingHorizontal: 20, paddingTop: 6, gap: 6 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <Text style={{ color: colour, fontSize: 13, flexShrink: 1 }}>{account.creditsLine}</Text>
+        {account.premium ? null : (
+          <Pressable accessibilityRole="button" hitSlop={10} onPress={() => setInfo((v) => !v)}>
+            <Text style={{ color: theme.accent, fontSize: 13 }}>Premium</Text>
+          </Pressable>
+        )}
+      </View>
+      {explain ? (
+        <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 19 }}>{PREMIUM_LATER}</Text>
+      ) : null}
+      {account.out ? (
+        <Pressable accessibilityRole="button" hitSlop={10} onPress={onOwnKey}>
+          <Text style={{ color: theme.accent, fontSize: 13 }}>Use your own key</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 function Empty({
   theme,
   setup,
@@ -245,9 +283,17 @@ export function AskView({ theme, top }: { theme: AskTheme; top: number }) {
   const insets = useSafeAreaInsets();
   const { turns, busy, send, stop } = useAsk();
   const config = useCoachConfig();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const account = useCloudAccount(config.data?.provider === "cloud").data;
   const [draft, setDraft] = useState("");
   const scroll = useRef<{ scrollToEnd: (o?: { animated?: boolean }) => void } | null>(null);
   const ready = !busy && draft.trim().length > 0;
+
+  // A turn that ends has spent credits: read the balance again.
+  useEffect(() => {
+    if (!busy) void queryClient.invalidateQueries({ queryKey: ["cloudAccount"] });
+  }, [busy, queryClient]);
 
   const submit = () => {
     if (busy) return stop();
@@ -287,6 +333,13 @@ export function AskView({ theme, top }: { theme: AskTheme; top: number }) {
           ))
         )}
       </ScrollView>
+      {account && config.data?.provider === "cloud" ? (
+        <CreditLine
+          theme={theme}
+          account={account}
+          onOwnKey={() => router.push("/more/coach" as never)}
+        />
+      ) : null}
       {/* iOS: the native tab bar floats over the screen, and only the view's own safe area
           includes it. Android: the tab bar sits below the screen and owns the system inset. */}
       <SafeAreaView

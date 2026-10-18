@@ -105,10 +105,11 @@ export type CoachConfig = {
   hasKey: boolean;
 };
 
-// Whether the coach can answer: an OpenRouter key, or a local model (not on a phone).
+// Whether the coach can answer: the hosted coach, an OpenRouter key, or a local model.
 export function needsSetup(config: CoachConfig | undefined): boolean {
   if (!config) return false;
-  return !(config.provider === "openrouter" && config.hasKey) && config.provider !== "ollama";
+  if (config.provider === "cloud" || config.provider === "ollama") return false;
+  return !(config.provider === "openrouter" && config.hasKey);
 }
 
 export async function saveKey(key: string): Promise<void> {

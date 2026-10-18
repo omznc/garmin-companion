@@ -15,6 +15,7 @@ use garmin_api::session;
 use garmin_api::settings::{self, SettingsView, ThemeMode};
 use gpui::{App, Context, Window, WindowAppearance};
 
+use crate::cloud::Cloud;
 use crate::field::Field;
 use crate::shell::Root;
 use crate::theme::Palette;
@@ -54,6 +55,8 @@ pub struct Account {
     pub mode: ThemeMode,
     pub token_path: Field,
     pub token_path_default: Option<String>,
+    /// The coach settings and the cloud account.
+    pub cloud: Cloud,
 }
 
 impl Account {
@@ -85,6 +88,7 @@ impl Account {
             },
             token_path: Field::new("Path to garmin_tokens.json", false, cx),
             token_path_default: status.and_then(|s| s.importable_token_path),
+            cloud: Cloud::new(cx),
         }
     }
 

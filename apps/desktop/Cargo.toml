@@ -19,6 +19,7 @@ async-channel = "2"
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+reqwest = { workspace = true }
 tokio = { workspace = true }
 
 # The same pin as mbrd-rs. gpui-ce follows Zed's tree and cuts releases.

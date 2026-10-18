@@ -14,6 +14,7 @@ use std::time::Duration;
 mod ask;
 #[cfg(target_os = "ios")]
 mod backup;
+mod cloud;
 
 uniffi::setup_scaffolding!();
 
@@ -133,6 +134,9 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
 
 async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
     if let Some(out) = ask::handle(cmd, args, fixture).await {
+        return out;
+    }
+    if let Some(out) = cloud::handle(cmd, args, fixture).await {
         return out;
     }
     match cmd {
@@ -379,6 +383,8 @@ mod tests {
             ("settings", &none),
             ("ask_config", &none),
             ("ask_save_config", &save),
+            ("cloud_account", &none),
+            ("cloud_sign_out", &none),
         ];
         for (cmd, args) in cmds {
             let _ = dispatch(cmd, args, true).await;

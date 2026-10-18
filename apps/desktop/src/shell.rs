@@ -9,7 +9,7 @@ use gpui::{
 
 use crate::account::{Account, Sync};
 use crate::activities::{self, Page, Store};
-use crate::ask::{Ask, Source as AskSource};
+use crate::ask::{Ask, AskEvent, Source as AskSource};
 use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::{Source, Today};
@@ -54,6 +54,9 @@ pub struct AskStart {
 /// Build the Ask screen with its start state.
 pub fn new_ask(start: AskStart, palette: Palette, cx: &mut Context<Root>) -> Entity<Ask> {
     let ask = cx.new(|cx| Ask::new(start.source, palette, cx));
+    ask.update(cx, |ask, cx| ask.refresh_credits(cx));
+    cx.subscribe(&ask, |root, _, event: &AskEvent, cx| root.on_ask(event, cx))
+        .detach();
     if let Some(question) = start.question {
         ask.update(cx, |ask, cx| ask.send(question, cx));
     }
@@ -120,6 +123,27 @@ impl Root {
         }
     }
 
+    /// The Ask screen wants premium or the coach settings.
+    fn on_ask(&mut self, event: &AskEvent, cx: &mut Context<Self>) {
+        match event {
+            AskEvent::Premium { signed_in: true } => {
+                // Settings may not have opened yet: the cloud state is not live.
+                if !self.account.cloud.live {
+                    self.cloud_open(cx);
+                }
+                self.cloud_checkout(cx);
+            }
+            AskEvent::Premium { signed_in: false } => {
+                self.select_index(SETTINGS, cx);
+                self.account.cloud.say(
+                    "Sign in with your email to get premium. Premium belongs to an account.",
+                    false,
+                );
+            }
+            AskEvent::Settings => self.select_index(SETTINGS, cx),
+        }
+    }
+
     /// Show one session. The page starts at the top, like a new screen.
     pub fn open_activity(&mut self, id: i64, cx: &mut Context<Self>) {
         self.page = match self.store.detail(id) {
@@ -162,9 +186,10 @@ impl Root {
             self.visits += 1;
             if index == SETTINGS {
                 self.reload_settings();
+                self.cloud_open(cx);
             }
             if index == ASK {
-                self.ask.update(cx, |ask, _| ask.visit());
+                self.ask.update(cx, |ask, cx| ask.visit(cx));
             }
             // A new screen starts at the top.
             self.scroll = SmoothScroll::new(motion::reduced());
@@ -183,7 +208,7 @@ impl Root {
         self.set_theme_mode(mode, window, cx);
     }
 
-    fn screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.sidebar.active == 0 {
             return today::render(&self.today, self.visits, t).into_any_element();
         }
@@ -198,7 +223,7 @@ impl Root {
             }
         }
         if self.sidebar.active == SETTINGS {
-            return settings::render(self, t, cx);
+            return settings::render(self, t, window, cx);
         }
         let label = NAV[self.sidebar.active].0;
         if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
@@ -295,7 +320,7 @@ impl Render for Root {
         let column = if self.sidebar.active == ASK {
             self.ask.clone().into_any_element()
         } else {
-            let screen = self.screen(&t, cx);
+            let screen = self.screen(&t, window, cx);
             self.scroll
                 .area(ElementId::NamedInteger("page".into(), self.visits as u64))
                 .flex_1()

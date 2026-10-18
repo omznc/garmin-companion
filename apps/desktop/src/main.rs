@@ -21,6 +21,7 @@ mod activities;
 mod ask;
 mod body;
 mod chrome;
+mod cloud;
 mod composer;
 mod controls;
 mod data;

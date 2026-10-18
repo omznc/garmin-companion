@@ -9,9 +9,11 @@
 //! default: it streams a canned answer and reads no data and calls no model, so
 //! the screen works with no setup.
 //!
-//! Not here yet: saved conversations (Recents), pinned questions, the collapse
-//! of the tool steps once an answer lands, and a settings screen for the model
-//! (`--coach` on the command line sets it for now).
+//! The hosted coach shows its credits under the composer, with a link to
+//! premium. The model choice lives in Settings (`--coach` sets it for a copy).
+//!
+//! Not here yet: saved conversations (Recents), pinned questions, and the
+//! collapse of the tool steps once an answer lands.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,7 +22,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use garmin_coach::{
-    Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
+    AccountView, Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
 };
 use garmin_core::db::Db;
 use gpui::{
@@ -29,7 +31,9 @@ use gpui::{
 };
 use serde_json::Value;
 
+use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
+use crate::controls::quiet;
 use crate::markdown;
 use crate::motion;
 use crate::scroll::SmoothScroll;
@@ -40,7 +44,7 @@ use crate::ui::{block_in, body, ch, eyebrow_lg, h1, underlined, SANS};
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
 /// Room under the thread for the docked composer.
-const COMPOSER_ROOM: f32 = 150.0;
+const COMPOSER_ROOM: f32 = 176.0;
 
 /// Where the answers come from.
 #[derive(Clone)]
@@ -95,8 +99,22 @@ const OPENERS: [&str; 8] = [
     "What is worth my attention today?",
 ];
 
+/// What the Ask screen asks of the window around it.
+pub enum AskEvent {
+    /// The user wants premium. `signed_in` says whether checkout can start.
+    Premium { signed_in: bool },
+    /// Show the coach settings.
+    Settings,
+}
+
+impl gpui::EventEmitter<AskEvent> for Ask {}
+
 pub struct Ask {
     source: Source,
+    /// The last known balance. It stays on screen when the network is gone.
+    credits: Option<AccountView>,
+    /// The hosted coach is the chosen provider, so credits matter.
+    cloud_on: bool,
     palette: Palette,
     composer: Entity<Composer>,
     turns: Vec<Turn>,
@@ -121,6 +139,8 @@ impl Ask {
         );
         Self {
             source,
+            credits: None,
+            cloud_on: false,
             palette,
             composer,
             turns: Vec::new(),
@@ -139,8 +159,37 @@ impl Ask {
     }
 
     /// The screen was opened again.
-    pub fn visit(&mut self) {
+    pub fn visit(&mut self, cx: &mut Context<Self>) {
         self.visits += 1;
+        self.refresh_credits(cx);
+    }
+
+    /// Read the provider, and the balance if the hosted coach is the provider.
+    pub fn refresh_credits(&mut self, cx: &mut Context<Self>) {
+        let path = match &self.source {
+            Source::Demo => {
+                self.cloud_on = true;
+                self.credits = Some(cloud::sample_account());
+                return;
+            }
+            Source::Db(path) => path.clone(),
+        };
+        let saved = Db::open(&path)
+            .and_then(|db| garmin_coach::load_config(&db))
+            .map(|(provider, _)| provider);
+        self.cloud_on = matches!(saved, Ok(Some(Provider::Cloud)));
+        if !self.cloud_on {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            if let Ok(view) = cloud::on_thread(cloud::account()).await {
+                let _ = this.update(cx, |ask, cx| {
+                    ask.credits = Some(view);
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
     }
 
     pub fn stop(&self) {
@@ -202,6 +251,7 @@ impl Ask {
     }
 
     fn finish(&mut self, cx: &mut Context<Self>) {
+        self.refresh_credits(cx);
         self.busy = false;
         self.composer.update(cx, |c, cx| c.set_busy(false, cx));
     }
@@ -334,13 +384,11 @@ impl Transport for Demo {
 /// Set the model from the command line: `provider` or `provider:model`.
 pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
     let (name, model) = spec.split_once(':').unwrap_or((spec, ""));
-    let provider = Provider::parse(name)
-        .ok_or_else(|| anyhow::anyhow!("unknown provider {name}: use openrouter or ollama"))?;
-    anyhow::ensure!(
-        provider != Provider::Cloud,
-        "the hosted coach is not available yet"
-    );
+    let provider = Provider::parse(name).ok_or_else(|| {
+        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter or ollama")
+    })?;
     let model = match (model, provider) {
+        ("", Provider::Cloud) => "",
         ("", Provider::Openrouter) => garmin_coach::DEFAULT_OPENROUTER_MODEL,
         ("", _) => anyhow::bail!("name a model, for example {name}:llama3.2"),
         (m, _) => m,
@@ -404,6 +452,40 @@ fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> impl IntoElement {
         col = col.child(body(error.clone(), FS_SMALL, t.warn).max_w(ch(62.0, FS_SMALL)));
     }
     col
+}
+
+/// The line under the composer: the credits, and the way to more of them.
+fn credit_row(view: &AccountView, cx: &mut Context<Ask>, t: &Theme) -> impl IntoElement {
+    let colour = if view.out {
+        t.warn
+    } else if view.low {
+        t.mutd
+    } else {
+        t.faint
+    };
+    let signed_in = view.email.is_some();
+    let mut actions = div().flex().items_baseline().gap(px(20.0));
+    if !view.premium {
+        actions = actions.child(
+            quiet("ask-premium", "Get premium", true, false, t).on_click(cx.listener(
+                move |_, _: &ClickEvent, _, cx| cx.emit(AskEvent::Premium { signed_in }),
+            )),
+        );
+    }
+    if view.out {
+        actions = actions.child(
+            quiet("ask-own-key", "Use your own key or Ollama", true, false, t)
+                .on_click(cx.listener(|_, _: &ClickEvent, _, cx| cx.emit(AskEvent::Settings))),
+        );
+    }
+    div()
+        .mt(px(9.0))
+        .flex()
+        .items_baseline()
+        .justify_between()
+        .gap(px(16.0))
+        .child(body(view.credits_line.clone(), FS_CAPTION, colour))
+        .child(actions)
 }
 
 impl Ask {
@@ -520,7 +602,13 @@ impl Render for Ask {
                         linear_color_stop(t.bg.opacity(0.0), 0.0),
                         linear_color_stop(t.bg, 0.3),
                     ))
-                    .child(self.composer.clone()),
+                    .child(self.composer.clone())
+                    .children(
+                        self.credits
+                            .as_ref()
+                            .filter(|_| self.cloud_on)
+                            .map(|v| credit_row(v, cx, &t)),
+                    ),
             );
         div()
             .relative()
@@ -577,7 +665,7 @@ mod tests {
     fn setup_checks_the_provider_and_names_a_model() {
         let dir = std::env::temp_dir().join(format!("gc-ask-{}.db", std::process::id()));
         assert!(setup(&dir, "nope").is_err());
-        assert!(setup(&dir, "cloud").is_err());
+        assert!(setup(&dir, "cloud").unwrap().contains("cloud"));
         assert!(setup(&dir, "ollama").is_err());
         assert!(setup(&dir, "ollama:llama3.2").unwrap().contains("llama3.2"));
         let db = Db::open(&dir).unwrap();
