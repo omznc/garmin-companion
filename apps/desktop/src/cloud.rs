@@ -46,6 +46,8 @@ pub struct Cloud {
     /// The email that a code went to. `None` while no code is waiting.
     pending_email: Option<String>,
     busy: bool,
+    /// The running checkout poll. A new one replaces it: dropping a task stops it.
+    watch: Option<gpui::Task<()>>,
     has_key: bool,
     email: Field,
     code: Field,
@@ -62,6 +64,7 @@ impl Cloud {
             note: None,
             pending_email: None,
             busy: false,
+            watch: None,
             has_key: false,
             email: Field::new("you@example.com", false, cx),
             code: Field::new("6-digit code", false, cx),
@@ -335,7 +338,7 @@ impl Root {
 
     /// Read the balance every 3 seconds for 2 minutes, until premium shows.
     fn cloud_watch(&mut self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
+        self.account.cloud.watch = Some(cx.spawn(async move |this, cx| {
             for _ in 0..POLL_TIMES {
                 cx.background_executor().timer(POLL_EVERY).await;
                 let Ok(view) = on_thread(account()).await else {
@@ -355,8 +358,7 @@ impl Root {
                     break;
                 }
             }
-        })
-        .detach();
+        }));
     }
 }
 
@@ -373,8 +375,12 @@ impl Cloud {
         provider
     }
 
+    /// An empty `model` keeps the model that is saved.
     fn write_provider(&self, provider: Provider, model: &str) -> anyhow::Result<()> {
-        garmin_coach::save_config(&self.db()?, provider, model)
+        let db = self.db()?;
+        let kept = garmin_coach::load_config(&db)?.1.unwrap_or_default();
+        let model = if model.is_empty() { &kept } else { model };
+        garmin_coach::save_config(&db, provider, model)
     }
 }
 
