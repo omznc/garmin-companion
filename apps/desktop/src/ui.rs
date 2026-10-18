@@ -176,7 +176,8 @@ pub fn bullet(index: usize, item: &Attention, t: &Theme) -> Div {
         .items_start()
         .child(dot)
         .child(text);
-    if !item.spark.is_empty() || item.link.is_some() {
+    let has_spark = item.spark.iter().any(Option::is_some);
+    if has_spark || item.link.is_some() {
         // At the end of the last line, where the current app sets it inline.
         let mut tail = div()
             .flex_none()
@@ -184,7 +185,7 @@ pub fn bullet(index: usize, item: &Attention, t: &Theme) -> Div {
             .flex()
             .items_center()
             .gap(px(6.0));
-        if !item.spark.is_empty() {
+        if has_spark {
             tail = tail.child(spark(&item.spark, t));
         }
         if let Some(link) = &item.link {
@@ -200,11 +201,12 @@ pub fn bullet(index: usize, item: &Attention, t: &Theme) -> Div {
     row
 }
 
-/// Map values to points inside a box, as `scaleFor` in `chart.ts` does.
-fn scale(values: &[f32], bounds: Bounds<Pixels>, pad: f32) -> Vec<Point<Pixels>> {
-    let (lo, hi) = values
-        .iter()
-        .fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
+/// Map values to points inside a box, as `scaleFor` in `chart.ts` does. A
+/// missing or non-finite value has no point, but it keeps its place: the points
+/// sit by index, so a gap stays a gap.
+fn scale(values: &[Option<f32>], bounds: Bounds<Pixels>, pad: f32) -> Vec<Option<Point<Pixels>>> {
+    let present = || values.iter().flatten().filter(|v| v.is_finite());
+    let (lo, hi) = present().fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
     let range = if hi > lo { hi - lo } else { 1.0 };
     let last = values.len().saturating_sub(1).max(1) as f32;
     let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
@@ -212,29 +214,43 @@ fn scale(values: &[f32], bounds: Bounds<Pixels>, pad: f32) -> Vec<Point<Pixels>>
         .iter()
         .enumerate()
         .map(|(i, v)| {
+            let v = v.filter(|v| v.is_finite())?;
             let x = i as f32 / last * w;
             let y = h - pad - (v - lo) / range * (h - pad * 2.0);
-            point(bounds.origin.x + px(x), bounds.origin.y + px(y))
+            Some(point(bounds.origin.x + px(x), bounds.origin.y + px(y)))
         })
         .collect()
 }
 
-fn stroke(points: &[Point<Pixels>], width: f32, colour: Hsla, window: &mut gpui::Window) {
-    let mut path = PathBuilder::stroke(px(width));
-    let Some((first, rest)) = points.split_first() else {
-        return;
-    };
-    path.move_to(*first);
-    for p in rest {
-        path.line_to(*p);
-    }
-    if let Ok(path) = path.build() {
-        window.paint_path(path, colour);
+/// The unbroken runs of a series. Each one is drawn as its own stroke.
+fn runs(points: &[Option<Point<Pixels>>]) -> Vec<Vec<Point<Pixels>>> {
+    points
+        .split(|p| p.is_none())
+        .map(|run| run.iter().flatten().copied().collect::<Vec<_>>())
+        .filter(|run| !run.is_empty())
+        .collect()
+}
+
+fn stroke(points: &[Option<Point<Pixels>>], width: f32, colour: Hsla, window: &mut gpui::Window) {
+    for run in runs(points) {
+        let mut path = PathBuilder::stroke(px(width));
+        let first = run[0];
+        path.move_to(first);
+        if run.len() == 1 {
+            // A lone sample has no line, so it gets a hairline and the chart is not blank.
+            path.line_to(point(first.x + px(2.0), first.y));
+        }
+        for p in &run[1..] {
+            path.line_to(*p);
+        }
+        if let Ok(path) = path.build() {
+            window.paint_path(path, colour);
+        }
     }
 }
 
 /// An inline sparkline: 90 by 20, accent stroke.
-pub fn spark(values: &[f32], t: &Theme) -> impl IntoElement {
+pub fn spark(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
     let (values, acc) = (values.to_vec(), t.acc);
     canvas(
         |_, _, _| (),
@@ -247,7 +263,11 @@ pub fn spark(values: &[f32], t: &Theme) -> impl IntoElement {
 
 /// The page's one chart: a baseline, a wash under the line, and the line.
 pub fn line_chart(values: &[f32], height: f32, pad: f32, t: &Theme) -> impl IntoElement {
-    let (values, acc, line2) = (values.to_vec(), t.acc, t.line2);
+    let (values, acc, line2) = (
+        values.iter().map(|v| Some(*v)).collect::<Vec<_>>(),
+        t.acc,
+        t.line2,
+    );
     canvas(
         |_, _, _| (),
         move |bounds, (), window, _| {
@@ -259,12 +279,14 @@ pub fn line_chart(values: &[f32], height: f32, pad: f32, t: &Theme) -> impl Into
             window.paint_quad(gpui::fill(rule, line2));
 
             let points = scale(&values, bounds, pad);
-            let (Some(first), Some(last)) = (points.first(), points.last()) else {
+            // This series has no gaps, so the area under it is one shape.
+            let solid: Vec<_> = points.iter().flatten().copied().collect();
+            let (Some(first), Some(last)) = (solid.first(), solid.last()) else {
                 return;
             };
             let mut area = PathBuilder::fill();
             area.move_to(point(first.x, bounds.origin.y + bounds.size.height));
-            for p in &points {
+            for p in &solid {
                 area.line_to(*p);
             }
             area.line_to(point(last.x, bounds.origin.y + bounds.size.height));

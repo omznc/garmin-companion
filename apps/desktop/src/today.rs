@@ -3,9 +3,9 @@
 //! The layout, the spacing and the order of the blocks are the same as the
 //! current app. This version has no Coach panel and no share actions yet.
 
-use gpui::{div, prelude::*, px, relative, ColorExt as _, Div, Hsla};
+use gpui::{div, prelude::*, px, relative, AnyElement, ColorExt as _, Div, Hsla};
 
-use crate::data::{Drift, Session, Today, Week};
+use crate::data::{Attention, Drift, Metric, Session, Today, Week};
 use crate::icons::{icon_hover, Icon};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_MICRO, FS_SMALL};
 use crate::ui::{
@@ -66,44 +66,34 @@ fn header(view: &Today, key: usize, t: &Theme) -> impl IntoElement {
         .child(block_in(key, 0, h1(view.title.clone()).mt(px(18.0))))
 }
 
-fn zone_bar(session: &Session, t: &Theme) -> Div {
+fn zone_bar(zones: &[f32; 5], t: &Theme) -> Div {
     const LABELS: [&str; 5] = ["Z1", "Z2", "Z3", "Z4", "Z5"];
-    let bar = session
-        .zones
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| **p > 0.0)
-        .fold(
-            div().flex().h(px(10.0)).overflow_hidden().rounded(px(2.0)),
-            |bar, (i, p)| bar.child(div().h_full().w(relative(*p / 100.0)).bg(zone_fill(t, i))),
-        );
+    let bar = zones.iter().enumerate().filter(|(_, p)| **p > 0.0).fold(
+        div().flex().h(px(10.0)).overflow_hidden().rounded(px(2.0)),
+        |bar, (i, p)| bar.child(div().h_full().w(relative(*p / 100.0)).bg(zone_fill(t, i))),
+    );
     // Below 1% a label is noise, and five of them crowd out the ones that matter.
-    let legend = session
-        .zones
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| **p >= 1.0)
-        .fold(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(16.0))
-                .mt(px(9.0))
-                .font_family(SANS)
-                .text_size(px(FS_CAPTION))
-                .line_height(relative(LH_NORMAL))
-                .text_color(t.mutd),
-            |row, (i, p)| {
-                row.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0))
-                        .child(div().size(px(6.0)).rounded(px(1.0)).bg(zone_fill(t, i)))
-                        .child(format!("{} {:.0}%", LABELS[i], p)),
-                )
-            },
-        );
+    let legend = zones.iter().enumerate().filter(|(_, p)| **p >= 1.0).fold(
+        div()
+            .flex()
+            .flex_wrap()
+            .gap(px(16.0))
+            .mt(px(9.0))
+            .font_family(SANS)
+            .text_size(px(FS_CAPTION))
+            .line_height(relative(LH_NORMAL))
+            .text_color(t.mutd),
+        |row, (i, p)| {
+            row.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.0))
+                    .child(div().size(px(6.0)).rounded(px(1.0)).bg(zone_fill(t, i)))
+                    .child(format!("{} {:.0}%", LABELS[i], p)),
+            )
+        },
+    );
     div().child(bar).child(legend)
 }
 
@@ -131,7 +121,13 @@ fn last_session(session: &Session, t: &Theme) -> impl IntoElement {
         )
         .child(body(session.name.clone(), FS_LG, t.fg).mb(px(4.0)))
         .child(body(session.detail.clone(), FS_SMALL, t.faint).mb(px(20.0)))
-        .child(zone_bar(session, t))
+        .children(session.zones.as_ref().map(|z| zone_bar(z, t)))
+        .children(
+            session
+                .zone_note
+                .as_ref()
+                .map(|note| body(note.clone(), FS_SMALL, t.faint)),
+        )
         .child(stats)
 }
 
@@ -221,8 +217,19 @@ fn last_seven_days(week: &Week, t: &Theme) -> impl IntoElement {
     let chart = div()
         .flex_1()
         .min_w(px(320.0))
-        .child(line_chart(&week.km, 84.0, 6.0, t))
+        .child(line_chart(&week.minutes, 84.0, 6.0, t))
         .child(axis_labels(&week.axis, t));
+    let summary = div()
+        .child(
+            body(week.summary.clone(), FS_BASE, t.mutd)
+                .line_height(relative(1.6))
+                .max_w(ch(26.0, FS_BASE)),
+        )
+        .children(
+            week.distance
+                .as_ref()
+                .map(|d| body(d.clone(), FS_SMALL, t.faint).mt(px(6.0))),
+        );
     div()
         .child(section_eyebrow("Last seven days", 18.0, t))
         .child(
@@ -232,98 +239,207 @@ fn last_seven_days(week: &Week, t: &Theme) -> impl IntoElement {
                 .items_end()
                 .gap(px(34.0))
                 .child(chart)
-                .child(
-                    body(week.summary.clone(), FS_BASE, t.mutd)
-                        .line_height(relative(1.6))
-                        .max_w(ch(26.0, FS_BASE)),
-                ),
+                .child(summary),
         )
+}
+
+/// The room above a block. The first block sits under the lede.
+fn gap_above(index: usize, tight: bool) -> f32 {
+    match (index, tight) {
+        (0, _) => 0.0,
+        (_, true) => 14.0,
+        _ => 26.0,
+    }
+}
+
+fn tiles(metrics: Vec<&Metric>, t: &Theme) -> Div {
+    metrics
+        .into_iter()
+        .fold(div().flex().flex_wrap().gap(px(54.0)), |row, m| {
+            row.child(metric(m, t))
+        })
+}
+
+fn note(text: &str, above: f32, t: &Theme) -> Div {
+    body(text.to_string(), FS_BASE, t.mutd)
+        .mt(px(above))
+        .max_w(ch(58.0, FS_BASE))
+}
+
+fn weight(text: &str, above: f32, t: &Theme) -> Div {
+    div()
+        .mt(px(above))
+        .max_w(ch(58.0, FS_BASE))
+        .flex()
+        .flex_wrap()
+        .items_baseline()
+        .gap_x(px(5.0))
+        .font_family(SANS)
+        .text_size(px(FS_BASE))
+        .line_height(relative(1.6))
+        .text_color(t.mutd)
+        .child(text.to_string())
+        .child(underlined("weight-link", "Weight", FS_BASE, t))
+}
+
+fn attention(items: &[Attention], t: &Theme) -> Div {
+    let list = items
+        .iter()
+        .enumerate()
+        .fold(div().flex().flex_col().gap(px(13.0)), |col, (i, a)| {
+            col.child(bullet(i, a, t))
+        });
+    div()
+        .child(section_eyebrow("Attention", 16.0, t))
+        .child(list)
+}
+
+/// One section, or `None` when the key is unknown or its data is missing.
+/// `index` is the place among the drawn sections, and `after` the key before.
+fn section(
+    key: &str,
+    view: &Today,
+    (index, after): (usize, Option<&str>),
+    t: &Theme,
+) -> Option<AnyElement> {
+    let shows_tiles = view.sections.iter().any(|k| k == "health_tiles");
+    Some(match key {
+        "health_tiles" if !view.metrics.is_empty() => {
+            // The fuel balance sits with the other tiles, as on the old screen.
+            let fuel = view.fuel.as_ref().and_then(|f| f.tile.as_ref());
+            tiles(view.metrics.iter().chain(fuel).collect(), t).into_any_element()
+        }
+        "attention" if !view.attention.is_empty() => {
+            attention(&view.attention, t).into_any_element()
+        }
+        "fuel" => {
+            let fuel = view.fuel.as_ref()?;
+            let alone = fuel
+                .tile
+                .as_ref()
+                .filter(|_| !shows_tiles || view.metrics.is_empty());
+            div()
+                .children(alone.map(|m| tiles(vec![m], t)))
+                .child(note(&fuel.note, gap_above(index, false), t))
+                .into_any_element()
+        }
+        "weight" => weight(
+            view.weight_note.as_ref()?,
+            gap_above(index, after == Some("fuel")),
+            t,
+        )
+        .into_any_element(),
+        "last_session" => last_session(view.last_session.as_ref()?, t).into_any_element(),
+        "week" => last_seven_days(view.week.as_ref()?, t).into_any_element(),
+        "zone_drift" => zone_drift(view.zone_drift.as_ref().filter(|d| d.runs.len() >= 2)?, t)
+            .into_any_element(),
+        _ => return None,
+    })
 }
 
 /// The screen. `key` changes on each visit, so the blocks rise in again.
 pub fn render(view: &Today, key: usize, t: &Theme) -> impl IntoElement {
-    let metrics = view
-        .metrics
-        .iter()
-        .fold(div().flex().flex_wrap().gap(px(54.0)), |row, m| {
-            row.child(metric(m, t))
-        });
-
-    let mut screen = div()
-        .child(header(view, key, t))
-        .child(block_in(
-            key,
-            1,
-            div().mb(px(40.0)).child(
-                div()
-                    .max_w(ch(62.0, FS_MD))
-                    .font_family(SANS)
-                    .text_size(px(FS_MD))
-                    .line_height(relative(1.65))
-                    .text_color(t.mutd)
-                    .child(view.lede.clone()),
-            ),
-        ))
-        .child(block_in(key, 2, metrics));
-
+    let mut screen = div().child(header(view, key, t)).child(block_in(
+        key,
+        1,
+        div().mb(px(40.0)).child(
+            div()
+                .max_w(ch(62.0, FS_MD))
+                .font_family(SANS)
+                .text_size(px(FS_MD))
+                .line_height(relative(1.65))
+                .text_color(t.mutd)
+                .child(view.lede.clone()),
+        ),
+    ));
     if view.empty {
         return screen.child(block_in(
             key,
-            3,
-            body("Nothing cached yet.".to_string(), FS_BASE, t.mutd).mt(px(26.0)),
+            2,
+            body("Nothing cached yet.".to_string(), FS_BASE, t.mutd),
         ));
     }
-    if let Some(note) = &view.fuel_note {
-        screen = screen.child(block_in(
-            key,
-            3,
-            body(note.clone(), FS_BASE, t.mutd)
-                .mt(px(26.0))
-                .max_w(ch(58.0, FS_BASE)),
-        ));
-    }
-
-    if let Some(note) = &view.weight_note {
-        let weight = div()
-            .mt(px(14.0))
-            .max_w(ch(58.0, FS_BASE))
-            .flex()
-            .flex_wrap()
-            .items_baseline()
-            .gap_x(px(5.0))
-            .font_family(SANS)
-            .text_size(px(FS_BASE))
-            .line_height(relative(1.6))
-            .text_color(t.mutd)
-            .child(note.clone())
-            .child(underlined("weight-link", "Weight", FS_BASE, t));
-        screen = screen.child(block_in(key, 4, weight));
-    }
-
-    if !view.attention.is_empty() {
-        let list = view
-            .attention
-            .iter()
-            .enumerate()
-            .fold(div().flex().flex_col().gap(px(13.0)), |col, (i, a)| {
-                col.child(bullet(i, a, t))
-            });
-        screen = screen.child(block_in(
-            key,
-            5,
-            div()
-                .child(section_eyebrow("Attention", 16.0, t))
-                .child(list),
-        ));
-    }
-    if let Some(session) = &view.last_session {
-        screen = screen.child(block_in(key, 6, last_session(session, t)));
-    }
-    if let Some(drift) = view.zone_drift.as_ref().filter(|d| d.runs.len() >= 2) {
-        screen = screen.child(block_in(key, 7, zone_drift(drift, t)));
-    }
-    if let Some(week) = &view.week {
-        screen = screen.child(block_in(key, 8, last_seven_days(week, t)));
+    let mut drawn: Vec<&str> = Vec::new();
+    for name in &view.sections {
+        let place = (drawn.len(), drawn.last().copied());
+        if let Some(el) = section(name, view, place, t) {
+            // The cascade stops at the fifth block, as in the stylesheet.
+            screen = screen.child(block_in(key, 2 + drawn.len(), el));
+            drawn.push(name);
+        }
     }
     screen
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::{Source, PERSONAS};
+    use crate::theme::Palette;
+
+    fn persona(name: &str) -> Today {
+        crate::data::load_today(&Source::Persona(name.into())).unwrap()
+    }
+
+    #[test]
+    fn every_section_that_the_api_names_has_data_to_draw() {
+        let t = Palette::Paper.theme();
+        for name in PERSONAS.map(|(n, _)| n) {
+            let today = persona(name);
+            for key in &today.sections {
+                assert!(
+                    section(key, &today, (1, None), &t).is_some(),
+                    "{name}: section {key} has nothing to draw"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn no_persona_shows_a_dash_where_a_figure_is_missing() {
+        for name in PERSONAS.map(|(n, _)| n) {
+            let today = persona(name);
+            let fuel = today.fuel.iter().flat_map(|f| &f.tile);
+            for m in today.metrics.iter().chain(fuel) {
+                assert!(m.value.iter().all(|p| p.text != "—"), "{name}: {}", m.label);
+            }
+            for s in today.last_session.iter().flat_map(|s| &s.stats) {
+                assert_ne!(s.value, "—", "{name}: {}", s.label);
+            }
+        }
+    }
+
+    #[test]
+    fn a_zone_verdict_shows_only_for_endurance_sport() {
+        for name in ["golfer", "gym"] {
+            let session = persona(name).last_session.unwrap();
+            assert!(session.zones.is_none(), "{name}");
+            assert!(!session.detail.contains("above Z2"), "{name}");
+        }
+        let runner = persona("sample").last_session.unwrap();
+        assert!(runner.zones.is_some() && runner.detail.contains("above Z2"));
+    }
+
+    #[test]
+    fn the_personas_draw_the_sections_that_fit_them() {
+        let keys = |n: &str| persona(n).sections;
+        let health_only = keys("health_only");
+        assert!(health_only
+            .iter()
+            .all(|k| k != "last_session" && k != "zone_drift"));
+        assert_eq!(keys("new_user"), ["health_tiles"]);
+        assert!(keys("sample").iter().any(|k| k == "zone_drift"));
+        assert!(keys("golfer").iter().all(|k| k != "zone_drift"));
+        // The tiles come first: they are health, and every user has them.
+        assert_eq!(keys("sample")[0], "health_tiles");
+    }
+
+    #[test]
+    fn the_week_is_in_minutes_and_distance_only_when_there_is_some() {
+        if let Some(week) = persona("gym").week {
+            assert!(week.distance.is_none());
+            assert_eq!(week.minutes.len(), 7);
+        }
+        assert!(persona("sample").week.unwrap().distance.is_some());
+    }
 }

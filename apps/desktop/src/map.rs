@@ -6,9 +6,12 @@
 
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_api::TodayView;
+use garmin_core::analysis::Discipline;
 use garmin_core::CachedActivity;
 
-use crate::data::{Attention, Drift, DriftRun, Link, Metric, Part, Session, Stat, Today, Week};
+use crate::data::{
+    Attention, Drift, DriftRun, Fuel, Link, Metric, Part, Session, Stat, Today, Week,
+};
 
 const DASH: &str = "—";
 
@@ -60,59 +63,70 @@ fn plain(value: Option<f64>) -> Vec<Part> {
     vec![text(value.map_or(DASH.to_string(), num))]
 }
 
+/// The health tiles that have a figure, in the order of the old screen.
 fn metrics(view: &TodayView) -> Vec<Metric> {
     let latest = |l: &Option<garmin_api::Latest>| plain(l.as_ref().map(|l| l.value));
-    let resting_label = view
-        .resting_hr
-        .as_ref()
-        .map_or("Resting HR".to_string(), |r| {
-            format!(
-                "Resting HR · {}{:.0} vs 30d",
-                if r.delta > 0.0 { "+" } else { "" },
-                r.delta
-            )
-        });
-    let fuel_label = match view.fuel.age {
-        Some(1) => "Fuel balance · yesterday".to_string(),
-        Some(n) if n > 1 => format!("Fuel balance · {n}d ago"),
-        _ => "Fuel balance".to_string(),
-    };
-    let fuel_value = match view.fuel.balance {
-        Some(b) => {
-            let sign = if b.round() > 0.0 { "+" } else { "" };
-            vec![text(format!("{sign}{}", num(b))), unit(" kcal")]
-        }
-        None => vec![text(DASH)],
-    };
+    let resting_label = view.resting_hr.as_ref().map(|r| {
+        format!(
+            "Resting HR · {}{:.0} vs 30d",
+            if r.delta > 0.0 { "+" } else { "" },
+            r.delta
+        )
+    });
     let tile = |label: &str, value: Vec<Part>, accent: bool| Metric {
         label: label.to_string(),
         value,
         accent,
+    };
+    let plain_tile = |label: &str, l: &Option<garmin_api::Latest>| {
+        l.as_ref().map(|_| tile(label, latest(l), false))
     };
     // A tile with no figure is left out, so a user without the sensor sees no dash.
     [
         view.sleep
             .as_ref()
             .map(|s| tile("Sleep", sleep_value(s.value), false)),
-        view.body_battery
-            .as_ref()
-            .map(|_| tile("Body battery", latest(&view.body_battery), false)),
-        view.readiness
-            .as_ref()
-            .map(|_| tile("Readiness", latest(&view.readiness), false)),
+        plain_tile("Body battery", &view.body_battery),
+        plain_tile("Readiness", &view.readiness),
         view.hrv
             .as_ref()
             .map(|h| tile("HRV", vec![text(num(h.value)), unit(" ms")], false)),
+        plain_tile("Steps", &view.steps),
+        plain_tile("Stress", &view.stress),
         view.resting_hr
             .as_ref()
-            .map(|r| tile(&resting_label, plain(Some(r.value)), r.accent)),
-        view.fuel
-            .balance
-            .map(|_| tile(&fuel_label, fuel_value, view.fuel.accent)),
+            .zip(resting_label)
+            .map(|(r, label)| tile(&label, plain(Some(r.value)), r.accent)),
     ]
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// The fuel balance as a tile, and the sentence about it. `None` when nothing
+/// was logged, so the section hides.
+fn fuel(view: &TodayView) -> Option<Fuel> {
+    if view.fuel.logged == 0 && view.hydration.is_none() {
+        return None;
+    }
+    let label = match view.fuel.age {
+        Some(1) => "Fuel balance · yesterday".to_string(),
+        Some(n) if n > 1 => format!("Fuel balance · {n}d ago"),
+        _ => "Fuel balance".to_string(),
+    };
+    let tile = view.fuel.balance.map(|b| {
+        let sign = if b.round() > 0.0 { "+" } else { "" };
+        Metric {
+            label,
+            value: vec![text(format!("{sign}{}", num(b))), unit(" kcal")],
+            accent: view.fuel.accent,
+        }
+    });
+    let note = match &view.hydration_sentence {
+        Some(h) => format!("{} {h}", view.fuel_sentence),
+        None => view.fuel_sentence.clone(),
+    };
+    Some(Fuel { tile, note })
 }
 
 fn weight_note(w: &garmin_api::today::WeightGlance) -> Option<String> {
@@ -148,8 +162,7 @@ fn attention(view: &TodayView) -> Vec<Attention> {
                 .spark
                 .iter()
                 .flatten()
-                .flatten()
-                .map(|v| *v as f32)
+                .map(|day| day.map(|v| v as f32))
                 .collect(),
             link: o.link.as_ref().map(|l| Link {
                 label: l.label.clone(),
@@ -176,78 +189,64 @@ fn clock(secs: f64) -> String {
     }
 }
 
-fn sport(a: &CachedActivity) -> String {
-    let raw = a
-        .type_key
-        .as_deref()
-        .unwrap_or("activity")
-        .replace('_', " ");
-    let mut chars = raw.chars();
-    chars
-        .next()
-        .map_or(String::new(), |c| c.to_uppercase().chain(chars).collect())
-}
-
-fn session(a: &CachedActivity, has_zones: bool, above_z2: f64) -> Session {
+/// The figures of a session. A figure with no value is left out.
+fn stats(a: &CachedActivity, discipline: Discipline) -> Vec<Stat> {
     let secs = a.moving_duration_s.or(a.duration_s).filter(|s| *s > 0.0);
-    let dist = a.distance_m.filter(|d| *d > 0.0);
-    let is_run = a.type_key.as_deref().is_some_and(|k| k.contains("running"));
-    // Under 50 m there is no pace worth showing, and over 60 min/km it is a walk
-    // with the watch left on.
-    let pace_or_speed = match (dist.filter(|d| *d >= 50.0), secs) {
-        (Some(d), Some(s)) if is_run => {
-            let per_km = s / (d / 1000.0);
-            let shown = if per_km > 3600.0 {
-                DASH.to_string()
-            } else {
-                format!("{} /km", clock(per_km))
-            };
-            ("Pace", shown)
+    // Under 50 m there is no pace worth showing.
+    let dist = a.distance_m.filter(|d| *d >= 50.0);
+    let rate = match (dist, secs, discipline) {
+        // Over 60 min/km it is a walk with the watch left on.
+        (Some(d), Some(s), Discipline::Paced) if s / (d / 1000.0) <= 3600.0 => {
+            Some(("Pace", format!("{} /km", clock(s / (d / 1000.0)))))
         }
-        (Some(d), Some(s)) => ("Speed", format!("{:.1} km/h", d / 1000.0 / (s / 3600.0))),
-        _ => (if is_run { "Pace" } else { "Speed" }, DASH.to_string()),
+        (Some(d), Some(s), Discipline::Endurance) => {
+            Some(("Speed", format!("{:.1} km/h", d / 1000.0 / (s / 3600.0))))
+        }
+        _ => None,
     };
-    let hr = |v: Option<f64>| v.map_or(DASH.to_string(), |v| format!("{v:.0}"));
-    let stat = |label: &str, value: String| Stat {
+    let positive = |v: Option<f64>| v.filter(|v| *v > 0.0);
+    [
+        dist.map(|d| ("Distance", format!("{:.1} km", d / 1000.0))),
+        secs.map(|s| ("Time", clock(s))),
+        rate,
+        positive(a.avg_hr).map(|v| ("Avg HR", format!("{v:.0}"))),
+        positive(a.max_hr).map(|v| ("Max HR", format!("{v:.0}"))),
+        positive(a.avg_cadence).map(|c| ("Cadence", format!("{c:.0} spm"))),
+        positive(a.aerobic_te).map(|t| ("Aerobic TE", format!("{t:.1}"))),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|(label, value)| Stat {
         label: label.into(),
         value,
-    };
-    let mut detail = sport(a);
+    })
+    .collect()
+}
+
+fn session(l: &garmin_api::today::LastSession) -> Session {
+    let a = &l.activity;
+    let zones = a.zone_percentages().map(|p| p as f32);
+    let has_zones = l.has_zone_data && zones.iter().sum::<f32>() > 0.0;
+    // A verdict about zones holds for endurance sport only, so the zone bar
+    // and the sentence follow `show_zone_verdict`.
+    let mut detail = l.sport_label.clone();
     if let Some(d) = a.start_time_local.as_deref().or(a.local_date.as_deref()) {
         detail.push_str(&format!(" · {}", short_date(d)));
     }
-    if has_zones {
-        detail.push_str(&format!(" · {above_z2:.0}% above Z2"));
+    if l.show_zone_verdict && has_zones {
+        detail.push_str(&format!(" · {:.0}% above Z2", l.above_z2_pct));
     }
     Session {
         name: a
             .name
             .clone()
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| sport(a)),
+            .unwrap_or_else(|| l.sport_label.clone()),
         detail,
-        zones: a.zone_percentages().map(|p| p as f32),
-        stats: vec![
-            stat(
-                "Distance",
-                dist.map_or(DASH.to_string(), |d| format!("{:.1} km", d / 1000.0)),
-            ),
-            stat("Time", secs.map_or(DASH.to_string(), clock)),
-            stat(pace_or_speed.0, pace_or_speed.1),
-            stat("Avg HR", hr(a.avg_hr)),
-            stat("Max HR", hr(a.max_hr)),
-            stat(
-                "Cadence",
-                a.avg_cadence
-                    .map_or(DASH.to_string(), |c| format!("{c:.0} spm")),
-            ),
-            stat(
-                "Aerobic TE",
-                a.aerobic_te
-                    .filter(|t| *t > 0.0)
-                    .map_or(DASH.to_string(), |t| format!("{t:.1}")),
-            ),
-        ],
+        zones: (l.show_zone_verdict && has_zones).then_some(zones),
+        zone_note: (l.show_zone_verdict && !has_zones)
+            .then(|| "No heart-rate data recorded".to_string()),
+        stats: stats(a, l.discipline),
     }
 }
 
@@ -262,12 +261,8 @@ fn drift(view: &TodayView) -> Option<Drift> {
             d.target_pct
         )
     });
-    let all_runs = d
-        .runs
-        .iter()
-        .all(|r| r.type_key.as_deref().is_some_and(|k| k.contains("running")));
     Some(Drift {
-        noun: if all_runs { "runs" } else { "sessions" }.to_string(),
+        noun: "sessions".to_string(),
         target: d.target_pct as f32,
         summary,
         runs: d
@@ -300,26 +295,32 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
         eyebrow,
         title: format!("{weekday}."),
         lede: view.lede.clone(),
-        metrics: metrics(view),
         empty: view.empty,
-        fuel_note: (!view.empty).then(|| match &view.hydration_sentence {
-            Some(h) => format!("{} {h}", view.fuel_sentence),
-            None => view.fuel_sentence.clone(),
-        }),
+        sections: view.sections.clone(),
+        metrics: metrics(view),
+        fuel: fuel(view),
         weight_note: view.weight.as_ref().and_then(weight_note),
         attention: attention(view),
-        last_session: view
-            .last_session
-            .as_ref()
-            .map(|l| session(&l.activity, l.has_zone_data, l.above_z2_pct)),
+        last_session: view.last_session.as_ref().map(session),
         zone_drift: drift(view),
-        // A week with no distance has nothing to chart, and the summary is about activities.
-        week: view.week.daily_km.iter().any(|k| *k > 0.0).then(|| Week {
-            km: view.week.daily_km.iter().map(|k| *k as f32).collect(),
-            axis: week_axis(day.unwrap_or_else(|| chrono::Local::now().date_naive())),
-            summary: view.week.sentence.clone(),
-        }),
+        week: week(view, day),
     }
+}
+
+/// The week in minutes, which every sport has. Distance is a caption, and only
+/// a user with distance gets it.
+fn week(view: &TodayView, day: Option<NaiveDate>) -> Option<Week> {
+    let w = &view.week;
+    // The API says whether the week is worth a section. A user with no sessions has zeros.
+    if !view.sections.iter().any(|k| k == "week") {
+        return None;
+    }
+    Some(Week {
+        minutes: w.daily_minutes.iter().map(|m| *m as f32).collect(),
+        axis: week_axis(day.unwrap_or_else(|| chrono::Local::now().date_naive())),
+        summary: w.sentence.clone(),
+        distance: (w.total_km > 0.0).then(|| format!("{:.1} km", w.total_km)),
+    })
 }
 
 #[cfg(test)]

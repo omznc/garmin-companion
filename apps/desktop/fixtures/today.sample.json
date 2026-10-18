@@ -9,10 +9,14 @@
     { "label": "Body battery", "value": [{ "text": "84" }] },
     { "label": "Readiness", "value": [{ "text": "71" }] },
     { "label": "HRV", "value": [{ "text": "58" }, { "text": " ms", "unit": true }] },
-    { "label": "Resting HR · +4 vs 30d", "value": [{ "text": "52" }], "accent": true },
-    { "label": "Fuel balance", "value": [{ "text": "-612" }, { "text": " kcal", "unit": true }], "accent": true }
+    { "label": "Steps", "value": [{ "text": "9,412" }] },
+    { "label": "Stress", "value": [{ "text": "31" }] },
+    { "label": "Resting HR · +4 vs 30d", "value": [{ "text": "52" }], "accent": true }
   ],
-  "fuelNote": "Today: 1,980 kcal in against 2,592 burned — a 612 kcal deficit. Across the 6 of 7 days you logged, the average was -240 kcal.",
+  "fuel": {
+    "tile": { "label": "Fuel balance", "value": [{ "text": "-612" }, { "text": " kcal", "unit": true }], "accent": true },
+    "note": "Today: 1,980 kcal in against 2,592 burned — a 612 kcal deficit. Across the 6 of 7 days you logged, the average was -240 kcal."
+  },
   "weightNote": "Weight trend 74.2 kg, down 0.10 kg a week.",
   "attention": [
     {
@@ -61,8 +65,9 @@
     ]
   },
   "week": {
-    "km": [0.0, 6.2, 0.0, 8.0, 5.1, 0.0, 8.4],
+    "minutes": [0.0, 38.0, 0.0, 51.0, 33.0, 0.0, 52.0],
     "axis": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-    "summary": "27.7 km across 4 sessions. Distance is up 12% on the previous week — inside a sensible range."
+    "summary": "174 minutes across 4 sessions. Time is up 12% on the previous week — inside a sensible range.",
+    "distance": "27.7 km"
   }
 }

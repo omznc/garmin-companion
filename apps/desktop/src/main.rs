@@ -5,6 +5,7 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
+//! `--persona golfer` shows a made-up user from `garmin-api`.
 
 mod chrome;
 mod data;
@@ -92,6 +93,9 @@ fn main() -> anyhow::Result<()> {
         })
         .transpose()?;
     let source = match (db, date) {
+        (None, None) if option(&args, "--persona").is_some() => {
+            data::Source::Persona(option(&args, "--persona").unwrap_or_default())
+        }
         (Some(path), date) => data::Source::Db {
             path: path.into(),
             date,
