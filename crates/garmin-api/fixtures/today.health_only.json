@@ -1,0 +1,94 @@
+{
+  "date": "2026-03-11",
+  "empty": false,
+  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60.",
+  "sleep": {
+    "value": 25200.0,
+    "date": "2026-03-11"
+  },
+  "bodyBattery": {
+    "value": 80.0,
+    "date": "2026-03-11"
+  },
+  "readiness": {
+    "value": 60.0,
+    "date": "2026-03-11"
+  },
+  "hrv": {
+    "value": 52.0,
+    "date": "2026-03-11"
+  },
+  "steps": {
+    "value": 7000.0,
+    "date": "2026-03-11"
+  },
+  "stress": {
+    "value": 28.0,
+    "date": "2026-03-11"
+  },
+  "restingHr": {
+    "value": 50.0,
+    "baseline": 51.0,
+    "delta": -1.0,
+    "accent": false
+  },
+  "fuel": {
+    "day": null,
+    "age": null,
+    "window": 7,
+    "logged": 0,
+    "avgBalance": null,
+    "avgBurn": 2668.5714285714284,
+    "balance": null,
+    "accent": false
+  },
+  "fuelSentence": "No food logged in the last 7 days. You've burned an average of 2,669 kcal a day over the same stretch — the intake side is what's missing, not the day.",
+  "hydration": null,
+  "hydrationSentence": null,
+  "weight": null,
+  "attention": [],
+  "lastSession": null,
+  "zoneDrift": {
+    "targetPct": 20.0,
+    "recentAvgPct": null,
+    "runs": []
+  },
+  "week": {
+    "dailyKm": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "totalKm": 0.0,
+    "priorKm": 0.0,
+    "dailyMinutes": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "totalMinutes": 0.0,
+    "priorMinutes": 0.0,
+    "sessions": 0,
+    "sentence": "No activity in the last seven days."
+  },
+  "profile": {
+    "windowDays": 56,
+    "families": [],
+    "active": [],
+    "primary": null,
+    "tracksActivity": false,
+    "dataDays": 40,
+    "newUser": false
+  },
+  "sections": [
+    "health_tiles"
+  ]
+}

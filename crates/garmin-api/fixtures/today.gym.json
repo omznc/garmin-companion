@@ -1,0 +1,159 @@
+{
+  "date": "2026-03-11",
+  "empty": false,
+  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was strength training.",
+  "sleep": {
+    "value": 25200.0,
+    "date": "2026-03-11"
+  },
+  "bodyBattery": {
+    "value": 80.0,
+    "date": "2026-03-11"
+  },
+  "readiness": {
+    "value": 60.0,
+    "date": "2026-03-11"
+  },
+  "hrv": {
+    "value": 52.0,
+    "date": "2026-03-11"
+  },
+  "steps": {
+    "value": 7000.0,
+    "date": "2026-03-11"
+  },
+  "stress": {
+    "value": 28.0,
+    "date": "2026-03-11"
+  },
+  "restingHr": {
+    "value": 50.0,
+    "baseline": 51.0,
+    "delta": -1.0,
+    "accent": false
+  },
+  "fuel": {
+    "day": {
+      "date": "2026-03-10",
+      "restingHr": 51.0,
+      "hrvLastNight": 54.0,
+      "hrvWeeklyAvg": null,
+      "hrvStatus": null,
+      "trainingReadiness": 68.0,
+      "sleepSecs": 27000.0,
+      "sleepScore": 76.0,
+      "steps": 7311,
+      "stressAvg": 30.0,
+      "bodyBatteryHigh": 74.0,
+      "bodyBatteryLow": 22.0,
+      "consumedKcal": 1800.0,
+      "totalBurnKcal": 2680.0,
+      "activeKcal": 500.0,
+      "bmrKcal": 2180.0,
+      "netCalorieGoal": null,
+      "hydrationMl": null,
+      "hydrationGoalMl": null,
+      "sweatLossMl": null
+    },
+    "age": 1,
+    "window": 7,
+    "logged": 2,
+    "avgBalance": -875.0,
+    "avgBurn": 2668.5714285714284,
+    "balance": -880.0,
+    "accent": true
+  },
+  "fuelSentence": "Yesterday: 1,800 kcal in against 2,680 burned — a 880 kcal deficit.",
+  "hydration": null,
+  "hydrationSentence": null,
+  "weight": null,
+  "attention": [],
+  "lastSession": {
+    "activity": {
+      "activityId": 9300000,
+      "name": "Strength",
+      "typeKey": "strength_training",
+      "startTimeLocal": "2026-03-11 18:00:00",
+      "localDate": "2026-03-11",
+      "distanceM": null,
+      "durationS": 3300.0,
+      "movingDurationS": null,
+      "avgHr": 118.0,
+      "maxHr": 162.0,
+      "avgCadence": null,
+      "calories": null,
+      "elevationGain": null,
+      "steps": null,
+      "aerobicTe": 2.2,
+      "anaerobicTe": 1.4,
+      "zoneSecs": [
+        900.0,
+        1300.0,
+        800.0,
+        300.0,
+        0.0
+      ]
+    },
+    "hasZoneData": true,
+    "aboveZ2Pct": 33.33333333333333,
+    "discipline": "interval",
+    "family": "gym",
+    "showZoneVerdict": false,
+    "sportLabel": "Strength training"
+  },
+  "zoneDrift": {
+    "targetPct": 20.0,
+    "recentAvgPct": null,
+    "runs": []
+  },
+  "week": {
+    "dailyKm": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "totalKm": 0.0,
+    "priorKm": 0.0,
+    "dailyMinutes": [
+      0.0,
+      0.0,
+      59.0,
+      0.0,
+      57.0,
+      0.0,
+      55.0
+    ],
+    "totalMinutes": 171.0,
+    "priorMinutes": 179.0,
+    "sessions": 3,
+    "sentence": "3 sessions, 2h 51m of activity. Active time is down 4% on the previous week — steady."
+  },
+  "profile": {
+    "windowDays": 56,
+    "families": [
+      {
+        "family": "gym",
+        "sessions": 12,
+        "minutes": 702.0,
+        "lastDate": "2026-03-11"
+      }
+    ],
+    "active": [
+      "gym"
+    ],
+    "primary": "gym",
+    "tracksActivity": true,
+    "dataDays": 40,
+    "newUser": false
+  },
+  "sections": [
+    "health_tiles",
+    "fuel",
+    "last_session",
+    "week"
+  ]
+}
