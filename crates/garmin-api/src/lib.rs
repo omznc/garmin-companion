@@ -10,15 +10,19 @@
 mod derive;
 mod dispatch;
 mod error;
+pub mod health;
 pub mod personas;
 mod profile;
+pub mod sleep_view;
 mod text;
 pub mod today;
 
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;
+pub use health::{health_view, HealthView};
 pub use profile::{activity_profile, ActivityProfile, FamilyStat};
+pub use sleep_view::{sleep_view, SleepView};
 pub use today::{today_view, TodayView};
 
 use garmin_core::Db;

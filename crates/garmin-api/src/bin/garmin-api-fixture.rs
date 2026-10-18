@@ -14,7 +14,8 @@
 
 use chrono::NaiveDate;
 use garmin_api::personas::{sample_day, seed, Persona};
-use garmin_api::{open_db, today_view};
+use garmin_api::sleep_view::seed_sleep;
+use garmin_api::{health_view, open_db, sleep_view, today_view};
 use std::path::{Path, PathBuf};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,14 +60,19 @@ fn write_persona(persona: Persona, out: &Path) -> Result<(), Box<dyn std::error:
     ));
     let db = open_db(&dir.join("cache.sqlite3"))?;
     seed(&db, persona, day)?;
+    seed_sleep(&db, persona, day)?;
+    // The Health and Sleep views sit next to the Today file.
+    let beside = |kind: &str| out.with_file_name(format!("{kind}.{}.json", persona.name()));
     let result = today_view(&db, day)
         .map_err(Into::into)
-        .and_then(|v| write_view(&v, out));
+        .and_then(|v| write_view(&v, out))
+        .and_then(|()| write_view(&health_view(&db, day)?, &beside("health")))
+        .and_then(|()| write_view(&sleep_view(&db, day)?, &beside("sleep")));
     let _ = std::fs::remove_dir_all(dir);
     result
 }
 
-fn write_view(view: &garmin_api::TodayView, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn write_view(view: &impl serde::Serialize, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }

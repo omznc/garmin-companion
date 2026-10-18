@@ -47,6 +47,8 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// `args_json` is a JSON object, or an empty string for no arguments. Commands:
 ///
 /// - `today`: the full Today view model.
+/// - `health_view`: the Health screen, one trend for each metric the watch records.
+/// - `sleep_view`: the Sleep screen, last night and the 7 and 30 night windows.
 /// - `cached_daily` `{days}`: daily metrics, newest first.
 /// - `cached_activities` `{limit, typeKey}`: recent activities, newest first.
 /// - `cached_activities_since` `{from}`: activities on or after `YYYY-MM-DD`.
@@ -87,6 +89,14 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
             let a: Days = parse(args_json)?;
             encode(&query::weight(&open_default_db()?, a.days.unwrap_or(180))?)
         }
+        "health_view" => encode(&crate::health_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "sleep_view" => encode(&crate::sleep_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
         other => Err(ApiError::UnknownCommand(other.to_string())),
     }
 }
