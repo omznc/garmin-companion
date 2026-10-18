@@ -5,23 +5,30 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight` or `settings`.
+//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight`, `ask` or `settings`.
 //! `--open <name>` is the same flag. `--activity <id>` opens the Activities entry on one
 //! session. `--sync` starts a sync at once.
 //! `--persona golfer` shows a made-up user from `garmin-api`. With neither `--db`
 //! nor `--persona`, the app reads the cache in the data folder and asks for a
 //! Garmin sign-in when there is none. `--persona` and `--db` run a demo: the
 //! sync is a fake and no setting is saved.
+//! `--ask "question"` sends a question at once. `--draft "text"` leaves text in the
+//! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
+//! Without `--db`, a persona runs the Ask screen as a canned demo.
 
 mod account;
 mod activities;
+mod ask;
 mod body;
 mod chrome;
+mod composer;
 mod controls;
 mod data;
+mod editor;
 mod field;
 mod icons;
 mod map;
+mod markdown;
 mod motion;
 mod scroll;
 mod settings;
@@ -43,6 +50,7 @@ use gpui::{
     WindowDecorations, WindowOptions,
 };
 
+use data::Source;
 use theme::Palette;
 
 /// The fonts of the current app, in the binary. They are static TrueType
@@ -111,6 +119,14 @@ fn main() -> anyhow::Result<()> {
         Some(name) => Some(name),
         None => required(&args, "--open")?,
     };
+    if let Some(name) = &screen {
+        anyhow::ensure!(
+            sidebar::NAV
+                .iter()
+                .any(|(l, _)| l.eq_ignore_ascii_case(name)),
+            "--screen {name} is not a screen"
+        );
+    }
     let source = match (db, date, persona) {
         (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
         (Some(path), date, None) => data::Source::Db {
@@ -127,6 +143,24 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("--activity needs a number, got {v}"))
         })
         .transpose()?;
+    if let Some(spec) = required(&args, "--coach")? {
+        let Source::Db { path, .. } = &source else {
+            anyhow::bail!("--coach needs --db");
+        };
+        println!("{}", ask::setup(path, &spec)?);
+        return Ok(());
+    }
+    let ask_start = shell::AskStart {
+        source: match &source {
+            Source::Default => ask::Source::Db(
+                garmin_core::db::default_path().context("could not locate a data directory")?,
+            ),
+            Source::Db { path, .. } => ask::Source::Db(path.clone()),
+            Source::Persona(_) => ask::Source::Demo,
+        },
+        question: required(&args, "--ask")?,
+        draft: required(&args, "--draft")?,
+    };
     let today = data::load_today(&source)?;
     let store = activities::Store::for_source(&source)?;
     let wellness = wellness::load(&source)?;
@@ -174,8 +208,10 @@ fn main() -> anyhow::Result<()> {
             };
             let opened = cx.open_window(options, |_, cx| {
                 cx.new(|cx| {
-                    let mut root = shell::Root::new(today, palette, store, body, source, account)
-                        .with_wellness(wellness);
+                    let ask = shell::new_ask(ask_start, palette, cx);
+                    let mut root =
+                        shell::Root::new(today, palette, store, body, source, account, ask)
+                            .with_wellness(wellness);
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }

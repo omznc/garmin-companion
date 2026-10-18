@@ -2779,17 +2779,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "garmin-companion-desktop"
+name = "garmin-coach"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "futures-util",
+ "garmin-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "garmin-companion-desktop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "chrono",
  "garmin-api",
+ "garmin-coach",
  "garmin-core",
  "gpui-ce",
  "gpui_ce_platform",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -2828,6 +2845,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "garmin-api",
+ "garmin-coach",
+ "garmin-core",
+ "reqwest",
+ "serde",
  "serde_json",
  "thiserror 2.0.19",
  "tokio",

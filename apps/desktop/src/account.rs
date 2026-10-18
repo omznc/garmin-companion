@@ -255,6 +255,8 @@ impl Root {
     pub fn set_theme_mode(&mut self, mode: ThemeMode, window: &Window, cx: &mut Context<Self>) {
         self.account.mode = mode;
         self.palette = palette_for(mode, window.appearance());
+        let palette = self.palette;
+        self.ask.update(cx, |ask, cx| ask.set_palette(palette, cx));
         if !self.account.demo {
             if let Err(e) = settings::set_theme(mode) {
                 eprintln!("could not save the theme: {e}");

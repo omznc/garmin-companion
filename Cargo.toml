@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/garmin-core",
     "crates/garmin-api",
+    "crates/garmin-coach",
     "crates/garmin-mcp",
     "crates/garmin-ffi",
     "app/src-tauri",
