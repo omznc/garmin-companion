@@ -242,17 +242,35 @@ pub fn easy_hard_split(activities: &[&CachedActivity]) -> Option<EasyHard> {
 /// Distance in km per day over the last `days`, oldest first.
 /// Zero on a rest day. A rest day is data, not a gap.
 pub fn daily_distance(activities: &[CachedActivity], days: u32, today: NaiveDate) -> Vec<f64> {
+    daily_sum(activities, days, today, |a| {
+        a.distance_m.unwrap_or(0.0) / 1000.0
+    })
+}
+
+/// Active minutes per day over the last `days`, oldest first.
+pub fn daily_minutes(activities: &[CachedActivity], days: u32, today: NaiveDate) -> Vec<f64> {
+    daily_sum(activities, days, today, |a| {
+        a.duration_s.unwrap_or(0.0) / 60.0
+    })
+}
+
+fn daily_sum(
+    activities: &[CachedActivity],
+    days: u32,
+    today: NaiveDate,
+    get: impl Fn(&CachedActivity) -> f64,
+) -> Vec<f64> {
     let mut totals: HashMap<&str, f64> = HashMap::new();
     for a in activities {
         if let Some(d) = a.local_date.as_deref() {
-            *totals.entry(d).or_default() += a.distance_m.unwrap_or(0.0);
+            *totals.entry(d).or_default() += get(a);
         }
     }
     (0..days)
         .rev()
         .map(|i| {
             let key = date_key(today - Duration::days(i as i64));
-            totals.get(key.as_str()).copied().unwrap_or(0.0) / 1000.0
+            totals.get(key.as_str()).copied().unwrap_or(0.0)
         })
         .collect()
 }
@@ -416,7 +434,7 @@ fn fuel_note(daily: &[DailyMetrics]) -> Option<Observation> {
     };
     if balance <= -500.0 {
         let text = format!(
-            "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to train on — under-fuelling shows up as a stalled easy pace and a resting heart rate that won't settle.",
+            "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to be active on — under-fuelling shows up as low energy, slow recovery and a resting heart rate that won't settle.",
             balance.abs()
         );
         Some(with_link(note(true, text), "Food", "/food"))
@@ -565,6 +583,7 @@ mod tests {
         let acts = vec![run("2026-03-11", [0.0; 5]), run("2026-03-11", [0.0; 5])];
         let out = daily_distance(&acts, 3, d("2026-03-11"));
         assert_eq!(out, [0.0, 0.0, 10.0]);
+        assert_eq!(daily_minutes(&acts, 2, d("2026-03-11")), [0.0, 60.0]);
         assert_eq!(count_sessions(&acts, 2, d("2026-03-11")), 2);
         assert_eq!(count_sessions(&acts, 1, d("2026-03-12")), 0);
     }
