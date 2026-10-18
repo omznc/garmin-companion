@@ -19,7 +19,7 @@ use chrono::NaiveDate;
 use garmin_core::analysis::{discipline, Discipline};
 use garmin_core::sport::{family, is_exercise, shows_zone_verdict, sport_label};
 use garmin_core::{query, CachedActivity, Db, Family};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Days of daily rows and activities that the screen reads.
 const DAILY_DAYS: u32 = 45;
@@ -30,7 +30,7 @@ const DRIFT_RUNS: usize = 8;
 /// The 80/20 model asks for 20% of time above Z2.
 const DRIFT_TARGET_PCT: f64 = 20.0;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
     /// The day the view was built for, `YYYY-MM-DD`.
@@ -64,7 +64,7 @@ pub struct TodayView {
 }
 
 /// This morning's overnight resting HR against the 30-day mean.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RestingHr {
     pub value: f64,
@@ -74,7 +74,7 @@ pub struct RestingHr {
     pub accent: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeightGlance {
     pub trend_kg: Option<f64>,
@@ -83,7 +83,7 @@ pub struct WeightGlance {
     pub count: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LastSession {
     pub activity: CachedActivity,
@@ -98,7 +98,7 @@ pub struct LastSession {
     pub sport_label: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DriftRun {
     pub activity_id: i64,
@@ -109,7 +109,7 @@ pub struct DriftRun {
     pub above_z2_pct: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneDrift {
     pub target_pct: f64,
@@ -119,7 +119,7 @@ pub struct ZoneDrift {
     pub runs: Vec<DriftRun>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Week {
     /// Distance in km for each of the last seven days, oldest first.
