@@ -30,12 +30,60 @@ pub fn composites_alpha() -> bool {
 /// because nothing else in the AppImage knows about it.
 const BACKEND_OVERRIDE: &str = "GARMIN_COMPANION_GDK_BACKEND";
 
-/// Two WebKitGTK 2.52 bugs make the window come up blank, both of which have to
-/// be handled before webkit spawns its subprocesses.
+/// The WebKitGTK the process actually loaded, as `(major, minor)`.
+///
+/// Asked of the library rather than fixed at build time, because one binary is
+/// installed onto machines carrying whatever WebKitGTK their distribution
+/// ships, and the workaround below is right on some of those and wrong on
+/// others. `WebKitVersion.h` has declared these three since 2.6.
+fn webkit_version() -> (u32, u32) {
+    extern "C" {
+        fn webkit_get_major_version() -> u32;
+        fn webkit_get_minor_version() -> u32;
+    }
+    unsafe { (webkit_get_major_version(), webkit_get_minor_version()) }
+}
+
+/// Sets `name` to `value` unless the environment already carries it.
+///
+/// `set_var` overwrites, so a value set before launch would otherwise be
+/// discarded — which is how the DMABUF workaround became impossible to opt out
+/// of, the second half of CapSoftware/Cap#2624 alongside the rendering bug it
+/// describes.
+fn set_unless_set(name: &str, value: &str) {
+    if std::env::var_os(name).is_none() {
+        unsafe { std::env::set_var(name, value) };
+    }
+}
+
+/// Whether the proprietary driver is loaded, which is the only case the
+/// explicit-sync workaround is for.
+fn nvidia_driver_loaded() -> bool {
+    std::path::Path::new("/proc/driver/nvidia/version").exists()
+}
+
+/// Two WebKitGTK bugs make the window come up blank, both of which have to be
+/// handled before webkit spawns its subprocesses. The first of them is only a
+/// bug on the half of the version range it was written for, so which one is
+/// applied depends on the WebKitGTK actually loaded.
 fn work_around_webkit_bugs() {
     // 1. The DMA-BUF renderer fails to allocate GBM buffers on NVIDIA + Wayland
     //    and takes the web process down with it.
-    unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    //
+    //    Below 2.54, where this was written. From 2.54 the override is itself
+    //    the fault: WebKit then paints only the regions it decides have been
+    //    damaged, so the window opens blank and stays that way. It is reported
+    //    against Cap in CapSoftware/Cap#2624 and shared by every Tauri app that
+    //    applied this unconditionally.
+    //
+    //    What it was covering for on 2.54 is the Wayland protocol error, and
+    //    explicit sync is what causes that one, so 2.54 turns that off instead
+    //    — a smaller hammer that keeps the accelerated path (tauri#9394).
+    if webkit_version() < (2, 54) {
+        set_unless_set("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    } else if nvidia_driver_loaded() && std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        set_unless_set("__NV_DISABLE_EXPLICIT_SYNC", "1");
+    }
 
     // 2. NetworkCache::mapFile() overruns a stack buffer reading its own cache
     //    blobs, aborting the network process — after which every load fails with
