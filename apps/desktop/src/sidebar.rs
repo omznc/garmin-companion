@@ -7,11 +7,12 @@
 use std::time::Instant;
 
 use gpui::{
-    div, prelude::*, px, relative, BoxShadow, ClickEvent, ColorExt as _, Context, Div, FontWeight,
-    SharedString, TextTransform, Window,
+    div, prelude::*, px, relative, BoxShadow, ClickEvent, Context, Div, FontWeight, SharedString,
+    TextTransform, Window,
 };
 
 use crate::icons::{icon, icon_hover, Icon};
+use crate::scroll::SmoothScroll;
 use crate::spring::{Spring, SETTLE};
 use crate::theme::{Theme, FS_MD};
 use crate::ui::SANS;
@@ -55,14 +56,19 @@ pub struct Sidebar {
     /// How far the lit entry's ground is from its row. It springs to zero.
     pill: Spring,
     last_tick: Option<Instant>,
+    /// The list scrolls when the window is too short for every entry.
+    scroll: SmoothScroll,
+    reduced_motion: bool,
 }
 
 impl Sidebar {
-    pub fn new() -> Self {
+    pub fn new(reduced_motion: bool) -> Self {
         Self {
             active: 0,
             pill: Spring::new(SETTLE),
             last_tick: None,
+            scroll: SmoothScroll::new(reduced_motion),
+            reduced_motion,
         }
     }
 
@@ -76,12 +82,17 @@ impl Sidebar {
         let drawn_top = row_top(self.active) + self.pill.x;
         self.active = index;
         self.pill.set(drawn_top - row_top(index));
-        self.pill.to(0.0);
+        if self.reduced_motion {
+            self.pill.set(0.0);
+        } else {
+            self.pill.to(0.0);
+        }
         self.last_tick = None;
     }
 
     /// Advance the spring. Ask for another frame while it moves.
     pub fn tick(&mut self, window: &mut Window) {
+        self.scroll.tick(window);
         if !self.pill.is_moving() {
             self.last_tick = None;
             return;
@@ -196,7 +207,7 @@ pub fn render<V: 'static>(
         .rounded(px(8.0))
         .bg(t.bg)
         .shadow(vec![BoxShadow {
-            color: gpui::black().opacity(0.04),
+            color: t.shadow,
             offset: gpui::point(px(0.0), px(1.0)),
             blur_radius: px(2.0),
             spread_radius: px(0.0),
@@ -279,7 +290,15 @@ pub fn render<V: 'static>(
                 .text_color(t.faint)
                 .child(info.who.unwrap_or("").to_string()),
         )
-        .child(div().flex_1().min_h_0().pl(px(24.0)).child(list))
+        .child(
+            state
+                .scroll
+                .area("nav")
+                .flex_1()
+                .min_h_0()
+                .pl(px(24.0))
+                .child(list),
+        )
         .child(
             div()
                 .pl(px(34.0))
@@ -305,7 +324,7 @@ mod tests {
 
     #[test]
     fn selecting_a_row_starts_the_ground_where_it_was_drawn() {
-        let mut bar = Sidebar::new();
+        let mut bar = Sidebar::new(false);
         bar.select(3);
         assert!((bar.pill_top() - row_top(0)).abs() < 1e-3);
         assert!(bar.pill.is_moving());
@@ -322,7 +341,7 @@ mod tests {
 
     #[test]
     fn selecting_the_lit_row_changes_nothing() {
-        let mut bar = Sidebar::new();
+        let mut bar = Sidebar::new(false);
         bar.select(0);
         assert!(!bar.pill.is_moving());
     }

@@ -15,6 +15,7 @@ use crate::theme::Theme;
 
 macro_rules! icons {
     ($($variant:ident => $file:literal,)*) => {
+        // The table lists icons for screens that come in a later phase.
         #[allow(dead_code)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Icon {

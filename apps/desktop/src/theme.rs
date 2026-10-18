@@ -39,6 +39,8 @@ pub struct Theme {
     pub sel: Hsla,
     /// The back layer of a duotone icon, with its alpha applied.
     pub icon2: Hsla,
+    /// The hairline lift under the lit nav row. The stylesheet fixes it for every palette.
+    pub shadow: Hsla,
 }
 
 /// The seven authored colours and the one authored alpha.
@@ -207,6 +209,7 @@ fn derive(a: &Authored) -> Theme {
         warn: hex(a.warn),
         sel: fg.opacity(sel),
         icon2: icon2.opacity(a.icon_alpha.unwrap_or(default_alpha)),
+        shadow: hex(0x1b1a17).opacity(0.04),
     }
 }
 

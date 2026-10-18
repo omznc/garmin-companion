@@ -26,6 +26,11 @@ opt-level = "s"
 panic = "abort"
 strip = true
 
+# The desktop app draws every frame on its own thread, so here throughput
+# matters more than bytes. This is why it differs from the size-first default.
+[profile.release.package.garmin-companion-desktop]
+opt-level = 3
+
 # Shared across the Tauri app and the MCP server so the two can never drift
 # onto different versions of the Garmin client's dependencies.
 [workspace.dependencies]

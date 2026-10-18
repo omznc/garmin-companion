@@ -10,6 +10,8 @@ mod chrome;
 mod data;
 mod icons;
 mod map;
+mod motion;
+mod scroll;
 mod shell;
 mod sidebar;
 mod spring;
@@ -18,6 +20,8 @@ mod today;
 mod ui;
 
 use std::borrow::Cow;
+
+use anyhow::Context as _;
 
 use gpui::{
     point, px, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds,
@@ -51,6 +55,16 @@ fn option(args: &[String], flag: &str) -> Option<String> {
         .cloned()
 }
 
+/// The value of a flag that must have one. A flag with no value is an error,
+/// so a typo does not fall back to the sample without a word.
+fn required(args: &[String], flag: &str) -> anyhow::Result<Option<String>> {
+    match option(args, flag) {
+        Some(value) => Ok(Some(value)),
+        None if args.iter().any(|a| a == flag) => anyhow::bail!("{flag} needs a value"),
+        None => Ok(None),
+    }
+}
+
 fn parse_size(text: &str) -> Option<(f32, f32)> {
     let (w, h) = text.split_once('x')?;
     Some((w.parse().ok()?, h.parse().ok()?))
@@ -70,13 +84,20 @@ fn main() -> anyhow::Result<()> {
     let (width, height) = option(&args, "--size")
         .and_then(|s| parse_size(&s))
         .unwrap_or(DEFAULT_SIZE);
-    let source = match option(&args, "--db") {
-        Some(path) => data::Source::Db {
+    let db = required(&args, "--db")?;
+    let date = required(&args, "--date")?
+        .map(|d| {
+            d.parse::<chrono::NaiveDate>()
+                .with_context(|| format!("--date needs YYYY-MM-DD, got {d}"))
+        })
+        .transpose()?;
+    let source = match (db, date) {
+        (Some(path), date) => data::Source::Db {
             path: path.into(),
-            date: option(&args, "--date").and_then(|d| d.parse().ok()),
+            date,
         },
-        None if args.iter().any(|a| a == "--db") => anyhow::bail!("--db needs a path"),
-        None => data::Source::Sample,
+        (None, Some(_)) => anyhow::bail!("--date needs --db"),
+        (None, None) => data::Source::Sample,
     };
     let today = data::load_today(&source)?;
 
@@ -143,5 +164,19 @@ mod tests {
         assert_eq!(parse_palette("nope"), None);
         assert_eq!(parse_size("wide"), None);
         assert_eq!(option(&args, "--missing"), None);
+    }
+
+    #[test]
+    fn a_flag_with_no_value_is_an_error() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(required(&args(&["app", "--db"]), "--db").is_err());
+        assert!(required(&args(&["app", "--db", "--palette", "ink"]), "--db").is_err());
+        assert_eq!(required(&args(&["app"]), "--db").unwrap(), None);
+        assert_eq!(
+            required(&args(&["app", "--db", "x"]), "--db")
+                .unwrap()
+                .as_deref(),
+            Some("x")
+        );
     }
 }

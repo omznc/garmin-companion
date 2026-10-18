@@ -304,13 +304,23 @@ pub fn axis_labels(labels: &[String], t: &Theme) -> Div {
 /// `key` changes on each navigation, so the animation runs again. The cascade
 /// stops at the fifth block, as in the stylesheet.
 pub fn block_in(key: usize, index: usize, child: impl IntoElement) -> impl IntoElement {
-    let delay = (index.min(4) as f32) * 28.0;
-    let total = DUR_SLOW as f32 + delay;
+    // Reduced motion shows the block at once: one millisecond, with no cascade.
+    let reduced = crate::motion::reduced();
+    let delay = if reduced {
+        0.0
+    } else {
+        (index.min(4) as f32) * 28.0
+    };
+    let total = if reduced {
+        1.0
+    } else {
+        DUR_SLOW as f32 + delay
+    };
+    let slow = if reduced { 1.0 } else { DUR_SLOW as f32 };
     div().relative().child(child).with_animation(
         ElementId::NamedInteger("block".into(), (key * 64 + index) as u64),
-        Animation::new(Duration::from_millis(total as u64)).with_easing(move |x| {
-            ease_out(((x * total - delay) / DUR_SLOW as f32).clamp(0.0, 1.0))
-        }),
+        Animation::new(Duration::from_millis(total as u64))
+            .with_easing(move |x| ease_out(((x * total - delay) / slow).clamp(0.0, 1.0))),
         |el, t| el.opacity(t).top(px(6.0 * (1.0 - t))),
     )
 }

@@ -8,6 +8,8 @@ use gpui::{
 
 use crate::chrome;
 use crate::data::Today;
+use crate::motion;
+use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::today;
@@ -30,6 +32,7 @@ pub struct Root {
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
     visits: usize,
+    scroll: SmoothScroll,
 }
 
 impl Root {
@@ -37,8 +40,9 @@ impl Root {
         Self {
             today,
             palette,
-            sidebar: Sidebar::new(),
+            sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
+            scroll: SmoothScroll::new(motion::reduced()),
         }
     }
 
@@ -46,6 +50,8 @@ impl Root {
         if index != self.sidebar.active {
             self.sidebar.select(index);
             self.visits += 1;
+            // A new screen starts at the top.
+            self.scroll = SmoothScroll::new(motion::reduced());
             cx.notify();
         }
     }
@@ -106,14 +112,15 @@ impl Render for Root {
             |this, window, cx| this.toggle_theme(window, cx),
         );
 
-        // A new id for each screen resets the scroll position, as the current
-        // app does on a route change.
-        let column = div()
-            .id(ElementId::NamedInteger("page".into(), self.visits as u64))
+        // Each screen gets a new `SmoothScroll` in `select`, so it starts at
+        // the top, as the current app does on a route change.
+        self.scroll.tick(window);
+        let column = self
+            .scroll
+            .area(ElementId::NamedInteger("page".into(), self.visits as u64))
             .flex_1()
             .min_w_0()
             .h_full()
-            .overflow_y_scroll()
             .px(px(COLUMN_SIDE))
             .pb(px(COLUMN_BOTTOM))
             .child(
