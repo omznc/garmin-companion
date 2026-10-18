@@ -13,7 +13,7 @@ import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { presentToday } from "./present";
 import { wellnessFixture } from "./wellnessFixtures";
-import type { BridgeEvent, Today, TodayView } from "./types";
+import type { BridgeEvent, SettingsView, Status, SyncSummary, Today, TodayView } from "./types";
 
 type Source = {
   call: (cmd: string, args?: unknown) => Promise<string>;
@@ -30,6 +30,53 @@ const bodyCommands: Record<string, keyof typeof bodySample> = {
   food_view: "food",
   strength_view: "strength",
 };
+// The Expo Go account state. It lives in memory and resets on reload.
+const fixtureAccount = { connected: false, theme: "system" as SettingsView["theme"] };
+const fixtureStatus = (): Status => ({
+  connected: fixtureAccount.connected,
+  importableTokenPath: null,
+  signInLine: "Sample data. Nothing is sent to Garmin from this build.",
+});
+const fixtureSettings = (): SettingsView => ({
+  connected: fixtureAccount.connected,
+  accountLine: fixtureAccount.connected ? "Connected (sample)." : "Not connected.",
+  cacheLine: "Sample data only.",
+  dataFolder: null,
+  importableTokenPath: null,
+  theme: fixtureAccount.theme,
+  version: "fixture",
+  privacyLine: "This build shows sample data and sends nothing anywhere.",
+});
+const fixtureSync: SyncSummary = {
+  line: "Sample sync finished. No data was changed.",
+  activitiesSeen: 0,
+  activitiesWritten: 0,
+  daysWritten: 0,
+  warnings: [],
+};
+
+function fixtureAccountCall(cmd: string, args: unknown): unknown {
+  if (cmd === "set_theme") fixtureAccount.theme = (args as { theme: SettingsView["theme"] }).theme;
+  if (cmd === "redeem_ticket") fixtureAccount.connected = true;
+  if (cmd === "sign_out") fixtureAccount.connected = false;
+  switch (cmd) {
+    case "status":
+    case "redeem_ticket":
+    case "sign_out":
+      return fixtureStatus();
+    case "settings":
+      return fixtureSettings();
+    case "set_theme":
+      return { theme: fixtureAccount.theme };
+    case "sign_in_url":
+      return "about:blank";
+    case "sync":
+      return fixtureSync;
+    default:
+      return undefined;
+  }
+}
+
 const fixtureListeners = new Set<(event: BridgeEvent) => void>();
 let fixtureStop = false;
 
@@ -52,10 +99,18 @@ async function fixtureTurn() {
 }
 
 const fixtureSource: Source = {
-  async call(cmd) {
+  async call(cmd, args) {
     if (cmd === "today") return JSON.stringify(fixture);
     if (cmd === "activities") return JSON.stringify(activitiesFixture);
-    if (cmd === "activity_detail") return JSON.stringify(activityFixture);
+    if (cmd === "activity_detail") {
+      // Keep the list and the detail in agreement: answer with the id that was asked for.
+      const id = (args as { activityId?: number } | undefined)?.activityId;
+      return JSON.stringify(
+        id === undefined ? activityFixture : { ...activityFixture, activityId: id },
+      );
+    }
+    const account = fixtureAccountCall(cmd, args);
+    if (account !== undefined) return JSON.stringify(account);
     const recorded = wellnessFixture(cmd);
     if (recorded) return JSON.stringify(recorded);
     const body = bodyCommands[cmd];

@@ -79,7 +79,7 @@ function lastSession(v: TodayView): LastSession | null {
   const a = last.activity;
   const percents = zonePercents(a);
   return {
-    name: a.name ?? last.sportLabel,
+    name: a.name?.trim() || last.sportLabel,
     sport: last.sportLabel,
     when: shortDate(a.startTimeLocal ?? a.localDate),
     zones:
