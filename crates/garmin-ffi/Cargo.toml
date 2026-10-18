@@ -20,3 +20,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 uniffi = { version = "0.31", features = ["tokio"] }
+
+# iOS only: the data folder is marked "exclude from backup".
+[target.'cfg(target_os = "ios")'.dependencies]
+core-foundation = "0.10"

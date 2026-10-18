@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 mod ask;
+#[cfg(target_os = "ios")]
+mod backup;
 
 uniffi::setup_scaffolding!();
 
@@ -88,6 +90,8 @@ impl Subscription {
 /// In fixture mode, `today` returns recorded data.
 #[uniffi::export]
 pub fn init(base_dir: String, fixture_mode: bool) {
+    #[cfg(target_os = "ios")]
+    backup::exclude_dir(std::path::Path::new(&base_dir));
     garmin_api::init(base_dir);
     // A signed-in account always reads real data, also when no sync has run yet.
     let signed_in = garmin_core::store::load_tokens().is_ok_and(|t| t.is_some());

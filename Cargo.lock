@@ -2825,11 +2825,13 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
+ "apple-native-keyring-store",
  "base64 0.23.1",
  "chrono",
  "dirs 6.0.0",
  "getrandom 0.3.4",
  "keyring",
+ "keyring-core",
  "openssl",
  "reqwest",
  "rusqlite",
@@ -2844,6 +2846,7 @@ name = "garmin-ffi"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "core-foundation 0.10.0",
  "garmin-api",
  "garmin-coach",
  "garmin-core",
