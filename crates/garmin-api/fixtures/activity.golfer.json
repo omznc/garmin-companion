@@ -1,0 +1,33 @@
+{
+  "activityId": 9100000,
+  "name": "Golf",
+  "sportLabel": "Golf",
+  "family": "golf",
+  "when": "Mon 09 Mar, 09:00",
+  "stats": [
+    {
+      "label": "Distance",
+      "value": "6.5 km"
+    },
+    {
+      "label": "Time",
+      "value": "4h 10m"
+    },
+    {
+      "label": "Avg HR",
+      "value": "104 bpm"
+    },
+    {
+      "label": "Max HR",
+      "value": "138 bpm"
+    },
+    {
+      "label": "Steps",
+      "value": "10,500"
+    }
+  ],
+  "zones": null,
+  "laps": [],
+  "strength": null,
+  "chart": null
+}

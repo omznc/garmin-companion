@@ -1231,6 +1231,12 @@ pub fn sleep(db: &Db, days: u32) -> Result<crate::sleep::SleepReport> {
 const STALE_DAYS: i64 = 3;
 
 pub fn cache_status(db: &Db) -> Result<CacheStatus> {
+    cache_status_with(db, crate::store::load_tokens()?.is_some())
+}
+
+/// Same as `cache_status`, with the sign-in state given. This lets a caller
+/// that must not read the OS keyring (a test) supply the answer.
+pub fn cache_status_with(db: &Db, connected_to_garmin: bool) -> Result<CacheStatus> {
     let today = crate::today();
     let newest_activity_date = db.newest_activity_date()?;
     let newest_daily_date = db.newest_daily_date()?;
@@ -1246,7 +1252,7 @@ pub fn cache_status(db: &Db) -> Result<CacheStatus> {
         activities_cached: db.activity_count()?,
         last_sync: db.sync_state("last_sync")?,
         database_path: crate::db::default_path().map(|p| p.display().to_string()),
-        connected_to_garmin: crate::store::load_tokens()?.is_some(),
+        connected_to_garmin,
         days_since_activity: age(&newest_activity_date),
         stale: days_since_daily.is_none_or(|n| n > STALE_DAYS),
         newest_activity_date,

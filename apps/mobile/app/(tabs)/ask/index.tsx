@@ -1,5 +1,5 @@
-import { Placeholder } from "../../../src/screens/Placeholder";
+import { Ask } from "../../../src/screens/Ask";
 
 export default function Screen() {
-  return <Placeholder title="Ask" />;
+  return <Ask />;
 }

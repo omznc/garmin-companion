@@ -78,6 +78,38 @@ export type TodayView = {
 
 export type BridgeEvent = { kind: string; payload: unknown };
 
+// Sign-in, sync and Settings (`garmin_api::session` and `garmin_api::settings`).
+export type Status = { connected: boolean; importableTokenPath: string | null; signInLine: string };
+
+export type ThemeMode = "system" | "light" | "dark";
+
+export type SettingsView = {
+  connected: boolean;
+  accountLine: string;
+  cacheLine: string;
+  dataFolder: string | null;
+  importableTokenPath: string | null;
+  theme: ThemeMode;
+  version: string;
+  privacyLine: string;
+};
+
+export type SyncSummary = {
+  line: string;
+  activitiesSeen: number;
+  activitiesWritten: number;
+  daysWritten: number;
+  warnings: string[];
+};
+
+export type SyncProgress = {
+  phase: string;
+  detail: string;
+  done: number;
+  total: number | null;
+  line: string;
+};
+
 // What the screens draw.
 export type Metric = {
   id: string;
@@ -90,6 +122,8 @@ export type Metric = {
 export type LastSession = {
   name: string;
   sport: string;
+  // The Garmin activity type, such as "running". It picks the icon.
+  typeKey: string | null;
   when: string;
   // Set only when the core says a zone verdict fits this sport.
   zones: { aboveZ2Pct: number; percents: number[] } | null;
@@ -104,7 +138,12 @@ export type Section =
   | { kind: "week"; labels: string[]; minutes: number[]; summary: string }
   | { kind: "drift"; summary: string; runs: { id: string; label: string; aboveZ2Pct: number }[] };
 
+// The key figure of the day: readiness, else body battery, else sleep.
+// `pct` is set for a 0 to 100 score.
+export type Hero = { id: string; label: string; text: string; pct: number | null };
+
 export type Today = {
+  hero: Hero | null;
   dateLabel: string;
   greeting: string;
   lede: string;

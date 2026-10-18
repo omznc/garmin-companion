@@ -1,5 +1,3 @@
-import { Placeholder } from "../../../src/screens/Placeholder";
+import { HealthScreen } from "../../../src/screens/Health";
 
-export default function Screen() {
-  return <Placeholder title="Health" />;
-}
+export default HealthScreen;

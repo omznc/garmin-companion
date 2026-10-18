@@ -104,6 +104,18 @@ impl SmoothScroll {
         }
     }
 
+    /// How far the view is above the bottom edge, in pixels. As of the last layout.
+    pub fn distance_below(&self) -> f32 {
+        f32::from(self.handle.max_offset().y) + f32::from(self.handle.offset().y)
+    }
+
+    /// Jump to the bottom edge, for a thread that follows new text.
+    pub fn pin_bottom(&self) {
+        let offset = self.handle.offset();
+        let bottom = -f32::from(self.handle.max_offset().y);
+        self.handle.set_offset(point(offset.x, px(bottom)));
+    }
+
     /// Move the offset by `dt` seconds. True while it still moves.
     fn step(&self, dt: f32) -> bool {
         let mut inner = self.inner.borrow_mut();
