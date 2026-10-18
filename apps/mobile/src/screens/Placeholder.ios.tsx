@@ -2,10 +2,9 @@ import type { ReactNode } from "react";
 import { PlatformColor, ScrollView, Text } from "react-native";
 
 export function Placeholder({
-  title,
   children,
 }: {
-  title: string;
+  title?: string;
   settings?: boolean;
   children?: ReactNode;
 }) {
@@ -15,10 +14,7 @@ export function Placeholder({
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ padding: 16 }}
     >
-      <Text
-        accessibilityLabel={title}
-        style={{ fontSize: 17, color: PlatformColor("secondaryLabel") }}
-      >
+      <Text style={{ fontSize: 17, color: PlatformColor("secondaryLabel") }}>
         This screen comes in a later phase.
       </Text>
       {children}
