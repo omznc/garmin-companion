@@ -86,7 +86,7 @@ export function useAsk() {
     try {
       await callJson("ask_send", { history: historyOf(asked) });
     } catch (error) {
-      setTurns((t) => applyEvent(t, { type: "error", text: String((error as Error).message) }));
+      setTurns((t) => applyEvent(t, { type: "error", text: (error as Error).message }));
       setBusy(false);
     }
   }, []);

@@ -99,25 +99,38 @@ fn parse_palette(name: &str) -> Option<Palette> {
         .find(|p| p.name().eq_ignore_ascii_case(name))
 }
 
-fn main() -> anyhow::Result<()> {
-    let args: Vec<String> = std::env::args().collect();
-    let palette = option(&args, "--palette")
+/// The command line, read once at the start.
+struct Cli {
+    palette: Palette,
+    explicit_palette: bool,
+    size: (f32, f32),
+    source: Source,
+    screen: Option<String>,
+    start_activity: Option<i64>,
+    coach: Option<String>,
+    question: Option<String>,
+    draft: Option<String>,
+    start_sync: bool,
+}
+
+fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
+    let palette = option(args, "--palette")
         .and_then(|n| parse_palette(&n))
         .unwrap_or(Palette::Paper);
-    let (width, height) = option(&args, "--size")
+    let size = option(args, "--size")
         .and_then(|s| parse_size(&s))
         .unwrap_or(DEFAULT_SIZE);
-    let db = required(&args, "--db")?;
-    let date = required(&args, "--date")?
+    let db = required(args, "--db")?;
+    let date = required(args, "--date")?
         .map(|d| {
             d.parse::<chrono::NaiveDate>()
                 .with_context(|| format!("--date needs YYYY-MM-DD, got {d}"))
         })
         .transpose()?;
-    let persona = required(&args, "--persona")?;
-    let screen = match required(&args, "--screen")? {
+    let persona = required(args, "--persona")?;
+    let screen = match required(args, "--screen")? {
         Some(name) => Some(name),
-        None => required(&args, "--open")?,
+        None => required(args, "--open")?,
     };
     if let Some(name) = &screen {
         anyhow::ensure!(
@@ -137,13 +150,41 @@ fn main() -> anyhow::Result<()> {
         (None, None, Some(persona)) => data::Source::Persona(persona),
         (None, None, None) => data::Source::Default,
     };
-    let start_activity = required(&args, "--activity")?
+    let start_activity = required(args, "--activity")?
         .map(|v| {
             v.parse::<i64>()
                 .with_context(|| format!("--activity needs a number, got {v}"))
         })
         .transpose()?;
-    if let Some(spec) = required(&args, "--coach")? {
+    Ok(Cli {
+        palette,
+        explicit_palette: option(args, "--palette").is_some(),
+        size,
+        source,
+        screen,
+        start_activity,
+        coach: required(args, "--coach")?,
+        question: required(args, "--ask")?,
+        draft: required(args, "--draft")?,
+        start_sync: args.iter().any(|a| a == "--sync"),
+    })
+}
+
+fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let Cli {
+        palette,
+        explicit_palette,
+        size: (width, height),
+        source,
+        screen,
+        start_activity,
+        coach,
+        question,
+        draft,
+        start_sync,
+    } = parse_args(&args)?;
+    if let Some(spec) = coach {
         let Source::Db { path, .. } = &source else {
             anyhow::bail!("--coach needs --db");
         };
@@ -158,15 +199,13 @@ fn main() -> anyhow::Result<()> {
             Source::Db { path, .. } => ask::Source::Db(path.clone()),
             Source::Persona(_) => ask::Source::Demo,
         },
-        question: required(&args, "--ask")?,
-        draft: required(&args, "--draft")?,
+        question,
+        draft,
     };
     let today = data::load_today(&source)?;
     let store = activities::Store::for_source(&source)?;
     let wellness = wellness::load(&source)?;
     let body = body::load_body(&source)?;
-    let explicit_palette = option(&args, "--palette").is_some();
-    let start_sync = args.iter().any(|a| a == "--sync");
 
     gpui_platform::application()
         .with_assets(icons::Icons)
