@@ -83,7 +83,10 @@ pub(crate) fn default_provider(has_own_key: bool) -> Provider {
 
 /// The saved choice, or the default. The provider is always set.
 pub fn load_config(db: &Db) -> Result<(Option<Provider>, Option<String>)> {
-    let provider = match db.sync_state("chat_provider")?.and_then(|s| Provider::parse(&s)) {
+    let provider = match db
+        .sync_state("chat_provider")?
+        .and_then(|s| Provider::parse(&s))
+    {
         Some(p) => p,
         None => default_provider(matches!(openrouter_key(), Ok(Some(_)))),
     };

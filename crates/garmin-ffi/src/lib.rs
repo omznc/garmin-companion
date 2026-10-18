@@ -12,9 +12,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 mod ask;
-mod cloud;
 #[cfg(target_os = "ios")]
 mod backup;
+mod cloud;
 
 uniffi::setup_scaffolding!();
 

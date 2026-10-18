@@ -37,7 +37,10 @@ fn resp(status: u16, body: Value) -> Resp {
 }
 
 fn error(status: u16, kind: &str) -> Resp {
-    resp(status, json!({"error": {"message": "x", "code": status, "type": kind}}))
+    resp(
+        status,
+        json!({"error": {"message": "x", "code": status, "type": kind}}),
+    )
 }
 
 fn sse(text: &str) -> Resp {
@@ -76,7 +79,9 @@ async fn mock(handler: impl Fn(&Req) -> Resp + Send + Sync + 'static) -> (String
                 for (k, v) in out.headers {
                     head.push_str(&format!("{k}: {v}\r\n"));
                 }
-                let _ = sock.write_all(format!("{head}\r\n{}", out.body).as_bytes()).await;
+                let _ = sock
+                    .write_all(format!("{head}\r\n{}", out.body).as_bytes())
+                    .await;
                 let _ = sock.shutdown().await;
             });
         }
@@ -183,12 +188,20 @@ async fn a_chat_streams_and_each_request_has_its_own_id() {
     let sink = Sink::default();
     let msgs = [json!({"role":"user","content":"hi"})];
     for _ in 0..2 {
-        let out = t.complete(&msgs, None, &sink, &AtomicBool::new(false)).await;
+        let out = t
+            .complete(&msgs, None, &sink, &AtomicBool::new(false))
+            .await;
         assert_eq!(out.unwrap().content, "Hello");
     }
     let seen = seen.lock().unwrap();
-    let chats: Vec<_> = seen.iter().filter(|r| r.path.ends_with("completions")).collect();
-    let ids: Vec<_> = chats.iter().map(|r| r.headers["x-request-id"].clone()).collect();
+    let chats: Vec<_> = seen
+        .iter()
+        .filter(|r| r.path.ends_with("completions"))
+        .collect();
+    let ids: Vec<_> = chats
+        .iter()
+        .map(|r| r.headers["x-request-id"].clone())
+        .collect();
     assert_ne!(ids[0], ids[1]);
     assert!((8..=64).contains(&ids[0].len()));
     let body: Value = serde_json::from_str(&chats[0].body).unwrap();
@@ -218,7 +231,9 @@ async fn an_unknown_install_is_issued_again_once() {
 }
 
 fn bearer_or_empty(r: &Req) -> &str {
-    r.headers.get("authorization").map_or("", |v| v.trim_start_matches("Bearer "))
+    r.headers
+        .get("authorization")
+        .map_or("", |v| v.trim_start_matches("Bearer "))
 }
 
 #[tokio::test]
@@ -234,7 +249,9 @@ async fn out_of_credits_reads_as_a_sentence_with_the_reset_time() {
     vault.save_install_id(ID_A).unwrap();
     let e = c.chat(&json!({"messages":[]})).await.unwrap_err();
     assert_eq!(error_kind(&e), Some("out_of_credits"));
-    assert!(e.to_string().starts_with("You are out of credits. They return in "));
+    assert!(e
+        .to_string()
+        .starts_with("You are out of credits. They return in "));
     assert!(!e.to_string().contains('{'));
 }
 
@@ -348,7 +365,9 @@ fn fit_drops_the_oldest_tool_results_and_keeps_the_newest() {
 
 #[test]
 fn the_reset_time_reads_in_hours_and_minutes() {
-    let now = DateTime::parse_from_rfc3339("2026-10-18T18:48:00Z").unwrap().into();
+    let now = DateTime::parse_from_rfc3339("2026-10-18T18:48:00Z")
+        .unwrap()
+        .into();
     assert_eq!(until("2026-10-19T00:00:00.000Z", now), "in 5 h 12 min");
     assert_eq!(until("2026-10-18T19:00:00Z", now), "in 12 min");
     assert_eq!(until("2026-10-18T10:00:00Z", now), "soon");
@@ -374,5 +393,8 @@ fn the_balance_becomes_lines_and_flags() {
     b.cancels_at_period_end = true;
     let v = b.view(now);
     assert_eq!(v.plan_line, "Premium for a@b.com. It ends on 2026-11-18.");
-    assert_eq!(v.credits_line, "300 credits left today. 0 of 6000 used this month.");
+    assert_eq!(
+        v.credits_line,
+        "300 credits left today. 0 of 6000 used this month."
+    );
 }
