@@ -1,10 +1,3 @@
-import { BridgeCheck } from "../src/components/BridgeCheck";
-import { Placeholder } from "../src/screens/Placeholder";
+import { SettingsScreen } from "../src/screens/Settings";
 
-export default function Settings() {
-  return (
-    <Placeholder title="Settings" settings={false}>
-      <BridgeCheck />
-    </Placeholder>
-  );
-}
+export default SettingsScreen;
