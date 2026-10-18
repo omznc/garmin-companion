@@ -13,6 +13,7 @@ const ICONS = {
   activities: require("../../assets/icons/activities.xml"),
   ask: require("../../assets/icons/ask.xml"),
   health: require("../../assets/icons/health.xml"),
+  more: require("../../assets/icons/more.xml"),
 };
 
 function TabBar({ index }: { index: number }) {

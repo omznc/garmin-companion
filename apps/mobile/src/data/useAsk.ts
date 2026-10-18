@@ -1,5 +1,6 @@
 // The state of the Ask screen: the turns, and the events of the running turn.
 // The core streams `ask` events through the bridge: delta, tool, done, error.
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { callJson, subscribe } from "./source";
 
@@ -113,3 +114,10 @@ export function needsSetup(config: CoachConfig | undefined): boolean {
 export async function saveKey(key: string): Promise<void> {
   await callJson("ask_save_config", { provider: "openrouter", key });
 }
+
+export const useCoachConfig = () =>
+  useQuery({
+    queryKey: ["askConfig"],
+    queryFn: () => callJson<CoachConfig>("ask_config"),
+    retry: false,
+  });

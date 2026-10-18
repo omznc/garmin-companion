@@ -21,7 +21,7 @@ const RANGE = EXPANDED - COLLAPSED;
 
 type Props = {
   title: string;
-  settings?: boolean;
+  back?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   children: ReactNode;
@@ -29,7 +29,7 @@ type Props = {
 
 export function LargeAppBarScreen({
   title,
-  settings = true,
+  back = false,
   refreshing = false,
   onRefresh,
   children,
@@ -75,7 +75,7 @@ export function LargeAppBarScreen({
           style={[
             {
               position: "absolute",
-              left: settings ? 16 : 72,
+              left: back ? 72 : 16,
               right: 72,
               bottom: 18,
               color: md.onSurface,
@@ -86,34 +86,24 @@ export function LargeAppBarScreen({
         >
           {title}
         </Animated.Text>
-        {settings ? (
-          <BarButton top={insets.top} side="right" />
-        ) : (
-          <BarButton top={insets.top} side="left" />
-        )}
+        {back ? <BackButton top={insets.top} /> : null}
       </Animated.View>
     </View>
   );
 }
 
-// The right button opens Settings. The left button goes back, on the Settings screen.
-function BarButton({ top, side }: { top: number; side: "left" | "right" }) {
+function BackButton({ top }: { top: number }) {
   const router = useRouter();
   const md = useMd();
-  const back = side === "left";
   return (
-    <View style={{ position: "absolute", top: top + 8, [side]: 8, width: 48, height: 48 }}>
+    <View style={{ position: "absolute", top: top + 8, left: 8, width: 48, height: 48 }}>
       <Host matchContents seedColor={HOST_SEED}>
-        <IconButton onClick={() => (back ? router.back() : router.push("/settings"))}>
+        <IconButton onClick={() => router.back()}>
           <Icon
-            source={
-              back
-                ? require("../../assets/icons/back.xml")
-                : require("../../assets/icons/account.xml")
-            }
+            source={require("../../assets/icons/back.xml")}
             size={24}
             tint={md.onSurfaceVariant}
-            contentDescription={back ? "Back" : "Settings"}
+            contentDescription="Back"
           />
         </IconButton>
       </Host>
