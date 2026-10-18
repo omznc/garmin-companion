@@ -213,7 +213,7 @@ export function ActivityDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, isPending } = useActivityDetail(Number(id));
   return (
-    <LargeAppBarScreen title={data?.name ?? "Activity"} settings={false}>
+    <LargeAppBarScreen title={data?.name ?? "Activity"} back>
       {isPending ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? (
         <Block>

@@ -143,7 +143,7 @@ export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
   const md = useMd();
   const { data, error, refetch } = useBody(kind);
   return (
-    <LargeAppBarScreen title={title} settings={false}>
+    <LargeAppBarScreen title={title} back>
       {data?.blocks.map((b, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
         <BlockView key={i} md={md} b={b} />

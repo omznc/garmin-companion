@@ -1,6 +1,5 @@
 // The Ask screen body, shared by Android and iOS. The platform files give the colours and the top.
 // The text input is the native one. Answers stream in through `useAsk`.
-import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import {
   type ColorValue,
@@ -14,15 +13,14 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { blocks, inline } from "../data/markdown";
-import { callJson } from "../data/source";
 import {
-  type CoachConfig,
   type Step,
   type Turn,
   needsSetup,
   openers,
   saveKey,
   useAsk,
+  useCoachConfig,
 } from "../data/useAsk";
 
 export type AskTheme = {
@@ -243,11 +241,7 @@ function Empty({
 export function AskView({ theme, top }: { theme: AskTheme; top: number }) {
   const insets = useSafeAreaInsets();
   const { turns, busy, send, stop } = useAsk();
-  const config = useQuery({
-    queryKey: ["askConfig"],
-    queryFn: () => callJson<CoachConfig>("ask_config"),
-    retry: false,
-  });
+  const config = useCoachConfig();
   const [draft, setDraft] = useState("");
   const scroll = useRef<{ scrollToEnd: (o?: { animated?: boolean }) => void } | null>(null);
   const ready = !busy && draft.trim().length > 0;

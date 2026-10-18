@@ -213,7 +213,7 @@ function SleepBody({ view }: { view: SleepView }) {
 export function SleepScreen() {
   const { data, error, refetch } = useSleep();
   return (
-    <LargeAppBarScreen title="Sleep" settings={false}>
+    <LargeAppBarScreen title="Sleep" back>
       {data ? <SleepBody view={data} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorBlock message={String(error)} onRetry={refetch} /> : null}

@@ -7,16 +7,16 @@ import { HOST_SEED, useMd } from "../theme/md";
 
 export function Placeholder({
   title,
-  settings,
+  back,
   children,
 }: {
   title: string;
-  settings?: boolean;
+  back?: boolean;
   children?: ReactNode;
 }) {
   const md = useMd();
   return (
-    <LargeAppBarScreen title={title} settings={settings}>
+    <LargeAppBarScreen title={title} back={back}>
       <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
         <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
           <Text style={{ typography: "bodyLarge" }} color={md.onSurfaceVariant}>

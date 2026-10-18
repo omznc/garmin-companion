@@ -2,7 +2,7 @@ import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState } from "react-native";
 import { applyTheme, getSettings } from "../src/data/account";
 
 const queryClient = new QueryClient();
@@ -30,14 +30,6 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
         <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
-        <Stack.Screen
-          name="settings"
-          options={{
-            presentation: Platform.OS === "ios" ? "modal" : "card",
-            headerShown: Platform.OS === "ios",
-            title: "Settings",
-          }}
-        />
       </Stack>
     </QueryClientProvider>
   );
