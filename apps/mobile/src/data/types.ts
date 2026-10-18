@@ -122,6 +122,8 @@ export type Metric = {
 export type LastSession = {
   name: string;
   sport: string;
+  // The Garmin activity type, such as "running". It picks the icon.
+  typeKey: string | null;
   when: string;
   // Set only when the core says a zone verdict fits this sport.
   zones: { aboveZ2Pct: number; percents: number[] } | null;
@@ -136,7 +138,12 @@ export type Section =
   | { kind: "week"; labels: string[]; minutes: number[]; summary: string }
   | { kind: "drift"; summary: string; runs: { id: string; label: string; aboveZ2Pct: number }[] };
 
+// The key figure of the day: readiness, else body battery, else sleep.
+// `pct` is set for a 0 to 100 score.
+export type Hero = { id: string; label: string; text: string; pct: number | null };
+
 export type Today = {
+  hero: Hero | null;
   dateLabel: string;
   greeting: string;
   lede: string;
