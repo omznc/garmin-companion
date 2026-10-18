@@ -17,8 +17,7 @@ pub const DEFAULT_OPENROUTER_MODEL: &str = "inclusionai/ling-3.0-flash";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
-    /// The hosted coach with credits. It is not in this build: the slot exists
-    /// so that a saved choice and a later backend have a place.
+    /// The hosted coach with credits ("Garmin Companion cloud"). See `cloud.rs`.
     Cloud,
     Openrouter,
     Ollama,
@@ -42,7 +41,7 @@ impl Provider {
         }
     }
 
-    /// The base URL of the chat API. The hosted coach has none yet.
+    /// The base URL of the chat API. The hosted coach has its own client.
     pub(crate) fn base(self) -> Option<&'static str> {
         match self {
             Self::Cloud => None,
@@ -72,10 +71,23 @@ pub struct ChatConfig {
     pub ollama_models: Vec<String>,
 }
 
+/// The provider when none was saved. Own OpenRouter key first, else the hosted
+/// coach. A local Ollama needs a model name, so the user picks it on purpose.
+pub(crate) fn default_provider(has_own_key: bool) -> Provider {
+    if has_own_key {
+        Provider::Openrouter
+    } else {
+        Provider::Cloud
+    }
+}
+
+/// The saved choice, or the default. The provider is always set.
 pub fn load_config(db: &Db) -> Result<(Option<Provider>, Option<String>)> {
-    let provider = db
-        .sync_state("chat_provider")?
-        .and_then(|s| Provider::parse(&s));
+    let provider = match db.sync_state("chat_provider")?.and_then(|s| Provider::parse(&s)) {
+        Some(p) => p,
+        None => default_provider(matches!(openrouter_key(), Ok(Some(_)))),
+    };
+    let provider = Some(provider);
     let model = match (db.sync_state("chat_model")?, provider) {
         (Some(m), _) => Some(m),
         (None, Some(p)) => p.default_model().map(str::to_string),
@@ -130,8 +142,14 @@ mod tests {
     }
 
     #[test]
-    fn only_the_hosted_coach_has_no_base_url_yet() {
+    fn the_hosted_coach_has_its_own_client_and_no_base_url() {
         assert!(Provider::Cloud.base().is_none());
         assert!(Provider::Ollama.base().is_some());
+    }
+
+    #[test]
+    fn the_hosted_coach_is_the_default_without_an_own_key() {
+        assert_eq!(default_provider(false), Provider::Cloud);
+        assert_eq!(default_provider(true), Provider::Openrouter);
     }
 }

@@ -21,6 +21,8 @@ const ACCOUNT_OPENROUTER: &str = "openrouter-api-key";
 /// under this name and enrols once, quietly, instead of sending an id the
 /// server has never heard of and being refused for it.
 const ACCOUNT_DEVICE: &str = "cloud-install-id";
+/// The session token of a premium user, after an email sign-in.
+const ACCOUNT_SESSION: &str = "cloud-session-token";
 
 pub fn save_tokens(tokens: &Tokens) -> Result<()> {
     let json = serde_json::to_string(tokens)?;
@@ -99,6 +101,34 @@ pub fn forget_install_id() -> Result<()> {
     secrets::delete(ACCOUNT_DEVICE).context("could not clear the install id")
 }
 
+/// The session token of a signed-in premium user, if one is stored.
+pub fn stored_session() -> Result<Option<String>> {
+    let stored = secrets::get(ACCOUNT_SESSION)
+        .with_context(|| format!("could not read the session from {STORE}"))?;
+    Ok(stored.filter(|t| is_session_token(t)))
+}
+
+pub fn save_session(token: &str) -> Result<()> {
+    if !is_session_token(token) {
+        bail!("the coach issued a session in a shape this build does not recognise");
+    }
+    secrets::set(ACCOUNT_SESSION, token)
+        .with_context(|| format!("could not write the session to {STORE}"))
+}
+
+pub fn clear_session() -> Result<()> {
+    secrets::delete(ACCOUNT_SESSION).context("could not clear the session")
+}
+
+/// `s_` and 64 lowercase hex characters.
+fn is_session_token(t: &str) -> bool {
+    t.strip_prefix("s_").is_some_and(|h| {
+        h.len() == 64
+            && h.chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    })
+}
+
 /// The shape the proxy issues and the only shape it accepts.
 fn is_install_id(id: &str) -> bool {
     id.len() == 32
@@ -144,7 +174,7 @@ pub fn import_python_tokens(path: &Path) -> Result<Tokens> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_install_id;
+    use super::{is_install_id, is_session_token};
 
     /// The same shape the worker's `deviceId` accepts. Both ends check it, and
     /// they have to agree: an id this side would store but that side refuses is
@@ -161,5 +191,12 @@ mod tests {
         assert!(!is_install_id("0123456789ABCDEF0123456789ABCDEF"));
         assert!(!is_install_id("0123456789abcdef0123456789abcdef0"));
         assert!(!is_install_id("not hex but exactly 32 chars long"));
+    }
+
+    #[test]
+    fn a_session_token_is_s_and_sixty_four_hex_characters() {
+        assert!(is_session_token(&format!("s_{}", "ab".repeat(32))));
+        assert!(!is_session_token(&"ab".repeat(32)));
+        assert!(!is_session_token("s_abc"));
     }
 }

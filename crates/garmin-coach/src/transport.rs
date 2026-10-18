@@ -8,6 +8,7 @@ use futures_util::StreamExt;
 use garmin_core::db::Db;
 use serde_json::{json, Value};
 
+use crate::cloud::CloudClient;
 use crate::config::{load_config, openrouter_key, Provider};
 use crate::sse::{SseParser, StreamResult};
 use crate::turn::EventSink;
@@ -25,13 +26,15 @@ pub trait Transport: Send + Sync {
     ) -> impl Future<Output = Result<StreamResult>> + Send;
 }
 
-/// An OpenAI-compatible chat API: OpenRouter with the user's own key, or Ollama.
+/// An OpenAI-compatible chat API: OpenRouter with the user's own key, Ollama,
+/// or the hosted coach (`cloud` is set, and the worker picks the model).
 pub struct HttpTransport {
     http: reqwest::Client,
     provider: Provider,
     base: &'static str,
     model: String,
     key: Option<String>,
+    cloud: Option<CloudClient>,
 }
 
 impl HttpTransport {
@@ -39,10 +42,11 @@ impl HttpTransport {
     pub fn from_config(db: &Db) -> Result<Self> {
         let (provider, model) = load_config(db)?;
         let provider = provider.context("No model provider chosen yet.")?;
+        if provider == Provider::Cloud {
+            return Ok(Self::cloud(CloudClient::default()));
+        }
         let model = model.context("No model chosen yet.")?;
-        let base = provider
-            .base()
-            .context("The hosted coach is not available in this app yet. Choose OpenRouter with your own key, or a local Ollama.")?;
+        let base = provider.base().context("This provider has no address.")?;
         let key = match provider {
             Provider::Openrouter => Some(
                 openrouter_key()?
@@ -59,7 +63,20 @@ impl HttpTransport {
             base,
             model,
             key,
+            cloud: None,
         })
+    }
+
+    /// The transport of the hosted coach.
+    pub fn cloud(client: CloudClient) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            provider: Provider::Cloud,
+            base: "",
+            model: String::new(),
+            key: None,
+            cloud: Some(client),
+        }
     }
 
     fn request(&self, body: &Value) -> reqwest::RequestBuilder {
@@ -73,20 +90,9 @@ impl HttpTransport {
             .header("HTTP-Referer", "https://github.com/omznc/garmin-companion")
             .header("X-Title", "Garmin Companion")
     }
-}
 
-impl Transport for HttpTransport {
-    async fn complete(
-        &self,
-        messages: &[Value],
-        tools: Option<&Value>,
-        sink: &dyn EventSink,
-        stop: &AtomicBool,
-    ) -> Result<StreamResult> {
-        let mut body = json!({ "model": self.model, "messages": messages, "stream": true });
-        if let Some(tools) = tools {
-            body["tools"] = tools.clone();
-        }
+    async fn send(&self, mut body: Value) -> Result<reqwest::Response> {
+        body["model"] = json!(self.model);
         let resp = self
             .request(&body)
             .send()
@@ -101,17 +107,46 @@ impl Transport for HttpTransport {
                 text.chars().take(300).collect::<String>()
             ));
         }
-        let mut parser = SseParser::default();
-        let mut stream = resp.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            if stop.load(Ordering::Relaxed) {
-                // A half-built tool call is dropped: nobody waits for it.
-                let mut out = parser.finish();
-                out.tool_calls.clear();
-                return Ok(out);
-            }
-            parser.feed(&chunk.context("the model stream was cut short")?, sink)?;
-        }
-        Ok(parser.finish())
+        Ok(resp)
     }
+}
+
+impl Transport for HttpTransport {
+    async fn complete(
+        &self,
+        messages: &[Value],
+        tools: Option<&Value>,
+        sink: &dyn EventSink,
+        stop: &AtomicBool,
+    ) -> Result<StreamResult> {
+        let mut body = json!({ "messages": messages, "stream": true });
+        if let Some(tools) = tools {
+            body["tools"] = tools.clone();
+        }
+        let resp = match &self.cloud {
+            // The worker sets the model: the body carries none.
+            Some(cloud) => cloud.chat(&body).await?,
+            None => self.send(body).await?,
+        };
+        read_stream(resp, sink, stop).await
+    }
+}
+
+async fn read_stream(
+    resp: reqwest::Response,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+) -> Result<StreamResult> {
+    let mut parser = SseParser::default();
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        if stop.load(Ordering::Relaxed) {
+            // A half-built tool call is dropped: nobody waits for it.
+            let mut out = parser.finish();
+            out.tool_calls.clear();
+            return Ok(out);
+        }
+        parser.feed(&chunk.context("the model stream was cut short")?, sink)?;
+    }
+    Ok(parser.finish())
 }
