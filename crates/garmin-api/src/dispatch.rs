@@ -230,6 +230,9 @@ mod tests {
     #[test]
     fn error_serializes_with_a_kind() {
         let json = serde_json::to_string(&ApiError::UnknownCommand("x".into())).unwrap();
-        assert_eq!(json, r#"{"kind":"unknown_command","message":"x"}"#);
+        assert_eq!(
+            json,
+            r#"{"kind":"unknown_command","message":"unknown command: x"}"#
+        );
     }
 }
