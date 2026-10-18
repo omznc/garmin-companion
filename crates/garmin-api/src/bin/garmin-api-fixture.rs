@@ -13,7 +13,7 @@
 //!   `today.health_only.json`, `today.new_user.json`). All are safe to commit.
 
 use chrono::NaiveDate;
-use garmin_api::personas::{sample_day, seed, Persona};
+use garmin_api::personas::{activity_fixtures, sample_day, seed, Persona};
 use garmin_api::{open_db, today_view};
 use std::path::{Path, PathBuf};
 
@@ -61,16 +61,40 @@ fn write_persona(persona: Persona, out: &Path) -> Result<(), Box<dyn std::error:
     seed(&db, persona, day)?;
     let result = today_view(&db, day)
         .map_err(Into::into)
-        .and_then(|v| write_view(&v, out));
+        .and_then(|v| write_view(&v, out))
+        .and_then(|()| write_activities(&db, persona, out.parent()));
     let _ = std::fs::remove_dir_all(dir);
     result
 }
 
+/// The Activities list and detail files go next to the Today file.
+fn write_activities(
+    db: &garmin_core::Db,
+    persona: Persona,
+    dir: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = dir.map_or_else(fixtures_dir, Path::to_path_buf);
+    let (list, detail) = activity_fixtures(db)?;
+    write_json(&list, &dir.join(persona.activities_file_name()))?;
+    let path = dir.join(persona.detail_file_name());
+    match detail {
+        Some(d) => write_json(&d, &path),
+        None => {
+            let _ = std::fs::remove_file(&path);
+            Ok(())
+        }
+    }
+}
+
 fn write_view(view: &garmin_api::TodayView, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    write_json(view, out)
+}
+
+fn write_json(value: &impl serde::Serialize, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(dir) = out.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(out, serde_json::to_string_pretty(view)? + "\n")?;
+    std::fs::write(out, serde_json::to_string_pretty(value)? + "\n")?;
     eprintln!("wrote {}", out.display());
     Ok(())
 }

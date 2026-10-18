@@ -1,0 +1,155 @@
+{
+  "empty": false,
+  "groups": [
+    {
+      "date": "2026-03-11",
+      "label": "Today",
+      "sessions": [
+        {
+          "activityId": 9200000,
+          "name": "Motorcycling",
+          "sportLabel": "Motorcycling",
+          "family": "nonExercise",
+          "time": "17:30",
+          "headline": "58.0 km",
+          "detail": "1h 00m - 96 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-10",
+      "label": "Yesterday",
+      "sessions": [
+        {
+          "activityId": 9200001,
+          "name": "Motorcycling",
+          "sportLabel": "Motorcycling",
+          "family": "nonExercise",
+          "time": "17:30",
+          "headline": "58.0 km",
+          "detail": "1h 00m - 96 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-09",
+      "label": "Mon 09 Mar",
+      "sessions": [
+        {
+          "activityId": 9100000,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 10m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-05",
+      "label": "Thu 05 Mar",
+      "sessions": [
+        {
+          "activityId": 9100001,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 14m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-01",
+      "label": "Sun 01 Mar",
+      "sessions": [
+        {
+          "activityId": 9100002,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 18m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-25",
+      "label": "Wed 25 Feb",
+      "sessions": [
+        {
+          "activityId": 9100003,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 22m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-21",
+      "label": "Sat 21 Feb",
+      "sessions": [
+        {
+          "activityId": 9100004,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 26m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-17",
+      "label": "Tue 17 Feb",
+      "sessions": [
+        {
+          "activityId": 9100005,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 30m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-13",
+      "label": "Fri 13 Feb",
+      "sessions": [
+        {
+          "activityId": 9100006,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 34m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-09",
+      "label": "Mon 09 Feb",
+      "sessions": [
+        {
+          "activityId": 9100007,
+          "name": "Golf",
+          "sportLabel": "Golf",
+          "family": "golf",
+          "time": "09:00",
+          "headline": "4h 38m",
+          "detail": "104 bpm avg"
+        }
+      ]
+    }
+  ]
+}

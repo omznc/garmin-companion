@@ -7,6 +7,7 @@
 //! Only read paths exist for now: the Today view model and the cache reads. Nothing here talks to
 //! Garmin over the network.
 
+pub mod activities;
 mod derive;
 mod dispatch;
 mod error;
@@ -15,6 +16,7 @@ mod profile;
 mod text;
 pub mod today;
 
+pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;

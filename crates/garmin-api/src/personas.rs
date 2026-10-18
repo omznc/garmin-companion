@@ -49,6 +49,35 @@ impl Persona {
     }
 }
 
+impl Persona {
+    pub fn activities_file_name(self) -> String {
+        format!("activities.{}.json", self.name())
+    }
+
+    pub fn detail_file_name(self) -> String {
+        format!("activity.{}.json", self.name())
+    }
+}
+
+/// The Activities views of a seeded persona: the list, and the detail of its
+/// newest exercise session. A persona with no session has no detail.
+pub fn activity_fixtures(
+    db: &Db,
+) -> Result<(crate::ActivitiesView, Option<crate::ActivityDetailView>), crate::ApiError> {
+    let list = crate::activities_view(db, sample_day(), 60)?;
+    let newest = list
+        .groups
+        .iter()
+        .flat_map(|g| &g.sessions)
+        .find(|c| c.family != garmin_core::Family::NonExercise)
+        .map(|c| c.activity_id);
+    let detail = match newest {
+        Some(id) => crate::activity_detail_view(db, id)?,
+        None => None,
+    };
+    Ok((list, detail))
+}
+
 pub fn sample_day() -> NaiveDate {
     NaiveDate::from_ymd_opt(SAMPLE_DAY.0, SAMPLE_DAY.1, SAMPLE_DAY.2).unwrap()
 }
@@ -71,7 +100,101 @@ pub fn seed(db: &Db, persona: Persona, today: NaiveDate) -> Result<(), Box<dyn s
     for a in activities {
         db.upsert_activity(&serde_json::from_value(a)?)?;
     }
+    seed_detail(db, persona)
+}
+
+/// The newest run gets laps and a series. The newest strength session gets sets.
+fn seed_detail(db: &Db, persona: Persona) -> Result<(), Box<dyn std::error::Error>> {
+    match persona {
+        Persona::Sample => {
+            let a = db.activity(9_000_000)?.ok_or("no seeded run")?;
+            let analysis = garmin_core::analysis::analyse(
+                &a,
+                Some(&run_details()),
+                Some(&run_splits()),
+                None,
+                &[],
+                Vec::new(),
+                "2026-03-11T08:00:00",
+            );
+            let key = garmin_core::analysis::fingerprint(&a, &[]);
+            db.save_activity_analysis(
+                a.activity_id,
+                &key,
+                &analysis.computed_at,
+                &serde_json::to_string(&analysis)?,
+            )?;
+        }
+        Persona::Gym => {
+            let sets = garmin_core::strength::parse_sets(9_300_000, &gym_sets());
+            db.save_exercise_sets(9_300_000, &sets)?;
+        }
+        _ => {}
+    }
     Ok(())
+}
+
+/// 120 samples of a steady run with a small hill.
+fn run_details() -> Value {
+    let rows: Vec<Value> = (0..120)
+        .map(|i| {
+            let t = i as f64;
+            json!({ "metrics": [
+                t * 18.0,
+                140.0 + t / 6.0 + (t / 9.0).sin() * 4.0,
+                2.9 + (t / 15.0).sin() * 0.2,
+                30.0 + (t / 20.0).sin() * 12.0,
+                t * 52.0,
+            ]})
+        })
+        .collect();
+    json!({
+        "metricDescriptors": [
+            { "key": "sumElapsedDuration", "metricsIndex": 0 },
+            { "key": "directHeartRate", "metricsIndex": 1 },
+            { "key": "directSpeed", "metricsIndex": 2 },
+            { "key": "directElevation", "metricsIndex": 3 },
+            { "key": "sumDistance", "metricsIndex": 4 },
+        ],
+        "activityDetailMetrics": rows,
+    })
+}
+
+fn run_splits() -> Value {
+    let laps: Vec<Value> = (0..6)
+        .map(|i| {
+            json!({
+                "lapIndex": i + 1,
+                "distance": 1_000.0,
+                "duration": 345.0 + (i * 7 % 13) as f64,
+                "averageHR": 142.0 + i as f64 * 2.0,
+                "maxHR": 150.0 + i as f64 * 2.0,
+                "elevationGain": 4.0,
+            })
+        })
+        .collect();
+    json!({ "lapDTOs": laps })
+}
+
+/// Four work sets with a rest after each. The guess on the first is made up.
+fn gym_sets() -> Value {
+    let mut sets = Vec::new();
+    for i in 0..4 {
+        let exercise = if i == 0 {
+            json!([{ "category": "BENCH_PRESS", "probability": 88.0 }])
+        } else {
+            json!([])
+        };
+        sets.push(json!({
+            "messageIndex": i * 2, "setType": "ACTIVE", "duration": 38.0 + i as f64,
+            "repetitionCount": 10 - i, "exercises": exercise,
+        }));
+        sets.push(json!({
+            "messageIndex": i * 2 + 1, "setType": "REST", "duration": 75.0 + i as f64 * 10.0,
+            "exercises": [],
+        }));
+    }
+    json!({ "exerciseSets": sets })
 }
 
 /// Recovery data for `days` days. A food log on four days when `food` is set.
@@ -356,6 +479,103 @@ mod tests {
         assert_eq!(sections(Persona::NewUser), ["health_tiles"]);
         assert_no_running_copy(Persona::NewUser);
         assert!(view(Persona::NewUser).profile.new_user);
+    }
+
+    fn fixtures_of(p: Persona) -> (crate::ActivitiesView, Option<crate::ActivityDetailView>) {
+        let dir = std::env::temp_dir().join(format!(
+            "garmin-api-act-{}-{}-{:?}",
+            std::process::id(),
+            p.name(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = open_db(&dir.join("cache.sqlite3")).unwrap();
+        seed(&db, p, sample_day()).unwrap();
+        let out = activity_fixtures(&db).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        out
+    }
+
+    #[test]
+    fn the_runner_detail_has_zones_laps_and_a_chart() {
+        let (list, detail) = fixtures_of(Persona::Sample);
+        assert_eq!(list.groups[0].label, "Today");
+        assert!(list.groups[0].sessions[0].headline.ends_with("km"));
+        let d = detail.unwrap();
+        assert!(d.zones.is_some() && d.strength.is_none());
+        assert_eq!(d.laps.len(), 6);
+        let chart = d.chart.unwrap();
+        assert_eq!(chart.hr.len(), 120);
+        assert!(!chart.elevation.is_empty());
+    }
+
+    #[test]
+    fn the_gym_detail_has_sets_and_no_zone_verdict() {
+        let (list, detail) = fixtures_of(Persona::Gym);
+        assert_eq!(list.groups[0].sessions[0].headline, "4 sets");
+        let d = detail.unwrap();
+        assert!(d.zones.is_none() && d.laps.is_empty() && d.chart.is_none());
+        let s = d.strength.unwrap();
+        assert_eq!(s.sets.len(), 4);
+        assert_eq!(s.sets[0].exercise.as_deref(), Some("Bench press (guess)"));
+        assert!(s.sets[3].rest.is_some());
+    }
+
+    #[test]
+    fn the_golfer_list_has_a_duration_headline_and_no_run_stats() {
+        let (list, detail) = fixtures_of(Persona::Golfer);
+        let golf = list
+            .groups
+            .iter()
+            .flat_map(|g| &g.sessions)
+            .find(|c| c.family == garmin_core::Family::Golf)
+            .unwrap();
+        assert!(golf.headline.contains('h'), "{}", golf.headline);
+        let d = detail.unwrap();
+        assert!(d.zones.is_none() && d.laps.is_empty());
+        assert!(!d
+            .stats
+            .iter()
+            .any(|s| s.label == "Pace" || s.label == "Cadence"));
+    }
+
+    #[test]
+    fn a_user_without_sessions_has_an_empty_list() {
+        for p in [Persona::HealthOnly, Persona::NewUser] {
+            let (list, detail) = fixtures_of(p);
+            assert!(list.empty && list.groups.is_empty() && detail.is_none());
+        }
+    }
+
+    #[test]
+    fn committed_activity_fixtures_are_current() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+        for p in Persona::ALL {
+            let (list, detail) = fixtures_of(p);
+            let want = serde_json::to_string_pretty(&list).unwrap()
+                + "
+";
+            let have =
+                std::fs::read_to_string(dir.join(p.activities_file_name())).unwrap_or_default();
+            assert_eq!(
+                have,
+                want,
+                "stale activities for {}: run the fixture bin with --personas",
+                p.name()
+            );
+            let path = dir.join(p.detail_file_name());
+            match detail {
+                Some(d) => assert_eq!(
+                    std::fs::read_to_string(&path).unwrap_or_default(),
+                    serde_json::to_string_pretty(&d).unwrap()
+                        + "
+",
+                    "stale detail for {}",
+                    p.name()
+                ),
+                None => assert!(!path.exists(), "{} should not exist", path.display()),
+            }
+        }
     }
 
     /// The committed files must match what the code writes now.

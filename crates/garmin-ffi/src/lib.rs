@@ -15,6 +15,9 @@ uniffi::setup_scaffolding!();
 
 const TODAY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/today.sample.json");
 
+const ACTIVITIES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activities.sample.json");
+const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.sample.json");
+
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -112,6 +115,8 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
 async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
     match cmd {
         "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
+        "activities" if fixture => Ok(ACTIVITIES_SAMPLE.to_owned()),
+        "activity_detail" if fixture => Ok(ACTIVITY_SAMPLE.to_owned()),
         "sync" => Ok(run_sync(args).await),
         // Demo only: `today` for a chosen day, for a cache that is not current.
         "today" if args.get("date").is_some() => run_today_on(args).await,
