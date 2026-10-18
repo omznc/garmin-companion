@@ -1,0 +1,37 @@
+{
+  "name": "react-native-garmin-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Rust core of Garmin Companion as a React Native turbo module",
+  "main": "src/index.tsx",
+  "types": "src/index.tsx",
+  "scripts": {
+    "ubrn:android": "ubrn build android --and-generate --config ubrn.config.yaml",
+    "ubrn:ios": "ubrn build ios --and-generate --config ubrn.config.yaml"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/omznc/garmin-companion.git"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "dependencies": {
+    "@ubjs/core": "*",
+    "uniffi-bindgen-react-native": "0.31.0-6"
+  },
+  "codegenConfig": {
+    "name": "GarminBridgeSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "outputDir": {
+      "ios": "ios/generated",
+      "android": "android/generated"
+    },
+    "android": {
+      "javaPackageName": "com.garminbridge"
+    }
+  }
+}
