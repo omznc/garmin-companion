@@ -163,9 +163,20 @@ function TodayBody({ today }: { today: Today }) {
   );
 }
 
+function SyncLine({ line, error }: { line: string | null; error: string | null }) {
+  const md = useMd();
+  if (!line && !error) return null;
+  return (
+    <View style={{ paddingHorizontal: 20 }}>
+      <T v="labelSmall" color={error ? md.error : md.onSurfaceVariant}>
+        {error ?? line}
+      </T>
+    </View>
+  );
+}
+
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
-  const md = useMd();
   const sync = useSync();
   return (
     <LargeAppBarScreen
@@ -173,13 +184,7 @@ export function TodayScreen() {
       refreshing={sync.busy}
       onRefresh={() => sync.refresh()}
     >
-      {sync.line || sync.error ? (
-        <View style={{ paddingHorizontal: 20 }}>
-          <T v="labelSmall" color={sync.error ? md.error : md.onSurfaceVariant}>
-            {sync.error ?? sync.line ?? ""}
-          </T>
-        </View>
-      ) : null}
+      <SyncLine line={sync.line} error={sync.error} />
       {data ? <TodayBody today={data} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}

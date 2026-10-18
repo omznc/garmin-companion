@@ -280,26 +280,13 @@ export function ListRow({
 }
 
 /** A figure with its label, in a tonal tile. Tiles of a row share the width. */
-export function Tile({
-  label,
-  value,
-  tone = "high",
-  accent,
-  half,
-}: {
-  label: string;
-  value: string;
-  tone?: Tone;
-  accent?: boolean;
-  /** A lone tile in a row keeps the width of one of two. */
-  half?: boolean;
-}) {
+export function Tile({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   const md = useMd();
-  const c = toneColors(md, tone);
+  const c = toneColors(md, accent ? "tertiary" : "secondary");
   return (
     <View
       style={{
-        ...(half ? { width: "49%" } : { flex: 1 }),
+        flex: 1,
         backgroundColor: c.bg,
         borderRadius: 24,
         padding: 16,
@@ -308,7 +295,7 @@ export function Tile({
         minHeight: 96,
       }}
     >
-      <T v="label" color={accent ? md.primary : c.quiet}>
+      <T v="label" color={c.quiet}>
         {label}
       </T>
       <T v="headlineSmall" color={c.fg}>
@@ -318,9 +305,7 @@ export function Tile({
   );
 }
 
-const TILE_TONES: Tone[] = ["secondary", "tertiary", "tertiary", "secondary"];
-
-/** Tiles in rows of two, in a checkerboard of two tones. A lone tile keeps the width of one. */
+/** Tiles in rows of two, in one tone. A tile with a signal takes the tertiary tone. A lone tile is full width. */
 export function TileGrid({
   tiles,
 }: {
@@ -330,10 +315,10 @@ export function TileGrid({
   for (let i = 0; i < tiles.length; i += 2) rows.push(tiles.slice(i, i + 2));
   return (
     <View style={{ gap: GAP }}>
-      {rows.map((row, r) => (
+      {rows.map((row) => (
         <View key={row[0]?.label} style={{ flexDirection: "row", gap: GAP }}>
-          {row.map((t, c) => (
-            <Tile key={t.label} {...t} tone={TILE_TONES[(r * 2 + c) % 4]} half={row.length === 1} />
+          {row.map((t) => (
+            <Tile key={t.label} {...t} />
           ))}
         </View>
       ))}
