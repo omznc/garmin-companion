@@ -25,7 +25,20 @@ const fixtureSource: Source = {
   version: () => "fixture",
 };
 
+const fixtureAllowed = __DEV__ || process.env.EXPO_PUBLIC_FIXTURE === "1";
+
 let sampleData = false;
+
+// The generated error has no message. Read the reason from its fields.
+function readable(error: unknown): Error {
+  const inner = (error as { inner?: { reason?: string; json?: string } }).inner;
+  if (inner?.reason) return new Error(inner.reason);
+  if (inner?.json) {
+    const detail = JSON.parse(inner.json) as { message?: string; kind?: string };
+    return new Error(detail.message ?? detail.kind ?? inner.json);
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 function bridgeSource(): Source | null {
   try {
@@ -35,11 +48,14 @@ function bridgeSource(): Source | null {
     const base = Paths.document.uri.replace(/^file:\/\//, "");
     // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build never fakes data.
     const noCache = !new File(Paths.document, "cache.sqlite3").exists;
-    sampleData = noCache && (__DEV__ || process.env.EXPO_PUBLIC_FIXTURE === "1");
+    sampleData = noCache && fixtureAllowed;
     bridge.init(base, sampleData);
     return {
       version: () => bridge.version(),
-      call: (cmd, args = {}) => bridge.call(cmd, JSON.stringify(args)),
+      call: (cmd, args = {}) =>
+        bridge.call(cmd, JSON.stringify(args)).catch((error) => {
+          throw readable(error);
+        }),
       subscribe: (listener) => {
         const sub = bridge.subscribe({
           onEvent: (kind, payload) => listener({ kind, payload: JSON.parse(payload) }),
@@ -54,9 +70,14 @@ function bridgeSource(): Source | null {
 }
 
 const bridgeImpl = bridgeSource();
-const impl: Source = bridgeImpl ?? fixtureSource;
+const unavailable: Source = {
+  call: () => Promise.reject(new Error("The Rust bridge is not available in this build.")),
+  subscribe: () => () => {},
+  version: () => "unavailable",
+};
+const impl: Source = bridgeImpl ?? (fixtureAllowed ? fixtureSource : unavailable);
 
-export const sourceKind = bridgeImpl ? "bridge" : "fixture";
+export const sourceKind = bridgeImpl ? "bridge" : impl === fixtureSource ? "fixture" : "none";
 
 export async function callJson<T>(cmd: string, args: unknown = {}): Promise<T> {
   return JSON.parse(await impl.call(cmd, args)) as T;
@@ -83,6 +104,6 @@ export async function fetchToday(): Promise<Today> {
     ? (persona as TodayView)
     : await callJson<TodayView>("today", demoDate ? { date: demoDate } : {});
   const today = presentToday(view);
-  const sample = sampleData || !bridgeImpl || persona !== undefined;
+  const sample = sampleData || impl === fixtureSource || persona !== undefined;
   return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;
 }

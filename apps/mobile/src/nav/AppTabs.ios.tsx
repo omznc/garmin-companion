@@ -1,4 +1,4 @@
-// Native iOS tab bar. UNVERIFIED until it runs on the iOS Simulator.
+// Native iOS tab bar.
 import { NativeTabs } from "expo-router/native-tabs";
 import { TABS } from "./tabs";
 
