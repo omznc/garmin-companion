@@ -17,8 +17,7 @@ pub const DEFAULT_OPENROUTER_MODEL: &str = "inclusionai/ling-3.0-flash";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
-    /// The hosted coach with credits. It is not in this build: the slot exists
-    /// so that a saved choice and a later backend have a place.
+    /// The hosted coach with credits ("Garmin Companion cloud"). See `cloud.rs`.
     Cloud,
     Openrouter,
     Ollama,
@@ -42,7 +41,7 @@ impl Provider {
         }
     }
 
-    /// The base URL of the chat API. The hosted coach has none yet.
+    /// The base URL of the chat API. The hosted coach has its own client.
     pub(crate) fn base(self) -> Option<&'static str> {
         match self {
             Self::Cloud => None,
@@ -72,11 +71,29 @@ pub struct ChatConfig {
     pub ollama_models: Vec<String>,
 }
 
+/// The provider when none was saved. Own OpenRouter key first, else the hosted
+/// coach. A local Ollama needs a model name, so the user picks it on purpose.
+pub(crate) fn default_provider(has_own_key: bool) -> Provider {
+    if has_own_key {
+        Provider::Openrouter
+    } else {
+        Provider::Cloud
+    }
+}
+
+/// The saved choice, or the default. The provider is always set.
 pub fn load_config(db: &Db) -> Result<(Option<Provider>, Option<String>)> {
-    let provider = db
+    let provider = match db
         .sync_state("chat_provider")?
-        .and_then(|s| Provider::parse(&s));
-    let model = match (db.sync_state("chat_model")?, provider) {
+        .and_then(|s| Provider::parse(&s))
+    {
+        Some(p) => p,
+        None => default_provider(matches!(openrouter_key(), Ok(Some(_)))),
+    };
+    let provider = Some(provider);
+    // An empty model was saved by an older build when it chose the hosted coach.
+    let saved = db.sync_state("chat_model")?.filter(|m| !m.is_empty());
+    let model = match (saved, provider) {
         (Some(m), _) => Some(m),
         (None, Some(p)) => p.default_model().map(str::to_string),
         (None, None) => None,
@@ -130,8 +147,38 @@ mod tests {
     }
 
     #[test]
-    fn only_the_hosted_coach_has_no_base_url_yet() {
+    fn the_hosted_coach_has_its_own_client_and_no_base_url() {
         assert!(Provider::Cloud.base().is_none());
         assert!(Provider::Ollama.base().is_some());
+    }
+
+    #[test]
+    fn the_hosted_coach_is_the_default_without_an_own_key() {
+        assert_eq!(default_provider(false), Provider::Cloud);
+        assert_eq!(default_provider(true), Provider::Openrouter);
+    }
+
+    #[test]
+    fn an_empty_saved_model_reads_as_none() {
+        let path = std::env::temp_dir().join(format!("gc-config-{}.db", std::process::id()));
+        let db = Db::open(&path).unwrap();
+        // What an older build saved when it chose the hosted coach.
+        save_config(&db, Provider::Cloud, "").unwrap();
+        assert_eq!(load_config(&db).unwrap(), (Some(Provider::Cloud), None));
+        save_config(&db, Provider::Openrouter, "").unwrap();
+        let (provider, model) = load_config(&db).unwrap();
+        assert_eq!(provider, Some(Provider::Openrouter));
+        assert_eq!(model.as_deref(), Some(DEFAULT_OPENROUTER_MODEL));
+        save_config(&db, Provider::Ollama, "llama3.2").unwrap();
+        assert_eq!(load_config(&db).unwrap().1.as_deref(), Some("llama3.2"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn no_saved_choice_gives_a_provider() {
+        let path = std::env::temp_dir().join(format!("gc-config-new-{}.db", std::process::id()));
+        let db = Db::open(&path).unwrap();
+        assert!(load_config(&db).unwrap().0.is_some());
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -5,7 +5,9 @@
 //! the old screen comes with the screens it belongs to.
 
 use garmin_api::settings::{SettingsView, ThemeMode};
-use gpui::{div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, FontWeight};
+use gpui::{
+    div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, FontWeight, Window,
+};
 
 use crate::account::Sync;
 use crate::controls::quiet;
@@ -14,7 +16,7 @@ use crate::theme::{Theme, FS_CAPTION, FS_MD, FS_SMALL};
 use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, MONO, SANS};
 
 /// A section: its marker, then the content, with the same air above each.
-fn section(first: bool, title: &str, t: &Theme) -> Div {
+pub(crate) fn section(first: bool, title: &str, t: &Theme) -> Div {
     div()
         .mt(px(if first { 0.0 } else { 62.0 }))
         .child(div().mb(px(20.0)).child(eyebrow(title.to_string(), t)))
@@ -130,13 +132,13 @@ fn appearance(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
         .child(theme_choice(root, t, cx))
 }
 
-fn prose(text: &str, t: &Theme) -> Div {
+pub(crate) fn prose(text: &str, t: &Theme) -> Div {
     body(text.to_string(), FS_MD, t.mutd)
         .line_height(relative(1.7))
         .max_w(ch(62.0, FS_MD))
 }
 
-pub fn render(root: &Root, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
+pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> AnyElement {
     let Some(view) = root.account.settings.clone() else {
         return div().into_any_element();
     };
@@ -159,6 +161,7 @@ pub fn render(root: &Root, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
             .max_w(ch(62.0, FS_MD)),
         ))
         .child(block_in(k, 2, garmin(root, &view, t, cx)))
+        .child(block_in(k, 3, crate::cloud::render(root, t, window, cx)))
         .child(block_in(k, 3, appearance(root, t, cx)))
         .child(block_in(
             k,

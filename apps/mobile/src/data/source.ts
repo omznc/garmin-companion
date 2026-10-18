@@ -100,6 +100,18 @@ async function fixtureTurn() {
   send({ type: "done", sources: [] });
 }
 
+// The Expo Go coach state. It lives in memory and resets on reload.
+let fixtureProvider = "cloud";
+const fixtureCloud = {
+  premium: false,
+  email: null,
+  creditsRemaining: 27,
+  creditsLine: "27 of 30 credits left today.",
+  planLine: "Free plan: 30 credits a day.",
+  out: false,
+  low: false,
+};
+
 const fixtureSource: Source = {
   async call(cmd, args) {
     if (cmd === "today") return JSON.stringify(fixture);
@@ -127,7 +139,14 @@ const fixtureSource: Source = {
       return "{}";
     }
     if (cmd === "ask_config")
-      return JSON.stringify({ provider: "ollama", model: "sample", hasKey: false });
+      return JSON.stringify({ provider: fixtureProvider, model: "sample", hasKey: false });
+    if (cmd === "ask_save_config") {
+      fixtureProvider = (args as { provider: string }).provider;
+      return "{}";
+    }
+    if (cmd === "cloud_account") return JSON.stringify(fixtureCloud);
+    if (cmd === "cloud_sign_out") return "{}";
+    if (cmd.startsWith("cloud_")) throw new Error("Email sign-in is not available in this build.");
     throw new Error(`no fixture for command: ${cmd}`);
   },
   subscribe: (listener) => {

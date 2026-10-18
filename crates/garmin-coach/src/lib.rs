@@ -10,6 +10,7 @@
 //!
 //! The Tauri crate has its own older copy of this engine. That app is frozen.
 
+mod cloud;
 mod config;
 mod prompt;
 mod sse;
@@ -17,6 +18,10 @@ mod tools;
 mod transport;
 mod turn;
 
+pub use cloud::{
+    error_kind, until, AccountView, Balance, CloudClient, CloudError, KeyringVault, MemoryVault,
+    Vault, CLOUD_BASE,
+};
 pub use config::{
     load_config, probe_ollama, save_config, ChatConfig, Provider, DEFAULT_OPENROUTER_MODEL,
 };
