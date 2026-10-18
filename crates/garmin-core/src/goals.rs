@@ -101,6 +101,7 @@ pub fn week_progress(
 
     let this_week: Vec<&CachedActivity> = activities
         .iter()
+        .filter(|a| crate::sport::is_exercise(a.type_key.as_deref()))
         .filter(|a| {
             a.local_date
                 .as_deref()

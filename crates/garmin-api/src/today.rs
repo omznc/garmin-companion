@@ -9,8 +9,8 @@
 
 use crate::derive::{
     above_z2_pct, attention, comparable_resting_hr, count_sessions, daily_distance, daily_minutes,
-    daily_series, date_key, fuel, has_zone_data, hydration, is_run, latest, mean, Fuel, Hydration,
-    Latest, Observation,
+    daily_series, date_key, days_since, fuel, has_zone_data, hydration, is_run, latest, mean, Fuel,
+    Hydration, Latest, Observation,
 };
 use crate::profile::{activity_profile, ActivityProfile};
 use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence};
@@ -154,10 +154,13 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
     let food = fuel(&rows, 7);
     let water = hydration(&rows, 7);
 
+    let profile = activity_profile(&activities, data_days, today);
+    let visible = run_visible(&activities, &profile, today);
+
     let mut view = TodayView {
         date: date_key(today),
         empty,
-        lede: narrative(&rows, &activities, today),
+        lede: narrative(&rows, &visible, today),
         sleep: latest(&rows, |d| d.sleep_secs),
         body_battery: latest(&rows, |d| d.body_battery_high),
         readiness: latest(&rows, |d| d.training_readiness),
@@ -175,15 +178,34 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
             rate_kg_per_week: weight.rate_kg_per_week,
             count: weight.count,
         }),
-        attention: attention(&rows, &activities, today),
+        attention: attention(&rows, &visible, today),
         last_session: activities.first().map(last_session),
-        zone_drift: zone_drift(&activities),
+        zone_drift: zone_drift(&visible),
         week: week(&activities, today),
-        profile: activity_profile(&activities, data_days, today),
+        profile,
         sections: Vec::new(),
     };
     view.sections = sections(&view);
     Ok(view)
+}
+
+/// The sessions that run-only copy may read. A run counts only when the user
+/// is active in endurance sport and the run is inside the profile window, so a
+/// user who stopped running does not get run advice from an old session.
+fn run_visible(
+    activities: &[CachedActivity],
+    profile: &ActivityProfile,
+    today: NaiveDate,
+) -> Vec<CachedActivity> {
+    let runs_count = profile.active.contains(&Family::Endurance);
+    activities
+        .iter()
+        .filter(|a| {
+            !is_run(&a.type_key)
+                || (runs_count && days_since(a, today).is_some_and(|d| d < profile.window_days))
+        })
+        .cloned()
+        .collect()
 }
 
 /// The sections to draw, in order. Health first. A sport section appears only
@@ -203,7 +225,7 @@ fn sections(v: &TodayView) -> Vec<String> {
             health.iter().any(|t| t.is_some()) || v.resting_hr.is_some(),
         ),
         ("attention", !v.attention.is_empty()),
-        ("fuel", v.fuel.logged > 0),
+        ("fuel", v.fuel.logged > 0 || v.hydration.is_some()),
         ("weight", v.weight.is_some()),
         ("last_session", v.last_session.is_some()),
         ("week", v.profile.tracks_activity || v.week.sessions > 0),

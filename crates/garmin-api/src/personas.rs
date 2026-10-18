@@ -308,6 +308,41 @@ mod tests {
     }
 
     #[test]
+    fn old_runs_do_not_bring_run_copy_to_a_gym_user() {
+        let dir = std::env::temp_dir().join(format!(
+            "garmin-api-oldruns-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = open_db(&dir.join("cache.sqlite3")).unwrap();
+        seed(&db, Persona::Gym, sample_day()).unwrap();
+        for n in 0..2i64 {
+            let date = sample_day() - Duration::days(170 + n);
+            let run = json!({
+                "activityId": 9_900_000 + n,
+                "startTimeLocal": at(date, "07:00:00"),
+                "distance": 5_000.0,
+                "duration": 1_800.0,
+                "averageHR": 150.0,
+                "activityType": { "typeKey": "treadmill_running" },
+                "hrTimeInZone_1": 100.0,
+                "hrTimeInZone_2": 400.0,
+                "hrTimeInZone_3": 1_000.0,
+                "hrTimeInZone_4": 300.0,
+                "hrTimeInZone_5": 0.0,
+            });
+            db.upsert_activity(&serde_json::from_value(run).unwrap())
+                .unwrap();
+        }
+        let v = today_view(&db, sample_day()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        let text = copy(&v);
+        assert!(!text.contains("run") && !text.contains("z2") && !text.contains("vo2"));
+        assert!(!v.sections.contains(&"zone_drift".to_string()));
+    }
+
+    #[test]
     fn the_health_only_user_gets_health_sections_alone() {
         assert_eq!(sections(Persona::HealthOnly), ["health_tiles"]);
         assert_no_running_copy(Persona::HealthOnly);

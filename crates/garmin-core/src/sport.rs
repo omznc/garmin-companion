@@ -81,10 +81,13 @@ pub fn is_exercise(type_key: Option<&str>) -> bool {
 
 /// Whether a zone verdict ("above Z2") says anything true about the session.
 pub fn shows_zone_verdict(type_key: Option<&str>) -> bool {
-    matches!(
-        discipline(type_key),
-        Discipline::Paced | Discipline::Endurance
-    ) && is_exercise(type_key)
+    // Both tests: the table says gym for indoor cardio and the discipline says
+    // endurance. A verdict needs the two to agree. Swim has unreliable wrist HR.
+    family(type_key) == Family::Endurance
+        && matches!(
+            discipline(type_key),
+            Discipline::Paced | Discipline::Endurance
+        )
 }
 
 /// A readable name for a type key: `treadmill_running` is "Treadmill running"
@@ -162,6 +165,8 @@ mod tests {
         assert!(shows_zone_verdict(Some("cycling")));
         assert!(!shows_zone_verdict(Some("strength_training")));
         assert!(!shows_zone_verdict(Some("golf")));
+        assert!(!shows_zone_verdict(Some("indoor_cardio")));
+        assert!(!shows_zone_verdict(Some("lap_swimming")));
         assert!(!shows_zone_verdict(Some("motorcycling_v2")));
         assert!(!shows_zone_verdict(None));
     }

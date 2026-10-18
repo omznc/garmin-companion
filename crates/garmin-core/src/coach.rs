@@ -936,7 +936,9 @@ pub fn for_today(db: &crate::Db, today: NaiveDate) -> anyhow::Result<CoachReport
         .to_string();
 
     let goals = Goals::load(db)?;
-    let activities = db.activities_since(&from)?;
+    // A motorcycle ride is not a session, a hard one included.
+    let mut activities = db.activities_since(&from)?;
+    activities.retain(|a| crate::sport::is_exercise(a.type_key.as_deref()));
     let daily = db.daily_since(&from)?;
     let fitness = db.fitness_since(&from)?.into_iter().next();
     let week = crate::goals::week_progress(&goals, &activities, today);

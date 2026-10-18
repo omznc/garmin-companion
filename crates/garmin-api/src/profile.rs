@@ -49,12 +49,6 @@ pub struct ActivityProfile {
     pub new_user: bool,
 }
 
-impl ActivityProfile {
-    pub fn is_active(&self, f: Family) -> bool {
-        self.active.contains(&f)
-    }
-}
-
 /// Build the profile. `exercise` must not hold non-exercise sessions.
 pub fn activity_profile(
     exercise: &[CachedActivity],
@@ -98,10 +92,10 @@ pub fn activity_profile(
         .collect();
     let total: f64 = families.iter().map(|s| s.minutes).sum();
     let primary = families
-        .first()
+        .iter()
+        .find(|s| active.contains(&s.family))
         .filter(|top| total > 0.0 && top.minutes / total > PRIMARY_SHARE)
-        .map(|top| top.family)
-        .filter(|f| active.contains(f));
+        .map(|top| top.family);
 
     ActivityProfile {
         window_days: WINDOW_DAYS,
@@ -166,6 +160,17 @@ mod tests {
         let p = activity_profile(&[act("2026-01-20", "golf", 120.0)], 40, today());
         assert_eq!(p.families.len(), 1);
         assert!(p.active.is_empty() && p.primary.is_none());
+    }
+
+    #[test]
+    fn primary_comes_from_the_active_families() {
+        let acts = [
+            act("2026-01-20", "hiking", 300.0),
+            act("2026-03-10", "strength_training", 125.0),
+            act("2026-03-05", "strength_training", 125.0),
+        ];
+        let p = activity_profile(&acts, 40, today());
+        assert_eq!(p.primary, Some(Family::Gym));
     }
 
     #[test]
