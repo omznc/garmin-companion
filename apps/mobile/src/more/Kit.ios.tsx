@@ -43,7 +43,7 @@ export function Page({
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
-      <Stack.Screen options={{ title, headerLargeTitle: !!large }} />
+      <Stack.Screen options={large ? { title, headerLargeTitle: true } : { title }} />
       {children}
     </ScrollView>
   );
@@ -134,7 +134,7 @@ function toneColor(tone: ItemProps["tone"]): ColorValue {
 }
 
 export function Item({ title, value, icon, chevron, checked, tone, disabled, onPress }: ItemProps) {
-  const color = toneColor(tone);
+  const color = disabled ? PlatformColor("tertiaryLabel") : toneColor(tone);
   return (
     <Pressable
       accessibilityRole={onPress ? "button" : "text"}
@@ -147,7 +147,6 @@ export function Item({ title, value, icon, chevron, checked, tone, disabled, onP
         minHeight: 44,
         paddingHorizontal: 16,
         paddingVertical: 8,
-        opacity: disabled ? 0.4 : 1,
         backgroundColor: pressed ? PlatformColor("systemFill") : "transparent",
       })}
     >
