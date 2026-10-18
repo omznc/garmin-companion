@@ -1,0 +1,67 @@
+{
+  "who": "Alex Example",
+  "syncedAgo": "5 minutes ago",
+  "eyebrow": "Saturday, 8 August",
+  "title": "Saturday, Alex.",
+  "lede": "You slept 7h 02m, above your recent average. Body battery peaked at 84 and Garmin puts your readiness at 71. Yesterday's session was 8.4 km running. Across your last 5 runs with heart-rate data, 31% of the time was above Z2, which is where you want it.",
+  "metrics": [
+    { "label": "Sleep", "value": [{ "text": "7" }, { "text": "h", "unit": true }, { "text": " 02" }, { "text": "m", "unit": true }] },
+    { "label": "Body battery", "value": [{ "text": "84" }] },
+    { "label": "Readiness", "value": [{ "text": "71" }] },
+    { "label": "HRV", "value": [{ "text": "58" }, { "text": " ms", "unit": true }] },
+    { "label": "Resting HR · +4 vs 30d", "value": [{ "text": "52" }], "accent": true },
+    { "label": "Fuel balance", "value": [{ "text": "-612" }, { "text": " kcal", "unit": true }], "accent": true }
+  ],
+  "fuelNote": "Today: 1,980 kcal in against 2,592 burned — a 612 kcal deficit. Across the 6 of 7 days you logged, the average was -240 kcal.",
+  "weightNote": "Weight trend 74.2 kg, down 0.10 kg a week.",
+  "attention": [
+    {
+      "text": "31% of your last 5 runs with heart-rate data was above Z2. The 80/20 target is 20%.",
+      "accent": true,
+      "spark": [22, 38, 25, 44, 31],
+      "link": { "label": "Insights" }
+    },
+    {
+      "text": "Cadence is averaging 168 spm across your recent runs. Steady, and close to where most runners settle."
+    },
+    {
+      "text": "Resting heart rate is 4 bpm above your 30 day baseline. One reading is not a trend, but watch it for the next few mornings.",
+      "accent": true,
+      "spark": [48, 49, 48, 50, 49, 51, 52],
+      "link": { "label": "Health" }
+    }
+  ],
+  "lastSession": {
+    "name": "Morning Run",
+    "detail": "Running · 7 Aug · 31% above Z2",
+    "zones": [18.0, 51.0, 20.0, 9.0, 2.0],
+    "stats": [
+      { "label": "Distance", "value": "8.4 km" },
+      { "label": "Time", "value": "52:10" },
+      { "label": "Pace", "value": "6:12 /km" },
+      { "label": "Avg HR", "value": "148" },
+      { "label": "Max HR", "value": "171" },
+      { "label": "Cadence", "value": "168 spm" },
+      { "label": "Aerobic TE", "value": "3.1" }
+    ]
+  },
+  "zoneDrift": {
+    "target": 20.0,
+    "summary": "31% above Z2 lately · 20% is the target",
+    "runs": [
+      { "date": "26 Jul", "above_z2": 14.0 },
+      { "date": "28 Jul", "above_z2": 22.0 },
+      { "date": "30 Jul", "above_z2": 38.0 },
+      { "date": "1 Aug", "above_z2": 19.0 },
+      { "date": "3 Aug", "above_z2": 25.0 },
+      { "date": "5 Aug", "above_z2": 44.0 },
+      { "date": "6 Aug", "above_z2": 18.0 },
+      { "date": "7 Aug", "above_z2": 31.0 }
+    ]
+  },
+  "week": {
+    "km": [0.0, 6.2, 0.0, 8.0, 5.1, 0.0, 8.4],
+    "axis": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    "summary": "27.7 km across 4 sessions. Distance is up 12% on the previous week — inside a sensible range."
+  }
+}
