@@ -1,0 +1,35 @@
+[package]
+name = "garmin-companion-desktop"
+version = "0.1.0"
+description = "Garmin Companion desktop app on gpui-ce"
+license = "MIT"
+edition = "2021"
+
+[[bin]]
+name = "garmin-companion"
+path = "src/main.rs"
+
+[dependencies]
+garmin-api = { path = "../../crates/garmin-api" }
+garmin-core = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# The same pin as mbrd-rs. gpui-ce follows Zed's tree and cuts releases.
+# `gpui` is the core only. The backends live in `gpui_platform`, and the three
+# features below choose them: fontconfig for Linux fonts, and both display
+# servers, so one binary runs on Wayland or X11. The features do nothing on
+# macOS and Windows.
+gpui = { package = "gpui-ce", version = "0.2.2" }
+gpui_platform = { package = "gpui_ce_platform", version = "0.1", features = [
+    "font-kit",
+    "wayland",
+    "x11",
+] }
+
+[dev-dependencies]
+# Headless windows, to send wheel events through a real layout in a test.
+gpui = { package = "gpui-ce", version = "0.2.2", features = ["test-support"] }

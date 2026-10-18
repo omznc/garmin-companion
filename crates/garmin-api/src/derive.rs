@@ -6,7 +6,7 @@
 
 use chrono::{Duration, NaiveDate};
 use garmin_core::{days_between, CachedActivity, DailyMetrics};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Garmin's minimum sleep before resting heart rate is the overnight figure.
@@ -78,7 +78,7 @@ pub fn comparable_resting_hr(rows: &[DailyMetrics]) -> Vec<DailyMetrics> {
 }
 
 /// The most recent day that has a value, with its date.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Latest {
     pub value: f64,
     pub date: String,
@@ -95,7 +95,7 @@ pub fn latest(rows: &[DailyMetrics], get: impl Fn(&DailyMetrics) -> Option<f64>)
 
 /* ------------------------------------------------------------------ fuel --- */
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fuel {
     /// The most recent day with a food log, or `None` if the window has none.
@@ -145,14 +145,14 @@ fn hydration_ml(d: &DailyMetrics) -> Option<f64> {
     d.hydration_ml.filter(|v| *v > 0.0)
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HydrationLatest {
     pub ml: f64,
     pub age: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Hydration {
     pub logged: usize,
@@ -286,24 +286,24 @@ pub fn count_sessions(activities: &[CachedActivity], days: i64, today: NaiveDate
 
 /* ---------------------------------------------------------- observations --- */
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Link {
     pub label: String,
     pub to: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
     /// Accent items are the ones worth acting on today.
     pub accent: bool,
     pub text: String,
     /// Optional 14-point series for an inline sparkline.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spark: Option<Vec<Option<f64>>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spark_unit: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<Link>,
 }
 
