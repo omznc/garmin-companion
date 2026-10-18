@@ -8,6 +8,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "externalBin": ["garmin-companion-login"],
     "publisher": "Omar Žunić",
     "homepage": "https://github.com/omznc/garmin-companion",
     "shortDescription": "Your Garmin data, read by a coach that remembers.",
@@ -28,7 +29,8 @@
       "deb": {
         "depends": [
           "libxkbcommon-x11-0",
-          "libwayland-client0", "libfontconfig1", "libvulkan1"
+          "libwayland-client0", "libfontconfig1", "libvulkan1",
+          "libwebkit2gtk-4.1-0", "libgtk-3-0"
         ],
         "section": "utils",
         "priority": "optional",
@@ -40,7 +42,8 @@
       "rpm": {
         "depends": [
           "libxkbcommon-x11",
-          "libwayland-client", "fontconfig", "vulkan-loader"
+          "libwayland-client", "fontconfig", "vulkan-loader",
+          "webkit2gtk4.1", "gtk3"
         ],
         "desktopTemplate": "../../app/src-tauri/linux/garmin-companion.desktop",
         "files": {

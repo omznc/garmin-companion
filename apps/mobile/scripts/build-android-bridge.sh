@@ -21,4 +21,9 @@ if [ -n "${PERL_EXTRA:-}" ]; then
   export PERL5LIB="$PERL_EXTRA/usr/lib64/perl5:$PERL_EXTRA/usr/lib64/perl5/vendor_perl:$PERL_EXTRA/usr/share/perl5:$PERL_EXTRA/usr/share/perl5/vendor_perl${PERL5LIB:+:$PERL5LIB}"
 fi
 
-exec ../../node_modules/.bin/ubrn build android --and-generate --config ubrn.config.yaml --profile release-mobile "$@"
+../../node_modules/.bin/ubrn build android --and-generate --config ubrn.config.yaml --profile release-mobile "$@"
+
+# The generated build.gradle names proguard-rules.pro. A release build fails
+# when the file is missing, and ubrn does not always write it. An empty file is enough.
+mkdir -p android
+[ -f android/proguard-rules.pro ] || : > android/proguard-rules.pro

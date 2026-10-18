@@ -82,10 +82,12 @@ jobs:
         run: |
           sudo apt-get update
           # The first line is for the gpui app (the list of ci.yml).
-          # The second line is for the AppImage tools.
+          # The second line is for the sign-in helper (wry needs WebKitGTK).
+          # The third line is for the AppImage tools.
           sudo apt-get install -y \
             libxkbcommon-x11-dev libwayland-dev libfontconfig-dev libfreetype6-dev libxcb1-dev libssl-dev \
-            libgtk-3-dev patchelf file wget squashfs-tools
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
+            patchelf file wget squashfs-tools
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -99,8 +101,18 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build the app
-        run: cargo build --release -p garmin-companion-desktop --target ${{ matrix.target }}
+      - name: Build the app and the sign-in helper
+        run: cargo build --release -p garmin-companion-desktop -p garmin-companion-login --target ${{ matrix.target }}
+
+      # tauri.conf.json lists the helper as externalBin. The bundler looks for
+      # garmin-companion-login-<triple> next to the config, and it puts the file
+      # next to garmin-companion in every bundle.
+      - name: Stage the sign-in helper
+        run: |
+          EXT=""
+          [[ "${{ matrix.target }}" == *windows* ]] && EXT=".exe"
+          cp "target/${{ matrix.target }}/release/garmin-companion-login${EXT}" \
+            "apps/desktop/garmin-companion-login-${{ matrix.target }}${EXT}"
 
       # The bundler needs the binary at target/<triple>/release/garmin-companion.
       # --no-binary-patching: the new app does not use the Tauri updater, so
