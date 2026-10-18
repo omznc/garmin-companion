@@ -5,8 +5,9 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen activities` opens the Activities list. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
+mod activities;
 mod chrome;
 mod data;
 mod icons;
@@ -102,7 +103,15 @@ fn main() -> anyhow::Result<()> {
         (None, Some(_), _) => anyhow::bail!("--date needs --db"),
         (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
     };
+    let start_activity = required(&args, "--activity")?
+        .map(|v| {
+            v.parse::<i64>()
+                .with_context(|| format!("--activity needs a number, got {v}"))
+        })
+        .transpose()?;
+    let start_list = required(&args, "--screen")?.as_deref() == Some("activities");
     let today = data::load_today(&source)?;
+    let store = activities::Store::for_source(&source)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -135,7 +144,16 @@ fn main() -> anyhow::Result<()> {
                 ..Default::default()
             };
             let opened = cx.open_window(options, |_, cx| {
-                cx.new(|_| shell::Root::new(today, palette))
+                cx.new(|cx| {
+                    let mut root = shell::Root::new(today, palette, store);
+                    // For screenshots: `--screen activities` and `--activity <id>`.
+                    if let Some(id) = start_activity {
+                        root.start_at_activity(id, cx);
+                    } else if start_list {
+                        root.start_at_activity_list(cx);
+                    }
+                    root
+                })
             });
             if let Err(error) = opened {
                 eprintln!("could not open the window: {error:#}");
