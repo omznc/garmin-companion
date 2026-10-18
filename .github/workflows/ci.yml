@@ -16,7 +16,9 @@ jobs:
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev
+          # The last five are for the gpui desktop app (apps/desktop).
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev \
+            libxkbcommon-x11-dev libwayland-dev libfontconfig-dev libfreetype6-dev libxcb1-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:

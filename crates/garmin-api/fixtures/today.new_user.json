@@ -49,6 +49,7 @@
   "attention": [],
   "lastSession": null,
   "zoneDrift": {
+    "noun": "runs",
     "targetPct": 20.0,
     "recentAvgPct": null,
     "runs": []

@@ -8,7 +8,7 @@ use crate::derive::days_since;
 use chrono::NaiveDate;
 use garmin_core::sport::family;
 use garmin_core::{CachedActivity, Family};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The window that the profile counts, in days.
@@ -20,7 +20,7 @@ pub const NEW_USER_DAYS: usize = 14;
 /// A family needs more than this share of all minutes to be the primary one.
 const PRIMARY_SHARE: f64 = 0.4;
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FamilyStat {
     pub family: Family,
@@ -30,7 +30,7 @@ pub struct FamilyStat {
     pub last_date: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityProfile {
     pub window_days: i64,

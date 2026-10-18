@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/garmin-core", "crates/garmin-api", "crates/garmin-mcp", "crates/garmin-ffi", "app/src-tauri"]
+members = [
+    "crates/garmin-core",
+    "crates/garmin-api",
+    "crates/garmin-mcp",
+    "crates/garmin-ffi",
+    "app/src-tauri",
+    "apps/desktop",
+]
 
 # Cargo only honours `[profile.*]` at the workspace root, so this is the only
 # place these can live — `app/src-tauri/Cargo.toml` would be ignored silently.
@@ -25,6 +32,61 @@ strip = true
 [profile.release-mobile]
 inherits = "release"
 panic = "unwind"
+
+# The desktop app does work on every frame: layout (taffy), text (cosmic-text,
+# swash), path tessellation (lyon) and the GPU backend (wgpu, naga). Those
+# crates and the app itself get opt-level 3. The size-first default stays for
+# everything else, because `[profile.release.package."*"]` would also speed up
+# the Tauri app and the MCP server, where bytes matter more. None of the
+# crates below are in those two builds.
+[profile.release.package.garmin-companion-desktop]
+opt-level = 3
+[profile.release.package."gpui-ce"]
+opt-level = 3
+[profile.release.package.gpui_ce_linux]
+opt-level = 3
+[profile.release.package.gpui_ce_wgpu]
+opt-level = 3
+[profile.release.package.gpui_ce_sum_tree]
+opt-level = 3
+[profile.release.package.taffy]
+opt-level = 3
+[profile.release.package."cosmic-text"]
+opt-level = 3
+[profile.release.package.swash]
+opt-level = 3
+[profile.release.package.skrifa]
+opt-level = 3
+[profile.release.package."read-fonts"]
+opt-level = 3
+[profile.release.package."ttf-parser"]
+opt-level = 3
+[profile.release.package.zeno]
+opt-level = 3
+[profile.release.package.etagere]
+opt-level = 3
+[profile.release.package.wgpu]
+opt-level = 3
+[profile.release.package."wgpu-core"]
+opt-level = 3
+[profile.release.package."wgpu-hal"]
+opt-level = 3
+[profile.release.package.naga]
+opt-level = 3
+[profile.release.package.lyon_path]
+opt-level = 3
+[profile.release.package.lyon_geom]
+opt-level = 3
+[profile.release.package.lyon_algorithms]
+opt-level = 3
+[profile.release.package.lyon_tessellation]
+opt-level = 3
+[profile.release.package.resvg]
+opt-level = 3
+[profile.release.package.usvg]
+opt-level = 3
+[profile.release.package."tiny-skia"]
+opt-level = 3
 
 # Shared across the Tauri app and the MCP server so the two can never drift
 # onto different versions of the Garmin client's dependencies.
