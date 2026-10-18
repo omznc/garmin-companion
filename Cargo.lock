@@ -1592,6 +1592,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "garmin-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "garmin-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "garmin-core"
 version = "0.1.0"
 dependencies = [

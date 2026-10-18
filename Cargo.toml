@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/garmin-core", "crates/garmin-mcp", "app/src-tauri"]
+members = ["crates/garmin-core", "crates/garmin-api", "crates/garmin-mcp", "app/src-tauri"]
 
 # Cargo only honours `[profile.*]` at the workspace root, so this is the only
 # place these can live — `app/src-tauri/Cargo.toml` would be ignored silently.
