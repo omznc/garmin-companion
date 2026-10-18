@@ -2,36 +2,28 @@
 // It needs no activity. The core sends every figure and sentence.
 import { Host } from "@expo/ui";
 import {
-  Box,
-  Card,
   Column,
-  FlowRow,
-  Row,
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Text,
 } from "@expo/ui/jetpack-compose";
-import {
-  background,
-  fillMaxWidth,
-  height,
-  paddingAll,
-  weight,
-} from "@expo/ui/jetpack-compose/modifiers";
+import { fillMaxWidth } from "@expo/ui/jetpack-compose/modifiers";
 import { useState } from "react";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
   BarLabels,
-  Block,
-  Body,
-  Caption,
-  ErrorBlock,
-  Heading,
+  Bars,
+  Card,
+  Content,
+  ErrorCard,
   Loading,
+  type Md,
+  SectionLabel,
+  SplitBar,
+  T,
   TileGrid,
-} from "../components/MdBlocks";
-import { MiniBars } from "../components/MiniBars";
+} from "../components/MdKit";
 import {
   type NightView,
   type SleepInsight,
@@ -41,8 +33,6 @@ import {
   useSleep,
 } from "../data/wellness";
 import { HOST_SEED, useMd } from "../theme/md";
-
-type Md = ReturnType<typeof useMd>;
 
 /** A night under seven hours is a short night. */
 const SHORT_NIGHT_HOURS = 7;
@@ -58,7 +48,8 @@ function stageTone(md: Md, key: string): string {
   return tones[key] ?? md.primary;
 }
 
-function LastNight({ md, night, note }: { md: Md; night: NightView; note: string | null }) {
+function LastNight({ night, note }: { night: NightView; note: string | null }) {
+  const md = useMd();
   const tiles = [
     night.score === null
       ? null
@@ -72,38 +63,25 @@ function LastNight({ md, night, note }: { md: Md; night: NightView; note: string
   ].filter((t): t is { label: string; value: string } => t !== null);
   return (
     <>
-      <TileGrid md={md} tiles={tiles} />
+      <TileGrid tiles={tiles} />
       {night.stages.length > 0 ? (
-        <Block>
-          <Row modifiers={[fillMaxWidth(), height(12)]}>
+        <Card gap={12}>
+          <SplitBar
+            parts={night.stages.map((s) => ({ weight: s.pct, color: stageTone(md, s.key) }))}
+          />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 16, rowGap: 4 }}>
             {night.stages.map((s) => (
-              <Box
-                key={s.key}
-                modifiers={[
-                  weight(Math.max(s.pct, 1)),
-                  height(12),
-                  background(stageTone(md, s.key)),
-                ]}
-              />
-            ))}
-          </Row>
-          <FlowRow
-            horizontalArrangement={{ spacedBy: 16 }}
-            verticalArrangement={{ spacedBy: 4 }}
-            modifiers={[fillMaxWidth()]}
-          >
-            {night.stages.map((s) => (
-              <Text key={s.key} style={{ typography: "labelMedium" }} color={stageTone(md, s.key)}>
+              <T key={s.key} v="label" color={stageTone(md, s.key)}>
                 {`${s.label} ${s.text}`}
-              </Text>
+              </T>
             ))}
-          </FlowRow>
-        </Block>
+          </View>
+        </Card>
       ) : null}
       {note ? (
-        <Block>
-          <Caption md={md}>{note}</Caption>
-        </Block>
+        <T v="labelSmall" color={md.onSurfaceVariant}>
+          {note}
+        </T>
       ) : null}
     </>
   );
@@ -112,7 +90,7 @@ function LastNight({ md, night, note }: { md: Md; night: NightView; note: string
 function WindowPicker({ days, onPick }: { days: number; onPick: (days: number) => void }) {
   return (
     <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
+      <Column modifiers={[fillMaxWidth()]}>
         <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
           {[7, 30].map((d) => (
             <SegmentedButton key={d} selected={days === d} onClick={() => onPick(d)}>
@@ -127,20 +105,19 @@ function WindowPicker({ days, onPick }: { days: number; onPick: (days: number) =
   );
 }
 
-function Window({ md, w }: { md: Md; w: SleepWindow }) {
+function Window({ w }: { w: SleepWindow }) {
+  const md = useMd();
   const labels =
     w.days <= 7
       ? w.bars.map((b) => b.label)
       : [shortDay(w.bars[0]?.date ?? ""), shortDay(w.bars.at(-1)?.date ?? "")];
   return (
-    <>
-      <MiniBars
+    <Card gap={12}>
+      <Bars
         values={w.bars.map((b) => b.hours)}
         max={FULL_BAR_HOURS}
-        height={96}
+        height={112}
         gap={w.days <= 7 ? 8 : 3}
-        color={md.primary}
-        trackColor={md.surfaceVariant}
         colorFor={(h) => (h < SHORT_NIGHT_HOURS ? md.tertiary : md.primary)}
         describe={(h, i) => {
           const bar = w.bars[i];
@@ -148,37 +125,33 @@ function Window({ md, w }: { md: Md; w: SleepWindow }) {
           return h === null ? `${day}: no sleep recorded` : `${day}: ${h.toFixed(1)} hours`;
         }}
       />
-      <BarLabels md={md} labels={labels} />
-      <Block>
-        <Body md={md}>{w.summary}</Body>
-      </Block>
-    </>
+      <BarLabels labels={labels} />
+      <T v="bodyMedium" color={md.onSurfaceVariant}>
+        {w.summary}
+      </T>
+    </Card>
   );
 }
 
-function Insights({ md, items }: { md: Md; items: SleepInsight[] }) {
+function Insights({ items }: { items: SleepInsight[] }) {
+  const md = useMd();
   return (
-    <Block>
-      <Heading md={md}>What your nights say</Heading>
+    <>
+      <SectionLabel>What your nights say</SectionLabel>
       {items.map((i) => (
-        <Card key={i.id} colors={{ containerColor: md.surfaceContainerLow }}>
-          <Column
-            verticalArrangement={{ spacedBy: 6 }}
-            modifiers={[fillMaxWidth(), paddingAll(16)]}
+        <Card key={i.id} tone={i.tone === "watch" ? "tertiary" : "surface"} gap={6}>
+          <T v="titleMedium" color={i.tone === "watch" ? md.onTertiaryContainer : md.onSurface}>
+            {i.claim}
+          </T>
+          <T
+            v="bodyMedium"
+            color={i.tone === "watch" ? md.onTertiaryContainer : md.onSurfaceVariant}
           >
-            <Text
-              style={{ typography: "bodyLarge" }}
-              color={i.tone === "watch" ? md.primary : md.onSurface}
-            >
-              {i.claim}
-            </Text>
-            <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-              {i.detail}
-            </Text>
-          </Column>
+            {i.detail}
+          </T>
         </Card>
       ))}
-    </Block>
+    </>
   );
 }
 
@@ -186,27 +159,26 @@ function SleepBody({ view }: { view: SleepView }) {
   const md = useMd();
   const [days, setDays] = useState(7);
   return (
-    <>
-      <Block>
+    <Content>
+      <Card tone="primary" gap={12} style={{ borderRadius: 32 }}>
         {view.lastNight ? (
-          <Text style={{ typography: "labelLarge" }} color={md.onSurfaceVariant}>
+          <T v="label" color={md.onPrimaryContainer}>
             {view.lastNight.title}
-          </Text>
+          </T>
         ) : null}
-        <Text style={{ typography: "bodyLarge" }} color={md.onSurface}>
+        <T v="body" color={md.onPrimaryContainer}>
           {view.lede}
-        </Text>
-      </Block>
+        </T>
+      </Card>
       {view.empty ? null : (
         <>
-          {view.lastNight ? <LastNight md={md} night={view.lastNight} note={view.note} /> : null}
+          {view.lastNight ? <LastNight night={view.lastNight} note={view.note} /> : null}
           <WindowPicker days={days} onPick={setDays} />
-          <Window md={md} w={days === 7 ? view.week : view.month} />
-          {view.insights.length > 0 ? <Insights md={md} items={view.insights} /> : null}
+          <Window w={days === 7 ? view.week : view.month} />
+          {view.insights.length > 0 ? <Insights items={view.insights} /> : null}
         </>
       )}
-      <View style={{ height: 32 }} />
-    </>
+    </Content>
   );
 }
 
@@ -216,7 +188,7 @@ export function SleepScreen() {
     <LargeAppBarScreen title="Sleep" back>
       {data ? <SleepBody view={data} /> : null}
       {!data && !error ? <Loading /> : null}
-      {error ? <ErrorBlock message={String(error)} onRetry={refetch} /> : null}
+      {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
     </LargeAppBarScreen>
   );
 }

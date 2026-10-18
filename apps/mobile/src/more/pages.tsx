@@ -1,7 +1,7 @@
 // The pages of More: one for each settings area. The core builds the sentences.
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Linking, TextInput, View } from "react-native";
+import { Linking, Platform, TextInput, View } from "react-native";
 import { needsSetup, saveKey, useCoachConfig } from "../data/useAsk";
 import { THEMES, useSettingsActions } from "../data/useSettingsActions";
 import { Item, Note, Page, Section, useColors } from "./Kit";
@@ -93,7 +93,12 @@ export function AppearancePage() {
 function KeyField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const c = useColors();
   return (
-    <View style={{ marginHorizontal: 16, marginTop: 24 }}>
+    <View
+      style={{
+        marginHorizontal: Platform.OS === "android" ? 0 : 16,
+        marginTop: Platform.OS === "android" ? 12 : 24,
+      }}
+    >
       <TextInput
         value={value}
         onChangeText={onChange}

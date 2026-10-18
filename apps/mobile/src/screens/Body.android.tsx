@@ -1,164 +1,136 @@
-// Weight, Food and Strength on Android: Material 3 from @expo/ui.
+// Weight, Food and Strength on Android: Material 3 Expressive cards.
 // The core sends the text. This file draws the blocks of `data/body.ts`.
-import { Host } from "@expo/ui";
-import { Button, Card, Column, FlowRow, Row, Text } from "@expo/ui/jetpack-compose";
-import { fillMaxWidth, paddingAll, weight } from "@expo/ui/jetpack-compose/modifiers";
-import type { ReactNode } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import { TrendBars } from "../components/TrendBars";
+import {
+  BarLabels,
+  Bars,
+  Card,
+  Content,
+  ErrorCard,
+  Group,
+  ListRow,
+  Loading,
+  SectionLabel,
+  T,
+  TileGrid,
+} from "../components/MdKit";
 import { type Block, type BodyKind, useBody } from "../data/body";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useMd } from "../theme/md";
 
-type Md = ReturnType<typeof useMd>;
+const MAX_BARS = 48;
 
-function Pad({ children }: { children: ReactNode }) {
+// shortcut: keep every nth value above 48 values, the chart is a shape and not a reading.
+function thin(values: number[]): number[] {
+  if (values.length <= MAX_BARS) return values;
+  const step = values.length / MAX_BARS;
+  return Array.from({ length: MAX_BARS }, (_, i) => values[Math.floor(i * step)] ?? 0);
+}
+
+/** The chart scales from the lowest value, so a change shows. */
+function ChartBlock({ b }: { b: Extract<Block, { kind: "chart" }> }) {
+  const bars = thin(b.values);
+  const low = Math.min(...bars);
+  const span = Math.max(Math.max(...bars) - low, 1e-6);
   return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {children}
-      </Column>
-    </Host>
+    <Card gap={12}>
+      <T v="titleMedium">{b.title}</T>
+      <Bars
+        values={bars.map((v) => 0.12 + ((v - low) / span) * 0.88)}
+        max={1}
+        height={112}
+        gap={2}
+        describe={(_, i) => (i === 0 ? `${b.title} from ${b.from} to ${b.to}` : "")}
+      />
+      <BarLabels labels={[b.from, b.to]} />
+    </Card>
   );
 }
 
-function Tiles({ md, tiles }: { md: Md; tiles: Extract<Block, { kind: "tiles" }>["tiles"] }) {
+function TextBlock({ b }: { b: Extract<Block, { kind: "text" }> }) {
+  const md = useMd();
+  if (b.tone === "heading") return <SectionLabel>{b.text}</SectionLabel>;
+  if (b.tone === "lede") {
+    return (
+      <Card tone="primary" style={{ borderRadius: 32 }}>
+        <T v="body" color={md.onPrimaryContainer}>
+          {b.text}
+        </T>
+      </Card>
+    );
+  }
   return (
-    <Pad>
-      <FlowRow
-        horizontalArrangement={{ spacedBy: 12 }}
-        verticalArrangement={{ spacedBy: 12 }}
-        modifiers={[fillMaxWidth()]}
-      >
-        {tiles.map((t) => (
-          <Card key={t.label} colors={{ containerColor: md.surfaceContainerHigh }}>
-            <Column modifiers={[paddingAll(16)]}>
-              <Text
-                style={{ typography: "labelMedium" }}
-                color={t.accent ? md.primary : md.onSurfaceVariant}
-              >
-                {t.label}
-              </Text>
-              <Text style={{ typography: "headlineSmall" }} color={md.onSurface}>
-                {t.value}
-              </Text>
-            </Column>
-          </Card>
-        ))}
-      </FlowRow>
-    </Pad>
+    <View style={{ paddingHorizontal: 4 }}>
+      <T v={b.tone === "note" ? "bodyMedium" : "body"} color={md.onSurfaceVariant}>
+        {b.text}
+      </T>
+    </View>
   );
 }
 
-function Rows({ md, b }: { md: Md; b: Extract<Block, { kind: "rows" }> }) {
-  return (
-    <Pad>
-      <Text style={{ typography: "titleMedium" }} color={md.onSurface}>
-        {b.title}
-      </Text>
-      {b.rows.map((r, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
-        <Row key={`${r.key}-${i}`} modifiers={[fillMaxWidth()]}>
-          <Column modifiers={[weight(1)]}>
-            <Text style={{ typography: "bodyLarge" }} color={md.onSurface}>
-              {r.key}
-            </Text>
-            {r.sub ? (
-              <Text style={{ typography: "bodySmall" }} color={md.onSurfaceVariant}>
-                {r.sub}
-              </Text>
-            ) : null}
-          </Column>
-          <Text style={{ typography: "bodyLarge" }} color={md.onSurfaceVariant}>
-            {r.value}
-          </Text>
-        </Row>
-      ))}
-    </Pad>
-  );
-}
-
-function ChartBlock({ md, b }: { md: Md; b: Extract<Block, { kind: "chart" }> }) {
+function RowsBlock({ b }: { b: Extract<Block, { kind: "rows" }> }) {
+  const md = useMd();
   return (
     <>
-      <Pad>
-        <Text style={{ typography: "titleMedium" }} color={md.onSurface}>
-          {b.title}
-        </Text>
-      </Pad>
-      <View style={{ paddingHorizontal: 16 }}>
-        <TrendBars
-          values={b.values}
-          color={md.primary}
-          label={`${b.title} from ${b.from} to ${b.to}`}
-        />
-      </View>
-      <Pad>
-        <Text style={{ typography: "labelSmall" }} color={md.onSurfaceVariant}>
-          {`${b.from} to ${b.to}`}
-        </Text>
-      </Pad>
+      <SectionLabel>{b.title}</SectionLabel>
+      <Group>
+        {b.rows.map((r, i) => (
+          <ListRow
+            // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
+            key={`${r.key}-${i}`}
+            title={r.key}
+            supporting={r.sub}
+            trailing={
+              <T v="titleMedium" color={md.onSurfaceVariant}>
+                {r.value}
+              </T>
+            }
+          />
+        ))}
+      </Group>
     </>
   );
 }
 
-function TextBlock({ md, b }: { md: Md; b: Extract<Block, { kind: "text" }> }) {
-  const typography =
-    b.tone === "heading" ? "titleMedium" : b.tone === "note" ? "bodySmall" : "bodyLarge";
-  const color = b.tone === "lede" || b.tone === "heading" ? md.onSurface : md.onSurfaceVariant;
-  return (
-    <Pad>
-      <Text style={{ typography }} color={color}>
-        {b.text}
-      </Text>
-    </Pad>
-  );
-}
-
-function BlockView({ md, b }: { md: Md; b: Block }) {
+function BlockView({ b }: { b: Block }) {
+  const md = useMd();
   switch (b.kind) {
     case "text":
-      return <TextBlock md={md} b={b} />;
+      return <TextBlock b={b} />;
     case "tiles":
-      return <Tiles md={md} tiles={b.tiles} />;
+      return <TileGrid tiles={b.tiles} />;
     case "chart":
-      return <ChartBlock md={md} b={b} />;
+      return <ChartBlock b={b} />;
     case "rows":
-      return <Rows md={md} b={b} />;
+      return <RowsBlock b={b} />;
     case "empty":
       return (
-        <Pad>
-          <Text style={{ typography: "titleMedium" }} color={md.onSurface}>
+        <Card tone="secondary">
+          <T v="titleMedium" color={md.onSecondaryContainer}>
             {b.title}
-          </Text>
-          <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
+          </T>
+          <T v="bodyMedium" color={md.onSecondaryContainer}>
             {b.body}
-          </Text>
-        </Pad>
+          </T>
+        </Card>
       );
   }
 }
 
 export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
-  const md = useMd();
   const { data, error, refetch } = useBody(kind);
   return (
     <LargeAppBarScreen title={title} back>
-      {data?.blocks.map((b, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
-        <BlockView key={i} md={md} b={b} />
-      ))}
-      {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
-      {error ? (
-        <Pad>
-          <Text style={{ typography: "bodyLarge" }} color={md.error}>
-            {String(error)}
-          </Text>
-          <Button onClick={() => refetch()}>
-            <Text>Try again</Text>
-          </Button>
-        </Pad>
+      {data ? (
+        <Content>
+          {data.blocks.map((b, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
+            <BlockView key={i} b={b} />
+          ))}
+        </Content>
       ) : null}
+      {!data && !error ? <Loading /> : null}
+      {error ? <ErrorCard message={String(error)} onRetry={() => refetch()} /> : null}
     </LargeAppBarScreen>
   );
 }

@@ -1,31 +1,39 @@
-// Links from Health to Weight, Food and Strength. Strength shows only for a gym profile.
-import { Host } from "@expo/ui";
-import { Column, ListItem, Text } from "@expo/ui/jetpack-compose";
-import { clickable, fillMaxWidth } from "@expo/ui/jetpack-compose/modifiers";
+// Links from Health to Weight, Food and Strength, as one grouped card. Each row shows
+// the first sentence of its screen. Strength shows only for a gym profile.
 import { useRouter } from "expo-router";
-import { useStrengthShown } from "../data/body";
-import { HOST_SEED, useMd } from "../theme/md";
+import { type BodyKind, useBodyLine, useStrengthShown } from "../data/body";
+import { Group, type IconName, ListRow, type Tone } from "./MdKit";
+
+type BodyRowInfo = { kind: BodyKind; label: string; icon: IconName; tone: Tone };
+
+export const BODY_ROWS: BodyRowInfo[] = [
+  { kind: "weight", label: "Weight", icon: "monitor-weight", tone: "tertiary" },
+  { kind: "food", label: "Food", icon: "restaurant", tone: "secondary" },
+  { kind: "strength", label: "Strength", icon: "fitness-center", tone: "primary" },
+];
+
+export function BodyRow({ info, base }: { info: BodyRowInfo; base: string }) {
+  const router = useRouter();
+  const { data } = useBodyLine(info.kind);
+  return (
+    <ListRow
+      icon={info.icon}
+      tone={info.tone}
+      title={info.label}
+      supporting={data ?? undefined}
+      chevron
+      onPress={() => router.push(`${base}/${info.kind}` as never)}
+    />
+  );
+}
 
 export function BodyLinks() {
-  const router = useRouter();
-  const md = useMd();
   const strength = useStrengthShown().data === true;
-  const links = [
-    { href: "/health/weight", label: "Weight" },
-    { href: "/health/food", label: "Food" },
-    ...(strength ? [{ href: "/health/strength", label: "Strength" }] : []),
-  ] as const;
   return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column modifiers={[fillMaxWidth()]}>
-        {links.map((l) => (
-          <ListItem key={l.href} modifiers={[clickable(() => router.push(l.href))]}>
-            <ListItem.HeadlineContent>
-              <Text color={md.onSurface}>{l.label}</Text>
-            </ListItem.HeadlineContent>
-          </ListItem>
-        ))}
-      </Column>
-    </Host>
+    <Group>
+      {BODY_ROWS.filter((r) => r.kind !== "strength" || strength).map((r) => (
+        <BodyRow key={r.kind} info={r} base="/health" />
+      ))}
+    </Group>
   );
 }

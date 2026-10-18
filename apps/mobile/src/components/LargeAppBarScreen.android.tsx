@@ -1,4 +1,5 @@
-// Material 3 large top app bar over a scrolling screen. It collapses on scroll.
+// Material 3 top app bar over a scrolling screen. The large bar collapses on scroll.
+// The small bar (`small`) is for settings pages: a back button and a title in one row.
 import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
@@ -15,13 +16,14 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HOST_SEED, useMd } from "../theme/md";
 
-const EXPANDED = 120;
+const EXPANDED = 136;
 const COLLAPSED = 64;
-const RANGE = EXPANDED - COLLAPSED;
 
 type Props = {
   title: string;
   back?: boolean;
+  /** A small bar that does not collapse. */
+  small?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   children: ReactNode;
@@ -30,24 +32,38 @@ type Props = {
 export function LargeAppBarScreen({
   title,
   back = false,
+  small = false,
   refreshing = false,
   onRefresh,
   children,
 }: Props) {
   const md = useMd();
   const insets = useSafeAreaInsets();
+  const expanded = small ? COLLAPSED : EXPANDED;
+  const range = Math.max(expanded - COLLAPSED, 1);
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
   });
 
   const barStyle = useAnimatedStyle(() => ({
-    height: insets.top + interpolate(scrollY.value, [0, RANGE], [EXPANDED, COLLAPSED], "clamp"),
-    backgroundColor: interpolateColor(scrollY.value, [0, RANGE], [md.surface, md.surfaceContainer]),
+    height: insets.top + interpolate(scrollY.value, [0, range], [expanded, COLLAPSED], "clamp"),
+    backgroundColor: interpolateColor(
+      scrollY.value,
+      [0, small ? 24 : range],
+      [md.surface, md.surfaceContainer],
+    ),
   }));
   const titleStyle = useAnimatedStyle(() => ({
-    fontSize: interpolate(scrollY.value, [0, RANGE], [28, 22], Extrapolation.CLAMP),
-    lineHeight: interpolate(scrollY.value, [0, RANGE], [36, 28], Extrapolation.CLAMP),
+    // Under the back button when large, beside it once the bar is small.
+    left: interpolate(
+      scrollY.value,
+      [0, range],
+      [back && small ? 72 : 20, back ? 72 : 20],
+      "clamp",
+    ),
+    fontSize: interpolate(scrollY.value, [0, range], [small ? 22 : 34, 22], Extrapolation.CLAMP),
+    lineHeight: interpolate(scrollY.value, [0, range], [small ? 28 : 42, 28], Extrapolation.CLAMP),
   }));
 
   return (
@@ -60,11 +76,11 @@ export function LargeAppBarScreen({
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              progressViewOffset={insets.top + EXPANDED}
+              progressViewOffset={insets.top + expanded}
             />
           ) : undefined
         }
-        contentContainerStyle={{ paddingTop: insets.top + EXPANDED, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingTop: insets.top + expanded, paddingBottom: 24 }}
       >
         {children}
       </Animated.ScrollView>
@@ -75,11 +91,10 @@ export function LargeAppBarScreen({
           style={[
             {
               position: "absolute",
-              left: back ? 72 : 16,
               right: 72,
-              bottom: 18,
+              bottom: small ? 18 : 16,
               color: md.onSurface,
-              fontWeight: "400",
+              fontWeight: "500",
             },
             titleStyle,
           ]}
@@ -102,7 +117,7 @@ function BackButton({ top }: { top: number }) {
           <Icon
             source={require("../../assets/icons/back.xml")}
             size={24}
-            tint={md.onSurfaceVariant}
+            tint={md.onSurface}
             contentDescription="Back"
           />
         </IconButton>

@@ -1,10 +1,19 @@
-// The list pieces of More on Android: Material 3 list items under the app bar.
-import { Host } from "@expo/ui";
-import { Column, Icon, ListItem, Text } from "@expo/ui/jetpack-compose";
-import { clickable, fillMaxWidth, paddingAll } from "@expo/ui/jetpack-compose/modifiers";
+// The list pieces of More on Android: grouped Material 3 rows under the app bar.
+// Each section is one rounded container with a large outer corner and small inner corners.
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { ReactNode } from "react";
+import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import { HOST_SEED, useMd } from "../theme/md";
+import {
+  Content,
+  Group,
+  type IconName,
+  ListRow,
+  SectionLabel,
+  T,
+  type Tone,
+} from "../components/MdKit";
+import { useMd } from "../theme/md";
 
 export function useColors() {
   const md = useMd();
@@ -23,6 +32,8 @@ export type ItemProps = {
   value?: string;
   /** Used on iOS only. */
   icon?: { sf: string; color: string };
+  /** Used on Android only: a Material icon in a tonal circle. */
+  md?: { icon: IconName; tone: Tone };
   chevron?: boolean;
   checked?: boolean;
   tone?: "action" | "danger";
@@ -30,6 +41,7 @@ export type ItemProps = {
   onPress?: () => void;
 };
 
+/** A More page. The home page has the large bar. A settings page has the small bar and a back button. */
 export function Page({
   title,
   large,
@@ -40,27 +52,18 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <LargeAppBarScreen title={title} back={!large}>
-      {children}
+    <LargeAppBarScreen title={title} back={!large} small={!large}>
+      <Content>{children}</Content>
     </LargeAppBarScreen>
   );
 }
 
 export function Section({ title, children }: { title?: string; children: ReactNode }) {
-  const md = useMd();
   return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column modifiers={[fillMaxWidth()]}>
-        {title ? (
-          <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
-            <Text style={{ typography: "labelLarge" }} color={md.primary}>
-              {title}
-            </Text>
-          </Column>
-        ) : null}
-        {children}
-      </Column>
-    </Host>
+    <View style={{ gap: 8 }}>
+      {title ? <SectionLabel>{title}</SectionLabel> : null}
+      <Group>{children}</Group>
+    </View>
   );
 }
 
@@ -68,48 +71,47 @@ export function Section({ title, children }: { title?: string; children: ReactNo
 export function Note({ children }: { children: string }) {
   const md = useMd();
   return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        <Text style={{ typography: "bodySmall" }} color={md.onSurfaceVariant}>
-          {children}
-        </Text>
-      </Column>
-    </Host>
+    <View style={{ paddingHorizontal: 20 }}>
+      <T v="bodyMedium" color={md.onSurfaceVariant}>
+        {children}
+      </T>
+    </View>
   );
 }
 
-function toneColor(md: ReturnType<typeof useMd>, tone: ItemProps["tone"], disabled?: boolean) {
-  if (disabled) return md.onSurfaceVariant;
-  if (tone === "danger") return md.error;
-  return tone === "action" ? md.primary : md.onSurface;
+function Radio({ on }: { on: boolean }) {
+  const md = useMd();
+  return (
+    <MaterialIcons
+      name={on ? "radio-button-checked" : "radio-button-unchecked"}
+      size={24}
+      color={on ? md.primary : md.onSurfaceVariant}
+    />
+  );
 }
 
-export function Item({ title, value, chevron, checked, tone, disabled, onPress }: ItemProps) {
-  const md = useMd();
-  const color = toneColor(md, tone, disabled);
+export function Item({
+  title,
+  value,
+  md: look,
+  chevron,
+  checked,
+  tone,
+  disabled,
+  onPress,
+}: ItemProps) {
   return (
-    <ListItem modifiers={[fillMaxWidth(), ...(onPress && !disabled ? [clickable(onPress)] : [])]}>
-      <ListItem.HeadlineContent>
-        <Text color={color}>{title}</Text>
-      </ListItem.HeadlineContent>
-      {value ? (
-        <ListItem.SupportingContent>
-          <Text color={md.onSurfaceVariant}>{value}</Text>
-        </ListItem.SupportingContent>
-      ) : null}
-      {checked || chevron ? (
-        <ListItem.TrailingContent>
-          <Icon
-            source={
-              checked
-                ? require("../../assets/icons/check.xml")
-                : require("../../assets/icons/chevron.xml")
-            }
-            size={24}
-            tint={checked ? md.primary : md.onSurfaceVariant}
-          />
-        </ListItem.TrailingContent>
-      ) : null}
-    </ListItem>
+    <ListRow
+      icon={look?.icon}
+      tone={look?.tone}
+      title={title}
+      supporting={value}
+      chevron={chevron}
+      trailing={checked === undefined ? undefined : <Radio on={checked} />}
+      action={tone === "action"}
+      danger={tone === "danger"}
+      disabled={disabled}
+      onPress={onPress}
+    />
   );
 }

@@ -24,6 +24,8 @@ import {
 } from "../data/useAsk";
 
 export type AskTheme = {
+  /** A tonal fill for the opening questions. With none, they have an outline. */
+  chip?: ColorValue;
   bg: ColorValue;
   text: ColorValue;
   muted: ColorValue;
@@ -223,10 +225,11 @@ function Empty({
             onPress={() => onPick(q)}
             style={{
               borderColor: theme.line,
-              borderWidth: 1,
-              borderRadius: 18,
+              borderWidth: theme.chip ? 0 : 1,
+              backgroundColor: theme.chip,
+              borderRadius: theme.chip ? 20 : 18,
               paddingHorizontal: 16,
-              paddingVertical: 12,
+              paddingVertical: theme.chip ? 14 : 12,
             }}
           >
             <Text style={{ color: theme.text, fontSize: 15 }}>{q}</Text>

@@ -1,302 +1,182 @@
-// Today on Android: Material 3 components from @expo/ui (Jetpack Compose).
+// Today on Android: Material 3 Expressive cards in the colours of the scheme.
 // The core sends the sections in order. A section that has no data is not drawn.
-import { Host } from "@expo/ui";
-import { Box, Button, Card, Column, FlowRow, Row, Text } from "@expo/ui/jetpack-compose";
-import {
-  background,
-  fillMaxWidth,
-  height,
-  paddingAll,
-  weight,
-} from "@expo/ui/jetpack-compose/modifiers";
-import type { ReactNode } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import type { LastSession, Metric, Section as TodaySection, Today } from "../data/types";
+import {
+  BarLabels,
+  Bars,
+  Card,
+  Content,
+  ErrorCard,
+  Loading,
+  type Md,
+  SectionLabel,
+  SplitBar,
+  T,
+  TileGrid,
+} from "../components/MdKit";
+import type { LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useMd } from "../theme/md";
 
-type Md = ReturnType<typeof useMd>;
-
-const GAP = 12;
-
-function Block({ children }: { children: ReactNode }) {
-  return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Column verticalArrangement={{ spacedBy: GAP }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {children}
-      </Column>
-    </Host>
-  );
+function zoneTones(md: Md) {
+  return [md.outlineVariant, md.secondary, md.tertiary, md.primary, md.error];
 }
 
-function Heading({ md, children }: { md: Md; children: string }) {
-  return (
-    <Text style={{ typography: "titleMedium" }} color={md.onSurface}>
-      {children}
-    </Text>
-  );
-}
-
-function Body({ md, children }: { md: Md; children: string }) {
-  return (
-    <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-      {children}
-    </Text>
-  );
-}
-
-function MetricTile({ md, m }: { md: Md; m: Metric }) {
-  return (
-    <Card colors={{ containerColor: md.surfaceContainerHigh }} modifiers={[weight(1)]}>
-      <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        <Text
-          style={{ typography: "labelMedium" }}
-          color={m.accent ? md.primary : md.onSurfaceVariant}
-        >
-          {m.label}
-        </Text>
-        <Text style={{ typography: "headlineMedium" }} color={md.onSurface}>
-          {m.unit ? `${m.value} ${m.unit}` : m.value}
-        </Text>
-      </Column>
-    </Card>
-  );
-}
-
-function pairs<T>(items: T[]): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += 2) out.push(items.slice(i, i + 2));
-  return out;
-}
-
-function HealthBlock({ md, metrics }: { md: Md; metrics: Metric[] }) {
-  return (
-    <Block>
-      {pairs(metrics).map((row) => (
-        <Row
-          key={row[0]?.id}
-          horizontalArrangement={{ spacedBy: GAP }}
-          modifiers={[fillMaxWidth()]}
-        >
-          {row.map((m) => (
-            <MetricTile key={m.id} md={md} m={m} />
-          ))}
-          {row.length === 1 ? <Box modifiers={[weight(1)]} /> : null}
-        </Row>
-      ))}
-    </Block>
-  );
-}
-
-function ZoneStrip({ md, percents }: { md: Md; percents: number[] }) {
-  const tones = [md.surfaceVariant, md.secondary, md.tertiary, md.primary, md.error];
-  return (
-    <Row modifiers={[fillMaxWidth(), height(12)]}>
-      {percents.map((pct, i) => (
-        <Box
-          key={`zone-${i + 1}`}
-          modifiers={[weight(Math.max(pct, 1)), height(12), background(tones[i] ?? md.primary)]}
-        />
-      ))}
-    </Row>
-  );
-}
-
-function SessionCard({ md, s }: { md: Md; s: LastSession }) {
+function SessionCard({ s }: { s: LastSession }) {
+  const md = useMd();
+  const tones = zoneTones(md);
   const sub = [s.sport, s.when, s.zones ? `${s.zones.aboveZ2Pct}% above Z2` : null];
   return (
-    <Card colors={{ containerColor: md.surfaceContainerLow }}>
-      <Column verticalArrangement={{ spacedBy: 8 }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        <Text style={{ typography: "titleLarge" }} color={md.onSurface}>
-          {s.name}
-        </Text>
-        <Body md={md}>{sub.filter(Boolean).join(" - ")}</Body>
-        {s.zones ? <ZoneStrip md={md} percents={s.zones.percents} /> : null}
-        <FlowRow
-          horizontalArrangement={{ spacedBy: 24 }}
-          verticalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          {s.stats.map((stat) => (
-            <Column key={stat.label}>
-              <Text style={{ typography: "titleMedium" }} color={md.onSurface}>
-                {stat.value}
-              </Text>
-              <Text style={{ typography: "labelSmall" }} color={md.onSurfaceVariant}>
-                {stat.label}
-              </Text>
-            </Column>
-          ))}
-        </FlowRow>
-      </Column>
-    </Card>
-  );
-}
-
-function AttentionCard({ md, notes }: { md: Md; notes: { text: string; accent: boolean }[] }) {
-  return (
-    <Card colors={{ containerColor: md.surfaceContainerLow }}>
-      <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {notes.map((n) => (
-          <Text
-            key={n.text}
-            style={{ typography: "bodyLarge" }}
-            color={n.accent ? md.primary : md.onSurface}
-          >
-            {n.text}
-          </Text>
-        ))}
-      </Column>
-    </Card>
-  );
-}
-
-function Bars({
-  md,
-  values,
-  labels,
-  unit,
-  max = Math.max(...values, 1),
-}: {
-  md: Md;
-  values: number[];
-  labels: string[];
-  unit: string;
-  max?: number;
-}) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "flex-end",
-        height: 96,
-        gap: 8,
-        paddingHorizontal: 16,
-      }}
-    >
-      {values.map((v, i) => (
-        <View
-          // biome-ignore lint/suspicious/noArrayIndexKey: the bars never reorder
-          key={i}
-          accessible
-          accessibilityLabel={`${labels[i]}: ${Math.round(v)} ${unit}`}
-          style={{
-            flex: 1,
-            height: Math.max((v / max) * 96, 4),
-            borderRadius: 8,
-            backgroundColor: v > 0 ? md.primary : md.surfaceVariant,
-          }}
+    <Card gap={12}>
+      <T v="title">{s.name}</T>
+      <T v="bodyMedium" color={md.onSurfaceVariant}>
+        {sub.filter(Boolean).join(" - ")}
+      </T>
+      {s.zones ? (
+        <SplitBar
+          parts={s.zones.percents.map((p, i) => ({ weight: p, color: tones[i] ?? md.primary }))}
         />
-      ))}
-    </View>
-  );
-}
-
-function BarLabels({ md, labels }: { md: Md; labels: string[] }) {
-  return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
-      <Row modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {labels.map((l, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the labels never reorder
-          <Box key={i} modifiers={[weight(1)]} contentAlignment="center">
-            <Text style={{ typography: "labelSmall" }} color={md.onSurfaceVariant}>
-              {l}
-            </Text>
-          </Box>
+      ) : null}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 28, rowGap: 12 }}>
+        {s.stats.map((stat) => (
+          <View key={stat.label}>
+            <T v="headlineSmall">{stat.value}</T>
+            <T v="labelSmall" color={md.onSurfaceVariant}>
+              {stat.label}
+            </T>
+          </View>
         ))}
-      </Row>
-    </Host>
+      </View>
+    </Card>
   );
 }
 
-function WeekBlock({ md, s }: { md: Md; s: Extract<TodaySection, { kind: "week" }> }) {
+function WeekCard({ s }: { s: Extract<TodaySection, { kind: "week" }> }) {
+  const md = useMd();
+  const any = s.minutes.some((m) => m > 0);
   return (
-    <>
-      <Block>
-        <Heading md={md}>Last seven days</Heading>
-      </Block>
-      {s.minutes.some((m) => m > 0) ? (
+    <Card gap={12}>
+      <T v="titleMedium">Last seven days</T>
+      {any ? (
         <>
-          <Bars md={md} values={s.minutes} labels={s.labels} unit="min" />
-          <BarLabels md={md} labels={s.labels} />
+          <Bars
+            values={s.minutes}
+            gap={8}
+            describe={(v, i) => `${s.labels[i]}: ${Math.round(v ?? 0)} min`}
+          />
+          <BarLabels labels={s.labels} />
         </>
       ) : null}
-      <Block>
-        <Body md={md}>{s.summary}</Body>
-      </Block>
-    </>
+      <T v="bodyMedium" color={md.onSurfaceVariant}>
+        {s.summary}
+      </T>
+    </Card>
   );
 }
 
-function DriftBlock({ md, s }: { md: Md; s: Extract<TodaySection, { kind: "drift" }> }) {
+function DriftCard({ s }: { s: Extract<TodaySection, { kind: "drift" }> }) {
+  const md = useMd();
   const labels = s.runs.map((r) => r.label);
   return (
-    <>
-      <Block>
-        <Heading md={md}>Zone drift</Heading>
-        <Body md={md}>{s.summary}</Body>
-      </Block>
-      <Bars md={md} values={s.runs.map((r) => r.aboveZ2Pct)} labels={labels} unit="%" max={100} />
-      <BarLabels md={md} labels={labels} />
-    </>
+    <Card gap={12}>
+      <T v="titleMedium">Zone drift</T>
+      <T v="bodyMedium" color={md.onSurfaceVariant}>
+        {s.summary}
+      </T>
+      <Bars
+        values={s.runs.map((r) => r.aboveZ2Pct)}
+        max={100}
+        gap={8}
+        describe={(v, i) => `${labels[i]}: ${Math.round(v ?? 0)} %`}
+      />
+      <BarLabels labels={labels} />
+    </Card>
   );
 }
 
-function SectionView({ md, s }: { md: Md; s: TodaySection }) {
+function SectionView({ s }: { s: TodaySection }) {
+  const md = useMd();
   switch (s.kind) {
     case "health":
-      return <HealthBlock md={md} metrics={s.metrics} />;
+      return (
+        <TileGrid
+          tiles={s.metrics.map((m) => ({
+            label: m.label,
+            value: m.unit ? `${m.value} ${m.unit}` : m.value,
+            accent: m.accent,
+          }))}
+        />
+      );
     case "attention":
       return (
-        <Block>
-          <Heading md={md}>Attention</Heading>
-          <AttentionCard md={md} notes={s.notes} />
-        </Block>
+        <>
+          <SectionLabel>Attention</SectionLabel>
+          <Card tone="tertiary" gap={12}>
+            {s.notes.map((n) => (
+              <T key={n.text} v={n.accent ? "titleMedium" : "body"} color={md.onTertiaryContainer}>
+                {n.text}
+              </T>
+            ))}
+          </Card>
+        </>
       );
     case "text":
       return (
-        <Block>
-          <Body md={md}>{s.text}</Body>
-        </Block>
+        <View style={{ paddingHorizontal: 4 }}>
+          <T v="body" color={md.onSurfaceVariant}>
+            {s.text}
+          </T>
+        </View>
       );
     case "session":
       return (
-        <Block>
-          <Heading md={md}>Last session</Heading>
-          <SessionCard md={md} s={s.session} />
-        </Block>
+        <>
+          <SectionLabel>Last session</SectionLabel>
+          <SessionCard s={s.session} />
+        </>
       );
     case "week":
-      return <WeekBlock md={md} s={s} />;
+      return <WeekCard s={s} />;
     case "drift":
-      return <DriftBlock md={md} s={s} />;
+      return <DriftCard s={s} />;
   }
 }
 
 function TodayBody({ today }: { today: Today }) {
   const md = useMd();
   return (
-    <>
-      <Block>
-        <Text style={{ typography: "labelLarge" }} color={md.onSurfaceVariant}>
+    <Content>
+      <Card tone="primary" gap={12} style={{ borderRadius: 32 }}>
+        <T v="label" color={md.onPrimaryContainer}>
           {today.dateLabel}
-        </Text>
-        <Text style={{ typography: "bodyLarge" }} color={md.onSurface}>
+        </T>
+        <T v="body" color={md.onPrimaryContainer}>
           {today.lede}
-        </Text>
-      </Block>
+        </T>
+      </Card>
       {today.sections.map((s) => (
-        <SectionView key={s.kind === "text" ? s.key : s.kind} md={md} s={s} />
+        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} />
       ))}
-    </>
+    </Content>
+  );
+}
+
+function SyncLine({ line, error }: { line: string | null; error: string | null }) {
+  const md = useMd();
+  if (!line && !error) return null;
+  return (
+    <View style={{ paddingHorizontal: 20 }}>
+      <T v="labelSmall" color={error ? md.error : md.onSurfaceVariant}>
+        {error ?? line}
+      </T>
+    </View>
   );
 }
 
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
-  const md = useMd();
   const sync = useSync();
   return (
     <LargeAppBarScreen
@@ -304,33 +184,10 @@ export function TodayScreen() {
       refreshing={sync.busy}
       onRefresh={() => sync.refresh()}
     >
-      {sync.line || sync.error ? (
-        <Block>
-          <Text
-            style={{ typography: "labelMedium" }}
-            color={sync.error ? md.error : md.onSurfaceVariant}
-          >
-            {sync.error ?? sync.line ?? ""}
-          </Text>
-        </Block>
-      ) : null}
+      <SyncLine line={sync.line} error={sync.error} />
       {data ? <TodayBody today={data} /> : null}
-      {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
-      {error ? <ErrorBlock message={String(error)} onRetry={refetch} /> : null}
+      {!data && !error ? <Loading /> : null}
+      {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
     </LargeAppBarScreen>
-  );
-}
-
-function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const md = useMd();
-  return (
-    <Block>
-      <Text style={{ typography: "bodyLarge" }} color={md.error}>
-        {message}
-      </Text>
-      <Button onClick={onRetry}>
-        <Text>Try again</Text>
-      </Button>
-    </Block>
   );
 }
