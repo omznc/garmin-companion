@@ -1,24 +1,20 @@
-// Turn the core's Today numbers into the labels that the screens draw.
-import type { Activity, LastSession, Metric, Today, TodayView } from "./types";
-
-// "treadmill_running" becomes "Treadmill running". The core may send a label later.
-const humanize = (key: string | null) =>
-  key ? key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase()) : "Activity";
+// Turn the core's Today view into the sections that the screens draw.
+// The core sends the order and the sentences. This file only formats numbers.
+import type { Activity, LastSession, Metric, Section, Today, TodayView } from "./types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const parseDay = (s: string) => new Date(`${s.slice(0, 10)}T12:00:00`);
 
 export function hoursMinutes(secs: number): string {
-  const h = Math.floor(secs / 3600);
-  const m = Math.round((secs % 3600) / 60);
-  return `${h}h ${pad(m)}m`;
+  const total = Math.round(secs / 60);
+  return `${Math.floor(total / 60)}h ${pad(total % 60)}m`;
 }
 
 export function clock(secs: number): string {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.round(secs % 60);
-  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  const total = Math.round(secs);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  return h > 0 ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
 }
 
 function greeting(now: Date): string {
@@ -29,35 +25,27 @@ function greeting(now: Date): string {
   return "Good evening";
 }
 
-function metrics(v: TodayView): Metric[] {
-  const num = (l: { value: number }) => String(Math.round(l.value));
+function healthMetrics(v: TodayView): Metric[] {
+  const whole = (l: { value: number }) => Math.round(l.value).toLocaleString("en-US");
   const rhr = v.restingHr;
   const delta = rhr ? Math.round(rhr.delta) : 0;
-  const balance = v.fuel.balance;
-  // A tile with no data is left out. Each section stands alone.
+  // A tile with no data is left out.
   const all: (Metric | null)[] = [
     v.sleep ? { id: "sleep", label: "Sleep", value: hoursMinutes(v.sleep.value) } : null,
-    v.hrv ? { id: "hrv", label: "HRV", value: num(v.hrv), unit: "ms" } : null,
+    v.hrv ? { id: "hrv", label: "HRV", value: whole(v.hrv), unit: "ms" } : null,
     rhr
       ? {
           id: "rhr",
           label: `Resting HR, ${delta > 0 ? "+" : ""}${delta}`,
-          value: num(rhr),
+          value: whole(rhr),
           unit: "bpm",
           accent: rhr.accent,
         }
       : null,
-    v.bodyBattery ? { id: "battery", label: "Body battery", value: num(v.bodyBattery) } : null,
-    v.readiness ? { id: "readiness", label: "Readiness", value: num(v.readiness) } : null,
-    balance == null
-      ? null
-      : {
-          id: "fuel",
-          label: "Fuel balance",
-          value: `${balance > 0 ? "+" : ""}${Math.round(balance)}`,
-          unit: "kcal",
-          accent: v.fuel.accent,
-        },
+    v.bodyBattery ? { id: "battery", label: "Body battery", value: whole(v.bodyBattery) } : null,
+    v.readiness ? { id: "readiness", label: "Readiness", value: whole(v.readiness) } : null,
+    v.steps ? { id: "steps", label: "Steps", value: whole(v.steps) } : null,
+    v.stress ? { id: "stress", label: "Stress", value: whole(v.stress) } : null,
   ];
   return all.filter((m): m is Metric => m !== null);
 }
@@ -67,6 +55,7 @@ function sessionStats(a: Activity): LastSession["stats"] {
   const stats: [string, string | null][] = [
     ["Distance", a.distanceM ? `${(a.distanceM / 1000).toFixed(1)} km` : null],
     ["Time", secs ? clock(secs) : null],
+    ["Steps", a.steps ? Math.round(a.steps).toLocaleString("en-US") : null],
     ["Avg HR", a.avgHr ? String(Math.round(a.avgHr)) : null],
     ["Max HR", a.maxHr ? String(Math.round(a.maxHr)) : null],
     ["Aerobic TE", a.aerobicTe ? a.aerobicTe.toFixed(1) : null],
@@ -80,19 +69,23 @@ function zonePercents(a: Activity): number[] {
   return total > 0 ? secs.map((s) => (s / total) * 100) : [];
 }
 
-const shortDate = (s: string) =>
-  parseDay(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+function shortDate(s: string | null): string {
+  return s ? parseDay(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "";
+}
 
 function lastSession(v: TodayView): LastSession | null {
-  if (!v.lastSession) return null;
-  const a = v.lastSession.activity;
-  const sport = humanize(a.typeKey);
+  const last = v.lastSession;
+  if (!last) return null;
+  const a = last.activity;
+  const percents = zonePercents(a);
   return {
-    name: a.name ?? sport,
-    sport,
+    name: a.name ?? last.sportLabel,
+    sport: last.sportLabel,
     when: shortDate(a.startTimeLocal ?? a.localDate),
-    aboveZ2Pct: v.lastSession.hasZoneData ? Math.round(v.lastSession.aboveZ2Pct) : null,
-    zones: zonePercents(a),
+    zones:
+      last.showZoneVerdict && last.hasZoneData && percents.length > 0
+        ? { aboveZ2Pct: Math.round(last.aboveZ2Pct), percents }
+        : null,
     stats: sessionStats(a),
   };
 }
@@ -105,31 +98,72 @@ function weekLabels(today: Date): string[] {
   });
 }
 
-export function presentToday(v: TodayView, now = new Date()): Today {
+function weightLine(v: TodayView): string | null {
+  const w = v.weight;
+  if (!w || w.trendKg == null) return null;
+  const rate = w.rateKgPerWeek;
+  const move =
+    rate == null || Math.abs(rate) < 0.05
+      ? ", steady"
+      : `, ${rate > 0 ? "up" : "down"} ${Math.abs(rate).toFixed(1)} kg a week`;
+  return `Weight trend ${w.trendKg.toFixed(1)} kg${move}.`;
+}
+
+function driftSection(v: TodayView): Section | null {
   const drift = v.zoneDrift;
+  if (drift.runs.length < 2 || drift.recentAvgPct == null) return null;
+  return {
+    kind: "drift",
+    summary: `${Math.round(drift.recentAvgPct)}% above Z2 lately, ${Math.round(drift.targetPct)}% is the target`,
+    runs: drift.runs.slice(-6).map((r) => ({
+      id: String(r.activityId),
+      label: shortDate(r.date),
+      aboveZ2Pct: r.aboveZ2Pct,
+    })),
+  };
+}
+
+function buildSection(v: TodayView, key: string, day: Date): Section | null {
+  switch (key) {
+    case "health_tiles": {
+      const metrics = healthMetrics(v);
+      return metrics.length ? { kind: "health", metrics } : null;
+    }
+    case "attention":
+      return v.attention.length ? { kind: "attention", notes: v.attention } : null;
+    case "fuel": {
+      const text = [v.fuelSentence, v.hydrationSentence].filter(Boolean).join(" ");
+      return text ? { kind: "text", key: "fuel", text } : null;
+    }
+    case "weight": {
+      const text = weightLine(v);
+      return text ? { kind: "text", key: "weight", text } : null;
+    }
+    case "last_session": {
+      const session = lastSession(v);
+      return session ? { kind: "session", session } : null;
+    }
+    case "week":
+      return {
+        kind: "week",
+        labels: weekLabels(day),
+        minutes: v.week.dailyMinutes,
+        summary: v.week.sentence,
+      };
+    case "zone_drift":
+      return driftSection(v);
+    default:
+      // A section from a newer core is skipped, not an error.
+      return null;
+  }
+}
+
+export function presentToday(v: TodayView, now = new Date()): Today {
   const day = parseDay(v.date);
   return {
     dateLabel: day.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }),
     greeting: greeting(now),
     lede: v.empty ? "Nothing cached yet. Run a sync to pull your Garmin history." : v.lede,
-    metrics: v.empty ? [] : metrics(v),
-    fuelLine: [v.fuelSentence, v.hydrationSentence].filter(Boolean).join(" "),
-    attention: v.attention,
-    lastSession: lastSession(v),
-    zoneDrift:
-      drift.runs.length >= 2 && drift.recentAvgPct != null
-        ? {
-            summary: `${Math.round(drift.recentAvgPct)}% above Z2 lately, ${Math.round(drift.targetPct)}% is the target`,
-            runs: drift.runs.slice(-6).map((r) => ({
-              id: String(r.activityId),
-              label: r.date ? shortDate(r.date) : "",
-              aboveZ2Pct: r.aboveZ2Pct,
-            })),
-          }
-        : null,
-    week:
-      v.week.sessions > 0 || v.week.totalKm > 0
-        ? { labels: weekLabels(day), km: v.week.dailyKm, summary: v.week.sentence }
-        : null,
+    sections: v.sections.flatMap((key) => buildSection(v, key, day) ?? []),
   };
 }

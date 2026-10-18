@@ -1,6 +1,7 @@
 // Today on Android: Material 3 components from @expo/ui (Jetpack Compose).
+// The core sends the sections in order. A section that has no data is not drawn.
 import { Host } from "@expo/ui";
-import { Box, Card, Column, FlowRow, Row, Text } from "@expo/ui/jetpack-compose";
+import { Box, Button, Card, Column, FlowRow, Row, Text } from "@expo/ui/jetpack-compose";
 import {
   background,
   fillMaxWidth,
@@ -11,7 +12,7 @@ import {
 import type { ReactNode } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import type { Metric, Today } from "../data/types";
+import type { LastSession, Metric, Section as TodaySection, Today } from "../data/types";
 import { useToday } from "../data/useToday";
 import { HOST_SEED, useMd } from "../theme/md";
 
@@ -19,7 +20,7 @@ type Md = ReturnType<typeof useMd>;
 
 const GAP = 12;
 
-function Section({ children }: { children: ReactNode }) {
+function Block({ children }: { children: ReactNode }) {
   return (
     <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
       <Column verticalArrangement={{ spacedBy: GAP }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
@@ -37,17 +38,25 @@ function Heading({ md, children }: { md: Md; children: string }) {
   );
 }
 
-function MetricTile({ colors, m }: { colors: Md; m: Metric }) {
+function Body({ md, children }: { md: Md; children: string }) {
   return (
-    <Card colors={{ containerColor: colors.surfaceContainerHigh }} modifiers={[weight(1)]}>
+    <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
+      {children}
+    </Text>
+  );
+}
+
+function MetricTile({ md, m }: { md: Md; m: Metric }) {
+  return (
+    <Card colors={{ containerColor: md.surfaceContainerHigh }} modifiers={[weight(1)]}>
       <Column modifiers={[fillMaxWidth(), paddingAll(16)]}>
         <Text
           style={{ typography: "labelMedium" }}
-          color={m.accent ? colors.primary : colors.onSurfaceVariant}
+          color={m.accent ? md.primary : md.onSurfaceVariant}
         >
           {m.label}
         </Text>
-        <Text style={{ typography: "headlineMedium" }} color={colors.onSurface}>
+        <Text style={{ typography: "headlineMedium" }} color={md.onSurface}>
           {m.unit ? `${m.value} ${m.unit}` : m.value}
         </Text>
       </Column>
@@ -61,9 +70,9 @@ function pairs<T>(items: T[]): T[][] {
   return out;
 }
 
-function MetricGrid({ md, metrics }: { md: Md; metrics: Metric[] }) {
+function HealthBlock({ md, metrics }: { md: Md; metrics: Metric[] }) {
   return (
-    <>
+    <Block>
       {pairs(metrics).map((row) => (
         <Row
           key={row[0]?.id}
@@ -71,21 +80,21 @@ function MetricGrid({ md, metrics }: { md: Md; metrics: Metric[] }) {
           modifiers={[fillMaxWidth()]}
         >
           {row.map((m) => (
-            <MetricTile key={m.id} colors={md} m={m} />
+            <MetricTile key={m.id} md={md} m={m} />
           ))}
         </Row>
       ))}
-    </>
+    </Block>
   );
 }
 
-function ZoneStrip({ md, zones }: { md: Md; zones: number[] }) {
+function ZoneStrip({ md, percents }: { md: Md; percents: number[] }) {
   const tones = [md.surfaceVariant, md.secondary, md.tertiary, md.primary, md.error];
   return (
     <Row modifiers={[fillMaxWidth(), height(12)]}>
-      {zones.map((pct, i) => (
+      {percents.map((pct, i) => (
         <Box
-          key={tones[i]}
+          key={`zone-${i + 1}`}
           modifiers={[weight(Math.max(pct, 1)), height(12), background(tones[i] ?? md.primary)]}
         />
       ))}
@@ -93,21 +102,16 @@ function ZoneStrip({ md, zones }: { md: Md; zones: number[] }) {
   );
 }
 
-function LastSessionCard({ md, today }: { md: Md; today: Today }) {
-  const s = today.lastSession;
-  if (!s) return null;
+function SessionCard({ md, s }: { md: Md; s: LastSession }) {
+  const sub = [s.sport, s.when, s.zones ? `${s.zones.aboveZ2Pct}% above Z2` : null];
   return (
     <Card colors={{ containerColor: md.surfaceContainerLow }}>
       <Column verticalArrangement={{ spacedBy: 8 }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
         <Text style={{ typography: "titleLarge" }} color={md.onSurface}>
           {s.name}
         </Text>
-        <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-          {[s.sport, s.when, s.aboveZ2Pct == null ? null : `${s.aboveZ2Pct}% above Z2`]
-            .filter(Boolean)
-            .join(" - ")}
-        </Text>
-        <ZoneStrip md={md} zones={s.zones} />
+        <Body md={md}>{sub.filter(Boolean).join(" - ")}</Body>
+        {s.zones ? <ZoneStrip md={md} percents={s.zones.percents} /> : null}
         <FlowRow
           horizontalArrangement={{ spacedBy: 24 }}
           verticalArrangement={{ spacedBy: 12 }}
@@ -129,12 +133,11 @@ function LastSessionCard({ md, today }: { md: Md; today: Today }) {
   );
 }
 
-function AttentionCard({ md, today }: { md: Md; today: Today }) {
-  if (!today.attention.length) return null;
+function AttentionCard({ md, notes }: { md: Md; notes: { text: string; accent: boolean }[] }) {
   return (
     <Card colors={{ containerColor: md.surfaceContainerLow }}>
       <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {today.attention.map((n) => (
+        {notes.map((n) => (
           <Text
             key={n.text}
             style={{ typography: "bodyLarge" }}
@@ -152,11 +155,13 @@ function Bars({
   md,
   values,
   labels,
+  unit,
   max = Math.max(...values, 1),
 }: {
   md: Md;
   values: number[];
   labels: string[];
+  unit: string;
   max?: number;
 }) {
   return (
@@ -171,9 +176,10 @@ function Bars({
     >
       {values.map((v, i) => (
         <View
-          key={labels[i]}
+          // biome-ignore lint/suspicious/noArrayIndexKey: the bars never reorder
+          key={i}
           accessible
-          accessibilityLabel={`${labels[i]}: ${v}`}
+          accessibilityLabel={`${labels[i]}: ${Math.round(v)} ${unit}`}
           style={{
             flex: 1,
             height: Math.max((v / max) * 96, 4),
@@ -190,8 +196,9 @@ function BarLabels({ md, labels }: { md: Md; labels: string[] }) {
   return (
     <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
       <Row modifiers={[fillMaxWidth(), paddingAll(16)]}>
-        {labels.map((l) => (
-          <Box key={l} modifiers={[weight(1)]} contentAlignment="center">
+        {labels.map((l, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the labels never reorder
+          <Box key={i} modifiers={[weight(1)]} contentAlignment="center">
             <Text style={{ typography: "labelSmall" }} color={md.onSurfaceVariant}>
               {l}
             </Text>
@@ -202,108 +209,110 @@ function BarLabels({ md, labels }: { md: Md; labels: string[] }) {
   );
 }
 
-function HealthSection({ md, today }: { md: Md; today: Today }) {
-  if (!today.metrics.length && !today.fuelLine) return null;
-  return (
-    <Section>
-      <MetricGrid md={md} metrics={today.metrics} />
-      {today.fuelLine ? (
-        <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-          {today.fuelLine}
-        </Text>
-      ) : null}
-    </Section>
-  );
-}
-
-function AttentionSection({ md, today }: { md: Md; today: Today }) {
-  if (!today.attention.length) return null;
-  return (
-    <Section>
-      <Heading md={md}>Attention</Heading>
-      <AttentionCard md={md} today={today} />
-    </Section>
-  );
-}
-
-function LastSessionSection({ md, today }: { md: Md; today: Today }) {
-  if (!today.lastSession) return null;
-  return (
-    <Section>
-      <Heading md={md}>Last session</Heading>
-      <LastSessionCard md={md} today={today} />
-    </Section>
-  );
-}
-
-function DriftSection({ md, today }: { md: Md; today: Today }) {
-  const drift = today.zoneDrift;
-  if (!drift) return null;
-  const labels = drift.runs.map((r) => r.label);
+function WeekBlock({ md, s }: { md: Md; s: Extract<TodaySection, { kind: "week" }> }) {
   return (
     <>
-      <Section>
+      <Block>
+        <Heading md={md}>Last seven days</Heading>
+      </Block>
+      {s.minutes.some((m) => m > 0) ? (
+        <>
+          <Bars md={md} values={s.minutes} labels={s.labels} unit="min" />
+          <BarLabels md={md} labels={s.labels} />
+        </>
+      ) : null}
+      <Block>
+        <Body md={md}>{s.summary}</Body>
+      </Block>
+    </>
+  );
+}
+
+function DriftBlock({ md, s }: { md: Md; s: Extract<TodaySection, { kind: "drift" }> }) {
+  const labels = s.runs.map((r) => r.label);
+  return (
+    <>
+      <Block>
         <Heading md={md}>Zone drift</Heading>
-        <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-          {drift.summary}
-        </Text>
-      </Section>
-      <Bars md={md} values={drift.runs.map((r) => r.aboveZ2Pct)} labels={labels} max={100} />
+        <Body md={md}>{s.summary}</Body>
+      </Block>
+      <Bars md={md} values={s.runs.map((r) => r.aboveZ2Pct)} labels={labels} unit="%" max={100} />
       <BarLabels md={md} labels={labels} />
     </>
   );
 }
 
-function WeekSection({ md, today }: { md: Md; today: Today }) {
-  const week = today.week;
-  if (!week) return null;
-  return (
-    <>
-      <Section>
-        <Heading md={md}>Last seven days</Heading>
-      </Section>
-      {week.km.some((km) => km > 0) ? (
-        <>
-          <Bars md={md} values={week.km} labels={week.labels} />
-          <BarLabels md={md} labels={week.labels} />
-        </>
-      ) : null}
-      <Section>
-        <Text style={{ typography: "bodyMedium" }} color={md.onSurfaceVariant}>
-          {week.summary}
-        </Text>
-      </Section>
-    </>
-  );
+function SectionView({ md, s }: { md: Md; s: TodaySection }) {
+  switch (s.kind) {
+    case "health":
+      return <HealthBlock md={md} metrics={s.metrics} />;
+    case "attention":
+      return (
+        <Block>
+          <Heading md={md}>Attention</Heading>
+          <AttentionCard md={md} notes={s.notes} />
+        </Block>
+      );
+    case "text":
+      return (
+        <Block>
+          <Body md={md}>{s.text}</Body>
+        </Block>
+      );
+    case "session":
+      return (
+        <Block>
+          <Heading md={md}>Last session</Heading>
+          <SessionCard md={md} s={s.session} />
+        </Block>
+      );
+    case "week":
+      return <WeekBlock md={md} s={s} />;
+    case "drift":
+      return <DriftBlock md={md} s={s} />;
+  }
 }
 
-// Each section hides when it has no data. Health comes first.
 function TodayBody({ today }: { today: Today }) {
   const md = useMd();
   return (
     <>
-      <Section>
+      <Block>
         <Text style={{ typography: "labelLarge" }} color={md.onSurfaceVariant}>
           {today.dateLabel}
         </Text>
         <Text style={{ typography: "bodyLarge" }} color={md.onSurface}>
           {today.lede}
         </Text>
-      </Section>
-      <HealthSection md={md} today={today} />
-      <AttentionSection md={md} today={today} />
-      <LastSessionSection md={md} today={today} />
-      <DriftSection md={md} today={today} />
-      <WeekSection md={md} today={today} />
+      </Block>
+      {today.sections.map((s) => (
+        <SectionView key={s.kind === "text" ? s.key : s.kind} md={md} s={s} />
+      ))}
     </>
   );
 }
 
 export function TodayScreen() {
-  const { data } = useToday();
+  const { data, error, refetch } = useToday();
   return (
     <LargeAppBarScreen title={data?.greeting ?? "Today"}>
-      {data ? <TodayBody today={data} /> : <ActivityIndicator style={{ margin: 32 }} />}
+      {data ? <TodayBody today={data} /> : null}
+      {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
+      {error ? <ErrorBlock message={String(error)} onRetry={refetch} /> : null}
     </LargeAppBarScreen>
+  );
+}
+
+function ErrorBlock({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const md = useMd();
+  return (
+    <Block>
+      <Text style={{ typography: "bodyLarge" }} color={md.error}>
+        {message}
+      </Text>
+      <Button onClick={onRetry}>
+        <Text>Try again</Text>
+      </Button>
+    </Block>
   );
 }
