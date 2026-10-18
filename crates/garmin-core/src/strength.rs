@@ -106,7 +106,11 @@ pub fn parse_sets(activity_id: i64, v: &Value) -> Vec<ExerciseSet> {
 
             ExerciseSet {
                 activity_id,
-                set_index: if numbered_by_garmin { candidate } else { i as i64 },
+                set_index: if numbered_by_garmin {
+                    candidate
+                } else {
+                    i as i64
+                },
                 active: s["setType"].as_str() != Some("REST"),
                 duration_s: s["duration"].as_f64(),
                 reps: s["repetitionCount"].as_i64(),
@@ -358,8 +362,11 @@ mod tests {
         ]});
         let sets = parse_sets(1, &v);
         assert_eq!(sets.len(), 4);
-        assert!(indices_are_unique(&sets), "set_index values: {:?}",
-            sets.iter().map(|s| s.set_index).collect::<Vec<_>>());
+        assert!(
+            indices_are_unique(&sets),
+            "set_index values: {:?}",
+            sets.iter().map(|s| s.set_index).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -373,13 +380,19 @@ mod tests {
         ]});
         let sets = parse_sets(1, &v);
         assert_eq!(sets.len(), 4);
-        assert!(indices_are_unique(&sets), "set_index values: {:?}",
-            sets.iter().map(|s| s.set_index).collect::<Vec<_>>());
+        assert!(
+            indices_are_unique(&sets),
+            "set_index values: {:?}",
+            sets.iter().map(|s| s.set_index).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn a_well_formed_payload_keeps_garmins_own_numbering() {
         let sets = parse_sets(1, &payload());
-        assert!(sets.iter().enumerate().all(|(i, s)| s.set_index == i as i64));
+        assert!(sets
+            .iter()
+            .enumerate()
+            .all(|(i, s)| s.set_index == i as i64));
     }
 }
