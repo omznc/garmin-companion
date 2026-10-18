@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { blocks, inline } from "../data/markdown";
 import { callJson } from "../data/source";
 import {
@@ -290,14 +290,17 @@ export function AskView({ theme, top }: { theme: AskTheme; top: number }) {
           ))
         )}
       </ScrollView>
-      <View
+      {/* iOS: the native tab bar floats over the screen, and only the view's own safe area
+          includes it. Android: the tab bar sits below the screen and owns the system inset. */}
+      <SafeAreaView
+        edges={Platform.OS === "ios" ? ["bottom"] : []}
         style={{
           flexDirection: "row",
           alignItems: "flex-end",
           gap: 8,
           paddingHorizontal: 12,
           paddingTop: 8,
-          paddingBottom: Math.max(insets.bottom, 12),
+          paddingBottom: 12,
         }}
       >
         <TextInput
@@ -336,7 +339,7 @@ export function AskView({ theme, top }: { theme: AskTheme; top: number }) {
             {busy ? "■" : "↑"}
           </Text>
         </Pressable>
-      </View>
+      </SafeAreaView>
     </KeyboardAvoidingView>
   );
 }
