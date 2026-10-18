@@ -7,10 +7,11 @@ import { View } from "react-native";
 import { setupSkipped, skipSetup } from "../data/account";
 import { isSampleData } from "../data/source";
 import { useStatus } from "../data/useAccount";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useHostTheme, useMd } from "../theme/md";
 
 export function SetupScreen() {
   const md = useMd();
+  const host = useHostTheme();
   const router = useRouter();
   const { data } = useStatus();
   const skip = () => {
@@ -19,7 +20,7 @@ export function SetupScreen() {
   };
   return (
     <View style={{ flex: 1, justifyContent: "center", backgroundColor: md.surface }}>
-      <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
+      <Host matchContents={{ vertical: true }} {...host} style={{ width: "100%" }}>
         <Column verticalArrangement={{ spacedBy: 16 }} modifiers={[fillMaxWidth(), paddingAll(24)]}>
           <Text style={{ typography: "headlineLarge" }} color={md.onSurface}>
             Connect Garmin

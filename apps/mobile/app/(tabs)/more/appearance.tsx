@@ -1,3 +1,3 @@
-import { AppearancePage } from "../../../src/more/pages";
+import { AppearancePage } from "../../../src/more/AppearancePage";
 
 export default AppearancePage;

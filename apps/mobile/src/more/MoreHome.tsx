@@ -2,6 +2,7 @@
 import { useRouter } from "expo-router";
 import { useStrengthShown } from "../data/body";
 import { THEMES } from "../data/useSettingsActions";
+import { useAppearanceLine } from "../theme/useAppearanceLine";
 import { useSettings } from "../data/useAccount";
 import { useCoachConfig } from "../data/useAsk";
 import { Item, type ItemProps, Page, Section } from "./Kit";
@@ -30,7 +31,7 @@ export function MoreHome() {
   const strength = useStrengthShown().data === true;
   const settings = useSettings().data;
   const coach = useCoachConfig().data;
-  const theme = THEMES.find((t) => t.value === settings?.theme)?.label;
+  const theme = useAppearanceLine(THEMES.find((t) => t.value === settings?.theme)?.label);
   const health: Row[] = [
     row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo", {
       icon: "bedtime",
