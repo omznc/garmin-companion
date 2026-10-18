@@ -1,5 +1,3 @@
-import { Placeholder } from "../../../src/screens/Placeholder";
+import { ActivitiesScreen } from "../../../src/screens/Activities";
 
-export default function Screen() {
-  return <Placeholder title="Activities" />;
-}
+export default ActivitiesScreen;

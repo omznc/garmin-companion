@@ -6,6 +6,7 @@ use gpui::{
     ElementId, IntoElement, Render, Window,
 };
 
+use crate::activities::{self, Page, Store};
 use crate::chrome;
 use crate::data::Today;
 use crate::motion;
@@ -33,22 +34,59 @@ pub struct Root {
     /// Counts the screens shown, so each one animates in again.
     visits: usize,
     scroll: SmoothScroll,
+    /// The Activities screen reads its own view models from this store.
+    store: Store,
+    page: Page,
 }
 
 impl Root {
-    pub fn new(today: Today, palette: Palette) -> Self {
+    pub fn new(today: Today, palette: Palette, store: Store) -> Self {
         Self {
             today,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
+            store,
+            page: Page::List,
         }
+    }
+
+    /// Show one session. The page starts at the top, like a new screen.
+    pub fn open_activity(&mut self, id: i64, cx: &mut Context<Self>) {
+        self.page = match self.store.detail(id) {
+            Ok(Some(view)) => Page::Detail(Box::new(view)),
+            _ => Page::Missing,
+        };
+        self.restart_page(cx);
+    }
+
+    /// Open on the Activities entry, with one session shown.
+    pub fn start_at_activity(&mut self, id: i64, cx: &mut Context<Self>) {
+        self.sidebar.select(1);
+        self.open_activity(id, cx);
+    }
+
+    pub fn start_at_activity_list(&mut self, cx: &mut Context<Self>) {
+        self.sidebar.select(1);
+        cx.notify();
+    }
+
+    pub fn close_activity(&mut self, cx: &mut Context<Self>) {
+        self.page = Page::List;
+        self.restart_page(cx);
+    }
+
+    fn restart_page(&mut self, cx: &mut Context<Self>) {
+        self.visits += 1;
+        self.scroll = SmoothScroll::new(motion::reduced());
+        cx.notify();
     }
 
     fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
+            self.page = Page::List;
             self.visits += 1;
             // A new screen starts at the top.
             self.scroll = SmoothScroll::new(motion::reduced());
@@ -66,9 +104,12 @@ impl Root {
         cx.notify();
     }
 
-    fn screen(&self, t: &Theme) -> gpui::AnyElement {
+    fn screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.sidebar.active == 0 {
             return today::render(&self.today, self.visits, t).into_any_element();
+        }
+        if self.sidebar.active == 1 {
+            return self.activities_screen(t, cx);
         }
         let label = NAV[self.sidebar.active].0;
         div()
@@ -86,6 +127,17 @@ impl Root {
                 .max_w(ch(62.0, 16.0)),
             ))
             .into_any_element()
+    }
+
+    fn activities_screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
+        match &self.page {
+            Page::Detail(view) => activities::detail(view, self.visits, t, cx),
+            Page::Missing => activities::missing(t, cx),
+            Page::List => match self.store.list() {
+                Ok(view) => activities::list(&view, self.visits, t, cx),
+                Err(error) => activities::failed(&error, t),
+            },
+        }
     }
 }
 
@@ -127,7 +179,7 @@ impl Render for Root {
                 div()
                     .max_w(px(COLUMN_MAX))
                     .pt(px(COLUMN_TOP))
-                    .child(self.screen(&t)),
+                    .child(self.screen(&t, cx)),
             );
 
         // Text under the title strip fades out as it scrolls up.
