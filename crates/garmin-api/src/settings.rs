@@ -42,7 +42,7 @@ pub fn prefs() -> Prefs {
 }
 
 pub fn set_theme(theme: ThemeMode) -> Result<Prefs, ApiError> {
-    let prefs = Prefs { theme, ..prefs() };
+    let prefs = Prefs { theme };
     let json =
         serde_json::to_string_pretty(&prefs).map_err(|e| ApiError::Internal(e.to_string()))?;
     paths::ensure_base_dir()?;
@@ -81,6 +81,14 @@ pub fn settings_view() -> Result<SettingsView, ApiError> {
             secrets::STORE
         ),
     })
+}
+
+/// How long ago the last sync ran, such as "3 hours ago". `None` when the cache
+/// has never synced or cannot open.
+pub fn synced_ago() -> Option<String> {
+    let (_, last_sync) = cache_facts();
+    let when = DateTime::parse_from_rfc3339(&last_sync?).ok()?;
+    Some(since(when.with_timezone(&Utc), Utc::now()))
 }
 
 /// The cached activity count and the last sync time. A cache that cannot open

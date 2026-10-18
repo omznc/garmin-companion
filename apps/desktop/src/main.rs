@@ -5,14 +5,23 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--persona golfer` shows a made-up user from `garmin-api`. With neither `--db`
+//! nor `--persona`, the app reads the cache in the data folder and asks for a
+//! Garmin sign-in when there is none. `--persona` and `--db` run a demo: the
+//! sync is a fake and no setting is saved. `--open Settings` starts on a screen.
+//! `--sync` starts a sync at once.
 
+mod account;
 mod chrome;
+mod controls;
 mod data;
+mod field;
 mod icons;
 mod map;
 mod motion;
 mod scroll;
+mod settings;
+mod setup;
 mod shell;
 mod sidebar;
 mod spring;
@@ -100,9 +109,14 @@ fn main() -> anyhow::Result<()> {
             date,
         },
         (None, Some(_), _) => anyhow::bail!("--date needs --db"),
-        (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
+        (None, None, Some(persona)) => data::Source::Persona(persona),
+        (None, None, None) => data::Source::Default,
     };
     let today = data::load_today(&source)?;
+    let explicit_palette = option(&args, "--palette").is_some();
+    // For screenshots: open a screen by its nav label, and start a sync.
+    let open = option(&args, "--open");
+    let start_sync = args.iter().any(|a| a == "--sync");
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -134,8 +148,25 @@ fn main() -> anyhow::Result<()> {
                 }),
                 ..Default::default()
             };
+            let demo = !matches!(source, data::Source::Default);
+            let account = account::Account::new(demo, cx);
+            // A palette from the command line wins. Otherwise the saved mode picks.
+            let palette = if explicit_palette {
+                palette
+            } else {
+                account::palette_for(account.mode, cx.window_appearance())
+            };
             let opened = cx.open_window(options, |_, cx| {
-                cx.new(|_| shell::Root::new(today, palette))
+                cx.new(|cx| {
+                    let mut root = shell::Root::new(today, palette, source, account);
+                    if let Some(label) = &open {
+                        root.open(label, cx);
+                    }
+                    if start_sync {
+                        root.start_sync(false, cx);
+                    }
+                    root
+                })
             });
             if let Err(error) = opened {
                 eprintln!("could not open the window: {error:#}");

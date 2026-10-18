@@ -34,6 +34,8 @@ pub struct Status {
     /// A token file of the `garminconnect` library, when one exists and the
     /// user is not connected. The UI can offer to import it.
     pub importable_token_path: Option<String>,
+    /// The sentence for the sign-in page. It says what the app keeps and where.
+    pub sign_in_line: String,
 }
 
 /// One progress step of a sync, with the sentence that the UI shows.
@@ -66,7 +68,23 @@ pub fn status() -> Result<Status, ApiError> {
     Ok(Status {
         connected,
         importable_token_path: if connected { None } else { importable },
+        sign_in_line: sign_in_line(),
     })
+}
+
+/// The sentence for the sign-in page. It needs no keyring.
+pub fn sign_in_line() -> String {
+    // A phone has one window, so the sign-in page opens inside the app.
+    let place = if cfg!(any(target_os = "android", target_os = "ios")) {
+        "Garmin's own page, inside this app"
+    } else {
+        "Garmin's own page, in its own window"
+    };
+    format!(
+        "You sign in on {place}. This app never sees your password. \
+         It only keeps the token that Garmin issues afterwards, in {}.",
+        garmin_core::secrets::STORE
+    )
 }
 
 pub fn sign_out() -> Result<(), ApiError> {

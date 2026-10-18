@@ -35,7 +35,10 @@ pub const PERSONAS: [(&str, &str); 5] = [
 ];
 
 /// Where the Today view comes from.
+#[derive(Clone)]
 pub enum Source {
+    /// The cache in the data folder. This is the shipped behaviour.
+    Default,
     /// One of the `garmin-api` personas, by name, such as `golfer`. The
     /// default is `sample`. The persona files hold made-up data only.
     Persona(String),
@@ -159,6 +162,12 @@ pub struct Today {
 /// The Today view. The single switch point between the personas and the cache.
 pub fn load_today(source: &Source) -> Result<Today> {
     match source {
+        Source::Default => {
+            let db = garmin_api::open_default_db().context("cannot open the cache")?;
+            let view = garmin_api::today_view(&db, chrono::Local::now().date_naive())
+                .context("cannot build the Today view")?;
+            Ok(crate::map::today(&view, None))
+        }
         Source::Persona(name) => {
             let (_, json) = PERSONAS
                 .iter()
