@@ -1,6 +1,6 @@
 /**
  * Everything the worker knows about a model, in one place. A swap from Haiku to
- * DeepSeek is a change of `MODEL_PROFILE` in wrangler.jsonc and nothing else.
+ * DeepSeek is a change of `MODEL_PROFILE` in cloudflare.config.ts and nothing else.
  * Prices are USD per million tokens, read from the OpenRouter models API on
  * 2026-10-18.
  */

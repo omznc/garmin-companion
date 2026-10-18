@@ -143,11 +143,40 @@ describe("chat", () => {
     const h = harness();
     const id = await h.install();
     for (const status of [402, 403]) {
-      h.upstream(() => jsonResponse({ error: "limit" }, status));
+      h.upstream(() => jsonResponse({ error: { message: "Key limit exceeded" } }, status));
       const r = await h.ask(id);
       expect(r.status).toBe(503);
       expect(((await r.json()) as any).error.type).toBe("coach_paused");
     }
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+  });
+
+  it("does not call a 403 refusal a pause", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => jsonResponse({ error: { message: "content policy violation" } }, 403));
+    const r = await h.ask(id);
+    expect(r.status).toBe(502);
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+  });
+
+  it("releases the hold when the provider fails inside a 200 stream", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ error: { message: "provider down", code: 502 } }));
+    await (await h.ask(id)).text();
+    await h.settled();
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+    expect((await h.call("/v2/balance", { token: id })).status).toBe(200);
+  });
+
+  it("answers 502 and releases the hold on a 200 JSON error body", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => jsonResponse({ error: { message: "provider down" } }));
+    const r = await h.ask(id, { stream: false });
+    expect(r.status).toBe(502);
+    expect(((await r.json()) as any).error.type).toBe("upstream_error");
     expect((await h.balance(id)).credits_remaining).toBe(30);
   });
 
@@ -391,6 +420,17 @@ describe("login", () => {
     );
   });
 
+  it("caps new accounts per address, but not logins of existing ones", async () => {
+    const h = harness();
+    for (let i = 0; i < 5; i++) await h.login(`user${i}@example.com`);
+    const r = await h.call("/v2/auth/email/send", { json: { email: "user5@example.com" } });
+    expect(r.status).toBe(429);
+    expect(((await r.json()) as any).error.type).toBe("install_limit");
+    expect(
+      (await h.call("/v2/auth/email/send", { json: { email: "user0@example.com" } })).status,
+    ).toBe(200);
+  });
+
   it("says so when no mail sender is set up", async () => {
     const h = harness({ MAILER: undefined });
     const r = await h.call("/v2/auth/email/send", { json: { email: "a@example.com" } });
@@ -553,6 +593,16 @@ describe("polar webhook", () => {
     expect(h.db.raw.prepare("SELECT * FROM webhook_event").all()).toHaveLength(0);
   });
 
+  it("accepts an older Polar secret, the UTF-8 bytes of the whole string", async () => {
+    const secret = "whsec_oldstyle-secret";
+    const h = harness({ POLAR_WEBHOOK_SECRET: secret });
+    const { userId } = await h.login();
+    const s = await signed(secret, sub(userId));
+    expect((await h.call(HOOK, { method: "POST", body: s.body, headers: s.headers })).status).toBe(
+      200,
+    );
+  });
+
   it("accepts a whsec_ base64 secret", async () => {
     const raw = "super-secret-bytes";
     const h = harness({ POLAR_WEBHOOK_SECRET: `whsec_${btoa(raw)}` });
@@ -625,25 +675,30 @@ describe("polar webhook", () => {
     expect((await entitlementOf(h.env as any, userId)).premium).toBe(false);
   });
 
-  it("keeps premium until the period end after a cancel", async () => {
+  it("keeps premium after a cancel at period end, until the revoke", async () => {
     const h = harness();
-    const { userId } = await h.login();
-    const end = Date.now() + 10 * 86_400_000;
+    const { token, userId } = await h.login();
+    const t = Date.now();
+    // What Polar sends: still active, flagged to end at the period end.
     await post(
       h,
-      sub(
-        userId,
-        {
-          status: "canceled",
-          current_period_end: new Date(end).toISOString(),
-          cancel_at_period_end: true,
-        },
-        "subscription.canceled",
-      ),
+      sub(userId, { cancel_at_period_end: true }, "subscription.canceled", new Date(t - 2000)),
     );
-    const env = h.env as any;
-    expect((await entitlementOf(env, userId, end - 1000)).premium).toBe(true);
-    expect((await entitlementOf(env, userId, end + 1000)).premium).toBe(false);
+    const b = await h.balance(token);
+    expect(b).toMatchObject({ premium: true, cancels_at_period_end: true });
+    await post(h, sub(userId, { status: "canceled" }, "subscription.revoked", new Date(t)));
+    expect((await h.balance(token)).premium).toBe(false);
+  });
+
+  it("ends premium on an immediate cancel even if the period end is ahead", async () => {
+    const h = harness();
+    const { userId } = await h.login();
+    const t = Date.now();
+    const at = new Date(t);
+    await post(h, sub(userId, { status: "canceled" }, "subscription.revoked", at));
+    // Same timestamp, other order: still not premium.
+    await post(h, sub(userId, { status: "canceled" }, "subscription.canceled", at));
+    expect((await entitlementOf(h.env as any, userId)).premium).toBe(false);
   });
 
   it("gives 7 days of grace when past due, and no more", async () => {

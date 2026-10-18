@@ -8,7 +8,7 @@
  * first holds an upper-bound estimate, and settling never charges more than the
  * hold.
  *
- * shortcut: expired holds are released lazily on the next call instead of by a
+ * shortcut: an expired hold is charged lazily on the next call instead of by a
  * Durable Object alarm. The result is the same, and an idle wallet costs nothing.
  */
 
@@ -78,7 +78,12 @@ export class WalletCore {
         s.prem.month = day.slice(0, 7);
         s.prem.monthUsed = 0;
       }
-      for (const [id, h] of Object.entries(s.holds)) if (h.exp <= now) delete s.holds[id];
+      // A hold that nobody settled or released in time is charged in full. The
+      // caller controls when a stream ends, so refunding here would let a slow
+      // client read for free.
+      for (const [id, h] of Object.entries(s.holds)) {
+        if (h.exp <= now) this.charge(s, id, h.pool, h.amt);
+      }
       const out = fn(s);
       await this.store.put(s);
       return out;
@@ -130,6 +135,18 @@ export class WalletCore {
     }, now);
   }
 
+  /** Take `amt` from the pool, close the hold and remember the id. */
+  private charge(s: State, id: string, pool: Pool, amt: number) {
+    if (pool === "free") s.free.used += amt;
+    else {
+      s.prem.dayUsed += amt;
+      s.prem.monthUsed += amt;
+    }
+    delete s.holds[id];
+    s.done.push(id);
+    if (s.done.length > DONE_KEEP) s.done.shift();
+  }
+
   /**
    * Charge `actual` units against the hold. More than the hold is clamped to the
    * hold (it should not happen, the hold is an upper bound). A second settle of
@@ -144,14 +161,7 @@ export class WalletCore {
         charged = Math.min(Math.max(0, Math.round(actual)), h.amt);
         clamped = actual > h.amt;
         if (clamped) console.warn("wallet: settle above hold, clamped");
-        if (h.pool === "free") s.free.used += charged;
-        else {
-          s.prem.dayUsed += charged;
-          s.prem.monthUsed += charged;
-        }
-        delete s.holds[id];
-        s.done.push(id);
-        if (s.done.length > DONE_KEEP) s.done.shift();
+        this.charge(s, id, h.pool, charged);
       }
       return { charged, clamped, snapshot: this.snap(s, premium, now) };
     }, now);

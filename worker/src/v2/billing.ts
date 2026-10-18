@@ -23,12 +23,12 @@ function rowIsPremium(r: Row, now: number): boolean {
     case "active":
     case "trialing":
       return true;
-    case "canceled":
-      return r.current_period_end !== null && now < r.current_period_end;
     case "past_due":
       return r.past_due_since !== null && now < r.past_due_since + PAST_DUE_GRACE;
     default:
-      return false; // revoked, refunded, unpaid, incomplete
+      // Polar sets `canceled` only once access has ended. A cancel at period end
+      // stays `active` with cancel_at_period_end until the revoke.
+      return false; // canceled, revoked, refunded, unpaid, incomplete
   }
 }
 
@@ -54,9 +54,23 @@ export async function entitlementOf(env: V2Env, userId: string, now = Date.now()
 const b64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
 /**
+ * The keys a secret can mean. A `whsec_` secret is base64 under Standard
+ * Webhooks. Polar secrets made before September 2026 use the UTF-8 bytes of the
+ * whole string instead, so both are tried.
+ */
+function candidateKeys(secret: string): Uint8Array[] {
+  const text = new TextEncoder().encode(secret);
+  if (!secret.startsWith("whsec_")) return [text];
+  try {
+    return [b64(secret.slice(6)), text];
+  } catch {
+    return [text];
+  }
+}
+
+/**
  * Standard Webhooks signature check: HMAC-SHA256 over `id.timestamp.body`, sent
- * as space-separated `v1,<base64>` values. A `whsec_` secret is base64. Polar's
- * secret is used as plain text bytes.
+ * as space-separated `v1,<base64>` values.
  */
 export async function verifyWebhook(
   secret: string,
@@ -71,22 +85,24 @@ export async function verifyWebhook(
   if (Math.abs(nowSec - Number(ts)) > 300) return false;
 
   try {
-    const keyBytes = secret.startsWith("whsec_")
-      ? b64(secret.slice(6))
-      : new TextEncoder().encode(secret);
-    const key = await crypto.subtle.importKey(
-      "raw",
-      keyBytes,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["verify"],
-    );
     const signed = new TextEncoder().encode(`${id}.${ts}.${body}`);
-    for (const part of sigs.split(" ")) {
-      const [version, value] = part.split(",");
-      if (version !== "v1" || !value) continue;
-      // `verify` compares in constant time.
-      if (await crypto.subtle.verify("HMAC", key, b64(value), signed)) return true;
+    const given = sigs
+      .split(" ")
+      .map((part) => part.split(","))
+      .filter(([version, value]) => version === "v1" && value)
+      .map(([, value]) => b64(value));
+    for (const keyBytes of candidateKeys(secret)) {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        keyBytes,
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      for (const sig of given) {
+        // `verify` compares in constant time.
+        if (await crypto.subtle.verify("HMAC", key, sig, signed)) return true;
+      }
     }
   } catch {
     // A malformed signature is a failed one.

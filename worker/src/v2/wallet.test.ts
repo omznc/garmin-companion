@@ -82,12 +82,14 @@ describe("wallet", () => {
     expect(s.charged).toBe(5_000);
   });
 
-  it("returns an expired hold and lets the id be used again", async () => {
+  it("charges an expired hold in full, so a slow client cannot read for free", async () => {
     const w = core();
     await w.reserve("r1", 20_000, false, NOW);
-    expect((await w.snapshot(false, NOW + 6 * 60_000)).credits_remaining).toBe(30);
-    // The late settle of an expired hold charges nothing.
-    expect((await w.settle("r1", 20_000, false, NOW + 6 * 60_000)).charged).toBe(0);
+    expect((await w.snapshot(false, NOW + 6 * 60_000)).credits_remaining).toBe(10);
+    // The late settle charges nothing more, and the id stays used.
+    expect((await w.settle("r1", 5_000, false, NOW + 6 * 60_000)).charged).toBe(0);
+    expect((await w.snapshot(false, NOW + 7 * 60_000)).credits_remaining).toBe(10);
+    expect((await w.reserve("r1", 1_000, false, NOW + 7 * 60_000)).ok).toBe(false);
   });
 
   it("release gives everything back and frees the id", async () => {

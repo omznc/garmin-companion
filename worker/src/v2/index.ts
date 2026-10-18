@@ -27,6 +27,7 @@ const DAY_SECONDS = 86_400;
 const INSTALL_TTL = 400 * DAY_SECONDS;
 const INSTALLS_PER_IP = 3;
 const INSTALLS_PER_DAY = 200;
+const NEW_ACCOUNTS_PER_IP = 5;
 const MAX_MESSAGES = 80;
 const FREE_MAX_TOKENS = 4096;
 const SPEND_SHARDS = 8;
@@ -173,8 +174,13 @@ async function authSend(request: Request, env: V2Env) {
   if (!(await env.ISSUE.limit({ key: `v2mail:${bucket}` })).success) {
     return fail(429, "rate_limited", "too many codes requested", {}, { "Retry-After": "60" });
   }
+  const capped = await newAccountCap(env, email, bucket);
+  if (capped) return capped;
   const result = await sendCode(env, email);
-  if (result === "sent") return json({ ok: true });
+  if (result === "sent") {
+    await countNewAccount(env, email, bucket);
+    return json({ ok: true });
+  }
   if (result === "rate_limited")
     return fail(
       429,
@@ -185,6 +191,31 @@ async function authSend(request: Request, env: V2Env) {
     );
   if (result === "mail_unavailable") return fail(503, "mail_unavailable");
   return fail(502, "mail_failed");
+}
+
+const userExists = async (env: V2Env, email: string) =>
+  !!(await env.DB.prepare("SELECT 1 FROM user WHERE email = ?").bind(email).first());
+
+/** Signed-in users get a free grant too, so new accounts have install-like caps. */
+async function newAccountCap(env: V2Env, email: string, bucket: string) {
+  if (await userExists(env, email)) return null;
+  const day = today();
+  const [mine, total] = await Promise.all([
+    env.COUNTERS.get(`v2newuser:${day}:${bucket}`),
+    env.COUNTERS.get(`v2newuser:${day}:total`),
+  ]);
+  if (Number(mine ?? 0) < NEW_ACCOUNTS_PER_IP && Number(total ?? 0) < INSTALLS_PER_DAY) return null;
+  const retry = { "Retry-After": String(secondsUntilMidnight()) };
+  return fail(429, "install_limit", "too many new accounts today", {}, retry);
+}
+
+async function countNewAccount(env: V2Env, email: string, bucket: string) {
+  if (await userExists(env, email)) return;
+  const day = today();
+  await Promise.all([
+    bump(env, `v2newuser:${day}:${bucket}`, 1),
+    bump(env, `v2newuser:${day}:total`, 1),
+  ]);
 }
 
 async function authVerify(request: Request, env: V2Env) {
@@ -335,7 +366,7 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
   const upstream = await callUpstream(env, body);
   if (!upstream.ok || !upstream.body) {
     await release();
-    return upstreamRefusal(upstream.status);
+    return upstreamRefusal(upstream.status, await upstream.text().catch(() => ""));
   }
 
   const headers = (snap: Snapshot) => ({
@@ -347,13 +378,21 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
 
   if (!(upstream.headers.get("Content-Type") ?? "").includes("event-stream")) {
     const text = await upstream.text();
-    const units = costUnits(p, safeUsage(text)) ?? estimate;
+    const parsed = safeJson(text);
+    // OpenRouter answers 200 and puts a provider failure in the body.
+    if (parsed?.error && !parsed.choices) {
+      await release();
+      return upstreamRefusal(502, text);
+    }
+    const units = costUnits(p, parsed?.usage) ?? estimate;
     return new Response(text, { status: 200, headers: headers(await settle(units)) });
   }
 
   // The headers go out before the answer, so they show the balance before this
   // request is charged. GET /v2/balance has the exact figure afterwards.
-  const stream = meterStream(upstream.body, (usage) => {
+  const stream = meterStream(upstream.body, (usage, failed) => {
+    // A provider error before any content costs nothing.
+    if (failed) return void ctx.waitUntil(release());
     // No usage block (a cut stream, a client that left): charge the estimate.
     // Refunding there would let a caller abort every request for free.
     ctx.waitUntil(settle(costUnits(p, usage) ?? estimate));
@@ -366,7 +405,8 @@ async function callUpstream(env: V2Env, body: string): Promise<Response> {
     return await fetch(UPSTREAM, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.OPENROUTER_KEY}`,
+        // A separate key keeps a /v2 key limit from stopping /v1 users.
+        Authorization: `Bearer ${env.OPENROUTER_KEY_V2 ?? env.OPENROUTER_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/omznc/garmin-companion",
         "X-Title": "Garmin Companion (hosted)",
@@ -379,36 +419,42 @@ async function callUpstream(env: V2Env, body: string): Promise<Response> {
   }
 }
 
-function upstreamRefusal(status: number): Response {
-  // OpenRouter refuses with 402 or 403 when the key limit is reached.
-  if (status === 402 || status === 403) {
+function upstreamRefusal(status: number, text: string): Response {
+  // OpenRouter refuses with 402 when the key limit is reached. It uses 403 for
+  // a limit too, but also for content refusals, so 403 needs a matching word.
+  if (status === 402 || (status === 403 && /limit|credit|budget/i.test(text))) {
     return fail(503, "coach_paused", "the cloud coach is paused");
   }
   return fail(502, "upstream_error", "the model provider failed", { upstream_status: status });
 }
 
-function safeUsage(text: string) {
+function safeJson(text: string): Record<string, any> | undefined {
   try {
-    return JSON.parse(text)?.usage;
+    return JSON.parse(text);
   } catch {
     return undefined;
   }
 }
 
-/** Passes the SSE stream through and calls `done` once, with the usage if any. */
+/**
+ * Passes the SSE stream through and calls `done` once, with the usage if any.
+ * `failed` is true when the provider sent an error and no content or usage.
+ */
 function meterStream(
   source: ReadableStream<Uint8Array>,
-  done: (usage: Usage | undefined) => void,
+  done: (usage: Usage | undefined, failed: boolean) => void,
 ): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   const decoder = new TextDecoder();
   let tail = "";
   let usage: Usage | undefined;
+  let sawContent = false;
+  let sawError = false;
   let finished = false;
   const finish = () => {
     if (!finished) {
       finished = true;
-      done(usage);
+      done(usage, sawError && !sawContent && !usage);
     }
   };
   const scan = (chunk: Uint8Array) => {
@@ -418,8 +464,11 @@ function meterStream(
     for (const line of events.flatMap((e) => e.split("\n"))) {
       if (!line.startsWith("data:") || line.includes("[DONE]")) continue;
       try {
-        const u = JSON.parse(line.slice(5).trim())?.usage;
+        const j = JSON.parse(line.slice(5).trim());
+        const u = j?.usage;
         if (u && typeof u.prompt_tokens === "number") usage = u;
+        if (j?.error) sawError = true;
+        if (j?.choices?.some((c: any) => c?.delta?.content)) sawContent = true;
       } catch {
         // A broken chunk is a missing usage, which charges the estimate.
       }

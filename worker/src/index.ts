@@ -24,7 +24,7 @@
  * What this deliberately does not do is look at the conversation. The body is
  * health data — resting heart rates, sleep, weight — and it is checked for shape
  * and size and then forwarded. Nothing here logs a message, and there is no
- * observability block in `wrangler.jsonc` that would do it from underneath.
+ * observability block in `cloudflare.config.ts` that would do it from underneath.
  */
 
 import { handleV2 } from "./v2";
@@ -33,7 +33,7 @@ import type { V2Env } from "./v2/env";
 export { Wallet } from "./v2";
 
 interface Env extends V2Env {
-  /** `wrangler secret put OPENROUTER_KEY` */
+  /** `cf workers secrets update OPENROUTER_KEY` */
   OPENROUTER_KEY: string;
   MODEL: string;
   DAILY_BUDGET_USD: string;

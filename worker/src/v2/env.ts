@@ -3,6 +3,8 @@ import type { Mailer } from "./auth";
 /** The bindings /v2 uses. The `/v1` code uses the first four as well. */
 export interface V2Env {
   OPENROUTER_KEY: string;
+  /** Optional. A key for /v2 alone, so its limit does not stop /v1. */
+  OPENROUTER_KEY_V2?: string;
   COUNTERS: KVNamespace;
   BURST: RateLimit;
   ISSUE: RateLimit;
