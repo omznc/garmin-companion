@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import type { LastSession, Metric, Section as TodaySection, Today } from "../data/types";
+import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 import { HOST_SEED, useMd } from "../theme/md";
 
@@ -295,8 +296,24 @@ function TodayBody({ today }: { today: Today }) {
 
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
+  const md = useMd();
+  const sync = useSync();
   return (
-    <LargeAppBarScreen title={data?.greeting ?? "Today"}>
+    <LargeAppBarScreen
+      title={data?.greeting ?? "Today"}
+      refreshing={sync.busy}
+      onRefresh={() => sync.refresh()}
+    >
+      {sync.line || sync.error ? (
+        <Block>
+          <Text
+            style={{ typography: "labelMedium" }}
+            color={sync.error ? md.error : md.onSurfaceVariant}
+          >
+            {sync.error ?? sync.line ?? ""}
+          </Text>
+        </Block>
+      ) : null}
       {data ? <TodayBody today={data} /> : null}
       {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? <ErrorBlock message={String(error)} onRetry={refetch} /> : null}
