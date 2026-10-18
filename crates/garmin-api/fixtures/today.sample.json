@@ -1,0 +1,216 @@
+{
+  "date": "2026-03-11",
+  "empty": false,
+  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was 6.0 km running. Across your last 5 runs with heart-rate data, 42% of the time was above Z2 — still the thing most worth fixing.",
+  "sleep": {
+    "value": 25200.0,
+    "date": "2026-03-11"
+  },
+  "bodyBattery": {
+    "value": 80.0,
+    "date": "2026-03-11"
+  },
+  "readiness": {
+    "value": 60.0,
+    "date": "2026-03-11"
+  },
+  "hrv": {
+    "value": 41.0,
+    "date": "2026-03-11"
+  },
+  "restingHr": {
+    "value": 56.0,
+    "baseline": 51.375,
+    "delta": 4.625,
+    "accent": true
+  },
+  "fuel": {
+    "day": {
+      "date": "2026-03-10",
+      "restingHr": 56.0,
+      "hrvLastNight": 41.0,
+      "hrvWeeklyAvg": null,
+      "hrvStatus": null,
+      "trainingReadiness": 68.0,
+      "sleepSecs": 27000.0,
+      "sleepScore": 76.0,
+      "steps": 7311,
+      "stressAvg": 30.0,
+      "bodyBatteryHigh": 74.0,
+      "bodyBatteryLow": 22.0,
+      "consumedKcal": 1800.0,
+      "totalBurnKcal": 2680.0,
+      "activeKcal": 500.0,
+      "bmrKcal": 2180.0,
+      "netCalorieGoal": null,
+      "hydrationMl": null,
+      "hydrationGoalMl": null,
+      "sweatLossMl": null
+    },
+    "age": 1,
+    "window": 7,
+    "logged": 2,
+    "avgBalance": -875.0,
+    "avgBurn": 2668.5714285714284,
+    "balance": -880.0,
+    "accent": true
+  },
+  "fuelSentence": "Yesterday: 1,800 kcal in against 2,680 burned — a 880 kcal deficit.",
+  "hydration": null,
+  "hydrationSentence": null,
+  "weight": null,
+  "attention": [
+    {
+      "accent": true,
+      "text": "Resting heart rate is 5 bpm above your 40-day baseline across the last 3 mornings.",
+      "spark": [
+        50.5,
+        52.0,
+        51.0,
+        50.0,
+        51.5,
+        50.5,
+        52.0,
+        51.0,
+        50.0,
+        51.5,
+        50.5,
+        56.0,
+        56.0,
+        56.0
+      ],
+      "sparkUnit": "bpm",
+      "link": {
+        "label": "Ask about this",
+        "to": "/ask"
+      }
+    },
+    {
+      "accent": true,
+      "text": "HRV has averaged 41 ms over the last five nights, down from 54 ms in the fortnight before.",
+      "spark": [
+        53.0,
+        56.0,
+        54.0,
+        52.0,
+        55.0,
+        53.0,
+        56.0,
+        54.0,
+        52.0,
+        41.0,
+        41.0,
+        41.0,
+        41.0,
+        41.0
+      ],
+      "sparkUnit": "ms"
+    }
+  ],
+  "lastSession": {
+    "activity": {
+      "activityId": 9000000,
+      "name": "Morning Run",
+      "typeKey": "running",
+      "startTimeLocal": "2026-03-11 07:15:00",
+      "localDate": "2026-03-11",
+      "distanceM": 6000.0,
+      "durationS": 2100.0,
+      "movingDurationS": 2050.0,
+      "avgHr": 148.0,
+      "maxHr": 171.0,
+      "avgCadence": 158.0,
+      "calories": null,
+      "elevationGain": null,
+      "steps": null,
+      "aerobicTe": 3.1,
+      "anaerobicTe": null,
+      "zoneSecs": [
+        200.0,
+        950.0,
+        300.0,
+        100.0,
+        0.0
+      ]
+    },
+    "hasZoneData": true,
+    "aboveZ2Pct": 25.806451612903224
+  },
+  "zoneDrift": {
+    "targetPct": 20.0,
+    "recentAvgPct": 34.21448895930249,
+    "runs": [
+      {
+        "activityId": 9000007,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-02-25 07:15:00",
+        "aboveZ2Pct": 39.42028985507247
+      },
+      {
+        "activityId": 9000006,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-02-27 07:15:00",
+        "aboveZ2Pct": 31.34020618556701
+      },
+      {
+        "activityId": 9000005,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-01 07:15:00",
+        "aboveZ2Pct": 60.5577689243028
+      },
+      {
+        "activityId": 9000004,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-03 07:15:00",
+        "aboveZ2Pct": 55.12605042016806
+      },
+      {
+        "activityId": 9000003,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-05 07:15:00",
+        "aboveZ2Pct": 49.06666666666666
+      },
+      {
+        "activityId": 9000002,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-07 07:15:00",
+        "aboveZ2Pct": 42.264150943396224
+      },
+      {
+        "activityId": 9000001,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-09 07:15:00",
+        "aboveZ2Pct": 34.572864321608044
+      },
+      {
+        "activityId": 9000000,
+        "name": "Morning Run",
+        "typeKey": "running",
+        "date": "2026-03-11 07:15:00",
+        "aboveZ2Pct": 25.806451612903224
+      }
+    ]
+  },
+  "week": {
+    "dailyKm": [
+      7.35,
+      0.0,
+      6.9,
+      0.0,
+      6.45,
+      0.0,
+      6.0
+    ],
+    "totalKm": 26.7,
+    "priorKm": 24.75,
+    "sessions": 4,
+    "sentence": "26.7 km across 4 sessions. Distance is up 8% on the previous week — steady."
+  }
+}
