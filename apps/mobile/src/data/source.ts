@@ -21,14 +21,18 @@ const fixtureSource: Source = {
   version: () => "fixture",
 };
 
+let sampleData = false;
+
 function bridgeSource(): Source | null {
   try {
     // shortcut: a missing native module throws here, so the fixture takes over.
     const bridge =
       require("react-native-garmin-bridge") as typeof import("react-native-garmin-bridge");
     const base = Paths.document.uri.replace(/^file:\/\//, "");
-    // Fixture mode while the app has no cache file of its own.
-    bridge.init(base, !new File(Paths.document, "cache.sqlite3").exists);
+    // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build never fakes data.
+    const noCache = !new File(Paths.document, "cache.sqlite3").exists;
+    sampleData = noCache && (__DEV__ || process.env.EXPO_PUBLIC_FIXTURE === "1");
+    bridge.init(base, sampleData);
     return {
       version: () => bridge.version(),
       call: (cmd, args = {}) => bridge.call(cmd, JSON.stringify(args)),
@@ -61,5 +65,9 @@ export const bridgeVersion = impl.version;
 const demoDate = process.env.EXPO_PUBLIC_DEMO_DATE;
 
 export async function fetchToday(): Promise<Today> {
-  return presentToday(await callJson<TodayView>("today", demoDate ? { date: demoDate } : {}));
+  const today = presentToday(
+    await callJson<TodayView>("today", demoDate ? { date: demoDate } : {}),
+  );
+  const sample = sampleData || !bridgeImpl;
+  return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;
 }

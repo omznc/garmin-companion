@@ -26,6 +26,11 @@
 //! `allowBackup="false"` in the manifest covers the same ground from the other
 //! direction and is arguably the stronger half of the pair. Both are set.
 //!
+//! On iOS the same file store is used, because the keyring backend needs a
+//! signed app. The mobile app must keep the folder out of the iCloud backup
+//! (the "exclude from backup" file attribute) or move to the Keychain. Until
+//! then, the key and the data can leave the device together in a backup.
+//!
 //! Moving to the Keystore later changes this file and nothing above it — which
 //! is the point of the module existing at all.
 

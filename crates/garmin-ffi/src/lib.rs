@@ -106,12 +106,12 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
         serde_json::from_str(&args_json).map_err(|e| FfiError::BadArgs {
             reason: e.to_string(),
         })?;
-    dispatch(&cmd, &args).await
+    dispatch(&cmd, &args, FIXTURE_MODE.load(Ordering::Relaxed)).await
 }
 
-async fn dispatch(cmd: &str, args: &serde_json::Value) -> Result<String, FfiError> {
+async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
     match cmd {
-        "today" if FIXTURE_MODE.load(Ordering::Relaxed) => Ok(TODAY_SAMPLE.to_owned()),
+        "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
         "sync" => Ok(run_sync(args).await),
         // Demo only: `today` for a chosen day, for a cache that is not current.
         "today" if args.get("date").is_some() => run_today_on(args).await,
@@ -186,9 +186,9 @@ mod tests {
 
     #[tokio::test]
     async fn fixture_today_is_json() {
-        FIXTURE_MODE.store(true, Ordering::Relaxed);
-        let out = dispatch("today", &serde_json::json!({})).await.unwrap();
-        FIXTURE_MODE.store(false, Ordering::Relaxed);
+        let out = dispatch("today", &serde_json::json!({}), true)
+            .await
+            .unwrap();
         let value: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(value["lede"].is_string());
     }

@@ -54,7 +54,7 @@ export function LargeAppBarScreen({ title, settings = true, children }: Props) {
           style={[
             {
               position: "absolute",
-              left: 16,
+              left: settings ? 16 : 72,
               right: 72,
               bottom: 18,
               color: md.onSurface,
@@ -65,24 +65,34 @@ export function LargeAppBarScreen({ title, settings = true, children }: Props) {
         >
           {title}
         </Animated.Text>
-        {settings ? <SettingsButton top={insets.top} /> : null}
+        {settings ? (
+          <BarButton top={insets.top} side="right" />
+        ) : (
+          <BarButton top={insets.top} side="left" />
+        )}
       </Animated.View>
     </View>
   );
 }
 
-function SettingsButton({ top }: { top: number }) {
+// The right button opens Settings. The left button goes back, on the Settings screen.
+function BarButton({ top, side }: { top: number; side: "left" | "right" }) {
   const router = useRouter();
   const md = useMd();
+  const back = side === "left";
   return (
-    <View style={{ position: "absolute", top: top + 8, right: 8, width: 48, height: 48 }}>
+    <View style={{ position: "absolute", top: top + 8, [side]: 8, width: 48, height: 48 }}>
       <Host matchContents seedColor={HOST_SEED}>
-        <IconButton onClick={() => router.push("/settings")}>
+        <IconButton onClick={() => (back ? router.back() : router.push("/settings"))}>
           <Icon
-            source={require("../../assets/icons/account.xml")}
+            source={
+              back
+                ? require("../../assets/icons/back.xml")
+                : require("../../assets/icons/account.xml")
+            }
             size={24}
             tint={md.onSurfaceVariant}
-            contentDescription="Settings"
+            contentDescription={back ? "Back" : "Settings"}
           />
         </IconButton>
       </Host>

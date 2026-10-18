@@ -20,6 +20,12 @@ opt-level = "s"
 panic = "abort"
 strip = true
 
+# The mobile bridge needs unwinding. A panic in a Rust task must not stop the
+# app process. "ubrn" builds with this profile (see apps/mobile/scripts).
+[profile.release-mobile]
+inherits = "release"
+panic = "unwind"
+
 # Shared across the Tauri app and the MCP server so the two can never drift
 # onto different versions of the Garmin client's dependencies.
 [workspace.dependencies]

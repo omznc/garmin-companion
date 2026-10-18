@@ -12,7 +12,8 @@
     },
     "android": {
       "package": "com.omznc.garmincompanion",
-      "predictiveBackGestureEnabled": true
+      "predictiveBackGestureEnabled": true,
+      "allowBackup": false
     },
     "plugins": [
       "expo-router",

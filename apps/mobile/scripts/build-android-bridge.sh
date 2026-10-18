@@ -20,4 +20,4 @@ if [ -n "${PERL_EXTRA:-}" ]; then
   export PERL5LIB="$PERL_EXTRA/usr/lib64/perl5:$PERL_EXTRA/usr/lib64/perl5/vendor_perl:$PERL_EXTRA/usr/share/perl5:$PERL_EXTRA/usr/share/perl5/vendor_perl${PERL5LIB:+:$PERL5LIB}"
 fi
 
-exec ../../node_modules/.bin/ubrn build android --and-generate --config ubrn.config.yaml "$@"
+exec ../../node_modules/.bin/ubrn build android --and-generate --config ubrn.config.yaml --profile release-mobile "$@"
