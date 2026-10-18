@@ -95,6 +95,8 @@ export async function callJson<T>(cmd: string, args: unknown = {}): Promise<T> {
 }
 
 export const subscribe = impl.subscribe;
+// True when the bridge shows the fixture, so Setup can offer to skip.
+export const isSampleData = () => sampleData || impl === fixtureSource;
 export const bridgeVersion = impl.version;
 
 // Demo only: EXPO_PUBLIC_DEMO_DATE=YYYY-MM-DD shows Today for a day, for a cache that is not current.
