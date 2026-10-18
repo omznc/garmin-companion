@@ -3,7 +3,7 @@ import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { View } from "react-native";
+import { RefreshControl, View } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -19,9 +19,21 @@ const EXPANDED = 120;
 const COLLAPSED = 64;
 const RANGE = EXPANDED - COLLAPSED;
 
-type Props = { title: string; settings?: boolean; children: ReactNode };
+type Props = {
+  title: string;
+  settings?: boolean;
+  refreshing?: boolean;
+  onRefresh?: () => void;
+  children: ReactNode;
+};
 
-export function LargeAppBarScreen({ title, settings = true, children }: Props) {
+export function LargeAppBarScreen({
+  title,
+  settings = true,
+  refreshing = false,
+  onRefresh,
+  children,
+}: Props) {
   const md = useMd();
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
@@ -43,6 +55,15 @@ export function LargeAppBarScreen({ title, settings = true, children }: Props) {
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              progressViewOffset={insets.top + EXPANDED}
+            />
+          ) : undefined
+        }
         contentContainerStyle={{ paddingTop: insets.top + EXPANDED, paddingBottom: 24 }}
       >
         {children}

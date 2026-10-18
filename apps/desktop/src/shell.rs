@@ -1,22 +1,24 @@
 //! The window's root view: sidebar, reading column, and the window chrome.
 //! From `DesktopShell` in `app/src/router.tsx`.
 
+use garmin_api::settings::ThemeMode;
 use gpui::{
     div, linear_color_stop, linear_gradient, prelude::*, px, relative, ColorExt as _, Context,
     ElementId, IntoElement, Render, Window,
 };
 
+use crate::account::{Account, Sync};
 use crate::activities::{self, Page, Store};
 use crate::body::{self, BodyData};
 use crate::chrome;
-use crate::data::Today;
+use crate::data::{Source, Today};
 use crate::motion;
 use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
-use crate::today;
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
+use crate::{settings, setup, today};
 
 /// The sidebar and the column, as a pair, are never wider than this.
 /// On an ultrawide the pair stays together in the middle.
@@ -29,23 +31,36 @@ const COLUMN_BOTTOM: f32 = 160.0;
 /// How tall the fade under the title strip is.
 const FADE_H: f32 = 44.0;
 
+/// The entry of the Settings screen: the last one in the nav.
+const SETTINGS: usize = NAV.len() - 1;
+
 pub struct Root {
-    today: Today,
+    pub(crate) today: Today,
     /// Health and Sleep. `None` leaves both entries as placeholders.
     wellness: Option<Wellness>,
     body: BodyData,
-    palette: Palette,
+    pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
-    visits: usize,
+    pub(crate) visits: usize,
     scroll: SmoothScroll,
     /// The Activities screen reads its own view models from this store.
     store: Store,
     page: Page,
+    /// Where Today reads from. A sync reads it again.
+    pub(crate) source: Source,
+    pub(crate) account: Account,
 }
 
 impl Root {
-    pub fn new(today: Today, palette: Palette, store: Store, body: BodyData) -> Self {
+    pub fn new(
+        today: Today,
+        palette: Palette,
+        store: Store,
+        body: BodyData,
+        source: Source,
+        account: Account,
+    ) -> Self {
         Self {
             today,
             wellness: None,
@@ -56,6 +71,16 @@ impl Root {
             scroll: SmoothScroll::new(motion::reduced()),
             store,
             page: Page::List,
+            source,
+            account,
+        }
+    }
+
+    /// Show the screen with this nav label. For a start flag and the screenshots.
+    /// An unknown label keeps Today.
+    pub fn open(&mut self, label: &str, cx: &mut Context<Self>) {
+        if let Some(index) = NAV.iter().position(|(n, _)| n.eq_ignore_ascii_case(label)) {
+            self.select_index(index, cx);
         }
     }
 
@@ -90,33 +115,33 @@ impl Root {
         self
     }
 
-    /// Open on the entry with this label, for a screenshot. An unknown name keeps Today.
-    pub fn with_screen(mut self, name: &str) -> Self {
-        if let Some(i) = NAV.iter().position(|(l, _)| l.eq_ignore_ascii_case(name)) {
-            self.sidebar.select(i);
-        }
-        self
+    fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
+        self.select_index(index, cx);
     }
 
-    fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
+    fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
             self.page = Page::List;
             self.visits += 1;
+            if index == SETTINGS {
+                self.reload_settings();
+            }
             // A new screen starts at the top.
             self.scroll = SmoothScroll::new(motion::reduced());
             cx.notify();
         }
     }
 
-    /// Light and dark Paper swap. Any other palette settles light or dark for itself.
-    fn toggle_theme(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-        self.palette = if self.palette.theme().dark {
-            Palette::Paper
+    /// Light and dark swap. Any palette settles light or dark for itself. The
+    /// choice is saved, so it stops following the system.
+    fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mode = if self.palette.theme().dark {
+            ThemeMode::Light
         } else {
-            Palette::Ink
+            ThemeMode::Dark
         };
-        cx.notify();
+        self.set_theme_mode(mode, window, cx);
     }
 
     fn screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
@@ -132,6 +157,9 @@ impl Root {
                 3 => return wellness::render_sleep(&w.sleep, self.visits, t).into_any_element(),
                 _ => {}
             }
+        }
+        if self.sidebar.active == SETTINGS {
+            return settings::render(self, t, cx);
         }
         let label = NAV[self.sidebar.active].0;
         if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
@@ -166,18 +194,48 @@ impl Root {
     }
 }
 
+impl Root {
+    /// One screen in the whole window, with no sidebar: the window chrome only.
+    fn framed(&self, body: gpui::AnyElement, t: &Theme, window: &Window) -> gpui::Div {
+        let mut root = div()
+            .relative()
+            .size_full()
+            .flex()
+            .bg(t.bg)
+            .text_color(t.fg)
+            .font_family(SANS)
+            .line_height(relative(LH_NORMAL))
+            .child(body)
+            .child(chrome::drag_strip());
+        if let Some(controls) = chrome::controls(window, t) {
+            root = root.child(controls);
+        }
+        root.children(chrome::resize_handles(window))
+    }
+}
+
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sidebar.tick(window);
 
         let t = self.palette.theme();
+        if !self.account.connected {
+            return self.framed(setup::render(self, &t, window, cx), &t, window);
+        }
         let viewport = f32::from(window.viewport_size().width);
         // What lies left of the capped pair carries the nav's ground too.
         let margin = ((viewport - SHELL_MAX) / 2.0).max(0.0);
 
+        let sync_line = match &self.account.sync {
+            Sync::Running(line) => Some(line.clone()),
+            Sync::Failed(_) => Some("Sync failed. Settings has the reason.".to_string()),
+            _ => None,
+        };
         let info = Info {
             who: self.today.who.as_deref(),
-            synced_ago: self.today.synced_ago.as_deref(),
+            synced_ago: self.account.synced_ago.as_deref(),
+            sync_line: sync_line.as_deref(),
+            sync_failed: matches!(self.account.sync, Sync::Failed(_)),
         };
         let nav = sidebar::render(
             &self.sidebar,
@@ -185,13 +243,17 @@ impl Render for Root {
             t.dark,
             &t,
             cx,
-            |this, index, window, cx| this.select(index, window, cx),
-            |this, window, cx| this.toggle_theme(window, cx),
+            sidebar::Actions {
+                select: |this, index, window, cx| this.select(index, window, cx),
+                toggle_theme: |this, window, cx| this.toggle_theme(window, cx),
+                sync_now: |this, _, cx| this.start_sync(false, cx),
+            },
         );
 
         // Each screen gets a new `SmoothScroll` in `select`, so it starts at
         // the top, as the current app does on a route change.
         self.scroll.tick(window);
+        let screen = self.screen(&t, cx);
         let column = self
             .scroll
             .area(ElementId::NamedInteger("page".into(), self.visits as u64))
@@ -200,12 +262,7 @@ impl Render for Root {
             .h_full()
             .px(px(COLUMN_SIDE))
             .pb(px(COLUMN_BOTTOM))
-            .child(
-                div()
-                    .max_w(px(COLUMN_MAX))
-                    .pt(px(COLUMN_TOP))
-                    .child(self.screen(&t, cx)),
-            );
+            .child(div().max_w(px(COLUMN_MAX)).pt(px(COLUMN_TOP)).child(screen));
 
         // Text under the title strip fades out as it scrolls up.
         let fade = div()

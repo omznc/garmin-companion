@@ -7,6 +7,7 @@ members = [
     "crates/garmin-ffi",
     "app/src-tauri",
     "apps/desktop",
+    "apps/login",
 ]
 
 # Cargo only honours `[profile.*]` at the workspace root, so this is the only

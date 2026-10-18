@@ -1,8 +1,17 @@
 // Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
 // The core sends the sections in order. A section that has no data is not drawn.
 import type { ReactNode } from "react";
-import { ActivityIndicator, Button, PlatformColor, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Button,
+  PlatformColor,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import type { Section, Today } from "../data/types";
+import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 
 const label = PlatformColor("label");
@@ -188,12 +197,19 @@ function TodayBody({ today }: { today: Today }) {
 
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
+  const sync = useSync();
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
+      refreshControl={<RefreshControl refreshing={sync.busy} onRefresh={() => sync.refresh()} />}
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
+      {sync.line || sync.error ? (
+        <Text style={{ fontSize: 13, color: secondary, marginTop: 8, marginHorizontal: 32 }}>
+          {sync.error ?? sync.line}
+        </Text>
+      ) : null}
       {data ? <TodayBody today={data} /> : null}
       {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? (

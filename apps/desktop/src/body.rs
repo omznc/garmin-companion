@@ -25,6 +25,13 @@ pub struct BodyData(pub BodyViews);
 /// Made-up personas that show a body log use the sample. The others have none.
 pub fn load_body(source: &Source) -> Result<BodyData> {
     match source {
+        Source::Default => {
+            let db = garmin_api::open_default_db().context("cannot open the cache")?;
+            let today = chrono::Local::now().date_naive();
+            Ok(BodyData(
+                garmin_api::body::body_views(&db, today).context("cannot build the body views")?,
+            ))
+        }
         Source::Persona(name) => {
             let json = if matches!(name.as_str(), "sample" | "gym") {
                 SAMPLE

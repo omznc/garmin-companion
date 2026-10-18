@@ -121,7 +121,8 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "activity_detail" if fixture => Ok(ACTIVITY_SAMPLE.to_owned()),
         "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
         "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
-        "sync" => Ok(run_sync(args).await),
+        "sync" if fixture => Ok(run_sync(args).await),
+        "sync" => run_real_sync(args).await,
         // Demo only: `today` for a chosen day, for a cache that is not current.
         "today" if args.get("date").is_some() => run_today_on(args).await,
         _ => run_api(cmd.to_owned(), args.to_string()).await,
@@ -163,7 +164,23 @@ fn flatten(
     }
 }
 
-/// A stand-in for the real sync. It sends progress events, then returns.
+/// The real sync. It reads `{days, full}`, sends a `sync-progress` event for
+/// each step, and returns the summary. It needs a signed-in account.
+async fn run_real_sync(args: &serde_json::Value) -> Result<String, FfiError> {
+    let days = args["days"].as_u64().unwrap_or(30).clamp(1, 3650) as u32;
+    let full = args["full"].as_bool().unwrap_or(false);
+    let joined = tokio::task::spawn_blocking(move || {
+        let on = |e: garmin_api::session::SyncEvent| {
+            emit("sync-progress", serde_json::to_value(e).unwrap_or_default());
+        };
+        let summary = garmin_api::session::sync(days, full, &on)?;
+        serde_json::to_string(&summary).map_err(|e| garmin_api::ApiError::Internal(e.to_string()))
+    })
+    .await;
+    flatten(joined)
+}
+
+/// A stand-in for the real sync, for fixture mode. It sends progress events.
 async fn run_sync(args: &serde_json::Value) -> String {
     let steps = args
         .get("steps")
@@ -174,7 +191,13 @@ async fn run_sync(args: &serde_json::Value) -> String {
         tokio::time::sleep(Duration::from_millis(150)).await;
         emit(
             "sync-progress",
-            serde_json::json!({ "done": step, "total": steps }),
+            serde_json::json!({
+                "phase": "wellness",
+                "detail": "",
+                "done": step,
+                "total": steps,
+                "line": format!("Reading your daily health data ({step} of {steps})"),
+            }),
         );
     }
     serde_json::json!({ "ok": true, "steps": steps }).to_string()
@@ -222,12 +245,19 @@ mod tests {
     async fn sync_sends_events_until_cancel() {
         let recorder = Arc::new(Recorder::default());
         let sub = subscribe(recorder.clone());
-        call("sync".into(), r#"{"steps":2}"#.into()).await.unwrap();
+        let two = serde_json::json!({ "steps": 2 });
+        let one = serde_json::json!({ "steps": 1 });
+        dispatch("sync", &two, true).await.unwrap();
         sub.cancel();
-        call("sync".into(), r#"{"steps":1}"#.into()).await.unwrap();
+        dispatch("sync", &one, true).await.unwrap();
         let seen = recorder.0.lock().unwrap();
         assert_eq!(seen.len(), 2);
-        assert_eq!(seen[1].1, r#"{"done":2,"total":2}"#);
+        let last: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
+        assert_eq!(
+            (last["done"].as_u64(), last["total"].as_u64()),
+            (Some(2), Some(2))
+        );
+        assert!(last["line"].as_str().unwrap().contains("2 of 2"));
     }
 
     #[tokio::test]

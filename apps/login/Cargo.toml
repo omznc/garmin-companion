@@ -1,0 +1,21 @@
+[package]
+name = "garmin-companion-login"
+version = "0.1.0"
+description = "The Garmin sign-in window of the desktop app: a real browser view that prints the sign-in ticket"
+license = "MIT"
+edition = "2021"
+
+[[bin]]
+name = "garmin-companion-login"
+path = "src/main.rs"
+
+[dependencies]
+# One place for the ticket rule. The desktop app calls the same function.
+garmin-api = { path = "../../crates/garmin-api" }
+
+# The browser view. Garmin's sign-in sits behind a Cloudflare check on the TLS
+# handshake, and a real browser engine passes it. The versions are the ones
+# that the Tauri app already uses.
+tao = "0.35"
+url = "2"
+wry = "0.55"

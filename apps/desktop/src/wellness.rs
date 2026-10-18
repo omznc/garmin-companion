@@ -54,6 +54,14 @@ pub struct Wellness {
 /// Read both views from the same source as the Today screen.
 pub fn load(source: &Source) -> Result<Wellness> {
     match source {
+        Source::Default => {
+            let db = garmin_api::open_default_db().context("cannot open the cache")?;
+            let day = chrono::Local::now().date_naive();
+            Ok(Wellness {
+                health: garmin_api::health_view(&db, day).context("cannot build Health")?,
+                sleep: garmin_api::sleep_view(&db, day).context("cannot build Sleep")?,
+            })
+        }
         Source::Persona(name) => {
             let (_, health, sleep) = PERSONAS
                 .iter()

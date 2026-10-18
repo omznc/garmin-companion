@@ -3,7 +3,10 @@
 //! Command names and argument names match the Tauri commands that `api.ts`
 //! wraps, so the result JSON has the same shape as before. `today` is new.
 
-use crate::{activities_view, activity_detail_view, body, open_default_db, today_view, ApiError};
+use crate::settings::{self, ThemeMode};
+use crate::{
+    activities_view, activity_detail_view, body, open_default_db, session, today_view, ApiError,
+};
 use garmin_core::{days_ago, query};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -119,6 +122,58 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
             &open_default_db()?,
             garmin_core::today(),
         )?),
+        other => account_call(other, args_json),
+    }
+}
+
+#[derive(Deserialize)]
+struct Ticket {
+    ticket: String,
+}
+
+#[derive(Deserialize)]
+struct Path {
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Theme {
+    theme: ThemeMode,
+}
+
+/// The sign-in, sign-out and settings commands. `sync` is not here, because
+/// it sends events. The bridge host runs `session::sync` itself.
+///
+/// - `status`: `{connected, importableTokenPath}`.
+/// - `sign_in_url`: the page to show in a browser view.
+/// - `redeem_ticket` `{ticket}`: trade a ticket for tokens.
+/// - `import_tokens` `{path?}`: adopt a `garminconnect` token file.
+/// - `sign_out`: remove the tokens.
+/// - `settings`: the Settings view model.
+/// - `set_theme` `{theme}`: `system`, `light` or `dark`.
+fn account_call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
+    match cmd {
+        "status" => encode(&session::status()?),
+        "sign_in_url" => encode(&session::sign_in_url()),
+        "redeem_ticket" => {
+            let a: Ticket = parse(args_json)?;
+            session::redeem_ticket(&a.ticket)?;
+            encode(&session::status()?)
+        }
+        "import_tokens" => {
+            let a: Path = parse(args_json)?;
+            session::import_tokens(a.path.as_deref())?;
+            encode(&session::status()?)
+        }
+        "sign_out" => {
+            session::sign_out()?;
+            encode(&session::status()?)
+        }
+        "settings" => encode(&settings::settings_view()?),
+        "set_theme" => {
+            let a: Theme = parse(args_json)?;
+            encode(&settings::set_theme(a.theme)?)
+        }
         other => Err(ApiError::UnknownCommand(other.to_string())),
     }
 }
@@ -154,6 +209,20 @@ mod tests {
         ));
         assert!(matches!(
             call("cached_activities_since", "{}"),
+            Err(ApiError::BadArguments(_))
+        ));
+    }
+
+    #[test]
+    fn account_commands_check_their_arguments() {
+        let url: String = serde_json::from_str(&call("sign_in_url", "").unwrap()).unwrap();
+        assert!(url.contains("sso.garmin.com"));
+        assert!(matches!(
+            call("set_theme", r#"{"theme":"pink"}"#),
+            Err(ApiError::BadArguments(_))
+        ));
+        assert!(matches!(
+            call("redeem_ticket", "{}"),
             Err(ApiError::BadArguments(_))
         ));
     }

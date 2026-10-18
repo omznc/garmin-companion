@@ -78,6 +78,38 @@ export type TodayView = {
 
 export type BridgeEvent = { kind: string; payload: unknown };
 
+// Sign-in, sync and Settings (`garmin_api::session` and `garmin_api::settings`).
+export type Status = { connected: boolean; importableTokenPath: string | null; signInLine: string };
+
+export type ThemeMode = "system" | "light" | "dark";
+
+export type SettingsView = {
+  connected: boolean;
+  accountLine: string;
+  cacheLine: string;
+  dataFolder: string | null;
+  importableTokenPath: string | null;
+  theme: ThemeMode;
+  version: string;
+  privacyLine: string;
+};
+
+export type SyncSummary = {
+  line: string;
+  activitiesSeen: number;
+  activitiesWritten: number;
+  daysWritten: number;
+  warnings: string[];
+};
+
+export type SyncProgress = {
+  phase: string;
+  detail: string;
+  done: number;
+  total: number | null;
+  line: string;
+};
+
 // What the screens draw.
 export type Metric = {
   id: string;

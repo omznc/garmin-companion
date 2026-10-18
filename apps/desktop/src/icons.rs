@@ -49,6 +49,7 @@ icons! {
     Close => "bold/x",
 
     Sync => "duotone/arrows-clockwise",
+    ArrowRight => "duotone/arrow-right",
     Spinner => "duotone/circle-notch",
     Light => "duotone/sun",
     Dark => "duotone/moon",

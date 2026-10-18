@@ -5,16 +5,27 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight` or `activities`. `--activity <id>` opens the Activities entry on one session. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight` or `settings`.
+//! `--open <name>` is the same flag. `--activity <id>` opens the Activities entry on one
+//! session. `--sync` starts a sync at once.
+//! `--persona golfer` shows a made-up user from `garmin-api`. With neither `--db`
+//! nor `--persona`, the app reads the cache in the data folder and asks for a
+//! Garmin sign-in when there is none. `--persona` and `--db` run a demo: the
+//! sync is a fake and no setting is saved.
 
+mod account;
 mod activities;
 mod body;
 mod chrome;
+mod controls;
 mod data;
+mod field;
 mod icons;
 mod map;
 mod motion;
 mod scroll;
+mod settings;
+mod setup;
 mod shell;
 mod sidebar;
 mod spring;
@@ -96,7 +107,10 @@ fn main() -> anyhow::Result<()> {
         })
         .transpose()?;
     let persona = required(&args, "--persona")?;
-    let screen = required(&args, "--screen")?;
+    let screen = match required(&args, "--screen")? {
+        Some(name) => Some(name),
+        None => required(&args, "--open")?,
+    };
     let source = match (db, date, persona) {
         (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
         (Some(path), date, None) => data::Source::Db {
@@ -104,7 +118,8 @@ fn main() -> anyhow::Result<()> {
             date,
         },
         (None, Some(_), _) => anyhow::bail!("--date needs --db"),
-        (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
+        (None, None, Some(persona)) => data::Source::Persona(persona),
+        (None, None, None) => data::Source::Default,
     };
     let start_activity = required(&args, "--activity")?
         .map(|v| {
@@ -116,6 +131,8 @@ fn main() -> anyhow::Result<()> {
     let store = activities::Store::for_source(&source)?;
     let wellness = wellness::load(&source)?;
     let body = body::load_body(&source)?;
+    let explicit_palette = option(&args, "--palette").is_some();
+    let start_sync = args.iter().any(|a| a == "--sync");
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -147,15 +164,26 @@ fn main() -> anyhow::Result<()> {
                 }),
                 ..Default::default()
             };
+            let demo = !matches!(source, data::Source::Default);
+            let account = account::Account::new(demo, cx);
+            // A palette from the command line wins. Otherwise the saved mode picks.
+            let palette = if explicit_palette {
+                palette
+            } else {
+                account::palette_for(account.mode, cx.window_appearance())
+            };
             let opened = cx.open_window(options, |_, cx| {
                 cx.new(|cx| {
-                    let mut root =
-                        shell::Root::new(today, palette, store, body).with_wellness(wellness);
+                    let mut root = shell::Root::new(today, palette, store, body, source, account)
+                        .with_wellness(wellness);
                     if let Some(name) = &screen {
-                        root = root.with_screen(name);
+                        root.open(name, cx);
                     }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
+                    }
+                    if start_sync {
+                        root.start_sync(false, cx);
                     }
                     root
                 })

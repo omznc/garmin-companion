@@ -50,6 +50,10 @@ impl Store {
     /// The store for a data source. A missing cache copy is an error, as in `data`.
     pub fn for_source(source: &Source) -> Result<Self> {
         Ok(match source {
+            Source::Default => Self::new(
+                garmin_core::db::default_path().context("could not locate a data directory")?,
+                chrono::Local::now().date_naive(),
+            ),
             Source::Persona(name) => Self::persona(name)?,
             Source::Db { path, date } => Self::new(
                 path.clone(),

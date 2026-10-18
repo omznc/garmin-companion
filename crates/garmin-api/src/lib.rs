@@ -15,6 +15,8 @@ mod error;
 pub mod health;
 pub mod personas;
 mod profile;
+pub mod session;
+pub mod settings;
 pub mod sleep_view;
 mod text;
 pub mod today;
