@@ -28,13 +28,13 @@ static RUNNING: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
 /// because a real save would create the cache and end sample mode.
 static SAMPLE_CONFIG: Mutex<Option<(String, String)>> = Mutex::new(None);
 
-fn bad(e: impl ToString) -> FfiError {
+pub(crate) fn bad(e: impl ToString) -> FfiError {
     FfiError::BadArgs {
         reason: e.to_string(),
     }
 }
 
-fn failed(e: impl ToString) -> FfiError {
+pub(crate) fn failed(e: impl ToString) -> FfiError {
     FfiError::Command {
         json: json!({ "kind": "internal", "message": e.to_string() }).to_string(),
     }
