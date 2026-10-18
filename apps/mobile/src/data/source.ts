@@ -2,6 +2,8 @@
 // The Rust bridge is the source when the native module is in the build.
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
+import activitiesFixture from "../../../../crates/garmin-api/fixtures/activities.sample.json";
+import activityFixture from "../../../../crates/garmin-api/fixtures/activity.sample.json";
 import fixture from "../../../../crates/garmin-api/fixtures/today.sample.json";
 import golfer from "../../../../crates/garmin-api/fixtures/today.golfer.json";
 import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
@@ -19,6 +21,8 @@ type Source = {
 const fixtureSource: Source = {
   async call(cmd) {
     if (cmd === "today") return JSON.stringify(fixture);
+    if (cmd === "activities") return JSON.stringify(activitiesFixture);
+    if (cmd === "activity_detail") return JSON.stringify(activityFixture);
     throw new Error(`no fixture for command: ${cmd}`);
   },
   subscribe: () => () => {},
