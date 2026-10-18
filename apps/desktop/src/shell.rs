@@ -6,6 +6,7 @@ use gpui::{
     ElementId, IntoElement, Render, Window,
 };
 
+use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::Today;
 use crate::motion;
@@ -28,6 +29,7 @@ const FADE_H: f32 = 44.0;
 
 pub struct Root {
     today: Today,
+    body: BodyData,
     palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
@@ -36,14 +38,23 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(today: Today, palette: Palette) -> Self {
+    pub fn new(today: Today, palette: Palette, body: BodyData) -> Self {
         Self {
             today,
+            body,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
         }
+    }
+
+    /// Start on the screen with this sidebar label. An unknown label keeps Today.
+    pub fn open(mut self, label: &str) -> Self {
+        if let Some(i) = NAV.iter().position(|(n, _)| n.eq_ignore_ascii_case(label)) {
+            self.sidebar.select(i);
+        }
+        self
     }
 
     fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -71,6 +82,9 @@ impl Root {
             return today::render(&self.today, self.visits, t).into_any_element();
         }
         let label = NAV[self.sidebar.active].0;
+        if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
+            return screen;
+        }
         div()
             .child(block_in(self.visits, 0, eyebrow_lg("Not built yet", t)))
             .child(block_in(self.visits, 0, h1(label).mt(px(18.0))))

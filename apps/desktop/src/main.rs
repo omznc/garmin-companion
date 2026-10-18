@@ -5,8 +5,10 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
+//! `--screen Weight` starts on a screen by its sidebar name.
 //! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
+mod body;
 mod chrome;
 mod data;
 mod icons;
@@ -103,6 +105,8 @@ fn main() -> anyhow::Result<()> {
         (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
     };
     let today = data::load_today(&source)?;
+    let body = body::load_body(&source)?;
+    let screen = option(&args, "--screen").unwrap_or_default();
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -135,7 +139,7 @@ fn main() -> anyhow::Result<()> {
                 ..Default::default()
             };
             let opened = cx.open_window(options, |_, cx| {
-                cx.new(|_| shell::Root::new(today, palette))
+                cx.new(|_| shell::Root::new(today, palette, body).open(&screen))
             });
             if let Err(error) = opened {
                 eprintln!("could not open the window: {error:#}");
