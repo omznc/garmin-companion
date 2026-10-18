@@ -2,6 +2,8 @@
 import { useRouter } from "expo-router";
 import { useStrengthShown } from "../data/body";
 import { THEMES } from "../data/useSettingsActions";
+import { updatesLine } from "../update/updatesLine";
+import { SELF_UPDATE, useApkUpdate } from "../update/useApkUpdate";
 import { useAppearanceLine } from "../theme/useAppearanceLine";
 import { useSettings } from "../data/useAccount";
 import { useCoachConfig } from "../data/useAsk";
@@ -32,6 +34,8 @@ export function MoreHome() {
   const settings = useSettings().data;
   const coach = useCoachConfig().data;
   const theme = useAppearanceLine(THEMES.find((t) => t.value === settings?.theme)?.label);
+  const update = useApkUpdate();
+  const updates = updatesLine(update);
   const health: Row[] = [
     row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo", {
       icon: "bedtime",
@@ -83,6 +87,26 @@ export function MoreHome() {
       { icon: "auto-awesome", tone: "primary" },
       coach && providerName(coach.provider),
     ),
+    ...(SELF_UPDATE
+      ? [
+          {
+            ...row(
+              "Updates",
+              "updates",
+              "arrow.down.circle.fill",
+              "systemBlue",
+              {
+                icon: "system-update",
+                tone: "secondary",
+              },
+              updates.value,
+            ),
+            chevron: false,
+            disabled: updates.busy,
+            onPress: updates.onPress,
+          },
+        ]
+      : []),
     row("About", "/more/about", "info.circle.fill", "systemGray", {
       icon: "info",
       tone: "secondary",
@@ -90,7 +114,7 @@ export function MoreHome() {
   ];
   const draw = (rows: Row[]) =>
     rows.map(({ href, ...item }) => (
-      <Item key={href} {...item} onPress={() => router.push(href as never)} />
+      <Item key={href} onPress={() => router.push(href as never)} {...item} />
     ));
   return (
     <Page title="More" large>

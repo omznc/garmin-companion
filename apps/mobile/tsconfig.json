@@ -7,5 +7,5 @@
     "moduleSuffixes": [".android", ".ios", ""]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "android", "ios", "modules/*/build"]
+  "exclude": ["**/*.test.ts", "node_modules", "android", "ios", "modules/*/build"]
 }

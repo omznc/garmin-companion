@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { AppState } from "react-native";
 import "../src/theme/prefs";
 import { useRootColor } from "../src/theme/useRootColor";
+import { UpdateBanner } from "../src/update/UpdateBanner";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ export default function RootLayout() {
         <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
         <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
       </Stack>
+      <UpdateBanner />
     </QueryClientProvider>
   );
 }
