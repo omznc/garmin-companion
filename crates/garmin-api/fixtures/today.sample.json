@@ -1,7 +1,7 @@
 {
   "date": "2026-03-11",
   "empty": false,
-  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was 6.0 km running. Across your last 5 runs with heart-rate data, 42% of the time was above Z2 — still the thing most worth fixing.",
+  "lede": "You slept 7h 00m, short of your recent average. Body battery peaked at 80 and Garmin puts your readiness at 60. Today's session was 6.0 km running. Across your last 5 runs with heart-rate data, 42% of the time was above Z2.",
   "sleep": {
     "value": 25200.0,
     "date": "2026-03-11"
@@ -16,6 +16,14 @@
   },
   "hrv": {
     "value": 41.0,
+    "date": "2026-03-11"
+  },
+  "steps": {
+    "value": 7000.0,
+    "date": "2026-03-11"
+  },
+  "stress": {
+    "value": 28.0,
     "date": "2026-03-11"
   },
   "restingHr": {
@@ -134,7 +142,11 @@
       ]
     },
     "hasZoneData": true,
-    "aboveZ2Pct": 25.806451612903224
+    "aboveZ2Pct": 25.806451612903224,
+    "discipline": "paced",
+    "family": "endurance",
+    "showZoneVerdict": true,
+    "sportLabel": "Running"
   },
   "zoneDrift": {
     "targetPct": 20.0,
@@ -144,6 +156,7 @@
         "activityId": 9000007,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-02-25 07:15:00",
         "aboveZ2Pct": 39.42028985507247
       },
@@ -151,6 +164,7 @@
         "activityId": 9000006,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-02-27 07:15:00",
         "aboveZ2Pct": 31.34020618556701
       },
@@ -158,6 +172,7 @@
         "activityId": 9000005,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-01 07:15:00",
         "aboveZ2Pct": 60.5577689243028
       },
@@ -165,6 +180,7 @@
         "activityId": 9000004,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-03 07:15:00",
         "aboveZ2Pct": 55.12605042016806
       },
@@ -172,6 +188,7 @@
         "activityId": 9000003,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-05 07:15:00",
         "aboveZ2Pct": 49.06666666666666
       },
@@ -179,6 +196,7 @@
         "activityId": 9000002,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-07 07:15:00",
         "aboveZ2Pct": 42.264150943396224
       },
@@ -186,6 +204,7 @@
         "activityId": 9000001,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-09 07:15:00",
         "aboveZ2Pct": 34.572864321608044
       },
@@ -193,6 +212,7 @@
         "activityId": 9000000,
         "name": "Morning Run",
         "typeKey": "running",
+        "sportLabel": "Running",
         "date": "2026-03-11 07:15:00",
         "aboveZ2Pct": 25.806451612903224
       }
@@ -210,7 +230,44 @@
     ],
     "totalKm": 26.7,
     "priorKm": 24.75,
+    "dailyMinutes": [
+      39.5,
+      0.0,
+      38.0,
+      0.0,
+      36.5,
+      0.0,
+      35.0
+    ],
+    "totalMinutes": 149.0,
+    "priorMinutes": 127.5,
     "sessions": 4,
-    "sentence": "26.7 km across 4 sessions. Distance is up 8% on the previous week — steady."
-  }
+    "sentence": "4 sessions, 2h 29m of activity, 26.7 km covered. Active time is up 17% on the previous week — inside a sensible range."
+  },
+  "profile": {
+    "windowDays": 56,
+    "families": [
+      {
+        "family": "endurance",
+        "sessions": 10,
+        "minutes": 387.5,
+        "lastDate": "2026-03-11"
+      }
+    ],
+    "active": [
+      "endurance"
+    ],
+    "primary": "endurance",
+    "tracksActivity": true,
+    "dataDays": 40,
+    "newUser": false
+  },
+  "sections": [
+    "health_tiles",
+    "attention",
+    "fuel",
+    "last_session",
+    "week",
+    "zone_drift"
+  ]
 }

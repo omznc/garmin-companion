@@ -5,10 +5,8 @@
 //! written back. Stored as one JSON blob in `sync_state` rather than as a table
 //! because they are a handful of scalars read together and written whole.
 //!
-//! The shipped defaults are the 80/20 compromise: keep the short hard sessions,
-//! make one run a week a long easy one, and pick the step rate up. They are
-//! defaults rather than rules — every one can be cleared, and a cleared goal
-//! produces no ring and no nudge.
+//! No goal is on by default. A goal exists only when the user sets it, and an
+//! unset goal produces no ring and no nudge.
 
 use anyhow::Result;
 use chrono::{Datelike, NaiveDate};
@@ -18,7 +16,7 @@ use crate::db::{CachedActivity, Db};
 
 const KEY: &str = "training_goals";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Goals {
     /// Total training minutes across the week, all sports.
@@ -32,18 +30,6 @@ pub struct Goals {
     pub easy_share_pct: Option<f64>,
     /// Steps per minute to aim at on runs.
     pub cadence_spm: Option<f64>,
-}
-
-impl Default for Goals {
-    fn default() -> Self {
-        Self {
-            weekly_minutes: None,
-            weekly_sessions: None,
-            long_run_minutes: Some(30.0),
-            easy_share_pct: Some(80.0),
-            cadence_spm: Some(170.0),
-        }
-    }
 }
 
 impl Goals {
@@ -115,6 +101,7 @@ pub fn week_progress(
 
     let this_week: Vec<&CachedActivity> = activities
         .iter()
+        .filter(|a| crate::sport::is_exercise(a.type_key.as_deref()))
         .filter(|a| {
             a.local_date
                 .as_deref()
@@ -329,6 +316,7 @@ mod tests {
     fn a_cleared_goal_produces_no_ring() {
         let goals = Goals {
             long_run_minutes: None,
+            easy_share_pct: Some(80.0),
             ..Goals::default()
         };
         let acts = vec![act(
@@ -352,7 +340,11 @@ mod tests {
             [0.0, 2700.0, 0.0, 0.0, 0.0],
             None,
         )];
-        let p = week_progress(&Goals::default(), &acts, today());
+        let goals = Goals {
+            long_run_minutes: Some(30.0),
+            ..Goals::default()
+        };
+        let p = week_progress(&goals, &acts, today());
         let ring = p.rings.iter().find(|r| r.id == "longRun").unwrap();
         assert!(ring.met);
         assert_eq!(ring.fraction, 1.0);
