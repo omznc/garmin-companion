@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { TabStack } from "../../../src/nav/TabStack";
 
-// iOS Settings shows a small inline title on a sub-page. Set it here, before the page mounts.
+// Each sub-page takes its title here, before the page mounts. It uses the large title of the stack.
 const pages = {
   garmin: "Garmin account",
   sync: "Sync",
@@ -14,7 +14,7 @@ export default function Layout() {
   return (
     <TabStack title="More">
       {Object.entries(pages).map(([name, title]) => (
-        <Stack.Screen key={name} name={name} options={{ title, headerLargeTitle: false }} />
+        <Stack.Screen key={name} name={name} options={{ title }} />
       ))}
     </TabStack>
   );

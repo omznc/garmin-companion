@@ -216,7 +216,6 @@ export function ActivityDetailScreen() {
       <Stack.Screen
         options={{
           title: data?.name ?? "Activity",
-          headerLargeTitle: false,
           headerRight: () => null,
         }}
       />
