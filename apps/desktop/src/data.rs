@@ -1,16 +1,25 @@
 //! The data the Today screen reads, and the one place it comes from.
 //!
 //! [`load_today`] is the only function the rest of the app calls. The view
-//! model below is a stand-in for the typed Today view of the `garmin-api`
-//! crate. It reads the synthetic sample fixture until that crate is on
-//! `rewrite`. Then the body of [`load_today`] calls `garmin-api` against a copy
-//! of the cache, and nothing else changes.
+//! model below is the formatted form that the screen draws. It comes from one
+//! of two sources: the synthetic sample fixture, or `garmin-api` run against a
+//! copy of the cache (`--db <path>`).
+
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
 /// The synthetic sample. It holds no real data.
 const SAMPLE: &str = include_str!("../fixtures/today.sample.json");
+
+/// Where the Today view comes from.
+pub enum Source {
+    Sample,
+    /// A copy of the cache. Never point this at the live file: opening a
+    /// database runs migrations.
+    Db(PathBuf),
+}
 
 /// A piece of a metric value. A unit draws smaller, as in "6h 24m".
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -101,8 +110,18 @@ pub struct Today {
 }
 
 /// The Today view. The single switch point between the fixture and the API.
-pub fn load_today() -> Result<Today> {
-    serde_json::from_str(SAMPLE).context("the sample Today fixture does not parse")
+pub fn load_today(source: &Source) -> Result<Today> {
+    match source {
+        Source::Sample => {
+            serde_json::from_str(SAMPLE).context("the sample Today fixture does not parse")
+        }
+        Source::Db(path) => {
+            let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
+            let today = chrono::Local::now().date_naive();
+            let view = garmin_api::today_view(&db, today).context("cannot build the Today view")?;
+            Ok(crate::map::today(&view, None))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -111,7 +130,7 @@ mod tests {
 
     #[test]
     fn the_sample_fixture_parses_and_is_internally_consistent() {
-        let today = load_today().unwrap();
+        let today = load_today(&Source::Sample).unwrap();
         assert_eq!(today.metrics.len(), 6);
         assert_eq!(today.week.km.len(), today.week.axis.len());
         let zones: f32 = today.last_session.unwrap().zones.iter().sum();

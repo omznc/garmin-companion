@@ -10,6 +10,9 @@ name = "garmin-companion"
 path = "src/main.rs"
 
 [dependencies]
+garmin-api = { path = "../../crates/garmin-api" }
+garmin-core = { workspace = true }
+
 anyhow = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }

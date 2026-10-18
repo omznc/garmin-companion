@@ -8,6 +8,7 @@
 mod chrome;
 mod data;
 mod icons;
+mod map;
 mod shell;
 mod sidebar;
 mod spring;
@@ -67,7 +68,8 @@ fn main() -> anyhow::Result<()> {
     let (width, height) = option(&args, "--size")
         .and_then(|s| parse_size(&s))
         .unwrap_or(DEFAULT_SIZE);
-    let today = data::load_today()?;
+    let source = option(&args, "--db").map_or(data::Source::Sample, |p| data::Source::Db(p.into()));
+    let today = data::load_today(&source)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
