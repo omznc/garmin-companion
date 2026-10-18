@@ -9,11 +9,19 @@ import { providerName } from "./pages";
 
 type Row = ItemProps & { href: string };
 
-const row = (title: string, href: string, sf: string, color: string, value?: string): Row => ({
+const row = (
+  title: string,
+  href: string,
+  sf: string,
+  color: string,
+  md: ItemProps["md"],
+  value?: string,
+): Row => ({
   title,
   href,
   value,
   icon: { sf, color },
+  md,
   chevron: true,
 });
 
@@ -24,10 +32,26 @@ export function MoreHome() {
   const coach = useCoachConfig().data;
   const theme = THEMES.find((t) => t.value === settings?.theme)?.label;
   const health: Row[] = [
-    row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo"),
-    row("Weight", "/more/weight", "scalemass.fill", "systemTeal"),
-    row("Food", "/more/food", "fork.knife", "systemGreen"),
-    ...(strength ? [row("Strength", "/more/strength", "dumbbell.fill", "systemOrange")] : []),
+    row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo", {
+      icon: "bedtime",
+      tone: "primary",
+    }),
+    row("Weight", "/more/weight", "scalemass.fill", "systemTeal", {
+      icon: "monitor-weight",
+      tone: "tertiary",
+    }),
+    row("Food", "/more/food", "fork.knife", "systemGreen", {
+      icon: "restaurant",
+      tone: "secondary",
+    }),
+    ...(strength
+      ? [
+          row("Strength", "/more/strength", "dumbbell.fill", "systemOrange", {
+            icon: "fitness-center",
+            tone: "primary",
+          }),
+        ]
+      : []),
   ];
   const prefs: Row[] = [
     row(
@@ -35,12 +59,33 @@ export function MoreHome() {
       "/more/garmin",
       "person.crop.circle.fill",
       "systemBlue",
+      { icon: "account-circle", tone: "primary" },
       settings ? (settings.connected ? "Connected" : "Not connected") : undefined,
     ),
-    row("Sync", "/more/sync", "arrow.triangle.2.circlepath", "systemGreen"),
-    row("Appearance", "/more/appearance", "paintbrush.fill", "systemPink", theme),
-    row("Coach", "/more/coach", "sparkles", "systemPurple", coach && providerName(coach.provider)),
-    row("About", "/more/about", "info.circle.fill", "systemGray"),
+    row("Sync", "/more/sync", "arrow.triangle.2.circlepath", "systemGreen", {
+      icon: "sync",
+      tone: "secondary",
+    }),
+    row(
+      "Appearance",
+      "/more/appearance",
+      "paintbrush.fill",
+      "systemPink",
+      { icon: "palette", tone: "tertiary" },
+      theme,
+    ),
+    row(
+      "Coach",
+      "/more/coach",
+      "sparkles",
+      "systemPurple",
+      { icon: "auto-awesome", tone: "primary" },
+      coach && providerName(coach.provider),
+    ),
+    row("About", "/more/about", "info.circle.fill", "systemGray", {
+      icon: "info",
+      tone: "secondary",
+    }),
   ];
   const draw = (rows: Row[]) =>
     rows.map(({ href, ...item }) => (
