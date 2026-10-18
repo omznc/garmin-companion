@@ -30,12 +30,23 @@ const fixtureAllowed = __DEV__ || process.env.EXPO_PUBLIC_FIXTURE === "1";
 let sampleData = false;
 
 // The generated error has no message. Read the reason from its fields.
+type Inner = { reason?: string; json?: string };
+
+function innerOf(error: unknown): Inner | undefined {
+  const inner =
+    typeof error === "object" && error !== null ? (error as { inner?: unknown }).inner : undefined;
+  return typeof inner === "object" && inner !== null ? (inner as Inner) : undefined;
+}
+
+// Keep the error kind. A message that is only a payload gets the kind in front.
 function readable(error: unknown): Error {
-  const inner = (error as { inner?: { reason?: string; json?: string } }).inner;
+  const inner = innerOf(error);
   if (inner?.reason) return new Error(inner.reason);
   if (inner?.json) {
     const detail = JSON.parse(inner.json) as { message?: string; kind?: string };
-    return new Error(detail.message ?? detail.kind ?? inner.json);
+    const message = detail.message ?? detail.kind ?? inner.json;
+    const text = detail.kind && message !== detail.kind ? `${detail.kind}: ${message}` : message;
+    return Object.assign(new Error(text), { kind: detail.kind });
   }
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -46,7 +57,7 @@ function bridgeSource(): Source | null {
     const bridge =
       require("react-native-garmin-bridge") as typeof import("react-native-garmin-bridge");
     const base = Paths.document.uri.replace(/^file:\/\//, "");
-    // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build never fakes data.
+    // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build fakes data only when that flag is set.
     const noCache = !new File(Paths.document, "cache.sqlite3").exists;
     sampleData = noCache && fixtureAllowed;
     bridge.init(base, sampleData);

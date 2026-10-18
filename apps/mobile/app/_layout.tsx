@@ -1,11 +1,20 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Platform } from "react-native";
+import { useEffect } from "react";
+import { AppState, Platform } from "react-native";
 
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
+  // Refetch Today when the app returns to the foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (status) =>
+      focusManager.setFocused(status === "active"),
+    );
+    return () => sub.remove();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <StatusBar style="auto" />

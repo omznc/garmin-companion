@@ -22,8 +22,7 @@ lto = true
 # "s" over "3": the app spends its time waiting on Garmin's API and the webview,
 # not in Rust, so bytes are worth more here than throughput.
 opt-level = "s"
-# Safe because nothing in the workspace unwinds deliberately — no `catch_unwind`,
-# no `#[should_panic]` tests. Tests build under the dev profile regardless.
+# garmin-ffi (uniffi) needs unwinding, so it must build with `release-mobile`.
 panic = "abort"
 strip = true
 
