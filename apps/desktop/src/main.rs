@@ -5,7 +5,7 @@
 //! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
-//! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen sleep` opens on a sidebar entry. `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
 
 mod chrome;
 mod data;
@@ -19,6 +19,7 @@ mod spring;
 mod theme;
 mod today;
 mod ui;
+mod wellness;
 
 use std::borrow::Cow;
 
@@ -93,6 +94,7 @@ fn main() -> anyhow::Result<()> {
         })
         .transpose()?;
     let persona = required(&args, "--persona")?;
+    let screen = option(&args, "--screen");
     let source = match (db, date, persona) {
         (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
         (Some(path), date, None) => data::Source::Db {
@@ -103,6 +105,7 @@ fn main() -> anyhow::Result<()> {
         (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
     };
     let today = data::load_today(&source)?;
+    let wellness = wellness::load(&source)?;
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -135,7 +138,13 @@ fn main() -> anyhow::Result<()> {
                 ..Default::default()
             };
             let opened = cx.open_window(options, |_, cx| {
-                cx.new(|_| shell::Root::new(today, palette))
+                cx.new(|_| {
+                    let root = shell::Root::new(today, palette).with_wellness(wellness);
+                    match &screen {
+                        Some(name) => root.with_screen(name),
+                        None => root,
+                    }
+                })
             });
             if let Err(error) = opened {
                 eprintln!("could not open the window: {error:#}");
