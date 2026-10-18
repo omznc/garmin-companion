@@ -11,7 +11,7 @@ import {
 import { fillMaxWidth, paddingAll, weight } from "@expo/ui/jetpack-compose/modifiers";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useHostTheme, useMd } from "../theme/md";
 import { SELF_UPDATE, type UpdateState, useApkUpdate } from "./useApkUpdate";
 
 type Md = ReturnType<typeof useMd>;
@@ -60,6 +60,7 @@ function Actions({
 export function UpdateBanner() {
   const api = useApkUpdate();
   const md = useMd();
+  const host = useHostTheme();
   const insets = useSafeAreaInsets();
   const s = api.state;
   if (!SELF_UPDATE || s.at === "idle") return null;
@@ -70,7 +71,7 @@ export function UpdateBanner() {
       pointerEvents="box-none"
       style={{ position: "absolute", left: 8, right: 8, bottom: insets.bottom + 88 }}
     >
-      <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
+      <Host matchContents={{ vertical: true }} {...host} style={{ width: "100%" }}>
         <Card
           colors={{ containerColor: md.inverseSurface, contentColor: md.inverseOnSurface }}
           elevation={6}
