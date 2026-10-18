@@ -67,15 +67,17 @@ pub struct Root {
     pub(crate) ask: Entity<Ask>,
     pub(crate) today: Today,
     /// Health and Sleep. `None` leaves both entries as placeholders.
-    wellness: Option<Wellness>,
-    body: BodyData,
+    pub(crate) wellness: Option<Wellness>,
+    pub(crate) body: BodyData,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
     pub(crate) visits: usize,
     scroll: SmoothScroll,
-    /// The Activities screen reads its own view models from this store.
-    store: Store,
+    /// The Activities screen reads its view models from this store.
+    pub(crate) store: Store,
+    /// The list, read once at start and after a sync, not on every frame.
+    pub(crate) list: anyhow::Result<garmin_api::ActivitiesView>,
     page: Page,
     /// Where Today reads from. A sync reads it again.
     pub(crate) source: Source,
@@ -92,8 +94,10 @@ impl Root {
         account: Account,
         ask: Entity<Ask>,
     ) -> Self {
+        let list = store.list();
         Self {
             ask,
+            list,
             today,
             wellness: None,
             body,
@@ -221,9 +225,9 @@ impl Root {
         match &self.page {
             Page::Detail(view) => activities::detail(view, self.visits, t, cx),
             Page::Missing => activities::missing(t, cx),
-            Page::List => match self.store.list() {
-                Ok(view) => activities::list(&view, self.visits, t, cx),
-                Err(error) => activities::failed(&error, t),
+            Page::List => match &self.list {
+                Ok(view) => activities::list(view, self.visits, t, cx),
+                Err(error) => activities::failed(error, t),
             },
         }
     }

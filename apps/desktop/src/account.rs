@@ -15,10 +15,10 @@ use garmin_api::session;
 use garmin_api::settings::{self, SettingsView, ThemeMode};
 use gpui::{App, Context, Window, WindowAppearance};
 
-use crate::data;
 use crate::field::Field;
 use crate::shell::Root;
 use crate::theme::Palette;
+use crate::{body, data, wellness};
 
 /// How far back a recent sync reads.
 const RECENT_DAYS: u32 = 30;
@@ -58,12 +58,24 @@ pub struct Account {
 
 impl Account {
     pub fn new(demo: bool, cx: &mut App) -> Self {
-        let status = if demo { None } else { session::status().ok() };
+        let status = if demo {
+            None
+        } else {
+            session::status().map_err(log_status).ok()
+        };
+        // A keyring that fails is not "not connected". Say so on Setup.
+        let sign_in = match (demo, &status) {
+            (false, None) => SignIn::Failed(
+                "The app could not read its sign-in. Unlock the OS keyring, then start the app again."
+                    .into(),
+            ),
+            _ => SignIn::Idle,
+        };
         Self {
             connected: demo || status.as_ref().is_some_and(|s| s.connected),
             demo,
             sync: Sync::Idle,
-            sign_in: SignIn::Idle,
+            sign_in,
             settings: None,
             synced_ago: if demo { None } else { settings::synced_ago() },
             mode: if demo {
@@ -83,6 +95,11 @@ impl Account {
     fn busy(&self) -> bool {
         self.syncing() || matches!(self.sign_in, SignIn::Waiting(_))
     }
+}
+
+fn log_status(error: garmin_api::ApiError) -> garmin_api::ApiError {
+    eprintln!("could not read the sign-in state: {error}");
+    error
 }
 
 enum Msg {
@@ -272,6 +289,15 @@ impl Root {
             Ok(today) => self.today = today,
             Err(e) => eprintln!("could not reload Today: {e:#}"),
         }
+        match wellness::load(&self.source) {
+            Ok(wellness) => self.wellness = Some(wellness),
+            Err(e) => eprintln!("could not reload Health and Sleep: {e:#}"),
+        }
+        match body::load_body(&self.source) {
+            Ok(body) => self.body = body,
+            Err(e) => eprintln!("could not reload the body screens: {e:#}"),
+        }
+        self.list = self.store.list();
         if !self.account.demo {
             self.account.synced_ago = settings::synced_ago();
         }
@@ -344,6 +370,12 @@ fn sign_in(tx: &mpsc::Sender<Msg>) -> Result<String, String> {
         .arg(session::sign_in_url())
         .output()
         .map_err(|e| format!("The sign-in helper did not start: {e}"))?;
+    if !output.status.success() {
+        return Err(match output.status.code() {
+            Some(1) => "The sign-in window closed before Garmin sent a ticket.".to_string(),
+            _ => format!("The sign-in helper failed ({}).", output.status),
+        });
+    }
     let ticket = ticket_from(&String::from_utf8_lossy(&output.stdout))
         .ok_or("The sign-in window closed before Garmin sent a ticket.")?;
     let _ = tx.send(Msg::Progress("Signing you in.".into()));
