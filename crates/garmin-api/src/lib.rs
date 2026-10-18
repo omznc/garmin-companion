@@ -7,6 +7,7 @@
 //! Only read paths exist for now: the Today view model and the cache reads. Nothing here talks to
 //! Garmin over the network.
 
+pub mod body;
 mod derive;
 mod dispatch;
 mod error;

@@ -3,7 +3,7 @@
 //! Command names and argument names match the Tauri commands that `api.ts`
 //! wraps, so the result JSON has the same shape as before. `today` is new.
 
-use crate::{open_default_db, today_view, ApiError};
+use crate::{body, open_default_db, today_view, ApiError};
 use garmin_core::{days_ago, query};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -53,6 +53,7 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// - `cached_activity` `{activityId}`: one activity or `null`.
 /// - `nutrition` `{days}`: calories in against calories out.
 /// - `weight` `{days}`: weigh-ins, trend and energy cross-check.
+/// - `weight_view`, `food_view`, `strength_view`: the Weight, Food and Strength screens.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
@@ -87,6 +88,15 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
             let a: Days = parse(args_json)?;
             encode(&query::weight(&open_default_db()?, a.days.unwrap_or(180))?)
         }
+        "weight_view" => encode(&body::weight_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "food_view" => encode(&body::food_view(&open_default_db()?, garmin_core::today())?),
+        "strength_view" => encode(&body::strength_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
         other => Err(ApiError::UnknownCommand(other.to_string())),
     }
 }
