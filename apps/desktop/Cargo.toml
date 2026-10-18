@@ -11,12 +11,15 @@ path = "src/main.rs"
 
 [dependencies]
 garmin-api = { path = "../../crates/garmin-api" }
+garmin-coach = { path = "../../crates/garmin-coach" }
 garmin-core = { workspace = true }
 
 anyhow = { workspace = true }
+async-channel = "2"
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true }
 
 # The same pin as mbrd-rs. gpui-ce follows Zed's tree and cuts releases.
 # `gpui` is the core only. The backends live in `gpui_platform`, and the three

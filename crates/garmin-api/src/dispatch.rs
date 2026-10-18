@@ -3,7 +3,10 @@
 //! Command names and argument names match the Tauri commands that `api.ts`
 //! wraps, so the result JSON has the same shape as before. `today` is new.
 
-use crate::{open_default_db, today_view, ApiError};
+use crate::settings::{self, ThemeMode};
+use crate::{
+    activities_view, activity_detail_view, body, open_default_db, session, today_view, ApiError,
+};
 use garmin_core::{days_ago, query};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -47,12 +50,17 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// `args_json` is a JSON object, or an empty string for no arguments. Commands:
 ///
 /// - `today`: the full Today view model.
+/// - `health_view`: the Health screen, one trend for each metric the watch records.
+/// - `sleep_view`: the Sleep screen, last night and the 7 and 30 night windows.
 /// - `cached_daily` `{days}`: daily metrics, newest first.
 /// - `cached_activities` `{limit, typeKey}`: recent activities, newest first.
 /// - `cached_activities_since` `{from}`: activities on or after `YYYY-MM-DD`.
 /// - `cached_activity` `{activityId}`: one activity or `null`.
 /// - `nutrition` `{days}`: calories in against calories out.
 /// - `weight` `{days}`: weigh-ins, trend and energy cross-check.
+/// - `activities` `{limit}`: the Activities list view model, grouped by day.
+/// - `activity_detail` `{activityId}`: the detail view model of one session, or `null`.
+/// - `weight_view`, `food_view`, `strength_view`: the Weight, Food and Strength screens.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
@@ -86,6 +94,85 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
         "weight" => {
             let a: Days = parse(args_json)?;
             encode(&query::weight(&open_default_db()?, a.days.unwrap_or(180))?)
+        }
+        "activities" => {
+            let a: Recent = parse(args_json)?;
+            let db = open_default_db()?;
+            let today = garmin_core::today();
+            encode(&activities_view(&db, today, a.limit.unwrap_or(60))?)
+        }
+        "activity_detail" => {
+            let a: ActivityId = parse(args_json)?;
+            encode(&activity_detail_view(&open_default_db()?, a.activity_id)?)
+        }
+        "health_view" => encode(&crate::health_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "sleep_view" => encode(&crate::sleep_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "weight_view" => encode(&body::weight_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "food_view" => encode(&body::food_view(&open_default_db()?, garmin_core::today())?),
+        "strength_view" => encode(&body::strength_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        other => account_call(other, args_json),
+    }
+}
+
+#[derive(Deserialize)]
+struct Ticket {
+    ticket: String,
+}
+
+#[derive(Deserialize)]
+struct Path {
+    path: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Theme {
+    theme: ThemeMode,
+}
+
+/// The sign-in, sign-out and settings commands. `sync` is not here, because
+/// it sends events. The bridge host runs `session::sync` itself.
+///
+/// - `status`: `{connected, importableTokenPath}`.
+/// - `sign_in_url`: the page to show in a browser view.
+/// - `redeem_ticket` `{ticket}`: trade a ticket for tokens.
+/// - `import_tokens` `{path?}`: adopt a `garminconnect` token file.
+/// - `sign_out`: remove the tokens.
+/// - `settings`: the Settings view model.
+/// - `set_theme` `{theme}`: `system`, `light` or `dark`.
+fn account_call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
+    match cmd {
+        "status" => encode(&session::status()?),
+        "sign_in_url" => encode(&session::sign_in_url()),
+        "redeem_ticket" => {
+            let a: Ticket = parse(args_json)?;
+            session::redeem_ticket(&a.ticket)?;
+            encode(&session::status()?)
+        }
+        "import_tokens" => {
+            let a: Path = parse(args_json)?;
+            session::import_tokens(a.path.as_deref())?;
+            encode(&session::status()?)
+        }
+        "sign_out" => {
+            session::sign_out()?;
+            encode(&session::status()?)
+        }
+        "settings" => encode(&settings::settings_view()?),
+        "set_theme" => {
+            let a: Theme = parse(args_json)?;
+            encode(&settings::set_theme(a.theme)?)
         }
         other => Err(ApiError::UnknownCommand(other.to_string())),
     }
@@ -127,8 +214,25 @@ mod tests {
     }
 
     #[test]
+    fn account_commands_check_their_arguments() {
+        let url: String = serde_json::from_str(&call("sign_in_url", "").unwrap()).unwrap();
+        assert!(url.contains("sso.garmin.com"));
+        assert!(matches!(
+            call("set_theme", r#"{"theme":"pink"}"#),
+            Err(ApiError::BadArguments(_))
+        ));
+        assert!(matches!(
+            call("redeem_ticket", "{}"),
+            Err(ApiError::BadArguments(_))
+        ));
+    }
+
+    #[test]
     fn error_serializes_with_a_kind() {
         let json = serde_json::to_string(&ApiError::UnknownCommand("x".into())).unwrap();
-        assert_eq!(json, r#"{"kind":"unknown_command","message":"x"}"#);
+        assert_eq!(
+            json,
+            r#"{"kind":"unknown_command","message":"unknown command: x"}"#
+        );
     }
 }

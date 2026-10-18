@@ -12,7 +12,15 @@ name = "garmin_ffi"
 [dependencies]
 chrono = { workspace = true }
 garmin-api = { path = "../garmin-api" }
+garmin-coach = { path = "../garmin-coach" }
+garmin-core = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 uniffi = { version = "0.31", features = ["tokio"] }
+
+# iOS only: the data folder is marked "exclude from backup".
+[target.'cfg(target_os = "ios")'.dependencies]
+core-foundation = "0.10"

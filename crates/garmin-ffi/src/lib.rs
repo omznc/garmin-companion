@@ -11,9 +11,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+mod ask;
+#[cfg(target_os = "ios")]
+mod backup;
+
 uniffi::setup_scaffolding!();
 
 const TODAY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/today.sample.json");
+
+const ACTIVITIES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activities.sample.json");
+const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.sample.json");
+const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
+const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
+const BODY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/body.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -80,8 +90,20 @@ impl Subscription {
 /// In fixture mode, `today` returns recorded data.
 #[uniffi::export]
 pub fn init(base_dir: String, fixture_mode: bool) {
+    #[cfg(target_os = "ios")]
+    backup::exclude_dir(std::path::Path::new(&base_dir));
     garmin_api::init(base_dir);
-    FIXTURE_MODE.store(fixture_mode, Ordering::Relaxed);
+    // A signed-in account always reads real data, also when no sync has run yet.
+    let signed_in = garmin_core::store::load_tokens().is_ok_and(|t| t.is_some());
+    FIXTURE_MODE.store(fixture_mode && !signed_in, Ordering::Relaxed);
+}
+
+/// Sign-in worked, so the process leaves sample mode for good.
+fn leave_fixture_mode() {
+    FIXTURE_MODE.store(false, Ordering::Relaxed);
+    if let Ok(dir) = garmin_core::paths::base_dir() {
+        let _ = std::fs::remove_file(dir.join("sample-mode"));
+    }
 }
 
 /// A synchronous call. It proves the plain function path.
@@ -110,13 +132,56 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
 }
 
 async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
+    if let Some(out) = ask::handle(cmd, args, fixture).await {
+        return out;
+    }
     match cmd {
         "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
-        "sync" => Ok(run_sync(args).await),
+        "activities" if fixture => Ok(ACTIVITIES_SAMPLE.to_owned()),
+        "activity_detail" if fixture => Ok(fixture_detail(args)),
+        "weight_view" | "food_view" | "strength_view" if fixture => Ok(fixture_body(cmd)),
+        "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
+        "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
+        // These commands open the cache, and opening it creates the file.
+        "cached_daily"
+        | "cached_activities"
+        | "cached_activities_since"
+        | "cached_activity"
+        | "nutrition"
+        | "weight"
+            if fixture =>
+        {
+            Err(FfiError::BadArgs {
+                reason: "sample mode has no cache".into(),
+            })
+        }
+        "redeem_ticket" if fixture => {
+            let out = run_api(cmd.to_owned(), args.to_string()).await?;
+            leave_fixture_mode();
+            Ok(out)
+        }
+        "sync" if fixture => Ok(run_sync(args).await),
+        "sync" => run_real_sync(args).await,
         // Demo only: `today` for a chosen day, for a cache that is not current.
         "today" if args.get("date").is_some() => run_today_on(args).await,
         _ => run_api(cmd.to_owned(), args.to_string()).await,
     }
+}
+
+/// The sample detail with the requested id, so the list and the detail agree.
+fn fixture_detail(args: &serde_json::Value) -> String {
+    let mut detail: serde_json::Value = serde_json::from_str(ACTIVITY_SAMPLE).unwrap_or_default();
+    if let Some(id) = args.get("activityId").filter(|v| v.is_i64()) {
+        detail["activityId"] = id.clone();
+    }
+    detail.to_string()
+}
+
+/// One part of `body.sample.json`: `weight`, `food` or `strength`.
+fn fixture_body(cmd: &str) -> String {
+    let part = cmd.trim_end_matches("_view");
+    let body: serde_json::Value = serde_json::from_str(BODY_SAMPLE).unwrap_or_default();
+    body[part].to_string()
 }
 
 async fn run_today_on(args: &serde_json::Value) -> Result<String, FfiError> {
@@ -154,7 +219,23 @@ fn flatten(
     }
 }
 
-/// A stand-in for the real sync. It sends progress events, then returns.
+/// The real sync. It reads `{days, full}`, sends a `sync-progress` event for
+/// each step, and returns the summary. It needs a signed-in account.
+async fn run_real_sync(args: &serde_json::Value) -> Result<String, FfiError> {
+    let days = args["days"].as_u64().unwrap_or(30).clamp(1, 3650) as u32;
+    let full = args["full"].as_bool().unwrap_or(false);
+    let joined = tokio::task::spawn_blocking(move || {
+        let on = |e: garmin_api::session::SyncEvent| {
+            emit("sync-progress", serde_json::to_value(e).unwrap_or_default());
+        };
+        let summary = garmin_api::session::sync(days, full, &on)?;
+        serde_json::to_string(&summary).map_err(|e| garmin_api::ApiError::Internal(e.to_string()))
+    })
+    .await;
+    flatten(joined)
+}
+
+/// A stand-in for the real sync, for fixture mode. It sends progress events.
 async fn run_sync(args: &serde_json::Value) -> String {
     let steps = args
         .get("steps")
@@ -165,10 +246,23 @@ async fn run_sync(args: &serde_json::Value) -> String {
         tokio::time::sleep(Duration::from_millis(150)).await;
         emit(
             "sync-progress",
-            serde_json::json!({ "done": step, "total": steps }),
+            serde_json::json!({
+                "phase": "wellness",
+                "detail": "",
+                "done": step,
+                "total": steps,
+                "line": format!("Reading your daily health data ({step} of {steps})"),
+            }),
         );
     }
-    serde_json::json!({ "ok": true, "steps": steps }).to_string()
+    serde_json::json!({
+        "line": "Sample sync finished. No data was changed.",
+        "activitiesSeen": 0,
+        "activitiesWritten": 0,
+        "daysWritten": 0,
+        "warnings": [],
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -213,12 +307,22 @@ mod tests {
     async fn sync_sends_events_until_cancel() {
         let recorder = Arc::new(Recorder::default());
         let sub = subscribe(recorder.clone());
-        call("sync".into(), r#"{"steps":2}"#.into()).await.unwrap();
+        let two = serde_json::json!({ "steps": 2 });
+        let one = serde_json::json!({ "steps": 1 });
+        let out = dispatch("sync", &two, true).await.unwrap();
+        let summary: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(summary["line"].is_string() && summary["warnings"].is_array());
+        assert_eq!(summary["daysWritten"], 0);
         sub.cancel();
-        call("sync".into(), r#"{"steps":1}"#.into()).await.unwrap();
+        dispatch("sync", &one, true).await.unwrap();
         let seen = recorder.0.lock().unwrap();
         assert_eq!(seen.len(), 2);
-        assert_eq!(seen[1].1, r#"{"done":2,"total":2}"#);
+        let last: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
+        assert_eq!(
+            (last["done"].as_u64(), last["total"].as_u64()),
+            (Some(2), Some(2))
+        );
+        assert!(last["line"].as_str().unwrap().contains("2 of 2"));
     }
 
     #[tokio::test]
@@ -227,6 +331,60 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, FfiError::BadArgs { .. }));
+    }
+
+    #[tokio::test]
+    async fn fixture_body_and_detail_need_no_cache() {
+        let w = dispatch("weight_view", &serde_json::json!({}), true)
+            .await
+            .unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&w)
+            .unwrap()
+            .is_object());
+        let d = dispatch(
+            "activity_detail",
+            &serde_json::json!({ "activityId": 42 }),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&d).unwrap()["activityId"],
+            42
+        );
+    }
+
+    #[tokio::test]
+    async fn fixture_commands_create_no_cache() {
+        let dir = std::env::temp_dir().join(format!("garmin-ffi-fixture-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        init(dir.to_string_lossy().into_owned(), true);
+        let none = serde_json::json!({});
+        let save = serde_json::json!({ "provider": "openrouter", "key": "k" });
+        let cmds = [
+            ("today", &none),
+            ("activities", &none),
+            ("activity_detail", &none),
+            ("health_view", &none),
+            ("sleep_view", &none),
+            ("weight_view", &none),
+            ("food_view", &none),
+            ("strength_view", &none),
+            ("cached_daily", &none),
+            ("cached_activities", &none),
+            ("cached_activities_since", &none),
+            ("cached_activity", &none),
+            ("nutrition", &none),
+            ("weight", &none),
+            ("settings", &none),
+            ("ask_config", &none),
+            ("ask_save_config", &save),
+        ];
+        for (cmd, args) in cmds {
+            let _ = dispatch(cmd, args, true).await;
+            assert!(!dir.join("cache.sqlite3").exists(), "{cmd} made the cache");
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -115,6 +115,9 @@ impl Sidebar {
 pub struct Info<'a> {
     pub who: Option<&'a str>,
     pub synced_ago: Option<&'a str>,
+    /// What a running sync reads, or the note after a failed one.
+    pub sync_line: Option<&'a str>,
+    pub sync_failed: bool,
 }
 
 fn quiet_row(t: &Theme) -> Div {
@@ -188,15 +191,26 @@ fn entry<V: 'static>(
     row
 }
 
+/// What the sidebar does when the user clicks. Each one is a function of the view.
+pub struct Actions<V> {
+    pub select: fn(&mut V, usize, &mut Window, &mut Context<V>),
+    pub toggle_theme: fn(&mut V, &mut Window, &mut Context<V>),
+    pub sync_now: fn(&mut V, &mut Window, &mut Context<V>),
+}
+
 pub fn render<V: 'static>(
     state: &Sidebar,
     info: &Info,
     dark: bool,
     t: &Theme,
     cx: &mut Context<V>,
-    select: fn(&mut V, usize, &mut Window, &mut Context<V>),
-    toggle_theme: fn(&mut V, &mut Window, &mut Context<V>),
+    actions: Actions<V>,
 ) -> impl IntoElement {
+    let Actions {
+        select,
+        toggle_theme,
+        sync_now,
+    } = actions;
     // One element behind every row, so the rows' text always paints over it.
     let pill = div()
         .absolute()
@@ -238,12 +252,32 @@ pub fn render<V: 'static>(
         .synced_ago
         .map(|a| format!("({a})"))
         .unwrap_or_default();
-    let sync = quiet_row(t)
+    let running = info.sync_line.is_some() && !info.sync_failed;
+    let sync_fg = t.fg;
+    let mut sync = quiet_row(t)
         .id("sync")
         .text_color(t.mutd)
         .child(icon(Icon::Sync, 14.0, t, t.mutd))
-        .child("Sync")
+        .child(if running { "Syncing" } else { "Sync" })
         .child(div().text_color(t.faint).child(sync_age));
+    if !running {
+        sync = sync
+            .cursor_pointer()
+            .hover(move |s| s.text_color(sync_fg))
+            .on_click(
+                cx.listener(move |view, _: &ClickEvent, window, cx| sync_now(view, window, cx)),
+            );
+    }
+    // The line is small and wraps. A long step name must not push the nav.
+    let sync_note = info.sync_line.map(|line| {
+        div()
+            .w(px(SIDEBAR_W - 56.0))
+            .font_family(SANS)
+            .text_size(px(11.5))
+            .line_height(relative(1.35))
+            .text_color(if info.sync_failed { t.warn } else { t.faint })
+            .child(line.to_string())
+    });
 
     let (theme_icon, theme_label) = if dark {
         (Icon::Light, "Light mode")
@@ -305,6 +339,7 @@ pub fn render<V: 'static>(
                 .flex_col()
                 .gap(px(2.0))
                 .child(sync)
+                .children(sync_note)
                 .child(theme_row),
         )
 }

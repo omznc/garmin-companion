@@ -49,6 +49,7 @@ icons! {
     Close => "bold/x",
 
     Sync => "duotone/arrows-clockwise",
+    ArrowRight => "duotone/arrow-right",
     Spinner => "duotone/circle-notch",
     Light => "duotone/sun",
     Dark => "duotone/moon",
@@ -68,6 +69,9 @@ icons! {
     NavFitness => "duotone/gauge",
     NavReports => "duotone/file-text",
     NavSettings => "duotone/gear-six",
+
+    Send => "bold/arrow-up",
+    Stop => "bold/stop",
 }
 
 impl Icon {
