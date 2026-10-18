@@ -323,8 +323,10 @@ async fn a_checkout_link_comes_back() {
 
 #[tokio::test]
 async fn a_413_trims_old_tool_results_and_tries_once_more() {
+    // The mock caps the body at 70,000 bytes. Three results of 40,000 bytes
+    // are 120,000: the first try (limit 100,000) still sends two of them.
     let (base, seen) = mock(|r| {
-        if r.body.len() > 3000 {
+        if r.body.len() > 70_000 {
             error(413, "context_too_large")
         } else {
             sse("ok")
@@ -333,17 +335,96 @@ async fn a_413_trims_old_tool_results_and_tries_once_more() {
     .await;
     let (c, vault) = client(&base);
     vault.save_install_id(ID_A).unwrap();
-    let big = "x".repeat(2000);
+    let big = "x".repeat(40_000);
     let msgs = vec![
         json!({"role":"user","content":"q"}),
         json!({"role":"tool","content": big}),
         json!({"role":"tool","content": big}),
+        json!({"role":"tool","content": big}),
     ];
-    // The limit halves from 100,000 to 50,000: the mock's own cap is smaller,
-    // so this checks the retry path and its end, not the final size.
-    let r = c.chat(&json!({ "messages": msgs })).await;
-    assert_eq!(error_kind(&r.unwrap_err()), Some("context_too_large"));
+    c.chat(&json!({ "messages": msgs })).await.unwrap();
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    assert!(seen[0].body.len() > 70_000 && seen[1].body.len() <= 70_000);
+    assert!(seen[1].body.contains("left out"));
+}
+
+#[tokio::test]
+async fn a_413_that_trimming_cannot_fix_fails_after_one_retry() {
+    let (base, seen) = mock(|_| error(413, "context_too_large")).await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    let big = "x".repeat(2000);
+    let msgs = vec![json!({"role":"tool","content": big})];
+    let e = c.chat(&json!({ "messages": msgs })).await.unwrap_err();
+    assert_eq!(error_kind(&e), Some("context_too_large"));
     assert_eq!(seen.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn an_expired_session_is_dropped_and_not_retried() {
+    let (base, seen) = mock(|_| error(401, "session_expired")).await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    vault.save_session("s_old").unwrap();
+    let e = c.balance().await.unwrap_err();
+    assert_eq!(error_kind(&e), Some("session_expired"));
+    assert!(e.to_string().contains("Sign in again"));
+    assert_eq!(vault.session().unwrap(), None);
+    // The install id stays: the next call is anonymous again.
+    assert_eq!(vault.install_id().unwrap().as_deref(), Some(ID_A));
+    assert_eq!(seen.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn two_first_calls_enrol_once() {
+    let (base, seen) = mock(|r| match r.path.as_str() {
+        "/v2/install" => resp(200, json!({ "id": ID_A })),
+        _ => resp(200, balance_json(27)),
+    })
+    .await;
+    let (c, _vault) = client(&base);
+    let (a, b) = tokio::join!(c.balance(), c.balance());
+    a.unwrap();
+    b.unwrap();
+    let installs = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.path == "/v2/install")
+        .count();
+    assert_eq!(installs, 1);
+}
+
+#[tokio::test]
+async fn an_install_limit_names_the_wait_in_hours() {
+    let (base, _) = mock(|_| {
+        let mut r = error(429, "install_limit");
+        r.headers.push(("retry-after", "18000"));
+        r
+    })
+    .await;
+    let (c, _vault) = client(&base);
+    let e = c.balance().await.unwrap_err();
+    assert!(e.to_string().contains("Try again in 5 h 0 min."), "{e}");
+    assert!(!e.to_string().contains("18000"));
+}
+
+#[tokio::test]
+async fn an_unreachable_worker_keeps_its_cause() {
+    let (c, vault) = client("http://127.0.0.1:1/v2");
+    vault.save_install_id(ID_A).unwrap();
+    let e = c.balance().await.unwrap_err();
+    assert_eq!(error_kind(&e), Some("unreachable"));
+    assert!(e.chain().count() > 1);
+}
+
+#[tokio::test]
+async fn a_link_that_is_not_https_is_refused() {
+    let (base, _) = mock(|_| resp(200, json!({ "url": "file:///etc/passwd" }))).await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    assert!(c.checkout_url().await.is_err());
 }
 
 #[test]

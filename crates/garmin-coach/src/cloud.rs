@@ -1,5 +1,4 @@
-//! The hosted coach: "Garmin Companion cloud". The contract is `worker/V2.md`
-//! on the `rewrite-coach-v2` branch.
+//! The hosted coach: "Garmin Companion cloud". The contract is `worker/V2.md`.
 //!
 //! A free user is anonymous and holds an install id that the worker issues.
 //! A premium user signs in by email code and holds a session token. Both live
@@ -39,13 +38,13 @@ pub struct KeyringVault;
 
 impl Vault for KeyringVault {
     fn install_id(&self) -> Result<Option<String>> {
-        store::stored_install_id()
+        store::stored_install_id_v2()
     }
     fn save_install_id(&self, id: &str) -> Result<()> {
-        store::save_install_id(id)
+        store::save_install_id_v2(id)
     }
     fn forget_install_id(&self) -> Result<()> {
-        store::forget_install_id()
+        store::forget_install_id_v2()
     }
     fn session(&self) -> Result<Option<String>> {
         store::stored_session()
@@ -209,9 +208,16 @@ fn explain(
         "fair_use_ceiling" => format!(
             "You reached the premium limit, and the free credits are spent. Credits return {back}."
         ),
-        "rate_limited" | "install_limit" => match retry_after {
-            Some(s) => format!("Too many requests. Wait {s} seconds, then try again."),
+        "rate_limited" => match retry_after {
+            Some(s) => format!("Too many requests. Wait {}, then try again.", wait(s)),
             None => "Too many requests. Wait a minute, then try again.".into(),
+        },
+        "install_limit" => match retry_after {
+            Some(s) => format!(
+                "This network made too many new installs. Try again in {}.",
+                wait(s)
+            ),
+            None => "This network made too many new installs. Try again later.".into(),
         },
         _ => FIXED.iter().find(|(k, _)| *k == kind).map_or_else(
             || match server {
@@ -220,6 +226,18 @@ fn explain(
             },
             |(_, text)| (*text).into(),
         ),
+    }
+}
+
+/// A wait in seconds, as the person reads it: "40 seconds", "12 min", "5 h 12 min".
+fn wait(seconds: u64) -> String {
+    match seconds {
+        s if s < 90 => format!("{s} seconds"),
+        s if s < 3600 => format!("{} min", s.div_ceil(60)),
+        s => {
+            let m = s.div_ceil(60);
+            format!("{} h {} min", m / 60, m % 60)
+        }
     }
 }
 
@@ -326,7 +344,7 @@ impl Balance {
 
 #[derive(Clone)]
 pub struct CloudClient {
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
     base: String,
     vault: Arc<dyn Vault>,
 }
@@ -341,7 +359,10 @@ impl CloudClient {
     pub fn new(base: &str, vault: Arc<dyn Vault>) -> Self {
         Self {
             http: reqwest::Client::builder()
-                .timeout(Duration::from_secs(180))
+                // No total timeout: a long answer streams for minutes. A dead
+                // connection stops the read.
+                .connect_timeout(Duration::from_secs(15))
+                .read_timeout(Duration::from_secs(90))
                 .build()
                 .unwrap_or_default(),
             base: base.trim_end_matches('/').into(),
@@ -365,8 +386,14 @@ impl CloudClient {
         Ok((self.enroll().await?, true))
     }
 
-    /// Ask the worker for an install id and keep it.
+    /// Ask the worker for an install id and keep it. One enrol runs at a time:
+    /// a second caller finds the id that the first one stored.
     async fn enroll(&self) -> Result<String> {
+        static ENROLL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _lock = ENROLL.lock().await;
+        if let Some(id) = self.vault.install_id()? {
+            return Ok(id);
+        }
         let resp = self.plain(self.http.post(self.url("/install"))).await?;
         let v: Value = resp
             .json()
@@ -382,7 +409,7 @@ impl CloudClient {
         let resp = req
             .send()
             .await
-            .map_err(|_| anyhow!(CloudError::unreachable()))?;
+            .map_err(|e| anyhow!(e).context(CloudError::unreachable()))?;
         if resp.status().is_success() {
             return Ok(resp);
         }
@@ -468,7 +495,13 @@ impl CloudClient {
             .authed(|t| self.http.post(self.url(path)).bearer_auth(t))
             .await?;
         let v: Value = resp.json().await?;
-        Ok(v["url"].as_str().context("the answer had no link")?.into())
+        let url = v["url"].as_str().context("the answer had no link")?;
+        // The caller opens this in the browser: refuse any other scheme.
+        anyhow::ensure!(
+            url.starts_with("https://"),
+            "the link was not an https link"
+        );
+        Ok(url.into())
     }
 
     /// One streamed chat request. Each HTTP request has its own id, so the

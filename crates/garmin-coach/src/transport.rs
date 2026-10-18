@@ -70,7 +70,7 @@ impl HttpTransport {
     /// The transport of the hosted coach.
     pub fn cloud(client: CloudClient) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: client.http.clone(),
             provider: Provider::Cloud,
             base: "",
             model: String::new(),

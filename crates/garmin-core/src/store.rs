@@ -21,6 +21,9 @@ const ACCOUNT_OPENROUTER: &str = "openrouter-api-key";
 /// under this name and enrols once, quietly, instead of sending an id the
 /// server has never heard of and being refused for it.
 const ACCOUNT_DEVICE: &str = "cloud-install-id";
+/// The install id of the `/v2` coach. A `/v2` worker does not know the ids of
+/// `/v1`, so the two must not share an entry.
+const ACCOUNT_DEVICE_V2: &str = "cloud-install-id-v2";
 /// The session token of a premium user, after an email sign-in.
 const ACCOUNT_SESSION: &str = "cloud-session-token";
 
@@ -99,6 +102,25 @@ pub fn save_install_id(id: &str) -> Result<()> {
 /// than handing out a fresh quota.
 pub fn forget_install_id() -> Result<()> {
     secrets::delete(ACCOUNT_DEVICE).context("could not clear the install id")
+}
+
+/// The `/v2` install id, if one is stored. Same shape as the `/v1` id.
+pub fn stored_install_id_v2() -> Result<Option<String>> {
+    let stored = secrets::get(ACCOUNT_DEVICE_V2)
+        .with_context(|| format!("could not read the install id from {STORE}"))?;
+    Ok(stored.filter(|id| is_install_id(id)))
+}
+
+pub fn save_install_id_v2(id: &str) -> Result<()> {
+    if !is_install_id(id) {
+        bail!("the coach issued an id in a shape this build does not recognise");
+    }
+    secrets::set(ACCOUNT_DEVICE_V2, id)
+        .with_context(|| format!("could not write the install id to {STORE}"))
+}
+
+pub fn forget_install_id_v2() -> Result<()> {
+    secrets::delete(ACCOUNT_DEVICE_V2).context("could not clear the install id")
 }
 
 /// The session token of a signed-in premium user, if one is stored.
