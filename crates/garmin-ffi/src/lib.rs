@@ -21,6 +21,7 @@ const ACTIVITIES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activiti
 const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.sample.json");
 const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
 const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
+const BODY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/body.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -123,7 +124,8 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
     match cmd {
         "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
         "activities" if fixture => Ok(ACTIVITIES_SAMPLE.to_owned()),
-        "activity_detail" if fixture => Ok(ACTIVITY_SAMPLE.to_owned()),
+        "activity_detail" if fixture => Ok(fixture_detail(args)),
+        "weight_view" | "food_view" | "strength_view" if fixture => Ok(fixture_body(cmd)),
         "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
         "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
         "sync" if fixture => Ok(run_sync(args).await),
@@ -132,6 +134,22 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "today" if args.get("date").is_some() => run_today_on(args).await,
         _ => run_api(cmd.to_owned(), args.to_string()).await,
     }
+}
+
+/// The sample detail with the requested id, so the list and the detail agree.
+fn fixture_detail(args: &serde_json::Value) -> String {
+    let mut detail: serde_json::Value = serde_json::from_str(ACTIVITY_SAMPLE).unwrap_or_default();
+    if let Some(id) = args.get("activityId").filter(|v| v.is_i64()) {
+        detail["activityId"] = id.clone();
+    }
+    detail.to_string()
+}
+
+/// One part of `body.sample.json`: `weight`, `food` or `strength`.
+fn fixture_body(cmd: &str) -> String {
+    let part = cmd.trim_end_matches("_view");
+    let body: serde_json::Value = serde_json::from_str(BODY_SAMPLE).unwrap_or_default();
+    body[part].to_string()
 }
 
 async fn run_today_on(args: &serde_json::Value) -> Result<String, FfiError> {
@@ -205,7 +223,14 @@ async fn run_sync(args: &serde_json::Value) -> String {
             }),
         );
     }
-    serde_json::json!({ "ok": true, "steps": steps }).to_string()
+    serde_json::json!({
+        "line": "Sample sync finished. No data was changed.",
+        "activitiesSeen": 0,
+        "activitiesWritten": 0,
+        "daysWritten": 0,
+        "warnings": [],
+    })
+    .to_string()
 }
 
 #[cfg(test)]
@@ -252,7 +277,10 @@ mod tests {
         let sub = subscribe(recorder.clone());
         let two = serde_json::json!({ "steps": 2 });
         let one = serde_json::json!({ "steps": 1 });
-        dispatch("sync", &two, true).await.unwrap();
+        let out = dispatch("sync", &two, true).await.unwrap();
+        let summary: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(summary["line"].is_string() && summary["warnings"].is_array());
+        assert_eq!(summary["daysWritten"], 0);
         sub.cancel();
         dispatch("sync", &one, true).await.unwrap();
         let seen = recorder.0.lock().unwrap();
@@ -271,6 +299,27 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, FfiError::BadArgs { .. }));
+    }
+
+    #[tokio::test]
+    async fn fixture_body_and_detail_need_no_cache() {
+        let w = dispatch("weight_view", &serde_json::json!({}), true)
+            .await
+            .unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&w)
+            .unwrap()
+            .is_object());
+        let d = dispatch(
+            "activity_detail",
+            &serde_json::json!({ "activityId": 42 }),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&d).unwrap()["activityId"],
+            42
+        );
     }
 
     #[test]

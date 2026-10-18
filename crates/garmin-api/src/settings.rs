@@ -94,7 +94,10 @@ pub fn synced_ago() -> Option<String> {
 /// The cached activity count and the last sync time. A cache that cannot open
 /// reads as empty, because Settings must still open then.
 fn cache_facts() -> (i64, Option<String>) {
-    let Ok(db) = crate::open_default_db() else {
+    // Opening the cache creates the file. Settings must not do that, because
+    // the app reads a missing file as "show the sample data".
+    let exists = garmin_core::db::default_path().is_some_and(|p| p.exists());
+    let Some(db) = exists.then(crate::open_default_db).and_then(Result::ok) else {
         return (0, None);
     };
     let count = db.activity_count().unwrap_or(0);
