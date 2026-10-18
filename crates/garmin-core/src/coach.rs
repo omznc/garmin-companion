@@ -190,6 +190,14 @@ pub fn evaluate(ctx: &CoachContext<'_>) -> Vec<Nudge> {
 
 fn long_run_missing(ctx: &CoachContext<'_>) -> Option<Nudge> {
     let target = ctx.goals.long_run_minutes?;
+    // A user with no walk, hike or run in the window does not do this sport.
+    if !ctx
+        .activities
+        .iter()
+        .any(|a| crate::analysis::is_paced(a.type_key.as_deref()))
+    {
+        return None;
+    }
     if ctx.today.weekday().num_days_from_monday() < LONG_RUN_NUDGE_FROM {
         return None;
     }
@@ -324,8 +332,7 @@ fn cadence_low(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nudge
         title: format!("Cadence is sitting around {avg:.0} spm"),
         body: format!(
             "Target is about {target:.0}. Quicker, lighter steps at the same speed \
-             cut the load each one puts through the knee — which matters more at \
-             your bodyweight than it would at 70 kg. Shorten the stride rather \
+             cut the load each one puts through the knee. Shorten the stride rather \
              than pushing the pace."
         ),
         tone: Tone::Neutral,
@@ -521,15 +528,23 @@ fn week_complete(ctx: &CoachContext<'_>) -> Option<Nudge> {
     if ctx.week.sessions < 2 {
         return None;
     }
+    // The long run is part of the sentence only when the user has that goal.
+    let long_run = if ctx.week.rings.iter().any(|r| r.id == "longRun") {
+        format!(
+            ", and the long run went to {:.0}",
+            ctx.week.longest_run_minutes
+        )
+    } else {
+        String::new()
+    };
 
     Some(Nudge {
         kind: NudgeKind::WeekComplete,
         id: NudgeKind::WeekComplete.id().into(),
         title: "Every goal met this week".into(),
         body: format!(
-            "{} sessions, {:.0} minutes, and the long run went to {:.0}. That's the \
-             week as designed.",
-            ctx.week.sessions, ctx.week.minutes, ctx.week.longest_run_minutes
+            "{} sessions, {:.0} minutes{long_run}. That's the week as designed.",
+            ctx.week.sessions, ctx.week.minutes
         ),
         tone: Tone::Good,
         priority: 50,
@@ -921,7 +936,9 @@ pub fn for_today(db: &crate::Db, today: NaiveDate) -> anyhow::Result<CoachReport
         .to_string();
 
     let goals = Goals::load(db)?;
-    let activities = db.activities_since(&from)?;
+    // A motorcycle ride is not a session, a hard one included.
+    let mut activities = db.activities_since(&from)?;
+    activities.retain(|a| crate::sport::is_exercise(a.type_key.as_deref()));
     let daily = db.daily_since(&from)?;
     let fitness = db.fitness_since(&from)?.into_iter().next();
     let week = crate::goals::week_progress(&goals, &activities, today);
@@ -1290,7 +1307,10 @@ mod tests {
 
     #[test]
     fn the_long_run_nudge_waits_until_the_week_is_running_out() {
-        let goals = Goals::default();
+        let goals = Goals {
+            long_run_minutes: Some(30.0),
+            ..Goals::default()
+        };
         let acts = vec![run(
             "2026-08-04",
             10.0,
@@ -1307,6 +1327,25 @@ mod tests {
         ));
         // Saturday: still nothing long, and the week is nearly gone.
         assert!(fired(
+            &evaluate(&ctx(saturday(), &goals, &week, &acts, &[])),
+            NudgeKind::LongRunMissing
+        ));
+    }
+
+    #[test]
+    fn the_long_run_nudge_is_silent_without_a_goal_or_without_runs() {
+        let none = Goals::default();
+        assert!(none.long_run_minutes.is_none() && none.cadence_spm.is_none());
+        let goals = Goals {
+            long_run_minutes: Some(30.0),
+            ..Goals::default()
+        };
+        let acts = vec![CachedActivity {
+            type_key: Some("strength_training".into()),
+            ..run("2026-08-04", 40.0, [0.0; 5], None)
+        }];
+        let week = week_progress(&goals, &acts, saturday());
+        assert!(!fired(
             &evaluate(&ctx(saturday(), &goals, &week, &acts, &[])),
             NudgeKind::LongRunMissing
         ));

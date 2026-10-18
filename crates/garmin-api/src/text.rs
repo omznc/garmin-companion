@@ -6,6 +6,7 @@
 
 use crate::derive::{days_since, easy_hard_split, is_run, latest, mean, Fuel, Hydration};
 use chrono::NaiveDate;
+use garmin_core::sport::sport_label;
 use garmin_core::{CachedActivity, DailyMetrics};
 
 /// A whole number with thousands separators, like `en-GB` formatting.
@@ -110,7 +111,7 @@ pub fn fuel_sentence(f: &Fuel) -> String {
     }
 }
 
-/// This week's distance against the previous week.
+/// This week's active time against the previous week.
 pub fn load_sentence(now: f64, prior: f64) -> String {
     let change = (now - prior) / prior * 100.0;
     let verdict = if change.abs() < 10.0 {
@@ -121,22 +122,29 @@ pub fn load_sentence(now: f64, prior: f64) -> String {
         "inside a sensible range"
     };
     format!(
-        "Distance is {} {:.0}% on the previous week — {verdict}.",
+        "Active time is {} {:.0}% on the previous week — {verdict}.",
         if change >= 0.0 { "up" } else { "down" },
         change.abs()
     )
 }
 
-/// The summary of the last seven days, next to the chart.
-pub fn week_sentence(total_km: f64, prior_km: f64, sessions: usize) -> String {
+/// The summary of the last seven days, next to the chart. Time and session
+/// count lead. Distance follows only when the week has some.
+pub fn week_sentence(total_min: f64, prior_min: f64, total_km: f64, sessions: usize) -> String {
+    if sessions == 0 {
+        return "No activity in the last seven days.".into();
+    }
     let noun = if sessions == 1 { "session" } else { "sessions" };
-    let first = if total_km > 0.0 {
-        format!("{total_km:.1} km across {sessions} {noun}.")
-    } else {
-        format!("{sessions} {noun}, none with recorded distance.")
-    };
-    let second = if prior_km > 0.0 && total_km > 0.0 {
-        load_sentence(total_km, prior_km)
+    let mut first = format!(
+        "{sessions} {noun}, {} of activity",
+        hours_minutes(total_min * 60.0)
+    );
+    if total_km > 0.0 {
+        first.push_str(&format!(", {total_km:.1} km covered"));
+    }
+    first.push('.');
+    let second = if prior_min > 0.0 && total_min > 0.0 {
+        load_sentence(total_min, prior_min)
     } else {
         "No previous week to compare against yet.".to_string()
     };
@@ -178,11 +186,7 @@ fn last_session_clause(last: &CachedActivity, today: NaiveDate) -> String {
         .distance_m
         .filter(|m| *m > 0.0)
         .map_or(String::new(), |m| format!(" {:.1} km", m / 1000.0));
-    let kind = last
-        .type_key
-        .as_deref()
-        .unwrap_or("activity")
-        .replace('_', " ");
+    let kind = sport_label(last.type_key.as_deref()).to_lowercase();
     format!("{ago} session was{dist} {kind}.")
 }
 
@@ -194,7 +198,10 @@ fn zones_clause(activities: &[CachedActivity]) -> Option<String> {
         .collect();
     let split = easy_hard_split(&runs)?;
     Some(if split.hard_pct > 40.0 {
-        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2 — still the thing most worth fixing.", split.counted, split.hard_pct)
+        format!(
+            "Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2.",
+            split.counted, split.hard_pct
+        )
     } else {
         format!("Across your last {} runs with heart-rate data, {:.0}% of the time was in Z1–Z2, which is where you want it.", split.counted, split.easy_pct)
     })
@@ -212,7 +219,8 @@ pub fn narrative(rows: &[DailyMetrics], activities: &[CachedActivity], today: Na
     .flatten()
     .collect();
     if parts.is_empty() {
-        "No metrics recorded for the last few days.".into()
+        "No metrics recorded for the last few days. No sleep, readiness or activity data was found."
+            .into()
     } else {
         parts.join(" ")
     }
@@ -240,9 +248,17 @@ mod tests {
     }
 
     #[test]
-    fn week_sentence_handles_missing_distance() {
-        assert!(week_sentence(0.0, 10.0, 1).starts_with("1 session, none with"));
-        assert!(week_sentence(12.0, 0.0, 3).ends_with("compare against yet."));
+    fn week_sentence_leads_with_time() {
+        let s = week_sentence(130.0, 0.0, 0.0, 3);
+        assert!(s.starts_with("3 sessions, 2h 10m of activity."));
+        assert!(!s.contains("km"));
+        assert!(s.ends_with("compare against yet."));
+        assert!(week_sentence(60.0, 30.0, 12.0, 1)
+            .contains("1 session, 1h 00m of activity, 12.0 km covered."));
+        assert_eq!(
+            week_sentence(0.0, 30.0, 0.0, 0),
+            "No activity in the last seven days."
+        );
     }
 
     #[test]
@@ -299,7 +315,7 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 3, 11).unwrap();
         assert_eq!(
             narrative(&[], &[], today),
-            "No metrics recorded for the last few days."
+            "No metrics recorded for the last few days. No sleep, readiness or activity data was found."
         );
     }
 }
