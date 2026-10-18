@@ -16,12 +16,47 @@ type Source = {
   version: () => string;
 };
 
+const fixtureListeners = new Set<(event: BridgeEvent) => void>();
+let fixtureStop = false;
+
+// A canned answer for the Ask screen, so it runs in Expo Go with no model.
+const FIXTURE_ANSWER =
+  "This is a sample answer, so the screen works with no setup.\n\nWith a model set up, the coach reads **your own Garmin data** first, then answers. Health comes first:\n\n- Sleep, resting heart rate and HRV\n- Recovery, stress and body battery\n- Activity of any sport, but only the sport your data shows\n\nA number that the data cannot support is left out, and the answer says why.";
+
+async function fixtureTurn() {
+  const send = (payload: unknown) => fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
+  const tool = { type: "tool", callId: "fixture", label: "Reading 14 days of recovery signals" };
+  send({ ...tool, running: true, ok: true });
+  await new Promise((r) => setTimeout(r, 400));
+  send({ ...tool, running: false, ok: true });
+  for (const text of FIXTURE_ANSWER.split(/(?<= )/)) {
+    if (fixtureStop) break;
+    send({ type: "delta", text });
+    await new Promise((r) => setTimeout(r, 40));
+  }
+  send({ type: "done", sources: [] });
+}
+
 const fixtureSource: Source = {
   async call(cmd) {
     if (cmd === "today") return JSON.stringify(fixture);
+    if (cmd === "ask_send") {
+      fixtureStop = false;
+      void fixtureTurn();
+      return "{}";
+    }
+    if (cmd === "ask_stop") {
+      fixtureStop = true;
+      return "{}";
+    }
+    if (cmd === "ask_config")
+      return JSON.stringify({ provider: "ollama", model: "sample", hasKey: false });
     throw new Error(`no fixture for command: ${cmd}`);
   },
-  subscribe: () => () => {},
+  subscribe: (listener) => {
+    fixtureListeners.add(listener);
+    return () => fixtureListeners.delete(listener);
+  },
   version: () => "fixture",
 };
 
