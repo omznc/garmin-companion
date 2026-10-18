@@ -126,7 +126,8 @@ fn row(card: &ActivityCard, t: &Theme, cx: &mut Context<Root>) -> impl IntoEleme
         .child(
             div()
                 .flex_none()
-                .w(px(190.0))
+                .w(px(230.0))
+                .whitespace_nowrap()
                 .text_size(px(FS_SMALL))
                 .text_color(t.mutd)
                 .child(card.detail.clone()),
