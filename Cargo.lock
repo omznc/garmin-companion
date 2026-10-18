@@ -2794,13 +2794,16 @@ name = "garmin-companion-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
  "chrono",
  "garmin-api",
+ "garmin-coach",
  "garmin-core",
  "gpui-ce",
  "gpui_ce_platform",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

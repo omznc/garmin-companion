@@ -68,6 +68,9 @@ icons! {
     NavFitness => "duotone/gauge",
     NavReports => "duotone/file-text",
     NavSettings => "duotone/gear-six",
+
+    Send => "bold/arrow-up",
+    Stop => "bold/stop",
 }
 
 impl Icon {

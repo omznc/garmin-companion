@@ -6,11 +6,18 @@
 //! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
 //! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
 //! `--persona golfer` shows a made-up user from `garmin-api`. The default is `sample`.
+//! `--screen ask` opens on a screen by its sidebar name. `--ask "question"` sends a
+//! question at once. `--draft "text"` leaves text in the composer. `--coach ollama:llama3.2` saves the model into the `--db` copy
+//! and exits. Without `--db`, the Ask screen runs a canned demo.
 
+mod ask;
 mod chrome;
+mod composer;
 mod data;
+mod editor;
 mod icons;
 mod map;
+mod markdown;
 mod motion;
 mod scroll;
 mod shell;
@@ -29,6 +36,7 @@ use gpui::{
     WindowDecorations, WindowOptions,
 };
 
+use data::Source;
 use theme::Palette;
 
 /// The fonts of the current app, in the binary. They are static TrueType
@@ -102,6 +110,29 @@ fn main() -> anyhow::Result<()> {
         (None, Some(_), _) => anyhow::bail!("--date needs --db"),
         (None, None, persona) => data::Source::Persona(persona.unwrap_or("sample".into())),
     };
+    if let Some(spec) = required(&args, "--coach")? {
+        let Source::Db { path, .. } = &source else {
+            anyhow::bail!("--coach needs --db");
+        };
+        println!("{}", ask::setup(path, &spec)?);
+        return Ok(());
+    }
+    let screen = match required(&args, "--screen")? {
+        Some(name) => sidebar::NAV
+            .iter()
+            .position(|(label, _)| label.eq_ignore_ascii_case(&name))
+            .with_context(|| format!("--screen {name} is not a screen"))?,
+        None => 0,
+    };
+    let start = shell::Start {
+        screen,
+        ask_source: match &source {
+            Source::Db { path, .. } => ask::Source::Db(path.clone()),
+            Source::Persona(_) => ask::Source::Demo,
+        },
+        question: required(&args, "--ask")?,
+        draft: required(&args, "--draft")?,
+    };
     let today = data::load_today(&source)?;
 
     gpui_platform::application()
@@ -135,7 +166,7 @@ fn main() -> anyhow::Result<()> {
                 ..Default::default()
             };
             let opened = cx.open_window(options, |_, cx| {
-                cx.new(|_| shell::Root::new(today, palette))
+                cx.new(|cx| shell::Root::new(today, palette, start, cx))
             });
             if let Err(error) = opened {
                 eprintln!("could not open the window: {error:#}");

@@ -150,14 +150,14 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
     let has_key = matches!(garmin_core::store::load_openrouter_key(), Ok(Some(_)));
     let http = reqwest::Client::new();
     let (ollama_reachable, ollama_models) = garmin_coach::probe_ollama(&http).await;
-    Ok(serde_json::to_string(&garmin_coach::ChatConfig {
+    serde_json::to_string(&garmin_coach::ChatConfig {
         provider: provider.map(garmin_coach::Provider::as_str),
         model,
         has_key,
         ollama_reachable,
         ollama_models,
     })
-    .map_err(failed)?)
+    .map_err(failed)
 }
 
 fn save(args: &Value) -> Result<String, FfiError> {

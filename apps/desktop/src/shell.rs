@@ -3,8 +3,10 @@
 
 use gpui::{
     div, linear_color_stop, linear_gradient, prelude::*, px, relative, ColorExt as _, Context,
-    ElementId, IntoElement, Render, Window,
+    ElementId, Entity, IntoElement, Render, Window,
 };
+
+use crate::ask::{Ask, Source};
 
 use crate::chrome;
 use crate::data::Today;
@@ -19,14 +21,34 @@ use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 /// On an ultrawide the pair stays together in the middle.
 const SHELL_MAX: f32 = 1240.0;
 /// The reading column's width, and the air above and beside it.
-const COLUMN_MAX: f32 = 720.0;
-const COLUMN_TOP: f32 = 78.0;
-const COLUMN_SIDE: f32 = 56.0;
+pub const COLUMN_MAX: f32 = 720.0;
+pub const COLUMN_TOP: f32 = 78.0;
+pub const COLUMN_SIDE: f32 = 56.0;
 const COLUMN_BOTTOM: f32 = 160.0;
 /// How tall the fade under the title strip is.
 const FADE_H: f32 = 44.0;
 
+/// The sidebar entry of the Ask screen.
+const ASK: usize = 6;
+
+/// The width of the text column for a window `viewport` pixels wide.
+pub fn column_width(viewport: f32) -> f32 {
+    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * COLUMN_SIDE).clamp(200.0, COLUMN_MAX)
+}
+
+/// What the window opens on. Only the command line sets it.
+pub struct Start {
+    /// The sidebar entry that is lit.
+    pub screen: usize,
+    pub ask_source: Source,
+    /// A question that the Ask screen sends at once, for a demo.
+    pub question: Option<String>,
+    /// Text that waits in the composer, for a demo. `\n` is a new line.
+    pub draft: Option<String>,
+}
+
 pub struct Root {
+    ask: Entity<Ask>,
     today: Today,
     palette: Palette,
     sidebar: Sidebar,
@@ -36,11 +58,21 @@ pub struct Root {
 }
 
 impl Root {
-    pub fn new(today: Today, palette: Palette) -> Self {
+    pub fn new(today: Today, palette: Palette, start: Start, cx: &mut Context<Self>) -> Self {
+        let ask = cx.new(|cx| Ask::new(start.ask_source, palette, cx));
+        if let Some(question) = start.question {
+            ask.update(cx, |ask, cx| ask.send(question, cx));
+        }
+        if let Some(draft) = start.draft {
+            ask.update(cx, |ask, cx| ask.fill(&draft.replace("\\n", "\n"), cx));
+        }
+        let mut sidebar = Sidebar::new(motion::reduced());
+        sidebar.select(start.screen);
         Self {
+            ask,
             today,
             palette,
-            sidebar: Sidebar::new(motion::reduced()),
+            sidebar,
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
         }
@@ -50,6 +82,9 @@ impl Root {
         if index != self.sidebar.active {
             self.sidebar.select(index);
             self.visits += 1;
+            if index == ASK {
+                self.ask.update(cx, |ask, _| ask.visit());
+            }
             // A new screen starts at the top.
             self.scroll = SmoothScroll::new(motion::reduced());
             cx.notify();
@@ -63,6 +98,8 @@ impl Root {
         } else {
             Palette::Ink
         };
+        let palette = self.palette;
+        self.ask.update(cx, |ask, cx| ask.set_palette(palette, cx));
         cx.notify();
     }
 
@@ -115,20 +152,24 @@ impl Render for Root {
         // Each screen gets a new `SmoothScroll` in `select`, so it starts at
         // the top, as the current app does on a route change.
         self.scroll.tick(window);
-        let column = self
-            .scroll
-            .area(ElementId::NamedInteger("page".into(), self.visits as u64))
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .px(px(COLUMN_SIDE))
-            .pb(px(COLUMN_BOTTOM))
-            .child(
-                div()
-                    .max_w(px(COLUMN_MAX))
-                    .pt(px(COLUMN_TOP))
-                    .child(self.screen(&t)),
-            );
+        let column = if self.sidebar.active == ASK {
+            self.ask.clone().into_any_element()
+        } else {
+            self.scroll
+                .area(ElementId::NamedInteger("page".into(), self.visits as u64))
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .px(px(COLUMN_SIDE))
+                .pb(px(COLUMN_BOTTOM))
+                .child(
+                    div()
+                        .max_w(px(COLUMN_MAX))
+                        .pt(px(COLUMN_TOP))
+                        .child(self.screen(&t)),
+                )
+                .into_any_element()
+        };
 
         // Text under the title strip fades out as it scrolls up.
         let fade = div()
