@@ -27,7 +27,12 @@
  * observability block in `wrangler.jsonc` that would do it from underneath.
  */
 
-interface Env {
+import { handleV2 } from "./v2";
+import type { V2Env } from "./v2/env";
+
+export { Wallet } from "./v2";
+
+interface Env extends V2Env {
   /** `wrangler secret put OPENROUTER_KEY` */
   OPENROUTER_KEY: string;
   MODEL: string;
@@ -124,6 +129,9 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") return new Response("ok");
+
+    // The paid coach lives in ./v2 and shares nothing with the /v1 paths below.
+    if (url.pathname.startsWith("/v2/")) return handleV2(request, env, ctx);
 
     if (url.pathname === "/v1/install") {
       if (request.method !== "POST") return fail(405, "POST only");
