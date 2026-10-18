@@ -1,6 +1,6 @@
 // Turn the core's Today view into the sections that the screens draw.
 // The core sends the order and the sentences. This file only formats numbers.
-import type { Activity, LastSession, Metric, Section, Today, TodayView } from "./types";
+import type { Activity, Hero, LastSession, Metric, Section, Today, TodayView } from "./types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const parseDay = (s: string) => new Date(`${s.slice(0, 10)}T12:00:00`);
@@ -81,6 +81,7 @@ function lastSession(v: TodayView): LastSession | null {
   return {
     name: a.name?.trim() || last.sportLabel,
     sport: last.sportLabel,
+    typeKey: a.typeKey,
     when: shortDate(a.startTimeLocal ?? a.localDate),
     zones:
       last.showZoneVerdict && last.hasZoneData && percents.length > 0
@@ -146,9 +147,23 @@ function buildSection(v: TodayView, key: string, day: Date): Section | null {
   }
 }
 
+function hero(v: TodayView): Hero | null {
+  const score = (id: string, label: string, l: { value: number }): Hero => ({
+    id,
+    label,
+    text: String(Math.round(l.value)),
+    pct: Math.max(0, Math.min(100, l.value)),
+  });
+  if (v.readiness) return score("readiness", "Readiness", v.readiness);
+  if (v.bodyBattery) return score("battery", "Body battery", v.bodyBattery);
+  if (v.sleep) return { id: "sleep", label: "Slept", text: hoursMinutes(v.sleep.value), pct: null };
+  return null;
+}
+
 export function presentToday(v: TodayView, now = new Date()): Today {
   const day = parseDay(v.date);
   return {
+    hero: v.empty ? null : hero(v),
     dateLabel: day.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }),
     greeting: greeting(now),
     lede: v.empty ? "Nothing cached yet. Run a sync to pull your Garmin history." : v.lede,
