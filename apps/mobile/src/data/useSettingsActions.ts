@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Alert } from "react-native";
-import { applyTheme, setTheme, signOut } from "./account";
+import { setThemePref } from "../theme/prefs";
+import { setTheme, signOut } from "./account";
 import type { ThemeMode } from "./types";
 import { useSettings } from "./useAccount";
 import { useSync } from "./useSync";
@@ -22,7 +23,7 @@ export function useSettingsActions() {
   const runSync = (args: { days?: number; full?: boolean }) => sync.run(args).catch(() => {});
 
   const chooseTheme = async (theme: ThemeMode) => {
-    applyTheme(theme);
+    setThemePref("scheme", theme);
     await setTheme(theme).catch(() => {});
     queryClient.invalidateQueries({ queryKey: ["settings"] });
   };

@@ -5,7 +5,7 @@ import { Tabs, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useHostTheme, useMd } from "../theme/md";
 import { TABS } from "./tabs";
 
 const ICONS = {
@@ -20,9 +20,10 @@ function TabBar({ index }: { index: number }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const md = useMd();
+  const host = useHostTheme();
   return (
     <View style={{ paddingBottom: insets.bottom, backgroundColor: md.surfaceContainer }}>
-      <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
+      <Host matchContents={{ vertical: true }} {...host} style={{ width: "100%" }}>
         <NavigationBar>
           {TABS.map((tab, i) => (
             <NavigationBarItem

@@ -14,7 +14,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useHostTheme, useMd } from "../theme/md";
 
 const EXPANDED = 136;
 const COLLAPSED = 64;
@@ -110,9 +110,10 @@ export function LargeAppBarScreen({
 function BackButton({ top }: { top: number }) {
   const router = useRouter();
   const md = useMd();
+  const host = useHostTheme();
   return (
     <View style={{ position: "absolute", top: top + 8, left: 8, width: 48, height: 48 }}>
-      <Host matchContents seedColor={HOST_SEED}>
+      <Host matchContents {...host}>
         <IconButton onClick={() => router.back()}>
           <Icon
             source={require("../../assets/icons/back.xml")}

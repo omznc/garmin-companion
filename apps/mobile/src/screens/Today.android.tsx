@@ -1,5 +1,6 @@
 // Today on Android: Material 3 Expressive cards in the colours of the scheme.
 // The core sends the sections in order. A section that has no data is not drawn.
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
@@ -8,14 +9,15 @@ import {
   Card,
   Content,
   ErrorCard,
+  IconTile,
   Loading,
   type Md,
   SectionLabel,
   SplitBar,
   T,
-  TileGrid,
 } from "../components/MdKit";
-import type { LastSession, Section as TodaySection, Today } from "../data/types";
+import { Cookie, sportIcon, VitalGrid } from "../components/TodayKit";
+import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 import { useMd } from "../theme/md";
@@ -30,10 +32,17 @@ function SessionCard({ s }: { s: LastSession }) {
   const sub = [s.sport, s.when, s.zones ? `${s.zones.aboveZ2Pct}% above Z2` : null];
   return (
     <Card gap={12}>
-      <T v="title">{s.name}</T>
-      <T v="bodyMedium" color={md.onSurfaceVariant}>
-        {sub.filter(Boolean).join(" - ")}
-      </T>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+        <IconTile name={sportIcon(s.typeKey)} tone="primary" size={56} />
+        <View style={{ flex: 1 }}>
+          <T v="title" lines={2}>
+            {s.name}
+          </T>
+          <T v="bodyMedium" color={md.onSurfaceVariant}>
+            {sub.filter(Boolean).join(" - ")}
+          </T>
+        </View>
+      </View>
       {s.zones ? (
         <SplitBar
           parts={s.zones.percents.map((p, i) => ({ weight: p, color: tones[i] ?? md.primary }))}
@@ -64,6 +73,8 @@ function WeekCard({ s }: { s: Extract<TodaySection, { kind: "week" }> }) {
           <Bars
             values={s.minutes}
             gap={8}
+            color={md.secondary}
+            colorFor={(_, i) => (i === s.minutes.length - 1 ? md.primary : md.secondary)}
             describe={(v, i) => `${s.labels[i]}: ${Math.round(v ?? 0)} min`}
           />
           <BarLabels labels={s.labels} />
@@ -96,28 +107,28 @@ function DriftCard({ s }: { s: Extract<TodaySection, { kind: "drift" }> }) {
   );
 }
 
-function SectionView({ s }: { s: TodaySection }) {
+function SectionView({ s, hero }: { s: TodaySection; hero: Hero | null }) {
   const md = useMd();
   switch (s.kind) {
     case "health":
-      return (
-        <TileGrid
-          tiles={s.metrics.map((m) => ({
-            label: m.label,
-            value: m.unit ? `${m.value} ${m.unit}` : m.value,
-            accent: m.accent,
-          }))}
-        />
-      );
+      return <VitalGrid metrics={s.metrics.filter((m) => m.id !== hero?.id)} />;
     case "attention":
       return (
         <>
           <SectionLabel>Attention</SectionLabel>
-          <Card tone="tertiary" gap={12}>
+          <Card tone="tertiary" gap={16}>
             {s.notes.map((n) => (
-              <T key={n.text} v={n.accent ? "titleMedium" : "body"} color={md.onTertiaryContainer}>
-                {n.text}
-              </T>
+              <View
+                key={n.text}
+                style={{ flexDirection: "row", gap: 12, alignItems: "flex-start" }}
+              >
+                <MaterialIcons name="priority-high" size={22} color={md.onTertiaryContainer} />
+                <View style={{ flex: 1 }}>
+                  <T v={n.accent ? "titleMedium" : "body"} color={md.onTertiaryContainer}>
+                    {n.text}
+                  </T>
+                </View>
+              </View>
             ))}
           </Card>
         </>
@@ -144,20 +155,48 @@ function SectionView({ s }: { s: TodaySection }) {
   }
 }
 
-function TodayBody({ today }: { today: Today }) {
+function HeroCard({ today }: { today: Today }) {
   const md = useMd();
+  const hero = today.hero;
+  return (
+    <Card tone="primary" gap={16} style={{ borderRadius: 40 }}>
+      <T v="label" color={md.onPrimaryContainer}>
+        {today.dateLabel}
+      </T>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 20 }}>
+        <Cookie size={144} color={md.primary}>
+          {hero ? (
+            <T v="display" color={md.onPrimary}>
+              {hero.text}
+            </T>
+          ) : (
+            <MaterialIcons name="watch" size={56} color={md.onPrimary} />
+          )}
+        </Cookie>
+        <View style={{ flex: 1, gap: 4 }}>
+          <T v="headlineSmall" color={md.onPrimaryContainer}>
+            {hero?.label ?? "Welcome"}
+          </T>
+          {hero?.pct != null ? (
+            <T v="bodyMedium" color={md.onPrimaryContainer}>
+              out of 100
+            </T>
+          ) : null}
+        </View>
+      </View>
+      <T v="body" color={md.onPrimaryContainer}>
+        {today.lede}
+      </T>
+    </Card>
+  );
+}
+
+function TodayBody({ today }: { today: Today }) {
   return (
     <Content>
-      <Card tone="primary" gap={12} style={{ borderRadius: 32 }}>
-        <T v="label" color={md.onPrimaryContainer}>
-          {today.dateLabel}
-        </T>
-        <T v="body" color={md.onPrimaryContainer}>
-          {today.lede}
-        </T>
-      </Card>
+      <HeroCard today={today} />
       {today.sections.map((s) => (
-        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} />
+        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} hero={today.hero} />
       ))}
     </Content>
   );

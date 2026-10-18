@@ -32,7 +32,7 @@ import {
   shortDay,
   useSleep,
 } from "../data/wellness";
-import { HOST_SEED, useMd } from "../theme/md";
+import { useHostTheme, useMd } from "../theme/md";
 
 /** A night under seven hours is a short night. */
 const SHORT_NIGHT_HOURS = 7;
@@ -88,8 +88,9 @@ function LastNight({ night, note }: { night: NightView; note: string | null }) {
 }
 
 function WindowPicker({ days, onPick }: { days: number; onPick: (days: number) => void }) {
+  const host = useHostTheme();
   return (
-    <Host matchContents={{ vertical: true }} seedColor={HOST_SEED} style={{ width: "100%" }}>
+    <Host matchContents={{ vertical: true }} {...host} style={{ width: "100%" }}>
       <Column modifiers={[fillMaxWidth()]}>
         <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
           {[7, 30].map((d) => (
