@@ -33,7 +33,12 @@ export function GarminPage() {
           <Section>
             <Item title={s.accountLine} />
             {s.connected ? (
-              <Item title="Sign out" tone="danger" onPress={a.disconnect} />
+              <Item
+                title="Sign out"
+                tone="danger"
+                disabled={a.sync.busy}
+                onPress={a.disconnect}
+              />
             ) : (
               <Item title="Sign in" tone="action" onPress={() => router.push("/sign-in")} />
             )}
