@@ -1,0 +1,590 @@
+{
+  "weight": {
+    "empty": null,
+    "count": 12,
+    "sentence": "Weight trend 80.9 kg, down 0.13 kg a week.",
+    "trendKg": 80.9,
+    "latestKg": 80.5,
+    "changeKg": -0.7,
+    "bmi": null,
+    "windows": [
+      {
+        "days": 7,
+        "sentence": "In the last 7 days the trend moved down 0.1 kg over 2 weigh-ins."
+      },
+      {
+        "days": 30,
+        "sentence": "In the last 30 days the trend moved down 0.5 kg over 6 weigh-ins."
+      }
+    ],
+    "points": [
+      {
+        "date": "2026-08-24",
+        "kg": 81.6,
+        "trendKg": 81.6,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-08-29",
+        "kg": 81.7,
+        "trendKg": 81.6,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-03",
+        "kg": 81.7,
+        "trendKg": 81.6,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-08",
+        "kg": 81.2,
+        "trendKg": 81.5,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-13",
+        "kg": 81.3,
+        "trendKg": 81.4,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-18",
+        "kg": 81.3,
+        "trendKg": 81.4,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-23",
+        "kg": 81.3,
+        "trendKg": 81.4,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-09-28",
+        "kg": 80.9,
+        "trendKg": 81.2,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-10-03",
+        "kg": 80.9,
+        "trendKg": 81.1,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-10-08",
+        "kg": 80.9,
+        "trendKg": 81.1,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-10-13",
+        "kg": 81.0,
+        "trendKg": 81.0,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      },
+      {
+        "date": "2026-10-18",
+        "kg": 80.5,
+        "trendKg": 80.9,
+        "outlier": false,
+        "source": "INDEX_SCALE"
+      }
+    ],
+    "composition": {
+      "date": "2026-10-18",
+      "bodyFatPct": 19.5,
+      "bodyWaterPct": 57.0,
+      "muscleKg": 37.4,
+      "boneKg": 3.2
+    },
+    "goalSentence": null
+  },
+  "food": {
+    "empty": null,
+    "daysLogged": 20,
+    "avgEatenKcal": 2220.0,
+    "avgBurnedKcal": 2580.0,
+    "avgBalanceKcal": -360.0,
+    "goalKcal": null,
+    "sentence": "Averaged over the 20 days with a food log, not over all 30. Balance is eaten minus burned. A negative balance is a deficit.",
+    "water": {
+      "avgMl": 1900.0,
+      "goalMl": null,
+      "sentence": "You've logged 1.60 L of water today."
+    },
+    "days": [
+      {
+        "date": "2026-10-18",
+        "label": "18 Oct",
+        "logged": true,
+        "eatenKcal": 2100.0,
+        "burnedKcal": 2500.0,
+        "balanceKcal": -400.0,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-10-17",
+        "label": "17 Oct",
+        "logged": true,
+        "eatenKcal": 2220.0,
+        "burnedKcal": 2580.0,
+        "balanceKcal": -360.0,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-10-16",
+        "label": "16 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2660.0,
+        "balanceKcal": null,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-10-15",
+        "label": "15 Oct",
+        "logged": true,
+        "eatenKcal": 2160.0,
+        "burnedKcal": 2540.0,
+        "balanceKcal": -380.0,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-10-14",
+        "label": "14 Oct",
+        "logged": true,
+        "eatenKcal": 2280.0,
+        "burnedKcal": 2620.0,
+        "balanceKcal": -340.0,
+        "waterMl": 2050.0
+      },
+      {
+        "date": "2026-10-13",
+        "label": "13 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2500.0,
+        "balanceKcal": null,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-10-12",
+        "label": "12 Oct",
+        "logged": true,
+        "eatenKcal": 2220.0,
+        "burnedKcal": 2580.0,
+        "balanceKcal": -360.0,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-10-11",
+        "label": "11 Oct",
+        "logged": true,
+        "eatenKcal": 2340.0,
+        "burnedKcal": 2660.0,
+        "balanceKcal": -320.0,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-10-10",
+        "label": "10 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2540.0,
+        "balanceKcal": null,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-10-09",
+        "label": "09 Oct",
+        "logged": true,
+        "eatenKcal": 2280.0,
+        "burnedKcal": 2620.0,
+        "balanceKcal": -340.0,
+        "waterMl": 2050.0
+      },
+      {
+        "date": "2026-10-08",
+        "label": "08 Oct",
+        "logged": true,
+        "eatenKcal": 2100.0,
+        "burnedKcal": 2500.0,
+        "balanceKcal": -400.0,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-10-07",
+        "label": "07 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2580.0,
+        "balanceKcal": null,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-10-06",
+        "label": "06 Oct",
+        "logged": true,
+        "eatenKcal": 2340.0,
+        "burnedKcal": 2660.0,
+        "balanceKcal": -320.0,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-10-05",
+        "label": "05 Oct",
+        "logged": true,
+        "eatenKcal": 2160.0,
+        "burnedKcal": 2540.0,
+        "balanceKcal": -380.0,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-10-04",
+        "label": "04 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2620.0,
+        "balanceKcal": null,
+        "waterMl": 2050.0
+      },
+      {
+        "date": "2026-10-03",
+        "label": "03 Oct",
+        "logged": true,
+        "eatenKcal": 2100.0,
+        "burnedKcal": 2500.0,
+        "balanceKcal": -400.0,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-10-02",
+        "label": "02 Oct",
+        "logged": true,
+        "eatenKcal": 2220.0,
+        "burnedKcal": 2580.0,
+        "balanceKcal": -360.0,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-10-01",
+        "label": "01 Oct",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2660.0,
+        "balanceKcal": null,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-09-30",
+        "label": "30 Sep",
+        "logged": true,
+        "eatenKcal": 2160.0,
+        "burnedKcal": 2540.0,
+        "balanceKcal": -380.0,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-09-29",
+        "label": "29 Sep",
+        "logged": true,
+        "eatenKcal": 2280.0,
+        "burnedKcal": 2620.0,
+        "balanceKcal": -340.0,
+        "waterMl": 2050.0
+      },
+      {
+        "date": "2026-09-28",
+        "label": "28 Sep",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2500.0,
+        "balanceKcal": null,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-09-27",
+        "label": "27 Sep",
+        "logged": true,
+        "eatenKcal": 2220.0,
+        "burnedKcal": 2580.0,
+        "balanceKcal": -360.0,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-09-26",
+        "label": "26 Sep",
+        "logged": true,
+        "eatenKcal": 2340.0,
+        "burnedKcal": 2660.0,
+        "balanceKcal": -320.0,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-09-25",
+        "label": "25 Sep",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2540.0,
+        "balanceKcal": null,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-09-24",
+        "label": "24 Sep",
+        "logged": true,
+        "eatenKcal": 2280.0,
+        "burnedKcal": 2620.0,
+        "balanceKcal": -340.0,
+        "waterMl": 2050.0
+      },
+      {
+        "date": "2026-09-23",
+        "label": "23 Sep",
+        "logged": true,
+        "eatenKcal": 2100.0,
+        "burnedKcal": 2500.0,
+        "balanceKcal": -400.0,
+        "waterMl": 1600.0
+      },
+      {
+        "date": "2026-09-22",
+        "label": "22 Sep",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2580.0,
+        "balanceKcal": null,
+        "waterMl": 1900.0
+      },
+      {
+        "date": "2026-09-21",
+        "label": "21 Sep",
+        "logged": true,
+        "eatenKcal": 2340.0,
+        "burnedKcal": 2660.0,
+        "balanceKcal": -320.0,
+        "waterMl": 2200.0
+      },
+      {
+        "date": "2026-09-20",
+        "label": "20 Sep",
+        "logged": true,
+        "eatenKcal": 2160.0,
+        "burnedKcal": 2540.0,
+        "balanceKcal": -380.0,
+        "waterMl": 1750.0
+      },
+      {
+        "date": "2026-09-19",
+        "label": "19 Sep",
+        "logged": false,
+        "eatenKcal": null,
+        "burnedKcal": 2620.0,
+        "balanceKcal": null,
+        "waterMl": 2050.0
+      }
+    ]
+  },
+  "strength": {
+    "shown": true,
+    "empty": null,
+    "sessionsExamined": 6,
+    "avgSets": 6.0,
+    "avgReps": 56.7,
+    "medianRestS": 90.0,
+    "identifiedPct": 83,
+    "sentence": "Reps, work time and rest across 6 sessions.",
+    "caveat": "The watch does not record the weight on the bar, so volume here means sets and reps. Exercise names are the watch's guess from wrist motion. The app shows a name only where the watch was confident.",
+    "sessions": [
+      {
+        "activityId": 9400000,
+        "date": "2026-10-17",
+        "label": "17 Oct",
+        "summary": "6 sets, 55 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      },
+      {
+        "activityId": 9400001,
+        "date": "2026-10-14",
+        "label": "14 Oct",
+        "summary": "6 sets, 57 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      },
+      {
+        "activityId": 9400002,
+        "date": "2026-10-11",
+        "label": "11 Oct",
+        "summary": "6 sets, 59 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      },
+      {
+        "activityId": 9400003,
+        "date": "2026-10-08",
+        "label": "08 Oct",
+        "summary": "6 sets, 57 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      },
+      {
+        "activityId": 9400004,
+        "date": "2026-10-05",
+        "label": "05 Oct",
+        "summary": "6 sets, 55 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      },
+      {
+        "activityId": 9400005,
+        "date": "2026-10-02",
+        "label": "02 Oct",
+        "summary": "6 sets, 57 reps, 1:30 rest",
+        "movements": "Probably Bench press, Squat, Curl, 1 unidentified"
+      }
+    ],
+    "exercises": [
+      {
+        "name": "Bench press",
+        "sessions": 6,
+        "sets": 12,
+        "reps": 112,
+        "history": [
+          {
+            "date": "2026-10-02",
+            "label": "02 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-05",
+            "label": "05 Oct",
+            "sets": 2,
+            "reps": 17
+          },
+          {
+            "date": "2026-10-08",
+            "label": "08 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-11",
+            "label": "11 Oct",
+            "sets": 2,
+            "reps": 21
+          },
+          {
+            "date": "2026-10-14",
+            "label": "14 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-17",
+            "label": "17 Oct",
+            "sets": 2,
+            "reps": 17
+          }
+        ]
+      },
+      {
+        "name": "Squat",
+        "sessions": 6,
+        "sets": 12,
+        "reps": 116,
+        "history": [
+          {
+            "date": "2026-10-02",
+            "label": "02 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-05",
+            "label": "05 Oct",
+            "sets": 2,
+            "reps": 21
+          },
+          {
+            "date": "2026-10-08",
+            "label": "08 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-11",
+            "label": "11 Oct",
+            "sets": 2,
+            "reps": 17
+          },
+          {
+            "date": "2026-10-14",
+            "label": "14 Oct",
+            "sets": 2,
+            "reps": 19
+          },
+          {
+            "date": "2026-10-17",
+            "label": "17 Oct",
+            "sets": 2,
+            "reps": 21
+          }
+        ]
+      },
+      {
+        "name": "Curl",
+        "sessions": 6,
+        "sets": 6,
+        "reps": 55,
+        "history": [
+          {
+            "date": "2026-10-02",
+            "label": "02 Oct",
+            "sets": 1,
+            "reps": 9
+          },
+          {
+            "date": "2026-10-05",
+            "label": "05 Oct",
+            "sets": 1,
+            "reps": 8
+          },
+          {
+            "date": "2026-10-08",
+            "label": "08 Oct",
+            "sets": 1,
+            "reps": 11
+          },
+          {
+            "date": "2026-10-11",
+            "label": "11 Oct",
+            "sets": 1,
+            "reps": 10
+          },
+          {
+            "date": "2026-10-14",
+            "label": "14 Oct",
+            "sets": 1,
+            "reps": 9
+          },
+          {
+            "date": "2026-10-17",
+            "label": "17 Oct",
+            "sets": 1,
+            "reps": 8
+          }
+        ]
+      }
+    ]
+  }
+}

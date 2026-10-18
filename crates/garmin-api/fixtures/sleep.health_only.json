@@ -1,0 +1,311 @@
+{
+  "date": "2026-03-11",
+  "empty": false,
+  "lede": "Slept 7h 00m, from 22:15 to 05:45. Garmin scored it 70, fair.",
+  "note": null,
+  "lastNight": {
+    "date": "2026-03-11",
+    "title": "Last night",
+    "score": 70.0,
+    "qualifier": "fair",
+    "durationSecs": 25200.0,
+    "durationText": "7h 00m",
+    "start": "22:15",
+    "end": "05:45",
+    "stages": [
+      {
+        "key": "deep",
+        "label": "Deep",
+        "secs": 4536.0,
+        "pct": 16.8,
+        "text": "1h 16m · 17%"
+      },
+      {
+        "key": "light",
+        "label": "Light",
+        "secs": 15120.0,
+        "pct": 56.00000000000001,
+        "text": "4h 12m · 56%"
+      },
+      {
+        "key": "rem",
+        "label": "REM",
+        "secs": 5544.0,
+        "pct": 20.533333333333335,
+        "text": "1h 32m · 21%"
+      },
+      {
+        "key": "awake",
+        "label": "Awake",
+        "secs": 1800.0,
+        "pct": 6.666666666666667,
+        "text": "0h 30m · 7%"
+      }
+    ],
+    "sentence": "Slept 7h 00m, from 22:15 to 05:45. Garmin scored it 70, fair."
+  },
+  "week": {
+    "days": 7,
+    "bars": [
+      {
+        "date": "2026-03-05",
+        "label": "Thu",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-03-06",
+        "label": "Fri",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-03-07",
+        "label": "Sat",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-03-08",
+        "label": "Sun",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-03-09",
+        "label": "Mon",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-03-10",
+        "label": "Tue",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-03-11",
+        "label": "Wed",
+        "hours": 7.0,
+        "score": 70.0
+      }
+    ],
+    "summary": "Averaged 7h 26m a night over 7 of the last 7 nights. The average score was 75."
+  },
+  "month": {
+    "days": 30,
+    "bars": [
+      {
+        "date": "2026-02-10",
+        "label": "Tue",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-02-11",
+        "label": "Wed",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-02-12",
+        "label": "Thu",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-02-13",
+        "label": "Fri",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-02-14",
+        "label": "Sat",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-02-15",
+        "label": "Sun",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-02-16",
+        "label": "Mon",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-02-17",
+        "label": "Tue",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-02-18",
+        "label": "Wed",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-02-19",
+        "label": "Thu",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-02-20",
+        "label": "Fri",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-02-21",
+        "label": "Sat",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-02-22",
+        "label": "Sun",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-02-23",
+        "label": "Mon",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-02-24",
+        "label": "Tue",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-02-25",
+        "label": "Wed",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-02-26",
+        "label": "Thu",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-02-27",
+        "label": "Fri",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-02-28",
+        "label": "Sat",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-03-01",
+        "label": "Sun",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-03-02",
+        "label": "Mon",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-03-03",
+        "label": "Tue",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-03-04",
+        "label": "Wed",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-03-05",
+        "label": "Thu",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-03-06",
+        "label": "Fri",
+        "hours": 7.0,
+        "score": 70.0
+      },
+      {
+        "date": "2026-03-07",
+        "label": "Sat",
+        "hours": 7.75,
+        "score": 79.0
+      },
+      {
+        "date": "2026-03-08",
+        "label": "Sun",
+        "hours": 7.25,
+        "score": 73.0
+      },
+      {
+        "date": "2026-03-09",
+        "label": "Mon",
+        "hours": 8.0,
+        "score": 82.0
+      },
+      {
+        "date": "2026-03-10",
+        "label": "Tue",
+        "hours": 7.5,
+        "score": 76.0
+      },
+      {
+        "date": "2026-03-11",
+        "label": "Wed",
+        "hours": 7.0,
+        "score": 70.0
+      }
+    ],
+    "summary": "Averaged 7h 30m a night over 30 of the last 30 nights. The average score was 76."
+  },
+  "insights": [
+    {
+      "id": "duration",
+      "tone": "good",
+      "claim": "You're averaging 7h 30m a night.",
+      "detail": "0 of 30 nights came in under seven hours, which is a normal amount of short nights rather than a pattern. Duration isn't the thing to work on.",
+      "nights": 30
+    },
+    {
+      "id": "consistency",
+      "tone": "good",
+      "claim": "Your bedtime is steady: ±15 minutes around 22:39.",
+      "detail": "That consistency is doing more for you than any single long night would. Wake time swings about as much, at ±26 min.",
+      "nights": 30
+    },
+    {
+      "id": "stages",
+      "tone": "good",
+      "claim": "Stage mix is fine: 18% deep, 22% REM.",
+      "detail": "Garmin flagged deep on 0 of 30 nights and REM on 0. There's nothing to chase here — stage percentages are mostly a consequence of total time asleep, not something to optimise directly.",
+      "nights": 30
+    },
+    {
+      "id": "hrv-link",
+      "tone": "note",
+      "claim": "Your longer nights are also your higher-HRV nights.",
+      "detail": "Across 30 nights, hours asleep and next-morning HRV correlate at r = 1.00. Correlation over one window, not cause — HRV is the strongest recovery signal you have, so it's worth knowing which way it moves with sleep, but a long night and a good HRV usually share a cause rather than making each other.",
+      "nights": 30
+    }
+  ]
+}

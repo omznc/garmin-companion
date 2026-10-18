@@ -7,18 +7,27 @@
 //! Only read paths exist for now: the Today view model and the cache reads. Nothing here talks to
 //! Garmin over the network.
 
+pub mod activities;
+pub mod body;
 mod derive;
 mod dispatch;
 mod error;
+pub mod health;
 pub mod personas;
 mod profile;
+pub mod session;
+pub mod settings;
+pub mod sleep_view;
 mod text;
 pub mod today;
 
+pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;
+pub use health::{health_view, HealthView};
 pub use profile::{activity_profile, ActivityProfile, FamilyStat};
+pub use sleep_view::{sleep_view, SleepView};
 pub use today::{today_view, TodayView};
 
 use garmin_core::Db;

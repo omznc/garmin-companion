@@ -26,10 +26,10 @@
 //! `allowBackup="false"` in the manifest covers the same ground from the other
 //! direction and is arguably the stronger half of the pair. Both are set.
 //!
-//! On iOS the same file store is used, because the keyring backend needs a
-//! signed app. The mobile app must keep the folder out of the iCloud backup
-//! (the "exclude from backup" file attribute) or move to the Keychain. Until
-//! then, the key and the data can leave the device together in a backup.
+//! On iOS the secrets live in the Keychain, in the protected data store. The
+//! items use the "after first unlock, this device only" policy, so a backup or
+//! a new device never gets them. The app needs a code signature with a
+//! Keychain access group. A simulator build and a normal Xcode build have one.
 //!
 //! Moving to the Keystore later changes this file and nothing above it — which
 //! is the point of the module existing at all.
@@ -41,25 +41,46 @@ use anyhow::Result;
 /// and unlock something, so naming the wrong mechanism is worse than vague.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub const STORE: &str = "the OS keyring";
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(target_os = "ios")]
+pub const STORE: &str = "the iOS Keychain";
+#[cfg(target_os = "android")]
 pub const STORE: &str = "the app's encrypted store";
 
-/* ------------------------------------------------------------- desktop --- */
+/* ------------------------------------------------------ desktop and ios --- */
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "android"))]
 mod imp {
     use anyhow::{Context, Result};
+    #[cfg(not(target_os = "ios"))]
+    use keyring::{Entry, Error};
+    #[cfg(target_os = "ios")]
+    use keyring_core::{Entry, Error};
 
     const SERVICE: &str = "com.omznc.garmincompanion";
 
-    fn entry(account: &str) -> Result<keyring::Entry> {
-        keyring::Entry::new(SERVICE, account).context("could not open the OS keyring")
+    #[cfg(not(target_os = "ios"))]
+    fn entry(account: &str) -> Result<Entry> {
+        Entry::new(SERVICE, account).context("could not open the OS keyring")
+    }
+
+    // A backup must not hold the tokens, so the item stays on this device.
+    #[cfg(target_os = "ios")]
+    fn entry(account: &str) -> Result<Entry> {
+        use apple_native_keyring_store::protected::{AccessPolicy, Cred};
+        Cred::build(
+            SERVICE,
+            account,
+            AccessPolicy::AfterFirstUnlockThisDeviceOnly,
+            None,
+            false,
+        )
+        .context("could not open the iOS Keychain")
     }
 
     pub fn get(account: &str) -> Result<Option<String>> {
         match entry(account)?.get_password() {
             Ok(v) => Ok(Some(v)),
-            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(Error::NoEntry) => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
@@ -70,15 +91,15 @@ mod imp {
 
     pub fn delete(account: &str) -> Result<()> {
         match entry(account)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Ok(()) | Err(Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),
         }
     }
 }
 
-/* ---------------------------------------------------- android and ios --- */
+/* -------------------------------------------------------------- android --- */
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(target_os = "android")]
 mod imp {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::Aes256Gcm;

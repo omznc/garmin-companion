@@ -5,7 +5,7 @@ export function Placeholder({
   children,
 }: {
   title?: string;
-  settings?: boolean;
+  back?: boolean;
   children?: ReactNode;
 }) {
   return (

@@ -1,0 +1,185 @@
+{
+  "empty": false,
+  "groups": [
+    {
+      "date": "2026-03-11",
+      "label": "Today",
+      "sessions": [
+        {
+          "activityId": 9300000,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "4 sets",
+          "detail": "34 reps - 55 min - 118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-09",
+      "label": "Mon 09 Mar",
+      "sessions": [
+        {
+          "activityId": 9300001,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "57 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-07",
+      "label": "Sat 07 Mar",
+      "sessions": [
+        {
+          "activityId": 9300002,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "59 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-04",
+      "label": "Wed 04 Mar",
+      "sessions": [
+        {
+          "activityId": 9300003,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "1h 01m",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-03-02",
+      "label": "Mon 02 Mar",
+      "sessions": [
+        {
+          "activityId": 9300004,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "1h 03m",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-28",
+      "label": "Sat 28 Feb",
+      "sessions": [
+        {
+          "activityId": 9300005,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "55 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-25",
+      "label": "Wed 25 Feb",
+      "sessions": [
+        {
+          "activityId": 9300006,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "57 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-23",
+      "label": "Mon 23 Feb",
+      "sessions": [
+        {
+          "activityId": 9300007,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "59 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-21",
+      "label": "Sat 21 Feb",
+      "sessions": [
+        {
+          "activityId": 9300008,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "1h 01m",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-18",
+      "label": "Wed 18 Feb",
+      "sessions": [
+        {
+          "activityId": 9300009,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "1h 03m",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-16",
+      "label": "Mon 16 Feb",
+      "sessions": [
+        {
+          "activityId": 9300010,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "55 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    },
+    {
+      "date": "2026-02-14",
+      "label": "Sat 14 Feb",
+      "sessions": [
+        {
+          "activityId": 9300011,
+          "name": "Strength",
+          "sportLabel": "Strength training",
+          "family": "gym",
+          "time": "18:00",
+          "headline": "57 min",
+          "detail": "118 bpm avg"
+        }
+      ]
+    }
+  ]
+}
