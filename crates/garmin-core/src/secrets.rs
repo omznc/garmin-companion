@@ -34,14 +34,14 @@ use anyhow::Result;
 /// What to call the backing store when a failure has to be explained to
 /// someone. The messages in `store` are written for a person who may need to go
 /// and unlock something, so naming the wrong mechanism is worse than vague.
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub const STORE: &str = "the OS keyring";
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub const STORE: &str = "the app's encrypted store";
 
 /* ------------------------------------------------------------- desktop --- */
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod imp {
     use anyhow::{Context, Result};
 
@@ -73,7 +73,7 @@ mod imp {
 
 /* ------------------------------------------------------------- android --- */
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 mod imp {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::Aes256Gcm;
