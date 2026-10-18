@@ -1,0 +1,2 @@
+<!-- No permission here. The app config plugin adds REQUEST_INSTALL_PACKAGES only for a self-update build. -->
+<manifest />

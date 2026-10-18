@@ -18,6 +18,7 @@
     "plugins": [
       "expo-router",
       "expo-system-ui",
+      "./plugins/self-update",
       [
         "expo-build-properties",
         {

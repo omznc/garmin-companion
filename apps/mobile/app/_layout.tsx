@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
+import { UpdateBanner } from "../src/update/UpdateBanner";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +30,7 @@ export default function RootLayout() {
           }}
         />
       </Stack>
+      <UpdateBanner />
     </QueryClientProvider>
   );
 }
