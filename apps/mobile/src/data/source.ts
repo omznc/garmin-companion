@@ -8,6 +8,7 @@ import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
 import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { presentToday } from "./present";
+import { wellnessFixture } from "./wellnessFixtures";
 import type { BridgeEvent, Today, TodayView } from "./types";
 
 type Source = {
@@ -19,6 +20,8 @@ type Source = {
 const fixtureSource: Source = {
   async call(cmd) {
     if (cmd === "today") return JSON.stringify(fixture);
+    const recorded = wellnessFixture(cmd);
+    if (recorded) return JSON.stringify(recorded);
     throw new Error(`no fixture for command: ${cmd}`);
   },
   subscribe: () => () => {},
