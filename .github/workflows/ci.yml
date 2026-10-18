@@ -117,7 +117,7 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       # Same NDK, same RANLIB workaround, same reason — see release.yml, where
       # the comment explaining the `cc` crate's missing `<triple>-ranlib` is
