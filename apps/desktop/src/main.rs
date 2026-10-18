@@ -235,6 +235,8 @@ fn main() -> anyhow::Result<()> {
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(20.0), px(13.0))),
                 }),
+                // Matches StartupWMClass in the .desktop file, so the shell links the window to the launcher.
+                app_id: Some("garmin-companion".into()),
                 ..Default::default()
             };
             let demo = !matches!(source, data::Source::Default);

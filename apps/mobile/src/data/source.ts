@@ -2,6 +2,7 @@
 // The Rust bridge is the source when the native module is in the build.
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
+import { Platform } from "react-native";
 import activitiesFixture from "../../../../crates/garmin-api/fixtures/activities.sample.json";
 import activityFixture from "../../../../crates/garmin-api/fixtures/activity.sample.json";
 import bodyEmpty from "../../../../crates/garmin-api/fixtures/body.empty.json";
@@ -166,9 +167,12 @@ function bridgeSource(): Source | null {
     // shortcut: a missing native module throws here, so the fixture takes over.
     const bridge =
       require("react-native-garmin-bridge") as typeof import("react-native-garmin-bridge");
-    const base = Paths.document.uri.replace(/^file:\/\//, "");
+    // The old Tauri app keeps its files in the app data folder (the parent of
+    // `files/`). Open the same folder on Android so the cache and the login stay.
+    const root = Platform.OS === "android" ? Paths.document.parentDirectory : Paths.document;
+    const base = root.uri.replace(/^file:\/\//, "").replace(/\/$/, "");
     // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build fakes data only when that flag is set.
-    const noCache = !new File(Paths.document, "cache.sqlite3").exists;
+    const noCache = !new File(root, "cache.sqlite3").exists;
     sampleData = noCache && fixtureAllowed;
     bridge.init(base, sampleData);
     return {
