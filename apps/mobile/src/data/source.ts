@@ -3,6 +3,10 @@
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
 import fixture from "../../../../crates/garmin-api/fixtures/today.sample.json";
+import golfer from "../../../../crates/garmin-api/fixtures/today.golfer.json";
+import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
+import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
+import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { presentToday } from "./present";
 import type { BridgeEvent, Today, TodayView } from "./types";
 
@@ -64,10 +68,21 @@ export const bridgeVersion = impl.version;
 // Demo only: EXPO_PUBLIC_DEMO_DATE=YYYY-MM-DD shows Today for a day, for a cache that is not current.
 const demoDate = process.env.EXPO_PUBLIC_DEMO_DATE;
 
+// Dev only: EXPO_PUBLIC_PERSONA=golfer|gym|health_only|new_user shows a recorded persona, to check the layouts.
+const personas: Record<string, unknown> = {
+  sample: fixture,
+  golfer,
+  gym,
+  health_only: healthOnly,
+  new_user: newUser,
+};
+const persona = __DEV__ ? personas[process.env.EXPO_PUBLIC_PERSONA ?? ""] : undefined;
+
 export async function fetchToday(): Promise<Today> {
-  const today = presentToday(
-    await callJson<TodayView>("today", demoDate ? { date: demoDate } : {}),
-  );
-  const sample = sampleData || !bridgeImpl;
+  const view = persona
+    ? (persona as TodayView)
+    : await callJson<TodayView>("today", demoDate ? { date: demoDate } : {});
+  const today = presentToday(view);
+  const sample = sampleData || !bridgeImpl || persona !== undefined;
   return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;
 }

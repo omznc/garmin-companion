@@ -20,8 +20,10 @@ export function TabStack({ title }: { title: string }) {
         headerShown: Platform.OS === "ios",
         headerLargeTitle: true,
         headerLargeTitleShadowVisible: false,
-        headerTransparent: true,
-        headerBlurEffect: "systemMaterial",
+        headerLargeTitleStyle: { color: PlatformColor("label") },
+        headerStyle: {
+          backgroundColor: PlatformColor("systemGroupedBackground"),
+        },
         headerRight: SettingsBarButton,
       }}
     >

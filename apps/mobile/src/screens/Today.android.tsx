@@ -82,6 +82,7 @@ function HealthBlock({ md, metrics }: { md: Md; metrics: Metric[] }) {
           {row.map((m) => (
             <MetricTile key={m.id} md={md} m={m} />
           ))}
+          {row.length === 1 ? <Box modifiers={[weight(1)]} /> : null}
         </Row>
       ))}
     </Block>
