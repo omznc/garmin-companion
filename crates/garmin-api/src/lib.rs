@@ -12,6 +12,8 @@ mod dispatch;
 mod error;
 pub mod personas;
 mod profile;
+pub mod session;
+pub mod settings;
 mod text;
 pub mod today;
 

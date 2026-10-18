@@ -2770,9 +2770,12 @@ dependencies = [
  "anyhow",
  "chrono",
  "garmin-core",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -13,6 +13,9 @@ pub enum ApiError {
     /// The JSON arguments do not match the command.
     #[error("bad arguments: {0}")]
     BadArguments(String),
+    /// No Garmin account is signed in.
+    #[error("Not connected to Garmin yet.")]
+    NotConnected,
     /// The database or a query failed. The message holds the whole chain.
     #[error("{0}")]
     Internal(String),
