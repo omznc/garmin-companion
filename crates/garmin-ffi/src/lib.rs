@@ -11,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+mod ask;
+
 uniffi::setup_scaffolding!();
 
 const TODAY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/today.sample.json");
@@ -110,6 +112,9 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
 }
 
 async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
+    if let Some(out) = ask::handle(cmd, args, fixture).await {
+        return out;
+    }
     match cmd {
         "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
         "sync" => Ok(run_sync(args).await),
