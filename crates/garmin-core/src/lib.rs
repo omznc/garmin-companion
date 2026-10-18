@@ -16,6 +16,7 @@ pub mod records;
 pub mod secrets;
 pub mod signal;
 pub mod sleep;
+pub mod sport;
 pub mod stats;
 pub mod store;
 pub mod strength;
@@ -30,6 +31,7 @@ pub use coach::{Nudge, NudgeKind};
 pub use db::{CachedActivity, DailyMetrics, Db, WeighIn};
 pub use goals::{Goals, WeekProgress};
 pub use records::{PersonalRecord, RacePredictions, TrainingStatus};
+pub use sport::Family;
 pub use strength::{ExerciseSet, StrengthSession};
 pub use workout::WorkoutDraft;
 
