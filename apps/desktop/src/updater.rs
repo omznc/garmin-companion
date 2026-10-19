@@ -339,7 +339,7 @@ const ERROR_ELEVATION_REQUIRED: i32 = 740;
 
 /// Start the setup file with the "runas" verb, which shows the UAC prompt.
 /// `ShellExecuteW` returns a value above 32 when the start works. A refused
-/// prompt gives `SE_ERR_ACCESSDENIED` (5) or `ERROR_CANCELLED` (1223).
+/// prompt gives `SE_ERR_ACCESSDENIED` (5).
 #[cfg(windows)]
 fn run_elevated(setup: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;
@@ -364,7 +364,7 @@ fn run_elevated(setup: &Path) -> Result<()> {
     } as isize;
     match code {
         c if c > 32 => Ok(()),
-        5 | 1223 => bail!("the update needs admin rights, and the request was refused"),
+        5 => bail!("the update needs admin rights, and the request was refused"),
         c => bail!("the setup did not start with admin rights (code {c})"),
     }
 }
