@@ -115,39 +115,70 @@ describe("chat", () => {
     expect(((await r.json()) as any).choices[0].message.content).toBe("ok");
   });
 
-  it("charges nothing for a stream that ends with keepalives and no data", async () => {
-    const h = harness();
-    const id = await h.install();
-    h.upstream(
-      () =>
-        new Response(
-          new ReadableStream({
-            start(c) {
-              c.enqueue(new TextEncoder().encode(": OPENROUTER PROCESSING\n\n"));
-              c.close();
-            },
-          }),
-          { headers: { "Content-Type": "text/event-stream" } },
-        ),
-    );
-    await (await h.ask(id)).text();
-    await h.settled();
-    expect((await h.balance(id)).credits_remaining).toBe(30);
-  });
+  describe("a stream with no data line", () => {
+    const enc = new TextEncoder();
+    afterEach(() => vi.useRealTimers());
 
-  it("releases the hold when the client leaves before any data", async () => {
-    const h = harness();
-    const id = await h.install();
-    h.upstream(
-      () =>
-        new Response(new ReadableStream({ start() {} }), {
-          headers: { "Content-Type": "text/event-stream" },
-        }),
-    );
-    const r = await h.ask(id);
-    await r.body?.cancel();
-    await h.settled();
-    expect((await h.balance(id)).credits_remaining).toBe(30);
+    /** The upstream sends `parts` and stays open. Returns the way to end it. */
+    function open(h: ReturnType<typeof harness>, ...parts: string[]) {
+      let end = () => {};
+      h.upstream(
+        () =>
+          new Response(
+            new ReadableStream({
+              start(c) {
+                for (const part of parts) c.enqueue(enc.encode(part));
+                end = () => c.close();
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          ),
+      );
+      return () => end();
+    }
+
+    async function left(parts: string[], afterMs: number, how: "end" | "cancel") {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const h = harness();
+      const id = await h.install();
+      const end = open(h, ...parts);
+      const r = await h.ask(id);
+      vi.setSystemTime(Date.now() + afterMs);
+      if (how === "end") {
+        end();
+        await r.text();
+      } else {
+        await r.body?.cancel();
+      }
+      await h.settled();
+      return (await h.balance(id)).credits_remaining;
+    }
+
+    const keepalive = [": OPENROUTER PROCESSING\n\n"];
+
+    it("is free after 60 seconds, ended or cancelled", async () => {
+      expect(await left(keepalive, 61_000, "end")).toBe(30);
+      expect(await left([], 61_000, "cancel")).toBe(30);
+    });
+
+    it("is charged the estimate before 60 seconds", async () => {
+      expect(await left(keepalive, 5_000, "end")).toBe(25);
+      expect(await left([], 5_000, "cancel")).toBe(25);
+    });
+
+    it("still charges when the data hides in an odd format", async () => {
+      const chunk = '{"choices":[{"delta":{"content":"a"}}]}';
+      const late = 61_000;
+      // CRLF separators.
+      expect(await left([`data: ${chunk}\r\n\r\n`], late, "end")).toBe(25);
+      // The last event has no blank line after it.
+      expect(await left([`data: ${chunk}`], late, "end")).toBe(25);
+      // The content holds the word [DONE].
+      const done = '{"choices":[{"delta":{"content":"[DONE]"}}]}';
+      expect(await left([`data: ${done}\n\n`], late, "end")).toBe(25);
+      // The client leaves inside the first event.
+      expect(await left(['data: {"choices":[{"del'], late, "cancel")).toBe(25);
+    });
   });
 
   it("charges the estimate when the client leaves before the usage chunk", async () => {

@@ -467,10 +467,12 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
   // The headers go out before the answer, so they show the balance before this
   // request is charged. GET /v2/balance has the exact figure afterwards.
   const stream = meterStream(upstream.body, (usage, failed, served) => {
-    // A provider error before any content costs nothing.
+    // Free: a provider error before any content, or a stream that sent no
+    // data line for NO_DATA_REFUND_MS (a stall). See meterStream.
     if (failed) return void ctx.waitUntil(release());
-    // No usage block (a cut stream, a client that left): charge the estimate.
-    // Refunding there would let a caller abort every request for free.
+    // Anything else with no usage block (a cut stream, a client that left,
+    // an abort before 60 s): charge the estimate. Refunding there would let a
+    // caller abort every request for free.
     ctx.waitUntil(settle(costUnits(p, usage, served) ?? estimate));
   });
   return new Response(stream, { status: 200, headers: headers(held.snapshot) });
@@ -512,9 +514,17 @@ function safeJson(text: string): Record<string, any> | undefined {
   }
 }
 
+/** A stream with no data line for this long is a stall, and it is not charged. */
+const NO_DATA_REFUND_MS = 60_000;
+/** A data line is any `data:` line that is not exactly `[DONE]`. */
+const DATA_LINE = /^data:(?!\s*\[DONE\]\s*$)/;
+
 /**
  * Passes the SSE stream through and calls `done` once, with the usage if any.
- * `failed` is true when the provider sent an error and no content or usage.
+ * `failed` is true when the hold is released and nothing is charged: the
+ * provider sent an error and no content or usage, or the stream sent no data
+ * line at all and NO_DATA_REFUND_MS passed since it started. A shorter stream
+ * with no data line is not free, or a caller could abort for free.
  */
 function meterStream(
   source: ReadableStream<Uint8Array>,
@@ -529,20 +539,31 @@ function meterStream(
   let sawData = false;
   let sawError = false;
   let finished = false;
+  const started = Date.now();
+  // The start of the line that has no newline yet. 32 characters decide it.
+  let open = "";
+  // Look at the raw text, before any split, so no format hides a data line.
+  const sniff = (text: string) => {
+    const lines = (open + text).split("\n");
+    open = lines.pop()?.slice(0, 32) ?? "";
+    if (!sawData) sawData = lines.some((l) => DATA_LINE.test(l));
+  };
   const finish = () => {
-    if (!finished) {
-      finished = true;
-      // A stream with no data line gave the client nothing: it costs nothing.
-      done(usage, !sawData || (sawError && !sawContent && !usage), served);
-    }
+    if (finished) return;
+    finished = true;
+    // A cut line counts as data. A cut "[DONE]" does too: this errs to a charge.
+    if (!sawData && open.startsWith("data:")) sawData = true;
+    const stalled = !sawData && Date.now() - started >= NO_DATA_REFUND_MS;
+    done(usage, stalled || (sawError && !sawContent && !usage), served);
   };
   const scan = (chunk: Uint8Array) => {
-    tail += decoder.decode(chunk, { stream: true });
+    const text = decoder.decode(chunk, { stream: true });
+    sniff(text);
+    tail += text;
     const events = tail.split("\n\n");
     tail = events.pop() ?? "";
     for (const line of events.flatMap((e) => e.split("\n"))) {
-      if (!line.startsWith("data:") || line.includes("[DONE]")) continue;
-      sawData = true;
+      if (!DATA_LINE.test(line)) continue;
       try {
         const j = JSON.parse(line.slice(5).trim());
         const u = j?.usage;
