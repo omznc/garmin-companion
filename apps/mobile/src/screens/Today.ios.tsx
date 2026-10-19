@@ -82,7 +82,7 @@ function Row({
   } as const;
   const content = (
     <>
-      <Text style={{ fontSize: 17, color: label, flexShrink: 1 }}>{left}</Text>
+      <Text style={{ fontSize: 17, color: label, flex: 1 }}>{left}</Text>
       {right ? (
         <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
       ) : null}
