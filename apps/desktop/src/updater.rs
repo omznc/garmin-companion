@@ -80,19 +80,32 @@ pub struct Offer {
 pub fn detect_kind() -> Kind {
     let exe = std::env::current_exe().unwrap_or_default();
     let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from);
-    kind_of(std::env::consts::OS, &exe, appimage)
+    let appdir = std::env::var_os("APPDIR").map(PathBuf::from);
+    kind_of(std::env::consts::OS, &exe, appimage, appdir)
 }
 
-fn kind_of(os: &str, exe: &Path, appimage: Option<PathBuf>) -> Kind {
+/// `APPIMAGE` counts only when this process runs from the mount of that
+/// AppImage (`APPDIR`). A child of another AppImage inherits `APPIMAGE`, and
+/// the update must not overwrite that file.
+fn kind_of(os: &str, exe: &Path, appimage: Option<PathBuf>, appdir: Option<PathBuf>) -> Kind {
     match os {
         "windows" => Kind::Windows,
-        "macos" => exe
-            .ancestors()
-            .find(|p| p.extension().is_some_and(|e| e == "app"))
-            .map_or(Kind::Manual, |app| Kind::MacApp(app.to_path_buf())),
-        "linux" => appimage
-            .filter(|p| p.is_file())
-            .map_or(Kind::Manual, Kind::AppImage),
+        // The same shape as Tauri: `X.app/Contents/MacOS/<binary>`.
+        "macos" => match exe.ancestors().nth(3) {
+            Some(app)
+                if exe.parent().is_some_and(|p| p.ends_with("Contents/MacOS"))
+                    && app.extension().is_some_and(|e| e == "app") =>
+            {
+                Kind::MacApp(app.to_path_buf())
+            }
+            _ => Kind::Manual,
+        },
+        "linux" => match (appimage, appdir) {
+            (Some(image), Some(dir)) if image.is_file() && exe.starts_with(&dir) => {
+                Kind::AppImage(image)
+            }
+            _ => Kind::Manual,
+        },
         _ => Kind::Manual,
     }
 }
@@ -154,12 +167,23 @@ pub fn evaluate(
 fn client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .user_agent(format!("garmin-companion/{VERSION}"))
-        .timeout(Duration::from_secs(600))
+        // No total timeout: a slow link may need minutes for 80 MB. A stall ends the request.
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
         .build()?)
+}
+
+/// Is this a release build? A build with no `GC_VERSION` has the crate
+/// version, so it would see each release as new. It does not check.
+pub fn enabled() -> bool {
+    option_env!("GC_VERSION").is_some()
 }
 
 /// Read the manifest. `None` means the app is up to date.
 pub async fn check() -> Result<Option<Offer>> {
+    if !enabled() {
+        return Ok(None);
+    }
     let manifest: Manifest = client()?
         .get(MANIFEST_URL)
         .timeout(Duration::from_secs(20))
@@ -441,22 +465,38 @@ mod tests {
     fn the_kind_follows_the_install() {
         let exe = Path::new("/Applications/Garmin Companion.app/Contents/MacOS/garmin-companion");
         assert_eq!(
-            kind_of("macos", exe, None),
+            kind_of("macos", exe, None, None),
             Kind::MacApp("/Applications/Garmin Companion.app".into())
         );
         assert_eq!(
-            kind_of("macos", Path::new("/tmp/garmin-companion"), None),
+            kind_of("macos", Path::new("/tmp/garmin-companion"), None, None),
             Kind::Manual
         );
-        assert_eq!(kind_of("windows", exe, None), Kind::Windows);
-        // A deb or rpm has no APPIMAGE variable. A stale variable is no file.
-        assert_eq!(
-            kind_of("linux", Path::new("/usr/bin/x"), None),
-            Kind::Manual
-        );
+        // A folder with an .app name, but not the bundle shape, is not ours.
+        let loose = Path::new("/Users/x/Other.app/tools/garmin-companion");
+        assert_eq!(kind_of("macos", loose, None, None), Kind::Manual);
+        assert_eq!(kind_of("windows", exe, None, None), Kind::Windows);
+        // A deb or rpm has no APPIMAGE variable.
+        let usr = Path::new("/usr/bin/x");
+        assert_eq!(kind_of("linux", usr, None, None), Kind::Manual);
         let gone = Some(PathBuf::from("/nonexistent/x.AppImage"));
+        let mount = Some(PathBuf::from("/tmp/.mount_x"));
+        assert_eq!(kind_of("linux", usr, gone, mount), Kind::Manual);
+    }
+
+    #[test]
+    fn an_inherited_appimage_variable_is_not_trusted() {
+        let image = std::env::current_exe().unwrap();
+        let ours = Path::new("/tmp/.mount_ours/usr/bin/garmin-companion");
+        let mount = Some(PathBuf::from("/tmp/.mount_ours"));
         assert_eq!(
-            kind_of("linux", Path::new("/usr/bin/x"), gone),
+            kind_of("linux", ours, Some(image.clone()), mount.clone()),
+            Kind::AppImage(image.clone())
+        );
+        // The exe is in /usr/bin, but an outer AppImage set the variables.
+        let outer = Some(PathBuf::from("/tmp/.mount_other"));
+        assert_eq!(
+            kind_of("linux", Path::new("/usr/bin/x"), Some(image), outer),
             Kind::Manual
         );
     }

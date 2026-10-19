@@ -39,7 +39,7 @@ impl Root {
     /// app runs. A check that ran less than six hours ago, in any run of the
     /// app, is skipped. Demo runs never call the network.
     pub fn watch_for_updates(&mut self, cx: &mut Context<Self>) {
-        if self.account.demo {
+        if self.account.demo || !updater::enabled() {
             return;
         }
         cx.spawn(async move |this, cx| {
@@ -83,7 +83,10 @@ impl Root {
         state.checking = false;
         match result {
             Ok(offer) => {
-                updater::record_check();
+                // An offer is not recorded, so a restart shows the banner again.
+                if offer.is_none() {
+                    updater::record_check();
+                }
                 state.note = offer
                     .is_none()
                     .then(|| ("This is the latest version.".into(), false));
@@ -186,7 +189,8 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     Some(
         div()
             .absolute()
-            .bottom(px(24.0))
+            // Under the title strip, clear of the Ask composer at the bottom.
+            .top(px(56.0))
             .right(px(24.0))
             .max_w(px(340.0))
             .px(px(18.0))
