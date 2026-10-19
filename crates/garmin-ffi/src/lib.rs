@@ -11,6 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+// The plain `release` profile sets panic = "abort". A panic in a Rust task
+// would then kill the app. Build for mobile with `--profile release-mobile`.
+#[cfg(all(any(target_os = "android", target_os = "ios"), panic = "abort"))]
+compile_error!("garmin-ffi needs unwinding on mobile: build with --profile release-mobile");
+
 mod ask;
 #[cfg(target_os = "ios")]
 mod backup;
