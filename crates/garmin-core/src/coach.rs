@@ -1639,4 +1639,20 @@ mod tests {
             assert!(!n.body.is_empty());
         }
     }
+
+    #[test]
+    fn the_outdoor_nudge_agrees_with_the_run_count() {
+        let goals = Goals::default();
+        let week = week_progress(&goals, &[], saturday());
+        let body = |dates: &[&str]| {
+            let acts: Vec<_> = dates.iter().map(|d| run(d, 30.0, [0.0; 5], None)).collect();
+            let refs: Vec<_> = acts.iter().collect();
+            let c = ctx(saturday(), &goals, &week, &acts, &[]);
+            no_outdoor_run(&c, &refs).map(|n| n.body)
+        };
+        let one = body(&["2026-07-18"]).unwrap();
+        assert!(one.starts_with("The one run in the window was indoors."));
+        let two = body(&["2026-07-18", "2026-07-20"]).unwrap();
+        assert!(two.starts_with("All 2 runs in the window were indoors."));
+    }
 }
