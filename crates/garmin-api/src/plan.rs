@@ -57,6 +57,7 @@ fn stem(key: &str) -> String {
         ("strength", "strength"),
         ("golf", "golf"),
         ("yoga", "yoga"),
+        ("cardio", "cardio"),
     ];
     stems
         .iter()

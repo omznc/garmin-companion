@@ -928,7 +928,7 @@ const DISTANCE_TOLERANCE: f64 = 0.25;
 /// process down on the way in. Only the first this-many routes in the
 /// requested order get a trace; the rest still appear in the list and the
 /// counts, just without a drawn thumbnail.
-const TRACED_ROUTES: usize = 40;
+pub const TRACED_ROUTES: usize = 40;
 
 /// How the routes list is ordered.
 ///

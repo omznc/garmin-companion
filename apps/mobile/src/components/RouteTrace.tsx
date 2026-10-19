@@ -51,10 +51,12 @@ export function WearBar({
   fraction,
   color,
   track,
+  inset = 20,
 }: {
   fraction: number;
   color: ColorValue;
   track: ColorValue;
+  inset?: number;
 }) {
   return (
     <View
@@ -64,7 +66,7 @@ export function WearBar({
         height: 4,
         borderRadius: 2,
         backgroundColor: track,
-        marginHorizontal: 20,
+        marginHorizontal: inset,
         marginBottom: 14,
       }}
     >

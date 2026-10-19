@@ -59,6 +59,12 @@ pub struct RoutesView {
 /// Scale a trace into the unit square. Longitude shrinks by cos(latitude), so
 /// the shape keeps the proportions that it has on the ground.
 pub fn shape(points: &[[f64; 2]]) -> Vec<[f32; 2]> {
+    // A NaN or infinite point would reach the screens as null or as a broken path.
+    let points: Vec<[f64; 2]> = points
+        .iter()
+        .filter(|p| p[0].is_finite() && p[1].is_finite())
+        .copied()
+        .collect();
     if points.len() < 2 {
         return Vec::new();
     }
@@ -77,6 +83,10 @@ pub fn shape(points: &[[f64; 2]]) -> Vec<[f32; 2]> {
     let span_lat = (max_lat - min_lat).max(1e-6);
     let span_lon = ((max_lon - min_lon) * k).max(1e-6);
     let span = span_lat.max(span_lon);
+    // A trace that never moved has no shape to draw.
+    if span <= 1e-6 {
+        return Vec::new();
+    }
     kept.iter()
         .map(|p| {
             let x = ((p[1] - min_lon) * k + (span - span_lon) / 2.0) / span;
@@ -159,11 +169,10 @@ fn notes_of(routes: &[Route], shown: &[RouteRow], total: usize) -> Vec<String> {
         );
     }
     if shown.iter().any(|r| r.trace.is_empty()) {
-        notes.push(
-            "Only the first 40 routes in this order carry a drawn shape. Change the order to \
-             pick a different 40."
-                .into(),
-        );
+        notes.push(format!(
+            "Only the first {} routes in this order carry a drawn shape.",
+            query::TRACED_ROUTES
+        ));
     }
     if total > shown.len() {
         notes.push(format!("The list shows the first {} routes.", shown.len()));
@@ -223,6 +232,22 @@ mod tests {
         );
         // North is up: the first point is the south-west corner, so it sits low.
         assert!(s[0][1] > s[1][1]);
+    }
+
+    #[test]
+    fn a_trace_that_never_moved_or_has_bad_points_is_safe() {
+        assert!(shape(&[[10.0, 20.0], [10.0, 20.0], [10.0, 20.0]]).is_empty());
+        let s = shape(&[
+            [10.0, 20.0],
+            [f64::NAN, 20.1],
+            [10.1, f64::INFINITY],
+            [10.1, 20.1],
+        ]);
+        assert_eq!(s.len(), 3);
+        assert!(s
+            .iter()
+            .flatten()
+            .all(|v| v.is_finite() && (0.0..=1.0).contains(v)));
     }
 
     #[test]

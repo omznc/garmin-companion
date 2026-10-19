@@ -96,6 +96,11 @@ impl Places {
         places
     }
 
+    /// Drop the gear of the old account, so the next visit asks Garmin again.
+    pub fn forget_gear(&mut self) {
+        self.gear = Gear::Idle;
+    }
+
     /// Read Plan and Routes again, after a sync or a new order.
     pub fn reload(&mut self) {
         let result = garmin_api::open_db(&self.path).map_err(|e| e.to_string());
@@ -260,7 +265,7 @@ fn workout_row(w: &WorkoutRow, t: &Theme) -> Div {
     match &w.description {
         Some(d) => div()
             .child(line)
-            .child(body(d.clone(), FS_CAPTION, t.faint).pt(px(4.0))),
+            .child(body(d.clone(), FS_CAPTION, t.faint).pt(px(4.0)).pb(px(10.0))),
         None => div().child(line),
     }
 }

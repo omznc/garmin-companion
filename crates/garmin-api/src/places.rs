@@ -192,10 +192,12 @@ mod tests {
 
     fn views(p: Persona) -> PlacesViews {
         let dir = std::env::temp_dir().join(format!(
-            "garmin-api-places-{}-{}",
+            "garmin-api-places-{}-{}-{:?}",
             p.name(),
-            std::process::id()
+            std::process::id(),
+            std::thread::current().id()
         ));
+        let _ = std::fs::remove_dir_all(&dir);
         let db = open_db(&dir.join("cache.sqlite3")).unwrap();
         seed(&db, p, sample_day()).unwrap();
         seed_places(&db, p).unwrap();

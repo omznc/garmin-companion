@@ -25,6 +25,7 @@ const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.s
 const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
 const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
 const BODY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/body.sample.json");
+const PLACES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/places.sample.json");
 const TRAINING_SAMPLE: &str = include_str!("../../garmin-api/fixtures/training.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
@@ -150,6 +151,7 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         "insights_view" | "fitness_view" | "report_view" if fixture => {
             Ok(fixture_training(cmd, args))
         }
+        "plan_view" | "routes_view" | "gear_view" if fixture => Ok(fixture_places(cmd)),
         // These commands open the cache, and opening it creates the file.
         "cached_daily"
         | "cached_activities"
@@ -190,6 +192,12 @@ fn fixture_body(cmd: &str) -> String {
     let part = cmd.trim_end_matches("_view");
     let body: serde_json::Value = serde_json::from_str(BODY_SAMPLE).unwrap_or_default();
     body[part].to_string()
+}
+
+/// One part of `places.sample.json`.
+fn fixture_places(cmd: &str) -> String {
+    let all: serde_json::Value = serde_json::from_str(PLACES_SAMPLE).unwrap_or_default();
+    all[cmd.trim_end_matches("_view")].to_string()
 }
 
 /// One part of `training.sample.json`. The report picks its week by `offset`.
@@ -400,6 +408,9 @@ mod tests {
             ("weight_view", &none),
             ("food_view", &none),
             ("strength_view", &none),
+            ("plan_view", &none),
+            ("routes_view", &none),
+            ("gear_view", &none),
             ("cached_daily", &none),
             ("cached_activities", &none),
             ("cached_activities_since", &none),

@@ -268,6 +268,8 @@ export const useBody = (kind: ScreenKind, offset = 0) =>
     queryFn: () => fetchBody(kind, offset),
     // Keep the old week on screen while the next one loads.
     placeholderData: keepPreviousData,
+    // Gear asks Garmin live, so it must not refetch on each focus.
+    staleTime: kind === "gear" ? 10 * 60_000 : 0,
     retry: false,
   });
 

@@ -25,8 +25,7 @@ const GAP: f32 = 2.0;
 /// The divider under the first entry: its rule, and the 7px and 8px around it.
 const DIVIDE_H: f32 = 16.0;
 
-/// The entries in the shipped order. Plan, Routes and Gear are left out until
-/// those screens exist. Their icons stay in the table.
+/// The entries in the shipped order.
 pub const NAV: [(&str, Icon); 15] = [
     ("Today", Icon::NavToday),
     ("Activities", Icon::NavActivities),

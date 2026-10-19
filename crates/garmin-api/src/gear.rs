@@ -91,7 +91,11 @@ fn row_of(e: &GearEntry) -> GearRow {
     let item = &e.item;
     let distance = e.distance_m.unwrap_or(0.0);
     let limit = item.maximum_meters.filter(|m| *m > 0.0);
-    let pct = limit.map(|l| (distance / l * 100.0).min(100.0));
+    // Without totals the wear is unknown, so the row shows no bar.
+    let pct = e
+        .distance_m
+        .zip(limit)
+        .map(|(d, l)| (d / l * 100.0).min(100.0));
     let retired = item
         .gear_status_name
         .as_deref()

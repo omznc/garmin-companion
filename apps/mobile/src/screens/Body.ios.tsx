@@ -101,7 +101,12 @@ function Row({
         </View>
       </View>
       {bar ? (
-        <WearBar fraction={bar.fraction} color={bar.accent ? tint : secondary} track={separator} />
+        <WearBar
+          fraction={bar.fraction}
+          color={bar.accent ? tint : secondary}
+          track={separator}
+          inset={0}
+        />
       ) : null}
     </View>
   );

@@ -269,6 +269,7 @@ impl Root {
         self.account.connected = false;
         self.account.sync = Sync::Idle;
         self.account.settings = None;
+        self.places.forget_gear();
         cx.notify();
     }
 
