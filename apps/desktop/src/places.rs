@@ -263,9 +263,11 @@ fn workout_row(w: &WorkoutRow, t: &Theme) -> Div {
         t,
     );
     match &w.description {
-        Some(d) => div()
-            .child(line)
-            .child(body(d.clone(), FS_CAPTION, t.faint).pt(px(4.0)).pb(px(10.0))),
+        Some(d) => div().child(line).child(
+            body(d.clone(), FS_CAPTION, t.faint)
+                .pt(px(4.0))
+                .pb(px(10.0)),
+        ),
         None => div().child(line),
     }
 }
