@@ -10,7 +10,7 @@
     "prebuild:android": "expo prebuild --platform android --no-install",
     "bridge:android": "./scripts/build-android-bridge.sh",
     "bridge:ios": "cd packages/garmin-bridge && ../../node_modules/.bin/ubrn build ios --and-generate --config ubrn.config.yaml --profile release-mobile",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "test": "node --test src/update/manifest.test.ts src/data/present.test.ts",
     "format": "biome format --write .",
     "format:check": "biome format ."

@@ -24,7 +24,7 @@ export function updatesLine(api: Api): { value: string; busy: boolean; onPress?:
       };
     case "failed":
       return {
-        value: `Update failed: ${s.message}. Tap to retry.`,
+        value: "The update failed. Tap to try again.",
         busy: false,
         onPress: () => api.start(s.release),
       };
