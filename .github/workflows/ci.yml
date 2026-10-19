@@ -6,7 +6,6 @@ on:
   push:
     branches: [main, master, rewrite]
   pull_request:
-    branches: [master, rewrite]
 
 jobs:
   check:
