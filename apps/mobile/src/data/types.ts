@@ -145,7 +145,6 @@ export type Hero = { id: string; label: string; text: string; pct: number | null
 export type Today = {
   hero: Hero | null;
   dateLabel: string;
-  greeting: string;
   lede: string;
   sections: Section[];
 };
