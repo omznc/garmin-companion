@@ -38,7 +38,12 @@ export function useSettingsActions() {
           text: "Disconnect",
           style: "destructive",
           onPress: async () => {
-            queryClient.setQueryData(["status"], await signOut());
+            try {
+              queryClient.setQueryData(["status"], await signOut());
+            } catch (e) {
+              Alert.alert("Could not sign out", e instanceof Error ? e.message : String(e));
+              return;
+            }
             queryClient.invalidateQueries({ queryKey: ["settings"] });
             router.dismissAll();
             router.replace("/setup");
