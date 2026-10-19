@@ -544,7 +544,6 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 
-
     // A throwaway key pair, made for these tests. The private key is gone.
     const TEST_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyQTdGRUYwNUE3QTk3RTEKUldUaGwzcGE4UDZuc3RWeDhxWVpDVC9heldsaWVobm9hemFtRit0bUFhWE51aUViMzVSMVQ1VnkK";
     const TEST_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IGZpeHR1cmUKUlVUaGwzcGE4UDZuc3UweXRYZmFXUXBQR09hN2FIdlYzNDNHcmg4RWFSQkYvTXlSR3hOd1Q0RUx3SHIwOTQwbmd3NEJuVW9PWVdlamdoc0VVNFROYnZmSXFaSVYxTXpKbVFnPQp0cnVzdGVkIGNvbW1lbnQ6IGZpeHR1cmUKeVFuVXpCRThhVXUwYWN1M3d6T2pTNzFML1NrSmMxa3QvWGEvYmttRlN6NmtVZThNdHlZQmp6QlQ5OUFmRWE0WHdvTFhtZXBTSVVOc1REcUVtczEvQ0E9PQo=";
