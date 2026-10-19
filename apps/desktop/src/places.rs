@@ -125,7 +125,8 @@ impl Root {
     /// Read Plan and Routes on the background executor. The screens keep the
     /// old figures until the new ones arrive.
     pub fn reload_places(&mut self, cx: &mut Context<Self>) {
-        crate::account::load_async(cx, self.places.reader(), |root, (plan, routes), cx| {
+        let read = self.places.reader();
+        crate::account::load_async(self, "places", cx, read, |root, (plan, routes), cx| {
             root.places.plan = plan;
             root.places.routes = routes;
             cx.notify();

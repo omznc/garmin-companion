@@ -296,6 +296,8 @@ impl Root {
         let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
         let live = !self.account.demo;
         load_async(
+            self,
+            "reload",
             cx,
             move || Reloaded {
                 today: data::load_today(&source),
@@ -346,6 +348,8 @@ impl Root {
             return;
         }
         load_async(
+            self,
+            "settings",
             cx,
             || settings::settings_view().unwrap_or_else(|e| failed_settings(&e.to_string())),
             |root, view, cx| {
@@ -368,16 +372,19 @@ struct Reloaded {
 
 /// Run `job` on the background executor. Then give its result to `done` on
 /// the UI thread. The UI thread never waits for the keyring or the database.
+/// A new load with the same `key` cancels the old one, so the last request wins.
 pub(crate) fn load_async<T: Send + 'static>(
+    root: &mut Root,
+    key: &'static str,
     cx: &mut Context<Root>,
     job: impl FnOnce() -> T + Send + 'static,
     done: impl FnOnce(&mut Root, T, &mut Context<Root>) + 'static,
 ) {
-    cx.spawn(async move |this, cx| {
+    let task = cx.spawn(async move |this, cx| {
         let out = cx.background_executor().spawn(async move { job() }).await;
         let _ = this.update(cx, |root, cx| done(root, out, cx));
-    })
-    .detach();
+    });
+    root.loads.insert(key, task);
 }
 
 /// The Settings view of a demo run. It reads nothing from the machine.

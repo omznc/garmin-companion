@@ -91,6 +91,8 @@ pub struct Root {
     /// Where Today reads from. A sync reads it again.
     pub(crate) source: Source,
     pub(crate) account: Account,
+    /// The background reads in flight, one for each key. A new read drops the old one.
+    pub(crate) loads: std::collections::HashMap<&'static str, gpui::Task<()>>,
 }
 
 impl Root {
@@ -121,6 +123,7 @@ impl Root {
             page: Page::List,
             source,
             account,
+            loads: Default::default(),
         }
     }
 
@@ -157,6 +160,8 @@ impl Root {
     pub fn open_activity(&mut self, id: i64, cx: &mut Context<Self>) {
         let store = self.store.clone();
         crate::account::load_async(
+            self,
+            "detail",
             cx,
             move || store.detail(id),
             |root, detail, cx| {
@@ -176,6 +181,7 @@ impl Root {
     }
 
     pub fn close_activity(&mut self, cx: &mut Context<Self>) {
+        self.loads.remove("detail");
         self.page = Page::List;
         self.restart_page(cx);
     }
@@ -200,6 +206,8 @@ impl Root {
     pub fn show_report(&mut self, offset: usize, cx: &mut Context<Self>) {
         let source = self.source.clone();
         crate::account::load_async(
+            self,
+            "report",
             cx,
             move || training::load_report(&source, offset),
             |root, report, cx| {
@@ -220,6 +228,7 @@ impl Root {
     fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
+            self.loads.remove("detail");
             self.page = Page::List;
             self.visits += 1;
             if index == SETTINGS {
