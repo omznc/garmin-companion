@@ -343,6 +343,7 @@ fn run_nsis(bytes: &[u8], version: &str) -> Result<()> {
 fn folder_is_writable(dir: &Path) -> bool {
     let probe = dir.join(format!(".write-test-{}", std::process::id()));
     let ok = fs::File::create(&probe).is_ok();
+    // Best effort: the answer does not depend on the delete.
     let _ = fs::remove_file(&probe);
     ok
 }
@@ -520,11 +521,14 @@ pub fn record_check() {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn a_writable_folder_is_writable() {
         let dir = fresh_dir("writable").unwrap();
         assert!(folder_is_writable(&dir));
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[cfg(unix)]
@@ -537,9 +541,9 @@ mod tests {
         let root_writes = fs::File::create(dir.join("x")).is_ok();
         assert!(root_writes || !folder_is_writable(&dir));
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = fs::remove_dir_all(&dir);
     }
 
-    use super::*;
 
     // A throwaway key pair, made for these tests. The private key is gone.
     const TEST_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyQTdGRUYwNUE3QTk3RTEKUldUaGwzcGE4UDZuc3RWeDhxWVpDVC9heldsaWVobm9hemFtRit0bUFhWE51aUViMzVSMVQ1VnkK";
