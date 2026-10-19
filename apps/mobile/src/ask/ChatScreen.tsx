@@ -5,6 +5,7 @@ import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   KeyboardAvoidingView,
+  type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -57,8 +58,12 @@ function useKeyboardOpen() {
 function usePinnedScroll() {
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const pinned = useRef(true);
+  const size = useRef({ content: 0, layout: 0 });
+  // A short thread does not scroll. scrollToEnd then goes to offset 0, and on iOS
+  // that hides the top inset under the header.
   const toEnd = () => {
-    if (pinned.current) scroll.current?.scrollToEnd({ animated: false });
+    const { content, layout } = size.current;
+    if (pinned.current && content > layout) scroll.current?.scrollToEnd({ animated: false });
   };
   return {
     scroll,
@@ -75,8 +80,14 @@ function usePinnedScroll() {
       }
     },
     // The content grows, or the list gets shorter under the keyboard.
-    onContentSizeChange: toEnd,
-    onLayout: toEnd,
+    onContentSizeChange: (_: number, height: number) => {
+      size.current.content = height;
+      toEnd();
+    },
+    onLayout: (event: LayoutChangeEvent) => {
+      size.current.layout = event.nativeEvent.layout.height;
+      toEnd();
+    },
   };
 }
 
