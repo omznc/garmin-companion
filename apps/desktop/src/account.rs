@@ -336,7 +336,7 @@ fn demo_settings(mode: ThemeMode) -> SettingsView {
         data_folder: None,
         importable_token_path: None,
         theme: mode,
-        version: env!("CARGO_PKG_VERSION").to_owned(),
+        version: garmin_api::settings::APP_VERSION.to_owned(),
         privacy_line: "In a demo, no request leaves this computer.".into(),
     }
 }

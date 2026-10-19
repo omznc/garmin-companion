@@ -31,12 +31,39 @@ const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzRD
 /// The time between two checks.
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// The version of this app. The release workflow sets `GC_VERSION` at build
+/// The version of this app. The release workflow sets `APP_VERSION` at build
 /// time, because the crate version is not the release version.
-pub const VERSION: &str = match option_env!("GC_VERSION") {
-    Some(v) => v,
-    None => env!("CARGO_PKG_VERSION"),
-};
+pub const VERSION: &str = garmin_api::settings::APP_VERSION;
+
+/// Debug builds only: a test can point the updater at a local server, with a
+/// test key, a version and an install target. A release build has no code for
+/// this, so no environment variable can redirect it.
+#[cfg(debug_assertions)]
+fn debug_env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
+
+#[cfg(not(debug_assertions))]
+fn debug_env(_name: &str) -> Option<String> {
+    None
+}
+
+fn manifest_url() -> String {
+    debug_env("GC_UPDATE_URL").unwrap_or_else(|| MANIFEST_URL.to_string())
+}
+
+fn pubkey() -> String {
+    debug_env("GC_UPDATE_PUBKEY").unwrap_or_else(|| PUBKEY.to_string())
+}
+
+fn current_version() -> String {
+    debug_env("GC_UPDATE_CURRENT").unwrap_or_else(|| VERSION.to_string())
+}
+
+/// A download address must be https. A debug build also takes loopback http.
+fn address_ok(url: &str) -> bool {
+    url.starts_with("https://") || (cfg!(debug_assertions) && url.starts_with("http://127.0.0.1"))
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
@@ -78,6 +105,13 @@ pub struct Offer {
 
 /// Find the install kind from the executable path and the environment.
 pub fn detect_kind() -> Kind {
+    if let Some(target) = debug_env("GC_UPDATE_TARGET").map(PathBuf::from) {
+        match std::env::consts::OS {
+            "linux" => return Kind::AppImage(target),
+            "macos" => return Kind::MacApp(target),
+            _ => {}
+        }
+    }
     let exe = std::env::current_exe().unwrap_or_default();
     let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from);
     let appdir = std::env::var_os("APPDIR").map(PathBuf::from);
@@ -151,7 +185,7 @@ pub fn evaluate(
             .iter()
             .find_map(|key| manifest.platforms.get(key))
             .ok_or_else(|| anyhow!("the release has no file for this system"))?;
-        if !entry.url.starts_with("https://") {
+        if !address_ok(&entry.url) {
             bail!("the download address is not https");
         }
         Some((entry.url.clone(), entry.signature.clone()))
@@ -173,10 +207,10 @@ fn client() -> Result<reqwest::Client> {
         .build()?)
 }
 
-/// Is this a release build? A build with no `GC_VERSION` has the crate
+/// Is this a release build? A build with no `APP_VERSION` has the crate
 /// version, so it would see each release as new. It does not check.
 pub fn enabled() -> bool {
-    option_env!("GC_VERSION").is_some()
+    option_env!("APP_VERSION").is_some() || debug_env("GC_UPDATE_CURRENT").is_some()
 }
 
 /// Read the manifest. `None` means the app is up to date.
@@ -185,7 +219,7 @@ pub async fn check() -> Result<Option<Offer>> {
         return Ok(None);
     }
     let manifest: Manifest = client()?
-        .get(MANIFEST_URL)
+        .get(manifest_url())
         .timeout(Duration::from_secs(20))
         .send()
         .await?
@@ -195,11 +229,27 @@ pub async fn check() -> Result<Option<Offer>> {
         .context("the update file is not valid")?;
     evaluate(
         &manifest,
-        VERSION,
+        &current_version(),
         std::env::consts::OS,
         std::env::consts::ARCH,
         &detect_kind(),
     )
+}
+
+/// `--update-selftest` (debug builds): check, download, verify and install
+/// against the `GC_UPDATE_*` overrides, with no window. It prints each step.
+#[cfg(debug_assertions)]
+pub fn selftest() -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    runtime.block_on(async {
+        let offer = check().await?.context("no update is offered")?;
+        println!("offer {}", offer.version);
+        install(&offer).await?;
+        println!("installed");
+        Ok(())
+    })
 }
 
 /// Check a signature in the Tauri form: both inputs are base64 of the
@@ -230,20 +280,28 @@ pub async fn install(offer: &Offer) -> Result<()> {
         .error_for_status()?
         .bytes()
         .await?;
-    verify(&bytes, signature, PUBKEY)?;
+    verify(&bytes, signature, &pubkey())?;
     install_bytes(&bytes, &offer.kind, &offer.version)
 }
 
 fn install_bytes(bytes: &[u8], kind: &Kind, version: &str) -> Result<()> {
     match kind {
-        Kind::Windows => run_nsis(bytes, version),
+        Kind::Windows => {
+            run_nsis(bytes, version)?;
+            crate::instance::release();
+            Ok(())
+        }
         Kind::MacApp(app) => {
             replace_bundle(bytes, app)?;
-            relaunch(&["open", "-n"], app)
+            let name = std::env::current_exe()?
+                .file_name()
+                .context("no executable name")?
+                .to_owned();
+            relaunch(&app.join("Contents/MacOS").join(name))
         }
         Kind::AppImage(path) => {
             replace_appimage(bytes, path)?;
-            relaunch(&[], path)
+            relaunch(path)
         }
         Kind::Manual => bail!("this install is updated by hand"),
     }
@@ -280,16 +338,17 @@ fn fresh_dir(tag: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Start `target` again after one second, from a shell that outlives this
-/// process. The wait lets this process quit first, so a single-instance
-/// check does not stop the new one.
-fn relaunch(prefix: &[&str], target: &Path) -> Result<()> {
-    Command::new("sh")
-        .arg("-c")
-        .arg("sleep 1; exec \"$@\"")
-        .arg("sh")
-        .args(prefix)
-        .arg(target)
+/// Start the new program. This process gives up the single-instance port
+/// first, so the new one finds it free. The marker tells the new one to retry
+/// the claim for a short time, in case the port is not free yet. The child
+/// outlives this process, which quits when the caller returns.
+fn relaunch(exe: &Path) -> Result<()> {
+    crate::instance::release();
+    Command::new(exe)
+        .env(crate::instance::RELAUNCH_ENV, "1")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn()
         .context("could not start the new version")?;
     Ok(())

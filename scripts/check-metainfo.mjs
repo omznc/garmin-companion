@@ -23,7 +23,8 @@ import { readFileSync } from "node:fs";
 const CONF = "app/src-tauri/tauri.conf.json";
 const METAINFO = "app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml";
 
-const { version } = JSON.parse(readFileSync(CONF, "utf8"));
+// The release workflow passes the version of the release as an argument.
+const version = process.argv[2] ?? JSON.parse(readFileSync(CONF, "utf8")).version;
 const xml = readFileSync(METAINFO, "utf8");
 
 const releases = [...xml.matchAll(/<release\s+version="([^"]+)"\s+date="([^"]+)"/g)].map(

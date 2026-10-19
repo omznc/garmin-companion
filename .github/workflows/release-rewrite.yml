@@ -2,7 +2,7 @@
 # Expo mobile app).
 #
 # Installed v0.9.1 apps are Tauri apps. They update through the files that this
-# workflow makes, so the files must look like the files of release.yml:
+# workflow makes, so the files must look like the files of the old Tauri release:
 #   - Desktop: latest.json (Tauri v2 format), signed with the same minisign key,
 #     with the same installer formats and the same bundle id.
 #   - Android: latest-android.json, and an APK with the same application id,
@@ -52,6 +52,10 @@ jobs:
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "release v$VERSION exists"; exit 1
           fi
+      - name: Check the AppStream release entry
+        run: node scripts/check-metainfo.mjs "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - name: Test the manifest script
         run: node --test scripts/release-rewrite.test.mjs
 
@@ -103,8 +107,8 @@ jobs:
 
       - name: Build the app and the sign-in helper
         env:
-          # The app compares this version with latest.json (apps/desktop/src/updater.rs).
-          GC_VERSION: ${{ inputs.version }}
+          # Settings shows this version (garmin-api, settings::APP_VERSION).
+          APP_VERSION: ${{ inputs.version }}
         run: cargo build --release -p garmin-companion-desktop -p garmin-companion-login --target ${{ matrix.target }}
 
       # tauri.conf.json lists the helper as externalBin. The bundler looks for
@@ -123,12 +127,12 @@ jobs:
       - name: Make the installers and sign them
         working-directory: apps/desktop
         env:
-          # The same secrets as release.yml. They sign the updater files.
+          # The same secrets as the old Tauri release. They sign the updater files.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VERSION: ${{ inputs.version }}
         run: |
-          # Windows: NSIS only, as in release.yml. WiX (MSI) refuses the
+          # Windows: NSIS only, as in the old Tauri release. WiX (MSI) refuses the
           # "ć" of the publisher, because it is not in code page 1252.
           BUNDLES=()
           [[ "${{ matrix.target }}" == *windows* ]] && BUNDLES=(--bundles nsis)
@@ -245,12 +249,23 @@ jobs:
           "$BT/apksigner" verify --print-certs "$APK"
           "$BT/aapt2" dump badging "$APK" > badging.txt
           head -n 1 badging.txt
+          # The same application id as the old app, or Android installs a second app.
+          grep -q "^package: name='com.omznc.garmincompanion'" badging.txt
+          # The version code follows the formula of the old Tauri app. A lower
+          # code than the installed one makes Android refuse the update.
+          IFS=. read -r MAJOR MINOR PATCH <<< "$APP_VERSION"
+          CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
+          grep -q "versionCode='$CODE'" badging.txt || { echo "versionCode is not $CODE"; exit 1; }
+          grep -q "versionName='$APP_VERSION'" badging.txt || { echo "versionName is not $APP_VERSION"; exit 1; }
+          # This APK updates itself, so it needs the permission. (The Play build leaves it out.)
+          grep -q "uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'" badging.txt \
+            || { echo "REQUEST_INSTALL_PACKAGES is missing"; exit 1; }
           # The old app: minSdk 24, arm64-v8a and armeabi-v7a.
           # Newer aapt2 writes minSdkVersion, older aapt2 writes sdkVersion.
           grep -Eq "^(min)?[sS]dkVersion:'24'" badging.txt
           grep -q "native-code: 'arm64-v8a' 'armeabi-v7a'" badging.txt || grep -q "native-code: 'armeabi-v7a' 'arm64-v8a'" badging.txt
 
-      # The same file that release.yml writes. The old app reads it to find a new APK.
+      # The same file that the old Tauri release wrote. The old app reads it to find a new APK.
       - name: Write latest-android.json
         run: |
           APK="android-out/garmin-companion_${APP_VERSION}.apk"
