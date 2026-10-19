@@ -96,12 +96,22 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     stop();
     let flag = Arc::new(AtomicBool::new(false));
     *RUNNING.lock().unwrap_or_else(|e| e.into_inner()) = Some(flag.clone());
-    if fixture {
-        tokio::spawn(fixture_turn(flag));
+    let turn = if fixture {
+        tokio::spawn(fixture_turn(flag))
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &HubSink, &flag).await });
-    }
+        tokio::spawn(async move { garmin_coach::ask(history, &HubSink, &flag).await })
+    };
+    tokio::spawn(report_panic(turn, HubSink));
     Ok("{}".into())
+}
+
+/// A panic in the turn ends it with no event, and the screen would stay busy.
+async fn report_panic(turn: tokio::task::JoinHandle<()>, sink: impl EventSink) {
+    if turn.await.is_err() {
+        sink.emit(Event::Error {
+            text: "The coach stopped unexpectedly. Try again.".into(),
+        });
+    }
 }
 
 /// A canned answer for the sample mode, so the screen runs with no model.
@@ -203,6 +213,29 @@ mod tests {
     async fn a_send_without_history_is_a_bad_argument() {
         let out = handle("ask_send", &json!({}), true).await.unwrap();
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
+    }
+
+    #[derive(Default, Clone)]
+    struct Rec(Arc<Mutex<Vec<Event>>>);
+    impl EventSink for Rec {
+        fn emit(&self, event: Event) {
+            self.0.lock().unwrap().push(event);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_panicking_turn_ends_with_an_error_event() {
+        let rec = Rec::default();
+        let turn = tokio::spawn(async { panic!("boom") });
+        report_panic(turn, rec.clone()).await;
+        assert!(matches!(
+            rec.0.lock().unwrap().as_slice(),
+            [Event::Error { .. }]
+        ));
+        // A turn that ends normally adds nothing.
+        let ok = Rec::default();
+        report_panic(tokio::spawn(async {}), ok.clone()).await;
+        assert!(ok.0.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

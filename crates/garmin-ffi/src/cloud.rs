@@ -65,8 +65,14 @@ async fn live(cmd: &str, args: &Value) -> Result<String, FfiError> {
     let cloud = CloudClient::default();
     match cmd {
         "cloud_account" => {
-            let balance = cloud.balance().await.map_err(failed)?;
-            to_json(&balance.view(Utc::now()))
+            // The coach page asks with `enrol`. The Ask tab only looks: it must
+            // not use up a new install id for an app that is only open.
+            let balance = if args["enrol"].as_bool() == Some(true) {
+                Some(cloud.balance().await.map_err(failed)?)
+            } else {
+                cloud.balance_if_enrolled().await.map_err(failed)?
+            };
+            to_json(&balance.map(|b| b.view(Utc::now())))
         }
         "cloud_send_code" => {
             let a: Email = serde_json::from_value(args.clone()).map_err(bad)?;
