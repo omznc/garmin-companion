@@ -17,6 +17,16 @@ struct Days {
     days: Option<u32>,
 }
 
+/// The longest window that a command reads. A larger value would overflow the
+/// date maths.
+const MAX_DAYS: u32 = 3650;
+
+impl Days {
+    fn days_or(&self, default: u32) -> u32 {
+        self.days.unwrap_or(default).clamp(1, MAX_DAYS)
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Recent {
@@ -84,7 +94,7 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
         "cached_daily" => {
             let a: Days = parse(args_json)?;
             let db = open_default_db()?;
-            encode(&db.daily_since(&days_ago(a.days.unwrap_or(30)))?)
+            encode(&db.daily_since(&days_ago(a.days_or(30)))?)
         }
         "cached_activities" => {
             let a: Recent = parse(args_json)?;
@@ -101,14 +111,11 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
         }
         "nutrition" => {
             let a: Days = parse(args_json)?;
-            encode(&query::nutrition(
-                &open_default_db()?,
-                a.days.unwrap_or(30),
-            )?)
+            encode(&query::nutrition(&open_default_db()?, a.days_or(30))?)
         }
         "weight" => {
             let a: Days = parse(args_json)?;
-            encode(&query::weight(&open_default_db()?, a.days.unwrap_or(180))?)
+            encode(&query::weight(&open_default_db()?, a.days_or(180))?)
         }
         "activities" => {
             let a: Recent = parse(args_json)?;
@@ -242,7 +249,20 @@ mod tests {
         assert_eq!(today["empty"], true);
         let rows = call("cached_activities", r#"{"limit":1,"typeKey":"running"}"#).unwrap();
         assert_eq!(rows, "[]");
+        // A huge window must not panic in the date maths.
+        for cmd in ["cached_daily", "nutrition", "weight"] {
+            assert!(call(cmd, r#"{"days":4294967295}"#).is_ok(), "{cmd}");
+        }
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn days_are_clamped_to_a_sane_range() {
+        let days = |d| Days { days: d }.days_or(30);
+        assert_eq!(
+            (days(None), days(Some(0)), days(Some(u32::MAX))),
+            (30, 1, MAX_DAYS)
+        );
     }
 
     #[test]

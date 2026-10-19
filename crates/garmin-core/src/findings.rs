@@ -802,15 +802,15 @@ pub fn week_shape(daily: &[DailyMetrics], activities: &[CachedActivity]) -> Opti
         detail: format!(
             "Across {} days on the watch you trained on {:.0}% of {}s and {:.0}% of {}s, against \
              {:.0}% of {}s. That is not a motivation problem to be fixed — it is the shape of your \
-             week, and it is more useful as a constraint than as a target. The one long easy run \
-             you owe yourself each week wants the day you're most likely to have an hour, not the \
-             day the plan says.",
+             week, and it is more useful as a constraint than as a target. Plan a session for {}, \
+             the day you most often train, and not for the day the plan says.",
             rows.len(),
             rate[worst],
             DAY_NAMES[worst],
             rate[second],
             DAY_NAMES[second],
             rate[best],
+            DAY_NAMES[best],
             DAY_NAMES[best],
         ),
         basis: format!(

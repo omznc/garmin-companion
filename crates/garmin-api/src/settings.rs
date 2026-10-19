@@ -12,6 +12,13 @@ use std::path::PathBuf;
 
 const PREFS_FILE: &str = "prefs.json";
 
+/// The app version. The release build sets `APP_VERSION` for the compiler, so
+/// the number is the release version. A local build shows the crate version.
+pub const APP_VERSION: &str = match option_env!("APP_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 /// How the app picks light or dark.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -74,7 +81,7 @@ pub fn settings_view() -> Result<SettingsView, ApiError> {
         data_folder: paths::base_dir().ok().map(|p| p.display().to_string()),
         importable_token_path: status.importable_token_path,
         theme: prefs().theme,
-        version: env!("CARGO_PKG_VERSION").to_owned(),
+        version: APP_VERSION.to_owned(),
         privacy_line: format!(
             "Garmin requests go straight from this app to Garmin, with tokens in {}. \
              They never go through a server of ours.",

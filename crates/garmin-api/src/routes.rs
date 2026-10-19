@@ -265,6 +265,39 @@ mod tests {
     }
 
     #[test]
+    fn a_motorcycle_trace_is_not_a_route() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-routes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&dir.join("cache.sqlite3")).unwrap();
+        for (id, key) in [(1, "walking"), (2, "motorcycling_v2")] {
+            let a = serde_json::json!({
+                "activityId": id,
+                "startTimeLocal": "2026-03-10 09:00:00",
+                "distance": 5_000.0,
+                "duration": 3_600.0,
+                "activityType": { "typeKey": key },
+            });
+            db.upsert_activity(&serde_json::from_value(a).unwrap())
+                .unwrap();
+            db.upsert_track(&garmin_core::db::ActivityTrack {
+                activity_id: id,
+                point_count: 2,
+                start_lat: Some(50.0 + id as f64),
+                start_lon: Some(10.0),
+                end_lat: Some(50.1 + id as f64),
+                end_lon: Some(10.1),
+                points: vec![[50.0, 10.0], [50.1, 10.1]],
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let v = routes_view(&db, RouteSort::default()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(v.total, 1);
+        assert_eq!(v.routes[0].sport, "Walking");
+    }
+
+    #[test]
     fn a_list_reads_as_a_phrase() {
         let v = |a: &[&str]| list_of(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         assert_eq!(v(&["walking"]), "walking");
