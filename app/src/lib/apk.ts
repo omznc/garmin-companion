@@ -43,7 +43,7 @@ import { listen } from "@tauri-apps/api/event";
  */
 const RELEASE_API = "https://api.github.com/repos/omznc/garmin-companion/releases/latest";
 
-/** What `.github/workflows/release.yml` writes beside the APK. */
+/** What `.github/workflows/release-rewrite.yml` writes beside the APK. */
 export interface ApkRelease {
   version: string;
   url: string;

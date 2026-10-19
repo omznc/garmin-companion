@@ -132,7 +132,7 @@ compiled from C source (see the `openssl` dependency in
 `crates/garmin-core/Cargo.toml`), which is most of the ~2m35 a pass costs. Four
 ABIs made it a 20-minute job against 5–10 for each desktop bundle.
 
-Two things cut that, and both are load-bearing if you touch them:
+One thing cuts that, and it is load-bearing if you touch it:
 
 - **Two ABIs, not four.** `-t aarch64 armv7` on both build steps. `i686` and
   `x86_64` are emulator ABIs — no phone runs either — so they were five minutes
@@ -140,8 +140,8 @@ Two things cut that, and both are load-bearing if you touch them:
   places: the two build steps, the `targets:` on the toolchain, and the RANLIB
   loop. All three have to agree.
 
-The release jobs start with a cold cache, because a tag cannot read a cache
-from another ref. A cold desktop build takes 5-10 minutes.
+A cold desktop build takes 5-10 minutes. Only the first release starts with a
+cold cache, because a later run restores the cache of the default branch.
 
 ### Why Android is its own job
 

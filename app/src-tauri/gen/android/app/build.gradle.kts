@@ -15,7 +15,7 @@ val tauriProperties = Properties().apply {
 }
 
 // Release signing. `keystore.properties` is gitignored and is written by CI
-// from repository secrets — see `.github/workflows/release.yml`, and RELEASING
+// from repository secrets by the old Tauri flow (`release.yml`, now deleted). See RELEASING
 // for how to generate the keystore.
 //
 // Absent is a supported state, not a broken one: a debug build signs itself
