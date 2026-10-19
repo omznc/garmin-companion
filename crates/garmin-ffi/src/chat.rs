@@ -376,8 +376,9 @@ fn rename(args: &Value, fixture: bool) -> Result<String, FfiError> {
 
 fn delete(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: Id = parse(args)?;
-    discard_session(&a.session_id);
     with_store(fixture, |s| s.delete(&a.session_id)).map_err(failed)?;
+    // After the delete: a failed delete keeps the running turn. A late save finds no row.
+    discard_session(&a.session_id);
     Ok("{}".into())
 }
 
