@@ -89,12 +89,16 @@ fn usable(saved: Option<Provider>, phone: bool) -> Option<Provider> {
 /// The saved choice, or the default. The provider is always set.
 /// On a phone, a saved Ollama choice counts as unset.
 pub fn load_config(db: &Db) -> Result<(Option<Provider>, Option<String>)> {
-    let phone = cfg!(any(target_os = "android", target_os = "ios"));
+    load_on(db, cfg!(any(target_os = "android", target_os = "ios")))
+}
+
+fn load_on(db: &Db, phone: bool) -> Result<(Option<Provider>, Option<String>)> {
     let saved = db
         .sync_state("chat_provider")?
         .and_then(|s| Provider::parse(&s));
-    let dropped = saved.is_some() && usable(saved, phone).is_none();
-    let provider = match usable(saved, phone) {
+    let kept = usable(saved, phone);
+    let dropped = saved.is_some() && kept.is_none();
+    let provider = match kept {
         Some(p) => p,
         None => default_provider(matches!(openrouter_key(), Ok(Some(_)))),
     };
@@ -192,6 +196,18 @@ mod tests {
         assert_eq!(model.as_deref(), Some(DEFAULT_OPENROUTER_MODEL));
         save_config(&db, Provider::Ollama, "llama3.2").unwrap();
         assert_eq!(load_config(&db).unwrap().1.as_deref(), Some("llama3.2"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_phone_drops_the_provider_and_the_model_of_ollama() {
+        let path = std::env::temp_dir().join(format!("gc-config-phone-{}.db", std::process::id()));
+        let db = Db::open(&path).unwrap();
+        save_config(&db, Provider::Ollama, "llama3.2").unwrap();
+        let (provider, model) = load_on(&db, true).unwrap();
+        assert_ne!(provider, Some(Provider::Ollama));
+        assert_ne!(model.as_deref(), Some("llama3.2"));
+        assert_eq!(load_on(&db, false).unwrap().0, Some(Provider::Ollama));
         let _ = std::fs::remove_file(path);
     }
 
