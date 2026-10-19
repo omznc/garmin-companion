@@ -326,6 +326,43 @@ export function TileGrid({
   );
 }
 
+/** A table in a card: a header row, then rows with equal columns. The first column is left, the rest are right. */
+export function DataTable({ head, rows }: { head: string[]; rows: string[][] }) {
+  const md = useMd();
+  const line = (cells: string[], key: string, header: boolean) => (
+    <View
+      key={key}
+      style={{
+        flexDirection: "row",
+        gap: 8,
+        paddingVertical: 10,
+        borderTopWidth: header ? 0 : 1,
+        borderTopColor: md.outlineVariant,
+      }}
+    >
+      {cells.map((c, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the cells never reorder
+        <View key={i} style={{ flex: i === 0 ? 1.3 : 1 }}>
+          <T
+            v={header ? "labelSmall" : "bodyMedium"}
+            color={header ? md.onSurfaceVariant : md.onSurface}
+            align={i === 0 ? "left" : "right"}
+            lines={header ? 1 : i === 0 ? undefined : 2}
+          >
+            {c}
+          </T>
+        </View>
+      ))}
+    </View>
+  );
+  return (
+    <Card gap={0}>
+      {line(head, "head", true)}
+      {rows.map((r, i) => line(r, String(i), false))}
+    </Card>
+  );
+}
+
 /** Rounded bars. A null value is a hairline. The bars take the scheme's primary. */
 export function Bars({
   values,

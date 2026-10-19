@@ -1,15 +1,19 @@
 // Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
 // The core sends the sections in order. A section that has no data is not drawn.
+import { useRouter } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
   Button,
   PlatformColor,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from "react-native";
+import { metricRoute } from "../data/present";
 import type { Section, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
@@ -51,35 +55,57 @@ function Group({ title, children }: { title?: string; children: ReactNode }) {
   );
 }
 
+// With `onPress` the row is a button with a chevron.
 function Row({
   left,
   right,
   accent,
   last,
+  onPress,
 }: {
   left: string;
   right?: string;
   accent?: boolean;
   last?: boolean;
+  onPress?: () => void;
 }) {
-  return (
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        minHeight: 44,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: last ? 0 : 0.5,
-        borderBottomColor: separator,
-      }}
-    >
-      <Text style={{ fontSize: 17, color: label, flexShrink: 1 }}>{left}</Text>
+  const style = {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: last ? 0 : 0.5,
+    borderBottomColor: separator,
+  } as const;
+  const content = (
+    <>
+      <Text style={{ fontSize: 17, color: label, flexGrow: 1, flexShrink: 1 }}>{left}</Text>
       {right ? (
         <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
       ) : null}
-    </View>
+      {onPress ? (
+        <SymbolView name="chevron.right" size={13} tintColor={PlatformColor("tertiaryLabel")} />
+      ) : null}
+    </>
+  );
+  // A plain View, not a disabled Pressable: VoiceOver reads a disabled button as "dimmed".
+  if (!onPress)
+    return (
+      <View accessible style={style}>
+        {content}
+      </View>
+    );
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({ ...style, opacity: pressed ? 0.6 : 1 })}
+    >
+      {content}
+    </Pressable>
   );
 }
 
@@ -94,11 +120,16 @@ function Note({ children }: { children: string }) {
 }
 
 function SessionGroup({ s }: { s: Extract<Section, { kind: "session" }> }) {
+  const router = useRouter();
   const { session } = s;
   const when = [session.when, session.zones ? `${session.zones.aboveZ2Pct}% above Z2` : ""];
   return (
     <Group title={`Last session, ${session.name}`}>
-      <Row left={session.sport} right={when.filter(Boolean).join(", ")} />
+      <Row
+        left={session.sport}
+        right={when.filter(Boolean).join(", ")}
+        onPress={() => router.push(`/today/activity/${session.id}`)}
+      />
       {session.stats.map((stat, i) => (
         <Row
           key={stat.label}
@@ -112,18 +143,15 @@ function SessionGroup({ s }: { s: Extract<Section, { kind: "session" }> }) {
 }
 
 function WeekGroups({ s }: { s: Extract<Section, { kind: "week" }> }) {
+  const router = useRouter();
   return (
     <>
       {s.minutes.some((m) => m > 0) && (
         <Group title="Last seven days">
           {s.labels.map((d, i) => (
-            <Row
-              key={d}
-              left={d}
-              right={`${Math.round(s.minutes[i] ?? 0)} min`}
-              last={i === s.labels.length - 1}
-            />
+            <Row key={d} left={d} right={`${Math.round(s.minutes[i] ?? 0)} min`} />
           ))}
+          <Row left="All activities" onPress={() => router.push("/activities")} last />
         </Group>
       )}
       <Note>{s.summary}</Note>
@@ -132,6 +160,7 @@ function WeekGroups({ s }: { s: Extract<Section, { kind: "week" }> }) {
 }
 
 function SectionView({ s }: { s: Section }) {
+  const router = useRouter();
   switch (s.kind) {
     case "health":
       return (
@@ -142,6 +171,7 @@ function SectionView({ s }: { s: Section }) {
               left={m.label}
               right={m.unit ? `${m.value} ${m.unit}` : m.value}
               accent={m.accent}
+              onPress={() => router.push(metricRoute(m.id))}
               last={i === s.metrics.length - 1}
             />
           ))}
@@ -164,7 +194,7 @@ function SectionView({ s }: { s: Section }) {
     case "drift":
       return (
         <Group title="Zone drift">
-          <Row left={s.summary} />
+          <Row left={s.summary} onPress={() => router.push("/activities")} />
           {s.runs.map((r, i) => (
             <Row
               // biome-ignore lint/suspicious/noArrayIndexKey: the runs never reorder

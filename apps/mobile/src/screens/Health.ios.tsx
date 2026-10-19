@@ -24,9 +24,14 @@ function SleepGroup() {
 }
 
 function MetricGroup({ m }: { m: MetricTrend }) {
+  const router = useRouter();
   return (
     <Group title={m.label}>
-      <Row left="Latest" right={m.unit ? `${m.valueText} ${m.unit}` : m.valueText} />
+      <Row
+        left="Latest"
+        right={m.unit ? `${m.valueText} ${m.unit}` : m.valueText}
+        onPress={() => router.push(`/health/metric/${m.key}`)}
+      />
       <View style={{ paddingVertical: 12 }}>
         <MiniBars
           values={scaled(m.points)}

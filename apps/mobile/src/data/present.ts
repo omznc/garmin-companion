@@ -81,6 +81,7 @@ function lastSession(v: TodayView): LastSession | null {
   const a = last.activity;
   const percents = zonePercents(a);
   return {
+    id: a.activityId,
     name: a.name?.trim() || last.sportLabel,
     sport: last.sportLabel,
     typeKey: a.typeKey,
@@ -91,6 +92,21 @@ function lastSession(v: TodayView): LastSession | null {
         : null,
     stats: sessionStats(a),
   };
+}
+
+const METRIC_KEYS: Record<string, string> = {
+  rhr: "resting_hr",
+  hrv: "hrv",
+  stress: "stress",
+  battery: "body_battery",
+  steps: "steps",
+};
+
+/** The route that a Today metric id opens. An id with no detail screen opens Health. */
+export function metricRoute(id: string): string {
+  if (id === "sleep") return "/today/sleep";
+  const key = METRIC_KEYS[id];
+  return key ? `/today/metric/${key}` : "/health";
 }
 
 function weekLabels(today: Date): string[] {

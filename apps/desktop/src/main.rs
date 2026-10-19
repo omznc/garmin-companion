@@ -334,6 +334,7 @@ fn main() -> anyhow::Result<()> {
                     if let Some(training) = training {
                         root = root.with_training(training);
                     }
+                    root.start(cx);
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }

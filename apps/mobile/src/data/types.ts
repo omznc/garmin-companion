@@ -120,6 +120,8 @@ export type Metric = {
 };
 
 export type LastSession = {
+  // The Garmin activity id. It opens the activity detail.
+  id: number;
   name: string;
   sport: string;
   // The Garmin activity type, such as "running". It picks the icon.

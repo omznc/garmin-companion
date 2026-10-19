@@ -2,6 +2,7 @@
 // (`garmin_api::body`). This file types the JSON and turns it into blocks.
 // The screens draw the blocks and have no other copy.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { bodyLine, DASH, one, whole } from "./bodyLine";
 import { fetchPlaces, type PlacesKind } from "./places";
 import { callJson } from "./source";
 import {
@@ -101,9 +102,6 @@ export type Block =
 
 export type BodyScreenData = { title: string; blocks: Block[] };
 
-const DASH = "—";
-const whole = (v: number | null) => (v == null ? DASH : Math.round(v).toLocaleString("en-US"));
-const one = (v: number | null) => (v == null ? DASH : v.toFixed(1));
 const signed = (v: number | null) =>
   v == null ? DASH : `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("en-US")}`;
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
@@ -290,25 +288,6 @@ export const useStrengthShown = () =>
     queryFn: async () => (await callJson<StrengthView>(commands.strength)).shown,
     retry: false,
   });
-
-/** One short value for a list row: "80.9 kg, down 0.7 kg", "1,800 kcal a day", "6 sessions". */
-export function bodyLine(kind: BodyKind, raw: WeightView | FoodView | StrengthView): string | null {
-  if (raw.empty) return raw.empty.title;
-  if (kind === "weight") {
-    const v = raw as WeightView;
-    if (v.trendKg == null) return null;
-    const change =
-      v.changeKg == null || v.changeKg === 0
-        ? ""
-        : `, ${v.changeKg > 0 ? "up" : "down"} ${Math.abs(v.changeKg).toFixed(1)} kg`;
-    return `${one(v.trendKg)} kg${change}`;
-  }
-  if (kind === "food") {
-    const v = raw as FoodView;
-    return v.avgEatenKcal == null ? null : `${whole(v.avgEatenKcal)} kcal a day`;
-  }
-  return (raw as StrengthView).sessionsText;
-}
 
 /** The value line of a row on the Health and More lists. */
 export const useBodyLine = (kind: BodyKind) =>
