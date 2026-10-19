@@ -33,6 +33,15 @@ export function applyEvent(turn: Turn, event: AskEventPayload): Turn {
   switch (event.type) {
     case "delta":
       return { ...turn, answer: turn.answer + event.text };
+    case "note": {
+      // The streamed text was narration: it leaves the answer and joins the trace.
+      const note = {
+        kind: "note" as const,
+        callId: `note-${turn.steps.length}`,
+        label: event.text,
+      };
+      return { ...turn, answer: "", steps: [...turn.steps, { ...note, running: false, ok: null }] };
+    }
     case "tool": {
       const step = {
         callId: event.callId,

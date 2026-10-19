@@ -133,3 +133,17 @@ test("a failed ask_send drops its own unsaved run only", () => {
   const dropped = failRun(lives, "s", "run-1");
   assert.deepEqual([dropped.has("s"), runningOf(dropped)], [false, null]);
 });
+
+test("a note moves the round text out of the answer and into the steps", () => {
+  let t = startLive("s", 0, "q").turn;
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "delta", text: "Let me look." });
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "note", text: "Let me look." });
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "delta", text: "Rest today." });
+  assert.equal(t.answer, "Rest today.");
+  assert.deepEqual(
+    t.steps.map((s) => [s.kind, s.label]),
+    [["note", "Let me look."]],
+  );
+  const rows = historyFor([{ ...t, status: "done" }], "next");
+  assert.equal(rows[1]?.content, "Rest today.");
+});

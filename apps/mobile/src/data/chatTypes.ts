@@ -1,5 +1,13 @@
 // The shapes of the Ask threads. They match the chat_* commands of the core.
-export type Step = { callId: string; label: string; running: boolean; ok: boolean | null };
+// A step is a tool call, or a note: what the model said between two tool rounds
+// (`label` is then the text). A stored step with no `kind` is a tool.
+export type Step = {
+  kind?: "tool" | "note";
+  callId: string;
+  label: string;
+  running: boolean;
+  ok: boolean | null;
+};
 export type TurnStatus = "running" | "done" | "error" | "stopped";
 export type Turn = {
   id: string;
@@ -27,6 +35,7 @@ export type HistoryRow = { role: "user" | "assistant"; content: string };
 // An `ask` event: the JSON of the turn event, with its session and its turn.
 export type AskEventPayload = { sessionId: string; turnId: string } & (
   | { type: "delta"; text: string }
+  | { type: "note"; text: string }
   | { type: "tool"; callId: string; label: string; running: boolean; ok: boolean }
   | { type: "done"; sources: string[] }
   | { type: "error"; text: string }

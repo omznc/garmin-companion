@@ -5,6 +5,8 @@ import { Spinner } from "./Spinner";
 import { useChatTheme } from "./theme";
 
 export type TraceStep = {
+  /** A note is what the model said between tool rounds. `label` is its text. */
+  kind?: "tool" | "note";
   callId: string;
   label: string;
   running: boolean;
@@ -19,7 +21,7 @@ export function ToolTrace({ steps, working }: { steps: TraceStep[]; working: boo
   const [manual, setManual] = useState<boolean | null>(null);
   const expanded = manual ?? working;
   if (steps.length === 0) return null;
-  const done = steps.filter((step) => !step.running).length;
+  const done = steps.filter((step) => step.kind !== "note" && !step.running).length;
   const title = working ? "Working" : `Used ${done} ${done === 1 ? "tool" : "tools"}`;
 
   return (
@@ -47,13 +49,23 @@ export function ToolTrace({ steps, working }: { steps: TraceStep[]; working: boo
             gap: 4,
           }}
         >
-          {steps.map((step) => (
-            <StepRow key={step.callId} step={step} />
-          ))}
+          {steps.map((step) =>
+            step.kind === "note" ? (
+              <NoteRow key={step.callId} text={step.label} />
+            ) : (
+              <StepRow key={step.callId} step={step} />
+            ),
+          )}
         </View>
       ) : null}
     </View>
   );
+}
+
+// What the model said before it called the next tools: quiet text on the same rule.
+function NoteRow({ text }: { text: string }) {
+  const theme = useChatTheme();
+  return <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20 }}>{text}</Text>;
 }
 
 const stateWord = (step: TraceStep) => (step.running ? "running" : step.ok ? "done" : "failed");

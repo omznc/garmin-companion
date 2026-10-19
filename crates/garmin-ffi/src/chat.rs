@@ -24,11 +24,28 @@ const RENAME_MAX: usize = 200;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Step {
+    /// A row from before notes existed has no kind: it is a tool.
+    #[serde(default, skip_serializing_if = "is_tool")]
+    pub kind: StepKind,
     pub call_id: String,
+    /// The tool label, or the text of a note.
     pub label: String,
     pub running: bool,
     /// `None` while the call runs.
     pub ok: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StepKind {
+    #[default]
+    Tool,
+    /// What the model said between two tool rounds.
+    Note,
+}
+
+fn is_tool(kind: &StepKind) -> bool {
+    *kind == StepKind::Tool
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -392,6 +409,7 @@ mod tests {
             question: "q".into(),
             answer: "a".into(),
             steps: vec![Step {
+                kind: StepKind::Tool,
                 call_id: "c".into(),
                 label: "l".into(),
                 running: false,
@@ -412,6 +430,21 @@ mod tests {
         assert!(json["turns"][0]["error"].is_null());
         assert_eq!(decode(&encode(&turns)), turns);
         assert!(decode("not json").is_empty());
+    }
+
+    #[test]
+    fn an_old_step_has_no_kind_and_reads_as_a_tool() {
+        let old = r#"{"callId":"c","label":"l","running":false,"ok":true}"#;
+        let step: Step = serde_json::from_str(old).unwrap();
+        assert_eq!(step.kind, StepKind::Tool);
+        assert!(!serde_json::to_string(&step).unwrap().contains("kind"));
+        let note = Step {
+            kind: StepKind::Note,
+            ..step
+        };
+        assert!(serde_json::to_string(&note)
+            .unwrap()
+            .contains(r#""kind":"note""#));
     }
 
     #[test]

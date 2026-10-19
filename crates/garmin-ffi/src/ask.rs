@@ -12,7 +12,7 @@ use garmin_coach::{Event, EventSink, HistoryMessage};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::chat::{self, Status, Step, Turn};
+use crate::chat::{self, Status, Step, StepKind, Turn};
 use crate::FfiError;
 
 /// The turn that runs now: its session, its stop flag and its live state.
@@ -56,6 +56,7 @@ impl TurnSink {
                 ok,
             } => {
                 let step = Step {
+                    kind: StepKind::Tool,
                     call_id: call_id.clone(),
                     label: label.clone(),
                     running: *running,
@@ -67,6 +68,18 @@ impl TurnSink {
                 }
             }
             Event::Delta { text } => turn.answer.push_str(text),
+            Event::Note { text } => {
+                // The answer holds only the text of the round that just ended.
+                turn.answer.clear();
+                let n = turn.steps.len();
+                turn.steps.push(Step {
+                    kind: StepKind::Note,
+                    call_id: format!("note-{n}"),
+                    label: text.clone(),
+                    running: false,
+                    ok: None,
+                });
+            }
             Event::Done { .. } => {
                 turn.status = if self.0.flag.load(Ordering::Relaxed) {
                     Status::Stopped
@@ -252,6 +265,12 @@ async fn report_panic(turn: tokio::task::JoinHandle<()>, sink: impl EventSink) {
 async fn fixture_turn(sink: &TurnSink) {
     let stop = &sink.0.flag;
     let label = "Reading 14 days of recovery signals";
+    for word in "I will read your recovery first.".split_inclusive(' ') {
+        sink.emit(Event::Delta { text: word.into() });
+    }
+    sink.emit(Event::Note {
+        text: "I will read your recovery first.".into(),
+    });
     sink.emit(Event::Tool {
         call_id: "fixture".into(),
         label: label.into(),
@@ -419,7 +438,9 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("sample answer"));
-        assert_eq!(t["turns"][0]["steps"][0]["ok"], true);
+        // The first step is the note of the fixture, the second is the tool.
+        assert_eq!(t["turns"][0]["steps"][0]["kind"], "note");
+        assert_eq!(t["turns"][0]["steps"][1]["ok"], true);
         send_to("t-send", "And last week?").await;
         wait_idle("t-send").await;
         assert_eq!(thread("t-send")["turns"].as_array().unwrap().len(), 2);
@@ -501,7 +522,7 @@ mod tests {
         let turn = &t["turns"][0];
         assert_eq!(turn["status"], "running");
         assert!(!turn["answer"].as_str().unwrap().is_empty());
-        assert_eq!(turn["steps"].as_array().unwrap().len(), 1);
+        assert_eq!(turn["steps"].as_array().unwrap().len(), 2);
         wait_idle("t-live").await;
     }
 }

@@ -9,6 +9,7 @@
         "question": "Am I recovered enough for a hard day?",
         "answer": "Yes, with one note. Your resting heart rate is close to your usual value, and your HRV is steady. Sleep was a little short last night, so keep the first part of the day easy.",
         "steps": [
+          { "kind": "note", "callId": "note-0", "label": "I will read your recovery signals first.", "running": false, "ok": null },
           { "callId": "s1", "label": "Reading 14 days of recovery signals", "running": false, "ok": true }
         ],
         "status": "done",

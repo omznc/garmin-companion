@@ -42,6 +42,12 @@ pub enum Event {
     Delta {
         text: String,
     },
+    /// The text streamed so far was not the answer: its round ended with tool
+    /// calls. The host moves that text out of the answer and into the trace.
+    /// Only the text of the last round is the answer.
+    Note {
+        text: String,
+    },
     /// The turn ended. `sources` are the labels of what it read.
     Done {
         sources: Vec<String>,
@@ -119,7 +125,6 @@ async fn rounds<T: Transport>(
 
     let schemas = tools::schemas();
     let mut sources = Vec::new();
-    let mut said_anything = false;
 
     for round in 0..=MAX_TOOL_ROUNDS {
         if stop.load(Ordering::Relaxed) {
@@ -132,13 +137,20 @@ async fn rounds<T: Transport>(
         let stream = transport
             .complete(&messages, Some(&schemas), choice, sink, stop)
             .await?;
-        said_anything |= !stream.content.trim().is_empty();
 
         if stop.load(Ordering::Relaxed) {
             return Ok(sources);
         }
         if last || stream.tool_calls.is_empty() {
-            return answered(said_anything, sources);
+            return answered(&stream.content, sources);
+        }
+
+        // This text was narration, not the answer. Say so before the tools run.
+        let narration = stream.content.trim();
+        if !narration.is_empty() {
+            sink.emit(Event::Note {
+                text: narration.into(),
+            });
         }
 
         // The tool-call message goes back before the results, or the API
@@ -171,18 +183,21 @@ async fn rounds<T: Transport>(
             }
         }
     }
-    answered(said_anything, sources)
+    Err(no_answer())
 }
 
 /// A reasoning model can spend its whole budget thinking and return nothing.
+/// The earlier rounds only held narration, so a blank last round has no answer.
 /// Say so: a blank reply looks like a broken app.
-fn answered(said_anything: bool, sources: Vec<String>) -> Result<Vec<String>> {
-    if said_anything {
-        return Ok(sources);
+fn answered(last_round: &str, sources: Vec<String>) -> Result<Vec<String>> {
+    if last_round.trim().is_empty() {
+        return Err(no_answer());
     }
-    Err(anyhow!(
-        "The model finished without writing an answer. Ask again, or try a different model."
-    ))
+    Ok(sources)
+}
+
+fn no_answer() -> anyhow::Error {
+    anyhow!("The model finished without writing an answer. Ask again, or try a different model.")
 }
 
 fn tool_event(call_id: &str, label: &str, running: bool, ok: bool) -> Event {
@@ -264,6 +279,13 @@ mod tests {
         format!("data: {d}\n\ndata: [DONE]\n\n")
     }
 
+    /// Narration and a tool call in one round.
+    fn narrated_call(say: &str, name: &str) -> String {
+        let d = json!({"choices":[{"delta":{"content":say,"tool_calls":[
+            {"index":0,"id":"c1","function":{"name":name,"arguments":"{}"}}]}}]});
+        format!("data: {d}\n\ndata: [DONE]\n\n")
+    }
+
     fn empty_db() -> Result<Db> {
         Db::open(std::path::Path::new(":memory:"))
     }
@@ -309,6 +331,67 @@ mod tests {
         // Two requests. The second carries the assistant call and the result.
         let seen = mock.seen.lock().unwrap().clone();
         assert_eq!(seen, vec![(3, true, None), (5, true, None)]);
+    }
+
+    #[tokio::test]
+    async fn narration_becomes_a_note_before_the_tools_of_its_round() {
+        let mock = Mock::new(&[
+            &narrated_call(" Let me look. ", "cache_status"),
+            &text("Rest today."),
+        ]);
+        let sink = Rec::default();
+        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
+            .await
+            .unwrap();
+        let events = sink.events();
+        let note = events
+            .iter()
+            .position(|e| matches!(e, Event::Note { text } if text == "Let me look."));
+        let tool = events.iter().position(|e| matches!(e, Event::Tool { .. }));
+        assert!(note.unwrap() < tool.unwrap());
+        // The final round has no note. Its text is the answer.
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| matches!(e, Event::Note { .. }))
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn narration_alone_is_not_an_answer() {
+        let calls: Vec<String> = (0..=MAX_TOOL_ROUNDS)
+            .map(|_| narrated_call("Looking.", "cache_status"))
+            .collect();
+        // The last round says text and asks for a tool: its text is the answer.
+        let replies: Vec<&str> = calls.iter().map(String::as_str).collect();
+        let mock = Mock::new(&replies);
+        let ok = run_turn(
+            &mock,
+            &Rec::default(),
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+        )
+        .await;
+        assert!(ok.is_ok());
+        let mut again: Vec<String> = (0..MAX_TOOL_ROUNDS)
+            .map(|_| narrated_call("Looking.", "cache_status"))
+            .collect();
+        again.push(call("cache_status", "{}"));
+        let replies: Vec<&str> = again.iter().map(String::as_str).collect();
+        let mock = Mock::new(&replies);
+        let err = run_turn(
+            &mock,
+            &Rec::default(),
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("without writing an answer"));
     }
 
     #[tokio::test]
