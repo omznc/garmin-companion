@@ -179,13 +179,21 @@ function SectionView({ s }: { s: Section }) {
   }
 }
 
-function TodayBody({ today }: { today: Today }) {
+function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   return (
     <>
       <Group>
         <View style={{ padding: 16 }}>
           <Text style={{ fontSize: 15, color: secondary }}>{today.dateLabel}</Text>
           <Text style={{ fontSize: 17, color: label, marginTop: 6 }}>{today.lede}</Text>
+          {today.hero ? null : (
+            <Button
+              title={busy ? "Syncing" : "Sync now"}
+              disabled={busy}
+              onPress={onSync}
+              color={tint}
+            />
+          )}
         </View>
       </Group>
       {today.sections.map((s) => (
@@ -210,7 +218,7 @@ export function TodayScreen() {
           {sync.error ?? sync.line}
         </Text>
       ) : null}
-      {data ? <TodayBody today={data} /> : null}
+      {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
       {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? (
         <Group>

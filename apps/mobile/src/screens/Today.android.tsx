@@ -1,7 +1,7 @@
 // Today on Android: Material 3 Expressive cards in the colours of the scheme.
 // The core sends the sections in order. A section that has no data is not drawn.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
   BarLabels,
@@ -17,6 +17,7 @@ import {
   T,
 } from "../components/MdKit";
 import { Cookie, sportIcon, VitalGrid } from "../components/TodayKit";
+import { greeting } from "../data/present";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
@@ -155,7 +156,7 @@ function SectionView({ s, hero }: { s: TodaySection; hero: Hero | null }) {
   }
 }
 
-function HeroCard({ today }: { today: Today }) {
+function HeroCard({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   const md = useMd();
   const hero = today.hero;
   return (
@@ -187,14 +188,41 @@ function HeroCard({ today }: { today: Today }) {
       <T v="body" color={md.onPrimaryContainer}>
         {today.lede}
       </T>
+      {hero ? null : <SyncButton busy={busy} onPress={onSync} />}
     </Card>
   );
 }
 
-function TodayBody({ today }: { today: Today }) {
+// The welcome card has no data to show, so it offers the first sync.
+function SyncButton({ busy, onPress }: { busy: boolean; onPress: () => void }) {
+  const md = useMd();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: busy, busy }}
+      disabled={busy}
+      onPress={onPress}
+      style={{
+        alignSelf: "flex-start",
+        minHeight: 48,
+        borderRadius: 24,
+        paddingHorizontal: 24,
+        justifyContent: "center",
+        backgroundColor: md.primary,
+        opacity: busy ? 0.6 : 1,
+      }}
+    >
+      <T v="label" color={md.onPrimary}>
+        {busy ? "Syncing" : "Sync now"}
+      </T>
+    </Pressable>
+  );
+}
+
+function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   return (
     <Content>
-      <HeroCard today={today} />
+      <HeroCard today={today} busy={busy} onSync={onSync} />
       {today.sections.map((s) => (
         <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} hero={today.hero} />
       ))}
@@ -219,12 +247,12 @@ export function TodayScreen() {
   const sync = useSync();
   return (
     <LargeAppBarScreen
-      title={data?.greeting ?? "Today"}
+      title={data ? greeting() : "Today"}
       refreshing={sync.busy}
       onRefresh={() => sync.refresh()}
     >
       <SyncLine line={sync.line} error={sync.error} />
-      {data ? <TodayBody today={data} /> : null}
+      {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
     </LargeAppBarScreen>
