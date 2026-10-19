@@ -6,6 +6,7 @@
     "scheme": "garmincompanion",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "com.omznc.garmincompanion",
       "supportsTablet": false
@@ -13,7 +14,12 @@
     "android": {
       "package": "com.omznc.garmincompanion",
       "predictiveBackGestureEnabled": true,
-      "allowBackup": false
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png",
+        "backgroundColor": "#15140f"
+      }
     },
     "plugins": [
       "expo-router",
