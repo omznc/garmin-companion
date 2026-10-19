@@ -1,5 +1,4 @@
 import { Stack } from "expo-router";
-import { useChatTheme } from "./theme";
 
 // The title and the history button in the native header. The system draws the back button.
 export function ChatHeader({
@@ -11,11 +10,9 @@ export function ChatHeader({
   back?: boolean;
   onHistory: () => void;
 }) {
-  const { text } = useChatTheme();
   return (
     <>
-      {/* The system label colour follows light and dark, so the title stays readable. */}
-      <Stack.Screen options={{ title, headerTintColor: text, headerTitleStyle: { color: text } }} />
+      <Stack.Screen options={{ title }} />
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button
           icon="clock.arrow.circlepath"

@@ -246,7 +246,7 @@ export function ChatScreen({
             contentContainerStyle={{ padding: 16, gap: 24, flexGrow: 1 }}
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
-            contentInsetAdjustmentBehavior="automatic"
+            contentInsetAdjustmentBehavior="always"
             scrollEventThrottle={64}
             onScrollBeginDrag={pinned.onScrollBeginDrag}
             onScroll={pinned.onScroll}
