@@ -728,12 +728,22 @@ describe("billing", () => {
     ]);
   });
 
-  it("still creates the checkout when the organization lookup fails", async () => {
+  it.each([
+    ["an error status", () => new Response("oops", { status: 500 })],
+    ["a forbidden token", () => new Response("{}", { status: 403 })],
+    ["a body that is not JSON", () => new Response("<html>", { status: 200 })],
+    [
+      "a network error",
+      () => {
+        throw new Error("down");
+      },
+    ],
+  ])("still creates the checkout when the organization lookup has %s", async (_name, lookup) => {
     const h = harness();
     const { token } = await h.login();
     h.upstream((url) =>
       url.endsWith("/v1/organizations/")
-        ? new Response("oops", { status: 500 })
+        ? lookup()
         : jsonResponse({ url: "https://sandbox.polar.sh/checkout/abc" }, 201),
     );
     const r = await h.call("/v2/billing/checkout", { method: "POST", token });

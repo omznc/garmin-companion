@@ -240,12 +240,16 @@ async function polar(env: V2Env, path: string, body?: unknown): Promise<Response
 async function paymentsOpen(env: V2Env): Promise<boolean> {
   try {
     const r = await polar(env, "/v1/organizations/");
-    if (!r.ok) return true;
+    if (!r.ok) {
+      console.warn("polar organizations lookup failed", r.status);
+      return true;
+    }
     const { items } = (await r.json()) as {
       items?: { capabilities?: { checkout_payments?: boolean } }[];
     };
-    return !Array.isArray(items) || items.some((o) => o.capabilities?.checkout_payments === true);
+    return !Array.isArray(items) || items.some((o) => o.capabilities?.checkout_payments !== false);
   } catch {
+    console.warn("polar organizations lookup failed");
     return true;
   }
 }
