@@ -128,18 +128,15 @@ fn cache_line(count: i64, last_sync: Option<&str>, now: DateTime<Utc>) -> String
         .map(|t| since(t.with_timezone(&Utc), now));
     match (count, synced) {
         (0, None) => "Nothing is cached yet. Sync to bring in your data.".into(),
-        (n, None) => format!(
-            "{} activities cached, never synced.",
-            crate::text::num(n as f64)
-        ),
+        (n, None) => format!("{} cached, never synced.", activities(n)),
         (0, Some(when)) => format!("No activities cached, last synced {when}."),
-        (n, Some(when)) => {
-            format!(
-                "{} activities cached, last synced {when}.",
-                crate::text::num(n as f64)
-            )
-        }
+        (n, Some(when)) => format!("{} cached, last synced {when}.", activities(n)),
     }
+}
+
+fn activities(n: i64) -> String {
+    let noun = if n == 1 { "activity" } else { "activities" };
+    format!("{} {noun}", crate::text::num(n as f64))
 }
 
 /// How long ago, in words. It follows `since()` of the old app.
@@ -213,6 +210,11 @@ mod tests {
         assert_eq!(
             cache_line(0, Some(&recent), now),
             "No activities cached, last synced 2 hours ago."
+        );
+        assert_eq!(cache_line(1, None, now), "1 activity cached, never synced.");
+        assert_eq!(
+            cache_line(1, Some(&recent), now),
+            "1 activity cached, last synced 2 hours ago."
         );
     }
 

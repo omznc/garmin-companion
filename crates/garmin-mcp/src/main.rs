@@ -147,8 +147,10 @@ fn coach() -> Result<()> {
 
     println!("Week of {}", report.week.week_start);
     println!(
-        "  {} sessions, {:.0} min, longest run {:.0} min",
-        report.week.sessions, report.week.minutes, report.week.longest_run_minutes
+        "  {}, {:.0} min, longest run {:.0} min",
+        garmin_core::plural(report.week.sessions, "session", "sessions"),
+        report.week.minutes,
+        report.week.longest_run_minutes
     );
     for ring in &report.week.rings {
         println!(

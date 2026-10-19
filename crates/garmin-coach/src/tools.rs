@@ -7,7 +7,7 @@
 //! the coach must not lean on one sport. They return when the data gates them.
 
 use anyhow::Result;
-use garmin_core::{db::Db, query};
+use garmin_core::{db::Db, plural, query};
 use serde_json::{json, Value};
 
 const MAX_ACTIVITIES: u64 = 50;
@@ -25,6 +25,10 @@ const MAX_RESULT_BYTES: usize = 25_000;
 /// and not rejected.
 pub(crate) fn window(args: &Value, key: &str, default: u64, max: u64) -> u32 {
     args[key].as_u64().unwrap_or(default).clamp(1, max) as u32
+}
+
+fn day_count(n: u32) -> String {
+    plural(n as usize, "day", "days")
 }
 
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
@@ -158,7 +162,9 @@ pub(crate) fn describe(name: &str, args: &Value) -> String {
         "recent_activities" => {
             let n = window(args, "limit", 10, MAX_ACTIVITIES);
             match args["sport"].as_str() {
+                Some(s) if n == 1 => format!("Reading your last {s} session"),
                 Some(s) => format!("Reading your last {n} {s} sessions"),
+                None if n == 1 => "Reading your last activity".into(),
                 None => format!("Reading your last {n} activities"),
             }
         }
@@ -169,20 +175,24 @@ pub(crate) fn describe(name: &str, args: &Value) -> String {
             None => "Reading tagged sessions".into(),
         },
         "recovery" => format!(
-            "Reading {} days of recovery signals",
-            window(args, "days", 14, MAX_ROW_DAYS)
+            "Reading {} of recovery signals",
+            day_count(window(args, "days", 14, MAX_ROW_DAYS))
         ),
         "nutrition" => format!(
-            "Reading {} days of food and hydration",
-            window(args, "days", 30, MAX_ROW_DAYS)
+            "Reading {} of food and hydration",
+            day_count(window(args, "days", 30, MAX_ROW_DAYS))
         ),
         "weight" => format!(
-            "Reading {} days of weigh-ins",
-            window(args, "days", 180, MAX_WEIGHT_DAYS)
+            "Reading {} of weigh-ins",
+            day_count(window(args, "days", 180, MAX_WEIGHT_DAYS))
         ),
         "sleep" => format!(
-            "Reading last night and {} nights behind it",
-            window(args, "days", 30, MAX_DAYS)
+            "Reading last night and {} behind it",
+            plural(
+                window(args, "days", 30, MAX_DAYS) as usize,
+                "night",
+                "nights"
+            )
         ),
         "workouts" => "Reading your saved Garmin workouts".into(),
         "routes" => "Reading your cached GPS routes".into(),
@@ -330,6 +340,34 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labels_use_the_singular_for_one() {
+        assert_eq!(
+            describe("recent_activities", &json!({ "limit": 1 })),
+            "Reading your last activity"
+        );
+        assert_eq!(
+            describe("recent_activities", &json!({ "limit": 1, "sport": "run" })),
+            "Reading your last run session"
+        );
+        assert_eq!(
+            describe("recovery", &json!({ "days": 1 })),
+            "Reading 1 day of recovery signals"
+        );
+        assert_eq!(
+            describe("weight", &json!({ "days": 1 })),
+            "Reading 1 day of weigh-ins"
+        );
+        assert_eq!(
+            describe("sleep", &json!({ "days": 1 })),
+            "Reading last night and 1 night behind it"
+        );
+        assert_eq!(
+            describe("sleep", &json!({ "days": 5 })),
+            "Reading last night and 5 nights behind it"
+        );
+    }
 
     #[test]
     fn every_schema_has_a_label_and_a_runner() {

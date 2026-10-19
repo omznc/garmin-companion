@@ -37,10 +37,7 @@ pub fn short_date(date: &str) -> Option<String> {
     Some(d.format("%d %b").to_string())
 }
 
-/// `1 set`, `3 sets`.
-pub fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
+pub use garmin_core::plural;
 
 fn litres(ml: f64) -> String {
     format!("{:.2} L", ml / 1000.0)
@@ -53,10 +50,10 @@ pub fn hydration_sentence(h: &Hydration) -> String {
     let head = match today {
         Some(l) => format!("You've logged {} of water today", litres(l.ml)),
         None => format!(
-            "Water averaged {} over the {} of {} days you logged it",
+            "Water averaged {} over the {} of {} you logged it",
             litres(h.avg_ml),
             h.logged,
-            h.window
+            plural(h.window, "day", "days")
         ),
     };
     let Some(goal) = h.goal_ml else {
@@ -100,8 +97,8 @@ pub fn fuel_sentence(f: &Fuel) -> String {
     let burn = f.avg_burn.map(|b| format!("{} kcal a day", num(b)));
     let (Some(day), Some(age)) = (&f.day, f.age) else {
         return match burn {
-            Some(b) => format!("No food logged in the last {} days. You've burned an average of {b} over the same stretch — the intake side is what's missing, not the day.", f.window),
-            None => format!("No food logged in the last {} days.", f.window),
+            Some(b) => format!("No food logged in the last {}. You've burned an average of {b} over the same stretch — the intake side is what's missing, not the day.", plural(f.window, "day", "days")),
+            None => format!("No food logged in the last {}.", plural(f.window, "day", "days")),
         };
     };
 
@@ -127,9 +124,9 @@ pub fn fuel_sentence(f: &Fuel) -> String {
         Some(avg) if f.logged >= 3 => {
             let sign = if avg.round() > 0.0 { "+" } else { "" };
             format!(
-                "{head} Across the {} of {} days you logged, the average was {sign}{} kcal.",
+                "{head} Across the {} of {} you logged, the average was {sign}{} kcal.",
                 f.logged,
-                f.window,
+                plural(f.window, "day", "days"),
                 num(avg)
             )
         }
@@ -228,11 +225,12 @@ fn zones_clause(activities: &[CachedActivity]) -> Option<String> {
     let split = easy_hard_split(&runs)?;
     Some(if split.hard_pct > 40.0 {
         format!(
-            "Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2.",
-            split.counted, split.hard_pct
+            "Across your last {} with heart-rate data, {:.0}% of the time was above Z2.",
+            plural(split.counted, "run", "runs"),
+            split.hard_pct
         )
     } else {
-        format!("Across your last {} runs with heart-rate data, {:.0}% of the time was in Z1–Z2, which is where you want it.", split.counted, split.easy_pct)
+        format!("Across your last {} with heart-rate data, {:.0}% of the time was in Z1–Z2, which is where you want it.", plural(split.counted, "run", "runs"), split.easy_pct)
     })
 }
 
@@ -299,7 +297,7 @@ mod tests {
         };
         let s = fuel_sentence(&fuel(&[d], 7));
         assert!(s.contains("2,650 kcal a day"));
-        assert!(s.starts_with("No food logged in the last 1 days."));
+        assert!(s.starts_with("No food logged in the last 1 day."));
     }
 
     #[test]

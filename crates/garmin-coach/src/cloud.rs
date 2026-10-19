@@ -274,6 +274,7 @@ const NEEDS_MORE: &str = "This question needs more credits than are left today."
 /// A wait in seconds, as the person reads it: "40 seconds", "12 min", "5 h 12 min".
 fn wait(seconds: u64) -> String {
     match seconds {
+        1 => "1 second".into(),
         s if s < 90 => format!("{s} seconds"),
         s if s < 3600 => format!("{} min", s.div_ceil(60)),
         s => {

@@ -8,7 +8,7 @@
 use crate::body::EmptyNote;
 use crate::derive::date_key;
 use crate::insights::{runs_now, Figure};
-use crate::text::{num, short_date};
+use crate::text::{num, plural, short_date};
 use crate::ApiError;
 use chrono::NaiveDate;
 use garmin_core::records::RecordUnit;
@@ -91,7 +91,7 @@ fn record_value(r: &PersonalRecord) -> String {
     match r.unit {
         Some(RecordUnit::Seconds) => hms(r.value),
         Some(RecordUnit::Metres) => format!("{:.1} km", r.value / 1000.0),
-        Some(RecordUnit::Days) => format!("{} days", r.value.round() as i64),
+        Some(RecordUnit::Days) => plural(r.value.round().max(0.0) as usize, "day", "days"),
         _ => num(r.value),
     }
 }
@@ -265,6 +265,23 @@ pub fn fitness_view(db: &Db, today: NaiveDate) -> Result<FitnessView, ApiError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_streak_of_one_day_is_singular() {
+        let record = |value| PersonalRecord {
+            record_id: 1,
+            type_id: 15,
+            label: None,
+            unit: Some(RecordUnit::Days),
+            value,
+            activity_id: None,
+            activity_name: None,
+            activity_type: None,
+            set_on: None,
+        };
+        assert_eq!(record_value(&record(1.0)), "1 day");
+        assert_eq!(record_value(&record(12.0)), "12 days");
+    }
 
     #[test]
     fn a_motorcycle_is_not_a_ride() {
