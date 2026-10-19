@@ -11,7 +11,7 @@ export interface ModelProfile {
   cacheRead: number;
   /** Zero when the provider has no separate write price. */
   cacheWrite: number;
-  /** A token is at least one byte, so this also caps the prompt in tokens. */
+  /** The body size limit. It also bounds the prompt, at one token a byte at worst. */
   maxBodyBytes: number;
   maxTokens: number;
   reasoning?: Record<string, unknown>;
@@ -49,9 +49,20 @@ export const UNITS_PER_USD = 2_000_000;
 
 export const usdToUnits = (usd: number): number => Math.ceil(usd * UNITS_PER_USD);
 
-/** An upper bound: every body byte is a token, and the answer uses max_tokens. */
+/**
+ * Body bytes per prompt token in the hold. English and JSON are about 4 bytes
+ * a token and dense numeric JSON is about 3, so 3.5 holds a realistic cost.
+ * shortcut: the hold is not a strict bound. A body of rarer text costs more
+ * than it holds, and settle clamps the charge to the hold, so a wallet never
+ * pays more than it held. The overshoot is at most 100 KB of one-byte tokens,
+ * under 0.01 USD, and BURST and the daily budget limit how often it can happen.
+ */
+export const BYTES_PER_TOKEN = 3.5;
+
+/** The hold: the prompt at `BYTES_PER_TOKEN`, and the answer at max_tokens. */
 export function estimateUnits(p: ModelProfile, bodyBytes: number, maxTokens: number): number {
-  return usdToUnits((bodyBytes * p.input + maxTokens * p.output) / 1e6);
+  const promptTokens = Math.ceil(bodyBytes / BYTES_PER_TOKEN);
+  return usdToUnits((promptTokens * p.input + maxTokens * p.output) / 1e6);
 }
 
 export interface Usage {

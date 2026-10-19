@@ -71,6 +71,25 @@ alarm, and say plainly what is going well. Prefer short paragraphs to bullet \
 lists. You can ask the person a short question in your answer when the answer \
 changes your advice and no tool can supply it.";
 
+/// The fixed prompt as a system message. With `cache` it is a content array
+/// with an ephemeral cache marker, so the provider bills a repeat of this
+/// prefix at the cached price. The marker is a hint: a model that caches by
+/// itself, or that needs a longer prefix, ignores it. Ollama is local and free,
+/// so it gets the plain string.
+pub(crate) fn system_message(cache: bool) -> Value {
+    if !cache {
+        return json!({ "role": "system", "content": SYSTEM_PROMPT });
+    }
+    json!({
+        "role": "system",
+        "content": [{
+            "type": "text",
+            "text": SYSTEM_PROMPT,
+            "cache_control": { "type": "ephemeral" },
+        }],
+    })
+}
+
 /// Today's date and what the cache can support. A separate system message, so
 /// the fixed prompt above keeps a stable prefix.
 pub(crate) fn grounding_message(db: &Db) -> Result<Value> {
@@ -175,6 +194,16 @@ mod tests {
             role: role.into(),
             content: "x".repeat(n),
         }
+    }
+
+    /// The marker makes the fixed prefix cheap to send again. Ollama is local,
+    /// so it gets the plain string that it expects.
+    #[test]
+    fn the_cache_marker_rides_on_the_system_message() {
+        let hosted = system_message(true);
+        assert_eq!(hosted["content"][0]["text"], SYSTEM_PROMPT);
+        assert_eq!(hosted["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(system_message(false)["content"], SYSTEM_PROMPT);
     }
 
     #[test]

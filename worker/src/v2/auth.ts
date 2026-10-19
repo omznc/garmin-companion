@@ -88,22 +88,28 @@ export async function verifyCode(
   code: string,
   now = Date.now(),
 ): Promise<{ token: string; userId: string } | null> {
-  const row = await env.DB.prepare(
-    "SELECT id, salt, code_hash FROM login_code WHERE email = ? AND expires_at > ? AND attempts < ? ORDER BY id DESC LIMIT 1",
+  // Any live code for the email can match, not only the newest. Someone who
+  // sends many codes to a known address then cannot lock the owner out: the
+  // owner can use any of the mails. There are at most CODES_PER_HOUR live codes.
+  const { results } = await env.DB.prepare(
+    "SELECT id, salt, code_hash FROM login_code WHERE email = ? AND expires_at > ? AND attempts < ? ORDER BY id DESC",
   )
     .bind(email, now, MAX_ATTEMPTS)
-    .first<{ id: number; salt: string; code_hash: string }>();
-  if (!row) return null;
+    .all<{ id: number; salt: string; code_hash: string }>();
 
-  // Counted before the compare, and only if still under the limit, so parallel
-  // guesses cannot get past MAX_ATTEMPTS.
-  const bumped = await env.DB.prepare(
-    "UPDATE login_code SET attempts = attempts + 1 WHERE id = ? AND attempts < ?",
-  )
-    .bind(row.id, MAX_ATTEMPTS)
-    .run();
-  if (!bumped.meta.changes) return null;
-  if ((await sha256Hex(`${row.salt}:${code}`)) !== row.code_hash) return null;
+  let matched = false;
+  for (const row of results) {
+    // Counted before the compare, and only if still under the limit, so parallel
+    // guesses cannot get past MAX_ATTEMPTS on any one code.
+    const bumped = await env.DB.prepare(
+      "UPDATE login_code SET attempts = attempts + 1 WHERE id = ? AND attempts < ?",
+    )
+      .bind(row.id, MAX_ATTEMPTS)
+      .run();
+    if (!bumped.meta.changes) continue;
+    if ((await sha256Hex(`${row.salt}:${code}`)) === row.code_hash) matched = true;
+  }
+  if (!matched) return null;
 
   await env.DB.prepare("DELETE FROM login_code WHERE email = ?").bind(email).run();
   const userId = await upsertUser(env, email, now);

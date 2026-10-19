@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlementOf } from "./billing";
+import { networkOf } from "./index";
 import { harness, signed, sse, usageChunk } from "./harness";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -137,6 +138,59 @@ describe("chat", () => {
     await h.settled();
     // The hold is about 4.1 credits and all of it is kept.
     expect((await h.balance(id)).credits_remaining).toBe(25);
+  });
+
+  it("charges the real cost when the client leaves after the usage chunk", async () => {
+    const h = harness();
+    const id = await h.install();
+    const enc = new TextEncoder();
+    h.upstream(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
+              c.enqueue(enc.encode(`data: ${JSON.stringify(usageChunk(1000, 200))}\n\n`));
+              // Never ends: the client leaves before the [DONE] line.
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    const r = await h.ask(id);
+    const reader = r.body!.getReader();
+    await reader.read();
+    await reader.read();
+    await reader.cancel();
+    await h.settled();
+    // 0.4 credit, not the hold of about 4.1 credits.
+    expect((await h.balance(id)).credits_remaining).toBe(29);
+  });
+
+  it("holds less for a smaller max_tokens", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [{ delta: { content: "x" } }] }));
+    await (await h.ask(id, { max_tokens: 1500 })).text();
+    await h.settled();
+    // No usage block, so the whole hold is charged: 1500 tokens, about 1.5 credits.
+    expect((await h.balance(id)).credits_remaining).toBe(28);
+    const sent = JSON.parse(h.fetchCalls[0].init.body as string);
+    expect(sent.max_tokens).toBe(1500);
+  });
+
+  it("holds a prompt at about 3.5 bytes a token, not one token a byte", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [{ delta: { content: "x" } }] }));
+    const big = { messages: [{ role: "user", content: "a".repeat(90_000) }], max_tokens: 100 };
+    await (await h.ask(id, big)).text();
+    await h.settled();
+    // 90,000 bytes: 25,700 tokens x 0.1 + 100 x 0.5 per million is 0.0026 USD, 5.2 credits.
+    // At one token a byte it would be 18 credits.
+    const used = 30 - (await h.balance(id)).credits_remaining;
+    expect(used).toBeGreaterThanOrEqual(5);
+    expect(used).toBeLessThanOrEqual(6);
   });
 
   it("releases the hold and answers 503 when the OpenRouter key limit is reached", async () => {
@@ -289,6 +343,58 @@ describe("chat", () => {
     expect(h.fetchCalls).toHaveLength(0);
   });
 
+  it("refuses server tools, image parts and extra reasoning fields", async () => {
+    const h = harness();
+    const id = await h.install();
+    const bad: Record<string, unknown>[] = [
+      { tools: [{ type: "openrouter:web_search" }] },
+      { tools: [{ type: "function", function: { name: "a" } }, { type: "openrouter:advisor" }] },
+      { tools: "web_search" },
+      { tool_choice: { type: "openrouter:web_search" } },
+      { reasoning: { effort: "high", max_tokens: 50_000 } },
+      { reasoning: "high" },
+      {
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "image_url", image_url: { url: "https://example.com/x.png" } }],
+          },
+        ],
+      },
+      { messages: [{ role: "user", content: { type: "text" } }] },
+      { messages: ["hi"] },
+    ];
+    for (const extra of bad) {
+      const r = await h.ask(id, extra);
+      expect(r.status, JSON.stringify(extra)).toBe(400);
+      expect(((await r.json()) as any).error.type).toBe("bad_request");
+    }
+    expect(h.fetchCalls).toHaveLength(0);
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+  });
+
+  it("accepts function tools, text parts and an effort", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [] }, usageChunk(10, 10)));
+    const r = await h.ask(id, {
+      tools: [{ type: "function", function: { name: "recovery", parameters: {} } }],
+      tool_choice: "none",
+      reasoning: { effort: "low" },
+      messages: [
+        {
+          role: "system",
+          content: [{ type: "text", text: "s", cache_control: { type: "ephemeral" } }],
+        },
+        { role: "user", content: "hi" },
+        { role: "assistant", content: null, tool_calls: [] },
+        { role: "tool", tool_call_id: "c1", content: "{}" },
+      ],
+    });
+    expect(r.status).toBe(200);
+    await r.text();
+  });
+
   it("drops fields that are not on the allowlist", async () => {
     const h = harness();
     const id = await h.install();
@@ -311,6 +417,54 @@ describe("chat", () => {
     const r = await h.ask(id);
     expect(r.status).toBe(503);
     expect(((await r.json()) as any).error.type).toBe("coach_paused");
+  });
+
+  it("does not let a spent free budget pause a premium user", async () => {
+    const h = harness({ DAILY_BUDGET_V2_USD: "0.0001" });
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [] }, usageChunk(10_000, 1000)));
+    await (await h.ask(id)).text();
+    await h.settled();
+    expect((await h.ask(id)).status).toBe(503);
+
+    const { token, userId } = await h.login();
+    await post(h, sub(userId));
+    h.upstream(() => sse({ choices: [] }, usageChunk(10, 10)));
+    const r = await h.ask(token);
+    expect(r.status).toBe(200);
+    await r.text();
+  });
+
+  it("has an optional premium budget of its own", async () => {
+    const h = harness({ DAILY_BUDGET_V2_PREMIUM_USD: "0.0001" });
+    const { token, userId } = await h.login();
+    await post(h, sub(userId));
+    h.upstream(() => sse({ choices: [] }, usageChunk(10_000, 1000)));
+    await (await h.ask(token)).text();
+    await h.settled();
+    expect((await h.ask(token)).status).toBe(503);
+    // The free pool is not affected.
+    h.upstream(() => sse({ choices: [] }, usageChunk(10, 10)));
+    expect((await h.ask(await h.install())).status).toBe(200);
+  });
+
+  it("answers 502 and releases the hold when a JSON body breaks off", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.error(new Error("cut"));
+            },
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    const r = await h.ask(id, { stream: false });
+    expect(r.status).toBe(502);
+    expect((await h.balance(id)).credits_remaining).toBe(30);
   });
 
   it("does not depend on the /v1 budget", async () => {
@@ -404,6 +558,43 @@ describe("login", () => {
     expect(r.status).toBe(401);
   });
 
+  it("lets any live code sign in, so a flood of sends cannot lock the owner out", async () => {
+    const h = harness();
+    for (let i = 0; i < 3; i++) {
+      await h.call("/v2/auth/email/send", { json: { email: "a@example.com" } });
+    }
+    // The owner uses the first mail, not the newest.
+    const r = await h.call("/v2/auth/email/verify", {
+      json: { email: "a@example.com", code: h.mails[0].code },
+    });
+    expect(r.status).toBe(200);
+    // A used code does not work twice, and no other code works after the sign-in.
+    const again = await h.call("/v2/auth/email/verify", {
+      json: { email: "a@example.com", code: h.mails[2].code },
+    });
+    expect(again.status).toBe(401);
+  });
+
+  it("counts wrong tries against each code, so guessing stays capped", async () => {
+    const h = harness();
+    for (let i = 0; i < 3; i++) {
+      await h.call("/v2/auth/email/send", { json: { email: "a@example.com" } });
+    }
+    const right = h.mails[1].code;
+    const wrong = [right, h.mails[0].code, h.mails[2].code].every((c) => c !== "000000")
+      ? "000000"
+      : "000001";
+    for (let i = 0; i < 5; i++) {
+      await h.call("/v2/auth/email/verify", { json: { email: "a@example.com", code: wrong } });
+    }
+    const attempts = h.db.raw.prepare("SELECT attempts FROM login_code").all() as any[];
+    expect(attempts.every((a) => a.attempts === 5)).toBe(true);
+    const r = await h.call("/v2/auth/email/verify", {
+      json: { email: "a@example.com", code: right },
+    });
+    expect(r.status).toBe(401);
+  });
+
   it("limits codes per email and per address", async () => {
     const h = harness();
     for (let i = 0; i < 5; i++) {
@@ -429,6 +620,14 @@ describe("login", () => {
     expect(
       (await h.call("/v2/auth/email/send", { json: { email: "user0@example.com" } })).status,
     ).toBe(200);
+  });
+
+  it("limits verify tries per address", async () => {
+    const h = harness({ ISSUE: { limit: async () => ({ success: false }) } });
+    const r = await h.call("/v2/auth/email/verify", {
+      json: { email: "a@example.com", code: "123456" },
+    });
+    expect(r.status).toBe(429);
   });
 
   it("says so when no mail sender is set up", async () => {
@@ -765,6 +964,29 @@ describe("polar webhook", () => {
     err.mockRestore();
   });
 
+  it("records the event id only after the event is applied", async () => {
+    const h = harness();
+    const { userId } = await h.login();
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    h.db.raw.exec("ALTER TABLE entitlement RENAME TO entitlement_off");
+    expect((await post(h, sub(userId), { id: "evt_x" })).status).toBe(500);
+    expect(h.db.raw.prepare("SELECT * FROM webhook_event").all()).toHaveLength(0);
+    h.db.raw.exec("ALTER TABLE entitlement_off RENAME TO entitlement");
+    expect((await post(h, sub(userId), { id: "evt_x" })).status).toBe(200);
+    expect(h.db.raw.prepare("SELECT * FROM webhook_event").all()).toHaveLength(1);
+    err.mockRestore();
+  });
+
+  it("ends premium after the period end plus 2 days when no revoke arrives", async () => {
+    const h = harness();
+    const { userId } = await h.login();
+    const end = Date.now() + 86_400_000;
+    await post(h, sub(userId, { current_period_end: new Date(end).toISOString() }));
+    const env = h.env as any;
+    expect((await entitlementOf(env, userId, end + 86_400_000)).premium).toBe(true);
+    expect((await entitlementOf(env, userId, end + 2 * 86_400_000 + 1000)).premium).toBe(false);
+  });
+
   it("ignores event types it does not use", async () => {
     const h = harness();
     const r = await post(h, {
@@ -782,5 +1004,25 @@ describe("polar webhook", () => {
     await post(h, sub(userId));
     const r = await h.call("/v2/billing/checkout", { method: "POST", token });
     expect(r.status).toBe(409);
+  });
+});
+
+describe("network", () => {
+  it("names an IPv6 address by its /64 and leaves IPv4 alone", () => {
+    expect(networkOf("203.0.113.9")).toBe("203.0.113.9");
+    expect(networkOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe("2001:0db8:0001:0002");
+    expect(networkOf("2001:db8:1:2::5")).toBe("2001:0db8:0001:0002");
+    expect(networkOf("2001:DB8::1")).toBe("2001:0db8:0000:0000");
+    expect(networkOf("::1")).toBe("0000:0000:0000:0000");
+  });
+
+  it("counts two IPv6 hosts of one /64 as one network", async () => {
+    const h = harness();
+    const from = (ip: string) =>
+      h.call("/v2/install", { method: "POST", headers: { "CF-Connecting-IP": ip } });
+    for (let i = 0; i < 3; i++) {
+      expect((await from(`2001:db8:1:2::${i + 1}`)).status).toBe(200);
+    }
+    expect((await from("2001:db8:1:2:ffff::9")).status).toBe(429);
   });
 });

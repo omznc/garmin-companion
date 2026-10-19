@@ -36,11 +36,14 @@ async function plain<T>(cmd: string, args?: unknown): Promise<T> {
   }
 }
 
-// Keep the last balance on screen when the network is gone.
-export const useCloudAccount = (enabled: boolean) =>
+// Keep the last balance on screen when the network is gone. Only the coach page
+// passes `enrol`: it may ask the server for an install id. The Ask tab only
+// looks, so an app that is only open does not use up the daily install cap.
+// The result is null before the first enrol.
+export const useCloudAccount = (enabled: boolean, enrol = false) =>
   useQuery({
-    queryKey: ["cloudAccount"],
-    queryFn: () => plain<CloudAccount>("cloud_account"),
+    queryKey: ["cloudAccount", enrol],
+    queryFn: () => plain<CloudAccount | null>("cloud_account", { enrol }),
     enabled,
     retry: false,
     staleTime: 30_000,
@@ -48,8 +51,12 @@ export const useCloudAccount = (enabled: boolean) =>
 
 export const sendCode = (email: string) => plain("cloud_send_code", { email });
 
-export const verifyCode = (email: string, code: string) =>
-  plain<{ email: string }>("cloud_verify", { email, code });
+export const CODE_HINT = "Check the code. It has 6 digits.";
+
+export async function verifyCode(email: string, code: string): Promise<{ email: string }> {
+  if (!/^\d{6}$/.test(code)) throw new Error(CODE_HINT);
+  return plain<{ email: string }>("cloud_verify", { email, code });
+}
 
 export const signOutCloud = () => plain("cloud_sign_out");
 
