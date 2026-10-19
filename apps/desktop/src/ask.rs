@@ -5,7 +5,8 @@
 //! gpui has its own executor. The turn sends `garmin_coach::Event`s through a
 //! channel, and a task on the UI side applies them.
 //!
-//! Two sources. `Db` runs the real engine against a cache copy. `Demo` is the
+//! Three sources. `Db` runs the real engine against the data folder. `Copy` runs it
+//! against a database copy in a demo, with the hosted coach off. `Demo` is the
 //! default: it streams a canned answer and reads no data and calls no model, so
 //! the screen works with no setup.
 //!
@@ -47,13 +48,13 @@ const STICK_SLOP: f32 = 90.0;
 const COMPOSER_ROOM: f32 = 176.0;
 
 /// What a demo says in place of a call to the hosted coach.
-pub const CLOUD_OFF: &str = "The cloud coach is off in a demo. Choose another model.";
+pub const CLOUD_OFF: &str = "The cloud coach is off in a demo. Start the app with --coach ollama:<model> to use another model.";
 
 /// Where the answers come from.
 #[derive(Clone)]
 pub enum Source {
     Demo,
-    /// The cache copy that the tools read. The model setting lives in it too.
+    /// The cache that the tools read. The model setting lives in it too.
     Db(PathBuf),
     /// A copy of a database in a demo. The tools read it, but the hosted coach is off.
     Copy(PathBuf),
@@ -680,6 +681,16 @@ mod tests {
             let lower = q.to_lowercase();
             assert!(!lower.contains("run") && !lower.contains("cadence"), "{q}");
         }
+    }
+
+    #[test]
+    fn a_copy_refuses_the_cloud_provider() {
+        let path = std::env::temp_dir().join(format!("gc-ask-copy-{}.db", std::process::id()));
+        setup(&path, "cloud").unwrap();
+        let (tx, rx) = async_channel::unbounded();
+        run_on_thread(Source::Copy(path), vec![], tx, Arc::default());
+        let events: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(matches!(&events[..], [Event::Error { text }] if text == CLOUD_OFF));
     }
 
     #[test]

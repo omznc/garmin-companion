@@ -5,8 +5,8 @@
 //! comes back to the view through a channel. The view never sees a token: the
 //! core sends an `AccountView` with the sentences already built.
 //!
-//! In a persona demo nothing leaves the computer: the numbers are a sample, and
-//! the actions say so.
+//! In a demo (`--persona` or `--db`) nothing leaves the computer: the account
+//! section shows a note, and the actions say that they are off.
 
 use std::future::Future;
 use std::time::Duration;
