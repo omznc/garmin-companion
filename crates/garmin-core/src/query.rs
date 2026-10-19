@@ -968,7 +968,7 @@ fn route_groups(db: &Db, sort: RouteSort) -> Result<Vec<Route>> {
     let tracks: Vec<_> = db
         .track_headers()?
         .into_iter()
-        .filter(|t| t.point_count > 1)
+        .filter(|t| t.point_count > 1 && crate::sport::is_exercise(t.type_key.as_deref()))
         .collect();
 
     let mut groups: Vec<Vec<crate::db::ActivityTrack>> = Vec::new();

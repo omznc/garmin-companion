@@ -281,24 +281,24 @@
   "insights": [
     {
       "id": "duration",
-      "tone": "note",
-      "claim": "You're averaging 7h 29m a night.",
-      "detail": "That clears seven hours, but 0 of 31 nights didn't. The gap between a good week and a bad one here is bedtime, not wake time — the alarm doesn't move.",
-      "nights": 31
+      "tone": "good",
+      "claim": "You're averaging 7h 30m a night.",
+      "detail": "0 of 30 nights came in under seven hours, which is a normal amount of short nights rather than a pattern. Duration isn't the thing to work on.",
+      "nights": 30
     },
     {
       "id": "consistency",
       "tone": "good",
       "claim": "Your bedtime is steady: ±15 minutes around 22:39.",
       "detail": "That consistency is doing more for you than any single long night would. Wake time swings about as much, at ±26 min.",
-      "nights": 31
+      "nights": 30
     },
     {
       "id": "stages",
       "tone": "good",
       "claim": "Stage mix is fine: 18% deep, 22% REM.",
-      "detail": "Garmin flagged deep on 0 of 31 nights and REM on 0. There's nothing to chase here — stage percentages are mostly a consequence of total time asleep, not something to optimise directly.",
-      "nights": 31
+      "detail": "Garmin flagged deep on 0 of 30 nights and REM on 0. There's nothing to chase here — stage percentages are mostly a consequence of total time asleep, not something to optimise directly.",
+      "nights": 30
     }
   ]
 }

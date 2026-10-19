@@ -296,9 +296,14 @@ fn rate_stat(a: &CachedActivity) -> Option<Stat> {
     stat(label, rate_text(key, a.pace_min_per_km()?))
 }
 
+/// Walk, hike and every run type. Garmin also sends `virtual_run` and `ultra_run`.
+fn on_foot(type_key: Option<&str>) -> bool {
+    is_paced(type_key) || type_key.is_some_and(|k| k.contains("run"))
+}
+
 /// `5:30 /km` on foot, `24.5 km/h` on wheels, nothing for other sports.
 fn rate_text(type_key: Option<&str>, min_per_km: f64) -> Option<String> {
-    if is_paced(type_key) {
+    if on_foot(type_key) {
         Some(format!("{} /km", pace_text(min_per_km)))
     } else if is_wheeled(type_key) && min_per_km > 0.0 {
         Some(format!("{:.1} km/h", 60.0 / min_per_km))
@@ -308,7 +313,7 @@ fn rate_text(type_key: Option<&str>, min_per_km: f64) -> Option<String> {
 }
 
 fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
-    if is_paced(type_key) {
+    if on_foot(type_key) {
         Some("spm")
     } else if is_wheeled(type_key) {
         Some("rpm")
@@ -578,6 +583,8 @@ mod tests {
         assert!(stat_of(&run, "Speed").is_none());
         assert_eq!(cadence_unit(Some("mountain_biking")), Some("rpm"));
         assert_eq!(cadence_unit(Some("hiking")), Some("spm"));
+        assert_eq!(cadence_unit(Some("virtual_run")), Some("spm"));
+        assert!(rate_text(Some("ultra_run"), 5.0).is_some());
         assert_eq!(cadence_unit(Some("indoor_rowing")), None);
         assert_eq!(cadence_unit(Some("motorcycling_v2")), None);
         assert_eq!(rate_text(Some("indoor_rowing"), 2.0), None);

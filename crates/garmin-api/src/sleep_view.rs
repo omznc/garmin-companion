@@ -301,7 +301,13 @@ pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
         last_night,
         week: window(&by_date, WEEK, end),
         month: window(&by_date, MONTH, end),
-        insights: insights(&nights, &daily, &exercise),
+        insights: {
+            // The insights read the same 30 nights as the chart.
+            let first = date_key(end - chrono::Duration::days(MONTH as i64 - 1));
+            let nights: Vec<_> = nights.into_iter().filter(|n| n.date >= first).collect();
+            let daily: Vec<_> = daily.into_iter().filter(|d| d.date >= first).collect();
+            insights(&nights, &daily, &exercise)
+        },
     })
 }
 

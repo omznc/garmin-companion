@@ -185,10 +185,13 @@ pub struct Load {
 const LOAD_HISTORY_DAYS: i64 = 28;
 
 /// The last 7 days against the weekly average of the last 28. `None` until
-/// the oldest session is 28 days old.
-pub fn load(activities: &[CachedActivity], today: NaiveDate) -> Option<Load> {
-    let oldest = activities.iter().filter_map(date_of).min()?;
-    if (today - oldest).num_days() < LOAD_HISTORY_DAYS {
+/// the oldest synced day is 28 days old.
+pub fn load(
+    activities: &[CachedActivity],
+    oldest_day: Option<NaiveDate>,
+    today: NaiveDate,
+) -> Option<Load> {
+    if oldest_day.is_none_or(|d| (today - d).num_days() < LOAD_HISTORY_DAYS) {
         return None;
     }
     let acute = hours_in(activities, today, 7);
@@ -440,6 +443,10 @@ fn sections(
 pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError> {
     let from = date_key(today - Duration::days(YEAR - 1));
     let daily = db.daily_since(&from)?;
+    let oldest_day = daily
+        .iter()
+        .filter_map(|d| NaiveDate::parse_from_str(&d.date, "%Y-%m-%d").ok())
+        .min();
     let exercise: Vec<CachedActivity> = db
         .activities_since(&from)?
         .into_iter()
@@ -453,7 +460,7 @@ pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError
     found.retain(|f| runs || !RUN_ONLY.contains(&f.kind.as_str()));
 
     let shape = load_shape(&exercise, 12);
-    let extra: Vec<InsightItem> = load(&exercise, today)
+    let extra: Vec<InsightItem> = load(&exercise, oldest_day, today)
         .map(|l| load_item(&l, shape.as_deref()))
         .into_iter()
         .collect();
@@ -510,10 +517,11 @@ mod tests {
             act("2026-02-20", "golf", 180.0),
             act("2026-02-01", "golf", 30.0),
         ];
-        let l = load(&acts, today()).unwrap();
+        let old = NaiveDate::from_ymd_opt(2026, 2, 1);
+        let l = load(&acts, old, today()).unwrap();
         assert!((l.acute - 1.0).abs() < 1e-9 && (l.chronic - 1.0).abs() < 1e-9);
         assert_eq!(load_status(l.ratio), "steady");
-        assert!(load(&[], today()).is_none());
+        assert!(load(&[], old, today()).is_none());
     }
 
     #[test]
@@ -523,7 +531,12 @@ mod tests {
             act("2026-03-10", "running", 60.0),
             act("2026-03-05", "running", 60.0),
         ];
-        assert!(load(&acts, today()).is_none());
+        let first_week = NaiveDate::from_ymd_opt(2026, 3, 5);
+        assert!(load(&acts, first_week, today()).is_none());
+        assert!(load(&acts, None, today()).is_none());
+        // A user with a month of health data and a first session is a real rise.
+        let month = NaiveDate::from_ymd_opt(2026, 2, 5);
+        assert!(load(&acts, month, today()).is_some());
     }
 
     #[test]

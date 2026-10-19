@@ -163,7 +163,7 @@ fn headline(week: &Week, compare: &Compare) -> String {
         _ => None,
     };
     let share = hard_share(week);
-    if share.is_some_and(|(hard, ..)| hard <= 25.0) && week.runs().len() >= MIN_RUNS_FOR_NOTES {
+    if share.is_some_and(|(hard, ..)| hard <= 25.0) {
         "A week close to the 80/20 split".into()
     } else if prior.is_some_and(|p| p.duration_s > 0.0 && week.duration_s > p.duration_s * 1.25) {
         "A bigger week than the one before".into()

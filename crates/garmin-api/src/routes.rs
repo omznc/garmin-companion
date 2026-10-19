@@ -10,7 +10,7 @@ use crate::places::{km_text, Tile};
 use crate::text::{hours_minutes, short_date};
 use crate::ApiError;
 use garmin_core::query::{self, Route};
-use garmin_core::sport::{is_exercise, sport_label};
+use garmin_core::sport::sport_label;
 use garmin_core::Db;
 use serde::{Deserialize, Serialize};
 
@@ -181,9 +181,7 @@ fn notes_of(routes: &[Route], shown: &[RouteRow], total: usize) -> Vec<String> {
 }
 
 pub fn routes_view(db: &Db, sort: RouteSort) -> Result<RoutesView, ApiError> {
-    let mut all = query::routes(db, sort)?;
-    // A motorcycle or car trace is not a route that the user trains on.
-    all.retain(|r| is_exercise(r.type_key.as_deref()));
+    let all = query::routes(db, sort)?;
     if all.is_empty() {
         return Ok(RoutesView {
             empty: Some(empty_note()),
