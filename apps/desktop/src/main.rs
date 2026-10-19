@@ -46,6 +46,8 @@ mod theme;
 mod today;
 mod training;
 mod ui;
+mod update_ui;
+mod updater;
 mod wellness;
 
 use std::borrow::Cow;
@@ -217,6 +219,10 @@ fn empty_body() -> anyhow::Result<body::BodyData> {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    #[cfg(debug_assertions)]
+    if args.iter().any(|a| a == "--update-selftest") {
+        return updater::selftest();
+    }
     let Cli {
         palette,
         explicit_palette,
@@ -337,6 +343,7 @@ fn main() -> anyhow::Result<()> {
                     if start_sync {
                         root.start_sync(false, cx);
                     }
+                    root.watch_for_updates(cx);
                     root
                 })
             });

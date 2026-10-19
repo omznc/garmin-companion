@@ -432,6 +432,7 @@ impl Render for Root {
         if let Some(controls) = chrome::controls(window, &t) {
             root = root.child(controls);
         }
-        root.children(chrome::resize_handles(window))
+        root.children(crate::update_ui::banner(self, &t, cx))
+            .children(chrome::resize_handles(window))
     }
 }

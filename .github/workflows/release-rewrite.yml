@@ -107,7 +107,8 @@ jobs:
 
       - name: Build the app and the sign-in helper
         env:
-          # Settings shows this version (garmin-api, settings::APP_VERSION).
+          # Settings shows this version (garmin-api, settings::APP_VERSION). The
+          # self-updater compares it with latest.json. A build without it checks nothing.
           APP_VERSION: ${{ inputs.version }}
         run: cargo build --release -p garmin-companion-desktop -p garmin-companion-login --target ${{ matrix.target }}
 

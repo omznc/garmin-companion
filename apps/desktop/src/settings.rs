@@ -173,7 +173,8 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
             4,
             section(false, "About", t)
                 .child(prose(about, t))
-                .child(prose(&format!("Version {}.", view.version), t).mt(px(12.0))),
+                .child(prose(&format!("Version {}.", view.version), t).mt(px(12.0)))
+                .child(crate::update_ui::settings_row(root, t, cx)),
         ))
         .into_any_element()
 }

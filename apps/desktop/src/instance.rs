@@ -11,6 +11,7 @@
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const ADDR: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 47_653);
@@ -32,20 +33,70 @@ pub enum Claim {
     Off,
 }
 
+/// The updater sets this in the new process. The old copy may still hold the
+/// port for a moment, so the claim retries before it reads a busy port as a
+/// copy that runs.
+pub const RELAUNCH_ENV: &str = "GARMIN_COMPANION_RELAUNCHED";
+const RETRIES: u32 = 10;
+const RETRY_EVERY: Duration = Duration::from_millis(200);
+
+/// True while the serve thread holds the listener.
+static LISTENING: AtomicBool = AtomicBool::new(false);
+static CLOSE: AtomicBool = AtomicBool::new(false);
+
 pub fn claim() -> Claim {
-    match TcpListener::bind(ADDR) {
-        Ok(listener) => {
-            let (tx, rx) = async_channel::unbounded();
-            std::thread::spawn(move || serve(listener, tx));
-            Claim::First(rx)
+    let tries = if std::env::var_os(RELAUNCH_ENV).is_some() {
+        RETRIES
+    } else {
+        1
+    };
+    for attempt in 0..tries {
+        if attempt > 0 {
+            std::thread::sleep(RETRY_EVERY);
         }
-        Err(_) if tell_first() => Claim::Second,
-        Err(_) => Claim::Off,
+        if let Ok(listener) = TcpListener::bind(ADDR) {
+            let (tx, rx) = async_channel::unbounded();
+            CLOSE.store(false, Ordering::SeqCst);
+            LISTENING.store(true, Ordering::SeqCst);
+            std::thread::spawn(move || serve(listener, tx));
+            return Claim::First(rx);
+        }
+    }
+    if tries == 1 && tell_first() {
+        Claim::Second
+    } else {
+        Claim::Off
+    }
+}
+
+/// Give up the port and wait until it is free (at most one second). The
+/// updater calls this before it starts the new copy.
+pub fn release() {
+    if !LISTENING.load(Ordering::SeqCst) {
+        return;
+    }
+    CLOSE.store(true, Ordering::SeqCst);
+    // A connection wakes the accept call, so the serve thread sees the flag.
+    let _ = TcpStream::connect_timeout(&ADDR, WAIT);
+    for _ in 0..50 {
+        if !LISTENING.load(Ordering::SeqCst) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
 
 fn serve(listener: TcpListener, tx: async_channel::Sender<()>) {
+    serve_loop(&listener, &tx);
+    drop(listener);
+    LISTENING.store(false, Ordering::SeqCst);
+}
+
+fn serve_loop(listener: &TcpListener, tx: &async_channel::Sender<()>) {
     for mut stream in listener.incoming().flatten() {
+        if CLOSE.load(Ordering::SeqCst) {
+            return;
+        }
         let _ = stream.set_read_timeout(Some(WAIT));
         let expected = hello();
         let mut got = vec![0u8; expected.len()];
@@ -89,5 +140,17 @@ mod tests {
         friend.read_exact(&mut reply).unwrap();
         assert_eq!(reply, hello());
         assert!(rx.recv_blocking().is_ok());
+
+        // The close flag stops the thread, and the port is free to bind again.
+        // This stays in one test: the flag is shared.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, _rx) = async_channel::unbounded();
+        let thread = std::thread::spawn(move || serve(listener, tx));
+        CLOSE.store(true, Ordering::SeqCst);
+        let _ = TcpStream::connect(addr);
+        thread.join().unwrap();
+        CLOSE.store(false, Ordering::SeqCst);
+        TcpListener::bind(addr).unwrap();
     }
 }
