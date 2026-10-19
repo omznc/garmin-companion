@@ -4,7 +4,6 @@
 //   collect <bundle-dir> <target-triple> <version> <out-dir>
 //       Copy the updater bundles and their .sig files to plain file names.
 //       Copy the .dmg of a macOS target too. It has no .sig file.
-//       A missing .dmg is a warning, not an error.
 //   manifest <version> <repo> <notes-file> <in-dir> <out-file>
 //       Write the Tauri v2 latest.json from the .sig files in <in-dir>.
 //
@@ -22,11 +21,11 @@ const BUNDLES = {
   "aarch64-apple-darwin": [
     { find: /\.app\.tar\.gz$/, name: (v) => `garmin-companion_${v}_aarch64.app.tar.gz`, keys: ["darwin-aarch64", "darwin-aarch64-app"] },
     // For a new user. The updater does not read it, so it has no .sig and no key.
-    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_aarch64.dmg`, keys: [], sig: false, optional: true },
+    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_aarch64.dmg`, keys: [], sig: false },
   ],
   "x86_64-apple-darwin": [
     { find: /\.app\.tar\.gz$/, name: (v) => `garmin-companion_${v}_x64.app.tar.gz`, keys: ["darwin-x86_64", "darwin-x86_64-app"] },
-    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_x64.dmg`, keys: [], sig: false, optional: true },
+    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_x64.dmg`, keys: [], sig: false },
   ],
   "x86_64-unknown-linux-gnu": [
     { find: /\.AppImage$/, name: (v) => `garmin-companion_${v}_amd64.AppImage`, keys: ["linux-x86_64", "linux-x86_64-appimage"] },
@@ -59,10 +58,6 @@ export function collect(bundleDir, target, version, outDir) {
   const files = walk(bundleDir);
   for (const rule of rules) {
     const hits = files.filter((f) => rule.find.test(f));
-    if (rule.optional && hits.length === 0) {
-      console.warn(`warning: no ${rule.find} in ${bundleDir}, skipped`);
-      continue;
-    }
     if (hits.length !== 1) throw new Error(`expected one ${rule.find} in ${bundleDir}, found ${hits.length}`);
     const signed = rule.sig !== false;
     if (signed && !files.includes(`${hits[0]}.sig`)) throw new Error(`no .sig file for ${hits[0]}`);

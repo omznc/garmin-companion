@@ -89,7 +89,7 @@ time = "0.3"
 # the corners back means clipping them ourselves, which needs the window surface
 # behind them to be transparent, which on macOS needs this feature.
 #
-# The cost is that it rules out Mac App Store distribution. `release.yml` ships
+# The cost is that it rules out Mac App Store distribution. the release workflow ships
 # signed artifacts through GitHub releases, so nothing here depends on that
 # channel — but a future move to the store would have to give up either the
 # custom chrome or the rounded corners.
