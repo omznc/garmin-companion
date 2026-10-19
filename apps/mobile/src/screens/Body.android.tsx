@@ -1,5 +1,6 @@
 // Weight, Food and Strength on Android: Material 3 Expressive cards.
 // The core sends the text. This file draws the blocks of `data/body.ts`.
+import type { UseQueryResult } from "@tanstack/react-query";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
@@ -15,7 +16,8 @@ import {
   T,
   TileGrid,
 } from "../components/MdKit";
-import { type Block, type BodyKind, useBody } from "../data/body";
+import { RouteTrace, WearBar } from "../components/RouteTrace";
+import { type Block, type BodyKind, type BodyScreenData, useBody } from "../data/body";
 import { useMd } from "../theme/md";
 
 const MAX_BARS = 48;
@@ -75,17 +77,28 @@ function RowsBlock({ b }: { b: Extract<Block, { kind: "rows" }> }) {
       <SectionLabel>{b.title}</SectionLabel>
       <Group>
         {b.rows.map((r, i) => (
-          <ListRow
-            // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
-            key={`${r.key}-${i}`}
-            title={r.key}
-            supporting={r.sub}
-            trailing={
-              <T v="titleMedium" color={md.onSurfaceVariant}>
-                {r.value}
-              </T>
-            }
-          />
+          // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
+          <View key={`${r.key}-${i}`}>
+            <ListRow
+              title={r.key}
+              supporting={r.sub}
+              trailing={
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {r.trace?.length ? <RouteTrace points={r.trace} color={md.primary} /> : null}
+                  <T v="titleMedium" color={md.onSurfaceVariant}>
+                    {r.value}
+                  </T>
+                </View>
+              }
+            />
+            {r.bar ? (
+              <WearBar
+                fraction={r.bar.fraction}
+                color={r.bar.accent ? md.tertiary : md.primary}
+                track={md.surfaceContainerHighest}
+              />
+            ) : null}
+          </View>
         ))}
       </Group>
     </>
@@ -117,8 +130,11 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
-  const { data, error, refetch } = useBody(kind);
+type Query = Pick<UseQueryResult<BodyScreenData>, "data" | "error" | "refetch">;
+
+/** Any screen that is a list of blocks. */
+export function BlocksScreen({ title, query }: { title: string; query: Query }) {
+  const { data, error, refetch } = query;
   return (
     <LargeAppBarScreen title={title} back>
       {data ? (
@@ -133,4 +149,8 @@ export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
       {error ? <ErrorCard message={String(error)} onRetry={() => refetch()} /> : null}
     </LargeAppBarScreen>
   );
+}
+
+export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
+  return <BlocksScreen title={title} query={useBody(kind)} />;
 }

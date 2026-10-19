@@ -58,6 +58,20 @@ export function MoreHome() {
         ]
       : []),
   ];
+  const training: Row[] = [
+    row("Plan", "/more/plan", "list.bullet.clipboard.fill", "systemIndigo", {
+      icon: "event-note",
+      tone: "primary",
+    }),
+    row("Routes", "/more/routes", "map.fill", "systemGreen", {
+      icon: "route",
+      tone: "secondary",
+    }),
+    row("Gear", "/more/gear", "bag.fill", "systemBrown", {
+      icon: "hiking",
+      tone: "tertiary",
+    }),
+  ];
   const prefs: Row[] = [
     row(
       "Garmin account",
@@ -119,6 +133,7 @@ export function MoreHome() {
   return (
     <Page title="More" large>
       <Section title="Health">{draw(health)}</Section>
+      <Section title="Training">{draw(training)}</Section>
       <Section title="Settings">{draw(prefs)}</Section>
     </Page>
   );

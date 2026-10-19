@@ -1,10 +1,18 @@
 // Weight, Food and Strength on iOS: grouped lists, system colours, Dynamic Type.
 // The core sends the text. This file draws the blocks of `data/body.ts`.
+import type { UseQueryResult } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import type { ReactNode } from "react";
 import { ActivityIndicator, Button, PlatformColor, ScrollView, Text, View } from "react-native";
+import { RouteTrace, WearBar } from "../components/RouteTrace";
 import { TrendBars } from "../components/TrendBars";
-import { type Block, type BodyKind, useBody } from "../data/body";
+import {
+  type Block,
+  type BlockRow,
+  type BodyKind,
+  type BodyScreenData,
+  useBody,
+} from "../data/body";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -51,33 +59,48 @@ function Row({
   sub,
   accent,
   last,
+  trace,
+  bar,
 }: {
   left: string;
   right?: string;
   sub?: string;
   accent?: boolean;
   last?: boolean;
+  trace?: BlockRow["trace"];
+  bar?: BlockRow["bar"];
 }) {
   return (
     <View
       style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        minHeight: 44,
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderBottomWidth: last ? 0 : 0.5,
         borderBottomColor: separator,
       }}
     >
-      <View style={{ flexShrink: 1 }}>
-        <Text style={{ fontSize: 17, color: label }}>{left}</Text>
-        {sub ? <Text style={{ fontSize: 13, color: secondary }}>{sub}</Text> : null}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          minHeight: 44,
+        }}
+      >
+        <View style={{ flexShrink: 1 }}>
+          <Text style={{ fontSize: 17, color: label }}>{left}</Text>
+          {sub ? <Text style={{ fontSize: 13, color: secondary }}>{sub}</Text> : null}
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          {trace?.length ? <RouteTrace points={trace} color={tint} /> : null}
+          {right ? (
+            <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
+          ) : null}
+        </View>
       </View>
-      {right ? (
-        <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
+      {bar ? (
+        <WearBar fraction={bar.fraction} color={bar.accent ? tint : secondary} track={separator} />
       ) : null}
     </View>
   );
@@ -142,6 +165,8 @@ function BlockView({ b }: { b: Block }) {
               left={r.key}
               right={r.value}
               sub={r.sub}
+              trace={r.trace}
+              bar={r.bar}
               last={i === b.rows.length - 1}
             />
           ))}
@@ -159,8 +184,11 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
-  const { data, error, refetch } = useBody(kind);
+type Query = Pick<UseQueryResult<BodyScreenData>, "data" | "error" | "refetch">;
+
+/** Any screen that is a list of blocks. */
+export function BlocksScreen({ title, query }: { title: string; query: Query }) {
+  const { data, error, refetch } = query;
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
@@ -183,4 +211,8 @@ export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
       ) : null}
     </ScrollView>
   );
+}
+
+export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
+  return <BlocksScreen title={title} query={useBody(kind)} />;
 }

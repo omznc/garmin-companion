@@ -68,11 +68,20 @@ export type StrengthView = {
 
 export type BodyKind = "weight" | "food" | "strength";
 
+/** A row may carry the shape of a route, or a wear bar from 0 to 1. */
+export type BlockRow = {
+  key: string;
+  value: string;
+  sub?: string;
+  trace?: [number, number][];
+  bar?: { fraction: number; accent: boolean };
+};
+
 export type Block =
   | { kind: "text"; text: string; tone?: "lede" | "note" | "heading" }
   | { kind: "tiles"; tiles: { label: string; value: string; accent?: boolean }[] }
   | { kind: "chart"; title: string; values: number[]; from: string; to: string }
-  | { kind: "rows"; title: string; rows: { key: string; value: string; sub?: string }[] }
+  | { kind: "rows"; title: string; rows: BlockRow[] }
   | { kind: "empty"; title: string; body: string };
 
 export type BodyScreenData = { title: string; blocks: Block[] };
