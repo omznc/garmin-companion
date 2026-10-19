@@ -145,7 +145,7 @@
 
   <!-- Software centres read this as "what changed" and as the version they
        compare an installed copy against, so it has to be bumped alongside
-       `version` in tauri.conf.json — see RELEASING.md. -->
+       `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
     <release version="1.0.0" date="2026-10-19">
       <description>

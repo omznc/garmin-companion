@@ -106,7 +106,8 @@ code is `major * 1000000 + minor * 1000 + patch`.
 
 `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml` needs a new
 `<release>` entry for the version. The `check` job of the release workflow
-stops if the entry is missing.
+stops if the entry is missing. Set `version` in `apps/desktop/tauri.conf.json`
+to the same version. The `metadata` job of `ci.yml` reads that file.
 
 Artifacts:
 
@@ -216,9 +217,9 @@ bundle would look wrong in the meantime.
 ### The Android version code
 
 Google Play orders builds by `versionCode`, an integer, not by the version
-string. Tauri derives it as `major * 1000000 + minor * 1000 + patch`, so
-bumping the version in `tauri.conf.json` carries it along and there is nothing
-extra to remember. It only matters if you ever put this on Play; a sideloaded
+string. The release workflow derives it as
+`major * 1000000 + minor * 1000 + patch` from the version input, so there is
+nothing extra to remember. It only matters if you ever put this on Play; a sideloaded
 APK installs over an older one regardless.
 
 ### Why Windows is NSIS and not MSI

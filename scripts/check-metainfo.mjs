@@ -11,7 +11,8 @@
  *
  * That is the failure this exists to make loud. It runs in CI on every push,
  * so the mismatch shows up on the commit that caused it rather than on a
- * release page a week later.
+ * release page a week later. CI reads the version from
+ * `apps/desktop/tauri.conf.json`. The release workflow passes it as an argument.
  *
  * The prose in each entry stays hand-written on purpose. Software centres show
  * it to someone deciding whether to install, and a list of commit subjects —
