@@ -2,7 +2,11 @@
 // The core streams `ask` events through the bridge: delta, tool, done, error.
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { callJson, subscribe } from "./source";
+import { callJson, isSampleData, subscribe } from "./source";
+
+// Sample mode stores no secret, so the key field is hidden and this line takes its place.
+export const SAMPLE_KEY_NOTE =
+  "This build shows sample data. The coach key is saved only after you sign in.";
 
 export type Step = { callId: string; label: string; running: boolean; ok: boolean };
 export type Turn = { who: "you" | "coach"; text: string; steps: Step[]; error?: string };
@@ -113,6 +117,8 @@ export function needsSetup(config: CoachConfig | undefined): boolean {
 }
 
 export async function saveKey(key: string): Promise<void> {
+  // The bridge drops the key in sample mode. Saving would still flip the provider.
+  if (isSampleData()) return;
   await callJson("ask_save_config", { provider: "openrouter", key });
 }
 

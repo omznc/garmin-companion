@@ -16,7 +16,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { blocks, inline } from "../data/markdown";
 import { type CloudAccount, PREMIUM_LATER, useCloudAccount } from "../data/useCloud";
+import { isSampleData } from "../data/source";
 import {
+  SAMPLE_KEY_NOTE,
   type Step,
   type Turn,
   needsSetup,
@@ -159,6 +161,13 @@ function Setup({ theme, onSaved }: { theme: AskTheme; onSaved: () => void }) {
       setProblem((error as Error).message);
     }
   };
+  if (isSampleData()) {
+    return (
+      <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 21, marginTop: 28 }}>
+        {SAMPLE_KEY_NOTE}
+      </Text>
+    );
+  }
   return (
     <View style={{ gap: 10, marginTop: 28 }}>
       <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 21 }}>
