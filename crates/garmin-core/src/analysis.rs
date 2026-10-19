@@ -353,6 +353,17 @@ pub fn analyse(
     }
 }
 
+/// `spm` on foot, `rpm` on a bike, nothing for any other sport.
+pub fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
+    if is_paced(type_key) || type_key.is_some_and(|k| k.contains("run")) {
+        Some("spm")
+    } else if crate::sport::is_wheeled(type_key) {
+        Some("rpm")
+    } else {
+        None
+    }
+}
+
 /// Anything Garmin classifies as running or walking — the sports a pace, a
 /// cadence and a walk break all mean something for.
 pub fn is_paced(type_key: Option<&str>) -> bool {
@@ -814,7 +825,13 @@ fn highlights(
         cadence_highlights(activity, series, &mut out);
     }
     climb_highlight(activity, series, &mut out);
-    comparison_highlight(comparison, activity.duration_s, discipline, &mut out);
+    comparison_highlight(
+        comparison,
+        activity.duration_s,
+        discipline,
+        cadence_unit(type_key),
+        &mut out,
+    );
     if is_running(type_key) && !series.has_track() {
         out.push(Highlight::new(
             "no_gps",
@@ -1374,6 +1391,7 @@ fn comparison_highlight(
     comparison: Option<&Comparison>,
     duration_s: Option<f64>,
     discipline: Discipline,
+    cadence_unit: Option<&str>,
     out: &mut Vec<Highlight>,
 ) {
     let Some(c) = comparison else { return };
@@ -1488,7 +1506,7 @@ fn comparison_highlight(
         }
     }
 
-    if let (Some(delta), Some(avg)) = (c.cadence_delta, c.avg_cadence) {
+    if let (Some(delta), Some(avg), Some(unit)) = (c.cadence_delta, c.avg_cadence, cadence_unit) {
         if delta.abs() >= 6.0 {
             offer(
                 delta.abs() / 6.0,
@@ -1496,11 +1514,11 @@ fn comparison_highlight(
                     "vs_recent_cadence",
                     if delta > 0.0 { Tone::Good } else { Tone::Note },
                     format!(
-                        "Cadence {:.0} spm {} than usual",
+                        "Cadence {:.0} {unit} {} than usual",
                         delta.abs(),
                         if delta > 0.0 { "higher" } else { "lower" }
                     ),
-                    format!("Recent sessions of this sport averaged {avg:.0} spm."),
+                    format!("Recent sessions of this sport averaged {avg:.0} {unit}."),
                 ),
             );
         }
@@ -1860,6 +1878,36 @@ mod tests {
         assert_eq!(c.sessions, 1, "the later session is not a peer");
         assert_eq!(c.avg_cadence, Some(140.0));
         assert_eq!(c.cadence_delta, Some(10.0));
+    }
+
+    #[test]
+    fn a_ride_cadence_highlight_says_rpm() {
+        let c = Comparison {
+            sessions: 3,
+            avg_pace_min_km: None,
+            avg_hr: None,
+            avg_cadence: Some(80.0),
+            avg_percent_above_z2: None,
+            avg_duration_s: None,
+            pace_delta: None,
+            hr_delta: None,
+            cadence_delta: Some(12.0),
+            percent_above_z2_delta: None,
+        };
+        let text = |key: &str| {
+            let mut out = Vec::new();
+            comparison_highlight(
+                Some(&c),
+                None,
+                Discipline::Endurance,
+                cadence_unit(Some(key)),
+                &mut out,
+            );
+            out.iter().map(|h| format!("{h:?}")).collect::<String>()
+        };
+        assert!(text("cycling").contains("12 rpm"));
+        assert!(text("running").contains("12 spm"));
+        assert!(!text("motorcycling_v2").contains("Cadence"));
     }
 
     #[test]

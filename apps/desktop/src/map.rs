@@ -186,7 +186,7 @@ fn stats(a: &CachedActivity, discipline: Discipline) -> Vec<Stat> {
         positive(a.avg_hr).map(|v| ("Avg HR", format!("{v:.0}"))),
         positive(a.max_hr).map(|v| ("Max HR", format!("{v:.0}"))),
         positive(a.avg_cadence)
-            .zip(garmin_api::activities::cadence_unit(a.type_key.as_deref()))
+            .zip(garmin_core::analysis::cadence_unit(a.type_key.as_deref()))
             .map(|(c, unit)| ("Cadence", format!("{c:.0} {unit}"))),
         positive(a.aerobic_te).map(|t| ("Aerobic TE", format!("{t:.1}"))),
     ]
