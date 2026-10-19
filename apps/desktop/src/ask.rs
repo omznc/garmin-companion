@@ -46,12 +46,17 @@ const STICK_SLOP: f32 = 90.0;
 /// Room under the thread for the docked composer.
 const COMPOSER_ROOM: f32 = 176.0;
 
+/// What a demo says in place of a call to the hosted coach.
+pub const CLOUD_OFF: &str = "The cloud coach is off in a demo. Choose another model.";
+
 /// Where the answers come from.
 #[derive(Clone)]
 pub enum Source {
     Demo,
     /// The cache copy that the tools read. The model setting lives in it too.
     Db(PathBuf),
+    /// A copy of a database in a demo. The tools read it, but the hosted coach is off.
+    Copy(PathBuf),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,6 +175,12 @@ impl Ask {
             Source::Demo => {
                 self.cloud_on = true;
                 self.credits = Some(cloud::sample_account());
+                return;
+            }
+            Source::Copy(_) => {
+                // A demo makes no cloud call, so there are no credits to show.
+                self.cloud_on = false;
+                self.credits = None;
                 return;
             }
             Source::Db(path) => path.clone(),
@@ -319,19 +330,27 @@ fn run_on_thread(
                 let memory = || Db::open(std::path::Path::new(":memory:"));
                 let _ = garmin_coach::run_turn(&Demo, &sink, &stop, history, &memory).await;
             }
-            Source::Db(path) => real_turn(&path, history, &sink, &stop).await,
+            Source::Db(path) => real_turn(&path, false, history, &sink, &stop).await,
+            Source::Copy(path) => real_turn(&path, true, history, &sink, &stop).await,
         }
     });
 }
 
 async fn real_turn(
     path: &std::path::Path,
+    demo: bool,
     history: Vec<HistoryMessage>,
     sink: &ChannelSink,
     stop: &AtomicBool,
 ) {
     let open = || Db::open(path);
-    match open().and_then(|db| HttpTransport::from_config(&db)) {
+    let transport = open().and_then(|db| {
+        if demo && matches!(garmin_coach::load_config(&db)?.0, Some(Provider::Cloud)) {
+            anyhow::bail!("{CLOUD_OFF}");
+        }
+        HttpTransport::from_config(&db)
+    });
+    match transport {
         Ok(transport) => {
             let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open).await;
         }

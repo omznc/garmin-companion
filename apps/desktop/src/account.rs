@@ -16,6 +16,7 @@ use garmin_api::settings::{self, SettingsView, ThemeMode};
 use gpui::{App, Context, Window, WindowAppearance};
 
 use crate::cloud::Cloud;
+use crate::data::Source;
 use crate::field::Field;
 use crate::shell::Root;
 use crate::theme::Palette;
@@ -346,7 +347,8 @@ impl Root {
     /// screen until the new one arrives.
     pub fn reload_settings(&mut self, cx: &mut Context<Self>) {
         if self.account.demo {
-            self.account.settings = Some(demo_settings(self.account.mode));
+            let made_up = matches!(self.source, Source::Persona(_));
+            self.account.settings = Some(demo_settings(self.account.mode, made_up));
             return;
         }
         load_async(
@@ -390,11 +392,12 @@ pub(crate) fn load_async<T: Send + 'static>(
 }
 
 /// The Settings view of a demo run. It reads nothing from the machine.
-fn demo_settings(mode: ThemeMode) -> SettingsView {
+fn demo_settings(mode: ThemeMode, made_up: bool) -> SettingsView {
+    let (account_line, cache_line) = demo_lines(made_up);
     SettingsView {
         connected: true,
-        account_line: "Demo. The data on screen is made up.".into(),
-        cache_line: "Nothing is stored and nothing reaches Garmin.".into(),
+        account_line: account_line.into(),
+        cache_line: cache_line.into(),
         data_folder: None,
         importable_token_path: None,
         theme: mode,
@@ -403,10 +406,25 @@ fn demo_settings(mode: ThemeMode) -> SettingsView {
     }
 }
 
+/// The two Settings lines of a demo. A persona is made up. A `--db` copy is real.
+fn demo_lines(made_up: bool) -> (&'static str, &'static str) {
+    if made_up {
+        (
+            "Demo. The data on screen is made up.",
+            "Nothing is stored and nothing reaches Garmin.",
+        )
+    } else {
+        (
+            "Demo. This is a copy of a database.",
+            "Nothing is stored and nothing reaches Garmin.",
+        )
+    }
+}
+
 fn failed_settings(error: &str) -> SettingsView {
     SettingsView {
         account_line: format!("Settings could not load: {error}"),
-        ..demo_settings(ThemeMode::System)
+        ..demo_settings(ThemeMode::System, false)
     }
 }
 
@@ -471,6 +489,15 @@ fn ticket_from(stdout: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_copy_is_not_called_made_up() {
+        assert!(demo_lines(true).0.contains("made up"));
+        let (account, cache) = demo_lines(false);
+        assert!(!account.contains("made up"));
+        assert_eq!(account, "Demo. This is a copy of a database.");
+        assert_eq!(cache, "Nothing is stored and nothing reaches Garmin.");
+    }
 
     #[test]
     fn a_mode_picks_a_palette() {

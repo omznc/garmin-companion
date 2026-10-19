@@ -248,7 +248,7 @@ fn main() -> anyhow::Result<()> {
             Source::Default => ask::Source::Db(
                 garmin_core::db::default_path().context("could not locate a data directory")?,
             ),
-            Source::Db { path, .. } => ask::Source::Db(path.clone()),
+            Source::Db { path, .. } => ask::Source::Copy(path.clone()),
             Source::Persona(_) => ask::Source::Demo,
         },
         question,
