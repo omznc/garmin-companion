@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The window that the profile counts, in days.
-const WINDOW_DAYS: i64 = 56;
+pub(crate) const WINDOW_DAYS: i64 = 56;
 /// One session this recent is enough to make a family active.
 const RECENT_DAYS: i64 = 14;
 /// Below this many daily rows, the account is new.

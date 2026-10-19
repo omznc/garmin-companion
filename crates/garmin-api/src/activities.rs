@@ -14,8 +14,8 @@ use crate::derive::{above_z2_pct, has_zone_data};
 use crate::text::num;
 use crate::ApiError;
 use chrono::NaiveDate;
-use garmin_core::analysis::{self, Lap};
-use garmin_core::sport::{family, shows_zone_verdict, sport_label};
+use garmin_core::analysis::{self, is_paced, Lap};
+use garmin_core::sport::{family, is_wheeled, shows_zone_verdict, sport_label};
 use garmin_core::strength::{self, ExerciseSet};
 use garmin_core::{CachedActivity, Db, Family};
 use serde::{Deserialize, Serialize};
@@ -288,16 +288,51 @@ fn stat(label: &str, value: Option<String>) -> Option<Stat> {
     })
 }
 
-fn stats(a: &CachedActivity, endurance: bool) -> Vec<Stat> {
+/// How a session shows its rate: pace and spm on foot, km/h and rpm on a bike.
+/// Other sports show neither, because no unit is certain.
+fn rate_stat(a: &CachedActivity) -> Option<Stat> {
+    let key = a.type_key.as_deref();
+    let label = if is_wheeled(key) { "Speed" } else { "Pace" };
+    stat(label, rate_text(key, a.pace_min_per_km()?))
+}
+
+/// Walk, hike and every run type. Garmin also sends `virtual_run` and `ultra_run`.
+fn on_foot(type_key: Option<&str>) -> bool {
+    is_paced(type_key) || type_key.is_some_and(|k| k.contains("run"))
+}
+
+/// `5:30 /km` on foot, `24.5 km/h` on wheels, nothing for other sports.
+fn rate_text(type_key: Option<&str>, min_per_km: f64) -> Option<String> {
+    if on_foot(type_key) {
+        Some(format!("{} /km", pace_text(min_per_km)))
+    } else if is_wheeled(type_key) && min_per_km > 0.0 {
+        Some(format!("{:.1} km/h", 60.0 / min_per_km))
+    } else {
+        None
+    }
+}
+
+fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
+    if on_foot(type_key) {
+        Some("spm")
+    } else if is_wheeled(type_key) {
+        Some("rpm")
+    } else {
+        None
+    }
+}
+
+fn stats(a: &CachedActivity) -> Vec<Stat> {
     let secs = a.moving_duration_s.or(a.duration_s).filter(|s| *s > 0.0);
-    let pace = a.pace_min_per_km().filter(|_| endurance);
+    let cadence = cadence_unit(a.type_key.as_deref())
+        .and_then(|unit| a.avg_cadence.map(|c| format!("{} {unit}", num(c))));
     [
         stat(
             "Distance",
             a.distance_m.filter(|d| *d >= 100.0).map(km_text),
         ),
         stat("Time", secs.map(duration_text)),
-        stat("Pace", pace.map(|p| format!("{} /km", pace_text(p)))),
+        rate_stat(a),
         stat("Avg HR", a.avg_hr.map(|h| format!("{} bpm", num(h)))),
         stat("Max HR", a.max_hr.map(|h| format!("{} bpm", num(h)))),
         stat(
@@ -306,12 +341,7 @@ fn stats(a: &CachedActivity, endurance: bool) -> Vec<Stat> {
                 .filter(|e| *e > 0.0)
                 .map(|e| format!("{} m", num(e))),
         ),
-        stat(
-            "Cadence",
-            a.avg_cadence
-                .filter(|_| endurance)
-                .map(|c| format!("{} spm", num(c))),
-        ),
+        stat("Cadence", cadence),
         stat("Steps", a.steps.map(|s| num(s as f64))),
         stat("Calories", a.calories.map(|c| format!("{} kcal", num(c)))),
         stat("Aerobic TE", a.aerobic_te.map(|t| format!("{t:.1}"))),
@@ -343,12 +373,12 @@ fn zone_block(a: &CachedActivity) -> Option<ZoneBlock> {
     Some(ZoneBlock { rows, sentence })
 }
 
-fn lap_row(l: &Lap) -> LapRow {
+fn lap_row(l: &Lap, type_key: Option<&str>) -> LapRow {
     LapRow {
         label: format!("Lap {}", l.index),
         distance: l.distance_m.filter(|d| *d >= 10.0).map(km_text),
         time: l.duration_s.map(duration_text_exact),
-        pace: l.pace_min_km.map(|p| format!("{} /km", pace_text(p))),
+        pace: l.pace_min_km.and_then(|p| rate_text(type_key, p)),
         avg_hr: l.avg_hr.map(num),
     }
 }
@@ -478,12 +508,15 @@ pub fn activity_detail_view(
         sport_label: sport_label(a.type_key.as_deref()),
         family: fam,
         when,
-        stats: stats(&a, endurance),
+        stats: stats(&a),
         zones: zone_block(&a),
         laps: analysis
             .as_ref()
             .filter(|_| endurance)
-            .map(|x| x.laps.iter().map(lap_row).collect())
+            .map(|x| {
+                let key = a.type_key.as_deref();
+                x.laps.iter().map(|l| lap_row(l, key)).collect()
+            })
             .unwrap_or_default(),
         strength: strength_block(&sets),
         chart: analysis.as_ref().and_then(chart),
@@ -505,6 +538,56 @@ mod tests {
         assert_eq!(pace_text(5.5), "5:30");
         assert_eq!(duration_text_exact(332.0), "5:32");
         assert_eq!(exercise_name("BENCH_PRESS"), "Bench press");
+    }
+
+    fn session(key: &str) -> CachedActivity {
+        CachedActivity {
+            activity_id: 1,
+            name: None,
+            type_key: Some(key.into()),
+            start_time_local: None,
+            local_date: Some("2026-03-10".into()),
+            distance_m: Some(30_000.0),
+            duration_s: Some(3_600.0),
+            moving_duration_s: None,
+            avg_hr: None,
+            max_hr: None,
+            avg_cadence: Some(85.0),
+            calories: None,
+            elevation_gain: None,
+            steps: None,
+            aerobic_te: None,
+            anaerobic_te: None,
+            zone_secs: [0.0; 5],
+        }
+    }
+
+    fn stat_of(a: &CachedActivity, label: &str) -> Option<String> {
+        stats(a)
+            .into_iter()
+            .find(|s| s.label == label)
+            .map(|s| s.value)
+    }
+
+    #[test]
+    fn a_ride_shows_speed_and_rpm_and_a_run_shows_pace_and_spm() {
+        let ride = session("cycling");
+        assert_eq!(stat_of(&ride, "Speed").as_deref(), Some("30.0 km/h"));
+        assert!(stat_of(&ride, "Pace").is_none());
+        let run = session("running");
+        assert_eq!(stat_of(&run, "Pace").as_deref(), Some("2:00 /km"));
+        assert_eq!(stat_of(&run, "Cadence").as_deref(), Some("85 spm"));
+        assert_eq!(stat_of(&ride, "Cadence").as_deref(), Some("85 rpm"));
+        assert!(stat_of(&session("motorcycling_v2"), "Pace").is_none());
+        assert!(stat_of(&session("indoor_rowing"), "Cadence").is_none());
+        assert!(stat_of(&run, "Speed").is_none());
+        assert_eq!(cadence_unit(Some("mountain_biking")), Some("rpm"));
+        assert_eq!(cadence_unit(Some("hiking")), Some("spm"));
+        assert_eq!(cadence_unit(Some("virtual_run")), Some("spm"));
+        assert!(rate_text(Some("ultra_run"), 5.0).is_some());
+        assert_eq!(cadence_unit(Some("indoor_rowing")), None);
+        assert_eq!(cadence_unit(Some("motorcycling_v2")), None);
+        assert_eq!(rate_text(Some("indoor_rowing"), 2.0), None);
     }
 
     #[test]

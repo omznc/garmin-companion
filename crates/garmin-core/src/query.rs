@@ -726,7 +726,7 @@ fn slope_kg_per_day(points: &[WeightPoint]) -> Option<f64> {
 
 /// Weight, its trend, and what the food log says should have happened.
 pub fn weight(db: &Db, days: u32) -> Result<WeightReport> {
-    let today = chrono::Utc::now().date_naive();
+    let today = crate::today();
     let from = today - chrono::Duration::days(days.saturating_sub(1) as i64);
     let rows = db.weigh_ins_since(&from.format("%Y-%m-%d").to_string())?;
 
@@ -968,7 +968,7 @@ fn route_groups(db: &Db, sort: RouteSort) -> Result<Vec<Route>> {
     let tracks: Vec<_> = db
         .track_headers()?
         .into_iter()
-        .filter(|t| t.point_count > 1)
+        .filter(|t| t.point_count > 1 && crate::sport::is_exercise(t.type_key.as_deref()))
         .collect();
 
     let mut groups: Vec<Vec<crate::db::ActivityTrack>> = Vec::new();
