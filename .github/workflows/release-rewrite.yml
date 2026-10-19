@@ -243,7 +243,8 @@ jobs:
           "$BT/aapt2" dump badging "$APK" > badging.txt
           head -n 1 badging.txt
           # The old app: minSdk 24, arm64-v8a and armeabi-v7a.
-          grep -q "^sdkVersion:'24'" badging.txt
+          # Newer aapt2 writes minSdkVersion, older aapt2 writes sdkVersion.
+          grep -Eq "^(min)?[sS]dkVersion:'24'" badging.txt
           grep -q "native-code: 'arm64-v8a' 'armeabi-v7a'" badging.txt || grep -q "native-code: 'armeabi-v7a' 'arm64-v8a'" badging.txt
 
       # The same file that release.yml writes. The old app reads it to find a new APK.
