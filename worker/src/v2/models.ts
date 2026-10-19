@@ -15,6 +15,10 @@ export interface ModelProfile {
   maxBodyBytes: number;
   maxTokens: number;
   reasoning?: Record<string, unknown>;
+  /** A free model to try first. OpenRouter falls back to `slug` when it fails. */
+  free?: string;
+  /** OpenRouter provider routing. The client cannot set it. */
+  provider?: Record<string, unknown>;
 }
 
 export const PROFILES: Record<string, ModelProfile> = {
@@ -30,13 +34,17 @@ export const PROFILES: Record<string, ModelProfile> = {
     reasoning: { effort: "low" },
   },
   deepseek: {
-    slug: "deepseek/deepseek-v4.1-flash",
-    input: 0.06,
-    output: 0.12,
-    cacheRead: 0.0016,
+    // Relace prices, the cheapest endpoint on 2026-10-19.
+    slug: "deepseek/deepseek-v4.1-flash-1017",
+    free: "minimax/minimax-m3.1-flash:free",
+    input: 0.05,
+    output: 0.1,
+    cacheRead: 0.01,
     cacheWrite: 0,
     maxBodyBytes: 256_000,
     maxTokens: 8192,
+    // The cheapest endpoint, never one over the prices above, so the bill stays correct.
+    provider: { sort: "price", max_price: { prompt: 0.05, completion: 0.1 } },
   },
 };
 
@@ -71,13 +79,22 @@ export interface Usage {
   prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
 }
 
+/** The response may name the free model without its ":free" suffix. */
+const servedFree = (p: ModelProfile, served: string | undefined): boolean =>
+  !!p.free && !!served?.startsWith(p.free.split(":")[0]);
+
 /**
  * The cost in units from token counts, or null when the usage block is missing.
  * Not OpenRouter's `usage.cost`: with BYOK that field may not carry the
  * Anthropic price. Thinking tokens are inside completion_tokens.
  */
-export function costUnits(p: ModelProfile, usage: Usage | undefined): number | null {
+export function costUnits(
+  p: ModelProfile,
+  usage: Usage | undefined,
+  served?: string,
+): number | null {
   if (!usage || typeof usage.prompt_tokens !== "number") return null;
+  if (servedFree(p, served)) return 0;
   const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
   const written = usage.prompt_tokens_details?.cache_write_tokens ?? 0;
   const fresh = Math.max(0, usage.prompt_tokens - cached - written);

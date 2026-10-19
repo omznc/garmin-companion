@@ -77,11 +77,15 @@ async function fixtureTurn(sessionId: string, turnId: string, turn: Turn, emit: 
   const over = () => stopped || mine !== run || !inThread(sessionId, turn);
   const send = (payload: object) => emit({ ...payload, sessionId, turnId });
   const label = "Reading 14 days of recovery signals";
+  const note = "I will read your recovery first.";
+  send({ type: "delta", text: note });
+  send({ type: "note", text: note });
+  turn.steps = [{ kind: "note", callId: "note-0", label: note, running: false, ok: null }];
   const step = { callId: "fixture", label };
   send({ type: "tool", ...step, running: true, ok: true });
-  turn.steps = [{ ...step, running: true, ok: null }];
+  turn.steps = [...turn.steps, { ...step, running: true, ok: null }];
   await new Promise((r) => setTimeout(r, 400));
-  turn.steps = [{ ...step, running: false, ok: true }];
+  turn.steps = [...turn.steps.slice(0, 1), { ...step, running: false, ok: true }];
   send({ type: "tool", ...step, running: false, ok: true });
   for (const text of FIXTURE_ANSWER.split(/(?<= )/)) {
     if (over()) break;

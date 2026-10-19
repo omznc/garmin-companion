@@ -29,7 +29,7 @@ export default defineConfig({
 
       // --- /v2: the paid coach. See V2.md. ---
       // `haiku` or `deepseek`, from src/v2/models.ts. The swap is this one line.
-      MODEL_PROFILE: bindings.text("haiku"),
+      MODEL_PROFILE: bindings.text("deepseek"),
       // "true" stops free grants for anonymous installs. Keep it off until abuse shows.
       FREE_REQUIRES_LOGIN: bindings.text("false"),
       // A second guard on /v2 spend. The main limit is on the OpenRouter key.

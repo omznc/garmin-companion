@@ -240,6 +240,8 @@ impl Ask {
         };
         match event {
             Event::Delta { text } => turn.text.push_str(&text),
+            // The desktop has no trace of notes: it drops the narration.
+            Event::Note { .. } => turn.text.clear(),
             Event::Tool {
                 call_id,
                 label,

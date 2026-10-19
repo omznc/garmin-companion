@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlementOf } from "./billing";
 import { networkOf } from "./index";
 import { harness, signed, sse, usageChunk } from "./harness";
+import { costUnits, profileOf } from "./models";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -112,6 +113,72 @@ describe("chat", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("X-Credits-Remaining")).toBe("29");
     expect(((await r.json()) as any).choices[0].message.content).toBe("ok");
+  });
+
+  describe("a stream with no data line", () => {
+    const enc = new TextEncoder();
+    afterEach(() => vi.useRealTimers());
+
+    /** The upstream sends `parts` and stays open. Returns the way to end it. */
+    function open(h: ReturnType<typeof harness>, ...parts: string[]) {
+      let end = () => {};
+      h.upstream(
+        () =>
+          new Response(
+            new ReadableStream({
+              start(c) {
+                for (const part of parts) c.enqueue(enc.encode(part));
+                end = () => c.close();
+              },
+            }),
+            { headers: { "Content-Type": "text/event-stream" } },
+          ),
+      );
+      return () => end();
+    }
+
+    async function left(parts: string[], afterMs: number, how: "end" | "cancel") {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const h = harness();
+      const id = await h.install();
+      const end = open(h, ...parts);
+      const r = await h.ask(id);
+      vi.setSystemTime(Date.now() + afterMs);
+      if (how === "end") {
+        end();
+        await r.text();
+      } else {
+        await r.body?.cancel();
+      }
+      await h.settled();
+      return (await h.balance(id)).credits_remaining;
+    }
+
+    const keepalive = [": OPENROUTER PROCESSING\n\n"];
+
+    it("is free after 60 seconds, ended or cancelled", async () => {
+      expect(await left(keepalive, 61_000, "end")).toBe(30);
+      expect(await left([], 61_000, "cancel")).toBe(30);
+    });
+
+    it("is charged the estimate before 60 seconds", async () => {
+      expect(await left(keepalive, 5_000, "end")).toBe(25);
+      expect(await left([], 5_000, "cancel")).toBe(25);
+    });
+
+    it("still charges when the data hides in an odd format", async () => {
+      const chunk = '{"choices":[{"delta":{"content":"a"}}]}';
+      const late = 61_000;
+      // CRLF separators.
+      expect(await left([`data: ${chunk}\r\n\r\n`], late, "end")).toBe(25);
+      // The last event has no blank line after it.
+      expect(await left([`data: ${chunk}`], late, "end")).toBe(25);
+      // The content holds the word [DONE].
+      const done = '{"choices":[{"delta":{"content":"[DONE]"}}]}';
+      expect(await left([`data: ${done}\n\n`], late, "end")).toBe(25);
+      // The client leaves inside the first event.
+      expect(await left(['data: {"choices":[{"del'], late, "cancel")).toBe(25);
+    });
   });
 
   it("charges the estimate when the client leaves before the usage chunk", async () => {
@@ -329,9 +396,21 @@ describe("chat", () => {
     const r = await h.call("/v2/chat/completions", { token: id, body: bodyOf(150_000) });
     expect(r.status).toBe(200);
     await r.text();
-    expect(JSON.parse(h.fetchCalls[0].init.body as string).model).toBe(
-      "deepseek/deepseek-v4.1-flash",
-    );
+    const sent = JSON.parse(h.fetchCalls[0].init.body as string);
+    expect(sent.model).toBeUndefined();
+    expect(sent.models).toEqual([
+      "minimax/minimax-m3.1-flash:free",
+      "deepseek/deepseek-v4.1-flash-1017",
+    ]);
+    expect(sent.provider).toMatchObject({ sort: "price" });
+  });
+
+  it("charges nothing when the free model answered", () => {
+    const p = profileOf("deepseek");
+    const usage = { prompt_tokens: 100_000, completion_tokens: 8000 };
+    expect(costUnits(p, usage, "minimax/minimax-m3.1-flash:free")).toBe(0);
+    expect(costUnits(p, usage, "minimax/minimax-m3.1-flash")).toBe(0);
+    expect(costUnits(p, usage, "deepseek/deepseek-v4.1-flash-1017")).toBeGreaterThan(0);
   });
 
   it("rejects bad bodies and another model", async () => {
