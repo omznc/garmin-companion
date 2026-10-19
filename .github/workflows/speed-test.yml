@@ -89,7 +89,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/derived" \
             COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee "$RUNNER_TEMP/xb.log" | tail -n 0
-          grep -c 'ccache-clang' "$RUNNER_TEMP/xb.log" || true
+          for k in CompileC SwiftCompile CompileSwift SwiftDriver PhaseScriptExecution Ld CompileAssetCatalog; do echo "$k $(grep -c "^$k " "$RUNNER_TEMP/xb.log")"; done
+          grep -m1 -A12 '^CompileC ' "$RUNNER_TEMP/xb.log" | cut -c1-400 || true
+          grep -m1 -A3 'ccache-clang' "$RUNNER_TEMP/xb.log" | cut -c1-200 || true
           grep -m5 'ccache-clang' "$RUNNER_TEMP/xb.log" | cut -c1-300 || true
 
       # If the hit rate is zero, ccache is not in use.
