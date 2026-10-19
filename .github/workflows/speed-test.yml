@@ -83,6 +83,7 @@ jobs:
             cat > "$RUNNER_TEMP/ccache-$tool" <<EOF
           #!/bin/sh
           export CCACHE_BASEDIR="$GITHUB_WORKSPACE"
+          export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
           export CCACHE_SLOPPINESS=file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
           exec "$CCACHE" "$CLANG" "\$@"
           EOF
@@ -100,7 +101,7 @@ jobs:
       # If the hit rate is zero, ccache is not in use.
       - name: Show the ccache statistics
         if: always()
-        run: ccache -s
+        run: ccache -sv
 
       - name: Make the IPA and check it
         run: |
@@ -124,3 +125,7 @@ jobs:
           path: ios-out/
           if-no-files-found: error
 
+
+      - name: Show the ccache log
+        if: always()
+        run: grep -iE "unsupported|cannot|failed|not cacheable|too hard" "$RUNNER_TEMP/ccache.log" | cut -c1-200 | sed -E 's/^\[[^]]*\] //' | sort | uniq -c | sort -rn | head -10
