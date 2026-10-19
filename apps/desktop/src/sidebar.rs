@@ -94,9 +94,6 @@ struct Drag {
     to: usize,
 }
 
-/// How far the pointer must move from the press before a drag picks a new place.
-const DRAG_START_PX: f32 = 5.0;
-
 /// The context menu: the position of its entry and where the pointer was.
 #[derive(Clone, Copy)]
 struct Menu {
@@ -140,18 +137,16 @@ impl Shared {
     }
 
     /// The position that the dragged row at `from` takes with the pointer at
-    /// this window height. The held row is not counted, as in the old app.
-    /// Until the pointer moves `DRAG_START_PX` from the press, the row stays.
+    /// this window height. The centre of the held row moves with the pointer
+    /// from the press. It is compared with the centres of the other rows, as
+    /// in the old app. A press low in a row does not change the result.
     fn position_at(&self, y: f32, from: usize) -> usize {
-        if (y - self.press_y).abs() < DRAG_START_PX {
-            return from;
-        }
-        let y = y - self.origin_y;
+        let held = self.tops[from] + self.row_h / 2.0 + (y - self.press_y);
         let passed = self
             .tops
             .iter()
             .enumerate()
-            .filter(|(i, top)| *i != from && **top + self.row_h / 2.0 < y);
+            .filter(|(i, top)| *i != from && **top + self.row_h / 2.0 < held);
         passed.count().min(NAV.len() - 1)
     }
 }
@@ -818,23 +813,22 @@ mod tests {
             33.0,
             50.0,
         );
-        // The centre of slot k is 50 + 35 k + 16.5.
-        let lower = |k: usize| 50.0 + 35.0 * k as f32 + 25.0;
-        let upper = |k: usize| 50.0 + 35.0 * k as f32 + 8.0;
-        // The lower half of the held row gives the held row, after a real move.
-        shared.press_y = lower(0);
-        assert_eq!(shared.position_at(lower(0) + 3.0, 0), 0);
-        shared.press_y = lower(1);
-        assert_eq!(shared.position_at(lower(1) + 3.0, 1), 1);
-        assert_eq!(shared.position_at(lower(1) + 6.0, 1), 1);
-        // A downward drag into the lower half of slot k gives k.
-        shared.press_y = lower(0);
-        assert_eq!(shared.position_at(lower(2), 0), 2);
-        assert_eq!(shared.position_at(lower(5), 0), 5);
-        // An upward drag: the upper half of slot k gives k.
-        shared.press_y = lower(4);
-        assert_eq!(shared.position_at(upper(1), 4), 1);
-        assert_eq!(shared.position_at(upper(0), 4), 0);
+        // The rows are 35 apart. The centre of the held row follows the pointer.
+        // A small move, from any point of the row, gives the held row.
+        shared.press_y = 75.0;
+        assert_eq!(shared.position_at(78.0, 0), 0);
+        shared.press_y = 120.0;
+        assert_eq!(shared.position_at(126.0, 1), 1);
+        assert_eq!(shared.position_at(114.0, 1), 1);
+        // Down and up need the same distance: a little more than one pitch.
+        shared.press_y = 75.0;
+        assert_eq!(shared.position_at(75.0 + 36.0, 0), 1);
+        assert_eq!(shared.position_at(75.0 + 71.0, 0), 2);
+        assert_eq!(shared.position_at(75.0 + 176.0, 0), 5);
+        shared.press_y = 200.0;
+        assert_eq!(shared.position_at(200.0 - 36.0, 4), 3);
+        assert_eq!(shared.position_at(200.0 - 106.0, 4), 1);
+        assert_eq!(shared.position_at(200.0 - 141.0, 4), 0);
         assert_eq!(shared.position_at(5000.0, 0), NAV.len() - 1);
     }
 
@@ -888,6 +882,8 @@ mod tests {
         cx.simulate_mouse_down(at(0.0), MouseButton::Left, none);
         cx.simulate_mouse_move(at(1.5), MouseButton::Left, none);
         cx.simulate_mouse_move(at(3.0), MouseButton::Left, none);
+        // The drag is active now. This move runs the drag handler.
+        cx.simulate_mouse_move(at(3.5), MouseButton::Left, none);
         frame(cx);
         let shared = host.read_with(cx, |h, _| h.0.shared.clone());
         assert!(shared.borrow().drag.is_some(), "the drag did not start");
@@ -897,5 +893,12 @@ mod tests {
         }
         let order = host.read_with(cx, |h, _| h.0.order.clone());
         assert_eq!(order, (0..NAV.len()).collect::<Vec<_>>());
+    }
+
+    #[gpui::test]
+    fn measure_asks_for_a_frame(cx: &mut gpui::TestAppContext) {
+        let (_host, cx) = cx.add_window_view(|_, _| Host(Sidebar::new(true, &[])));
+        frame(cx);
+        assert!(cx.update(|window, cx| window.simulate_next_frame(cx)) > 0);
     }
 }

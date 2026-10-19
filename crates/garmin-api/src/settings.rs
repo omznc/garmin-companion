@@ -68,12 +68,20 @@ fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
         serde_json::to_string_pretty(&prefs).map_err(|e| ApiError::Internal(e.to_string()))?;
     paths::ensure_base_dir()?;
     let path = prefs_path()?;
-    // Write a temp file, then rename it, so a crash never leaves half a file.
+    // Write a temp file and flush it to disk, then rename it. A crash or a
+    // power loss never leaves half a file.
     let temp = path.with_extension("json.tmp");
-    std::fs::write(&temp, json)
+    write_synced(&temp, &json)
         .and_then(|()| std::fs::rename(&temp, &path))
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(prefs)
+}
+
+fn write_synced(path: &std::path::Path, data: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(data.as_bytes())?;
+    file.sync_all()
 }
 
 /// What the Settings screen draws.
