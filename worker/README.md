@@ -68,7 +68,7 @@ unchanged. The contract for the app is in [V2.md](V2.md).
   sessions, entitlements and webhook ids live in D1 (`migrations/`).
 - The model comes from `MODEL_PROFILE` (`haiku` or `deepseek`) in
   `src/v2/models.ts`. The body cap, prices and reasoning setting come from there.
-- Billing is Polar (sandbox for now). Set the secrets `POLAR_TOKEN` and
+- Billing is Polar (production). Set the secrets `POLAR_TOKEN` and
   `POLAR_WEBHOOK_SECRET`. The Polar webhook URL is `<worker>/v2/webhooks/polar`.
   Events: `subscription.created`, `.active`, `.updated`, `.canceled`,
   `.uncanceled`, `.revoked`, and `order.refunded`.
