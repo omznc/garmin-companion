@@ -49,8 +49,8 @@ jobs:
             ~/Library/Caches/ccache
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
-          key: ios-ccache-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
-          restore-keys: ios-ccache-${{ runner.arch }}-
+          key: ios-cc-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
+          restore-keys: ios-cc-${{ runner.arch }}-
 
       - name: Build the Rust bridge
         working-directory: apps/mobile
@@ -75,9 +75,23 @@ jobs:
         # The index store and the full debug symbols give no value in a CI build.
         run: |
           ccache -z
+          # Xcode gives no environment variables to the compilers. The wrapper
+          # scripts hold the settings and the path of ccache.
+          CCACHE="$(command -v ccache)"
+          for tool in clang clang++; do
+            CLANG="$(xcrun -f $tool)"
+            cat > "$RUNNER_TEMP/ccache-$tool" <<EOF
+          #!/bin/sh
+          export CCACHE_BASEDIR="$GITHUB_WORKSPACE"
+          export CCACHE_SLOPPINESS=file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+          exec "$CCACHE" "$CLANG" "\$@"
+          EOF
+            chmod +x "$RUNNER_TEMP/ccache-$tool"
+          done
           WORKSPACE="$(ls -d ios/*.xcworkspace)"
           SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
           xcodebuild -quiet -workspace "$WORKSPACE" -scheme "$SCHEME" \
+            CC="$RUNNER_TEMP/ccache-clang" CXX="$RUNNER_TEMP/ccache-clang++" \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/derived" \
             COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
