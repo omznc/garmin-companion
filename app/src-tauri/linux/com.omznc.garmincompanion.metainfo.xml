@@ -147,6 +147,15 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.1" date="2026-10-19">
+      <description>
+        <p>
+          You can reorder the sidebar and choose the screen the app opens on.
+          The phone app has a new icon, detail screens for each health
+          figure, and a fuller activity view.
+        </p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-10-19">
       <description>
         <p>
