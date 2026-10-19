@@ -42,6 +42,9 @@ pub(crate) enum StepKind {
     Tool,
     /// What the model said between two tool rounds.
     Note,
+    /// A kind from a newer build. Decode must not fail on it.
+    #[serde(other)]
+    Other,
 }
 
 fn is_tool(kind: &StepKind) -> bool {
@@ -445,6 +448,13 @@ mod tests {
         assert!(serde_json::to_string(&note)
             .unwrap()
             .contains(r#""kind":"note""#));
+    }
+
+    #[test]
+    fn a_step_kind_from_a_newer_build_still_decodes() {
+        let json = r#"{"kind":"chart","callId":"c","label":"l","running":false,"ok":null}"#;
+        let step: Step = serde_json::from_str(json).unwrap();
+        assert_eq!(step.kind, StepKind::Other);
     }
 
     #[test]

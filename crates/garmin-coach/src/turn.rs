@@ -146,10 +146,10 @@ async fn rounds<T: Transport>(
         }
 
         // This text was narration, not the answer. Say so before the tools run.
-        let narration = stream.content.trim();
-        if !narration.is_empty() {
+        // Whitespace sends an empty note: the host clears it from the answer.
+        if !stream.content.is_empty() {
             sink.emit(Event::Note {
-                text: narration.into(),
+                text: stream.content.trim().into(),
             });
         }
 
@@ -357,6 +357,18 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn whitespace_narration_still_sends_a_note_to_clear_it() {
+        let mock = Mock::new(&[&narrated_call("\n\n", "cache_status"), &text("Rest.")]);
+        let sink = Rec::default();
+        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
+            .await
+            .unwrap();
+        assert!(sink.events().contains(&Event::Note {
+            text: String::new()
+        }));
     }
 
     #[tokio::test]

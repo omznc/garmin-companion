@@ -71,14 +71,17 @@ impl TurnSink {
             Event::Note { text } => {
                 // The answer holds only the text of the round that just ended.
                 turn.answer.clear();
-                let n = turn.steps.len();
-                turn.steps.push(Step {
-                    kind: StepKind::Note,
-                    call_id: format!("note-{n}"),
-                    label: text.clone(),
-                    running: false,
-                    ok: None,
-                });
+                // A blank note only clears the answer: no empty row in the trace.
+                if !text.is_empty() {
+                    let n = turn.steps.len();
+                    turn.steps.push(Step {
+                        kind: StepKind::Note,
+                        call_id: format!("note-{n}"),
+                        label: text.clone(),
+                        running: false,
+                        ok: None,
+                    });
+                }
             }
             Event::Done { .. } => {
                 turn.status = if self.0.flag.load(Ordering::Relaxed) {
@@ -433,10 +436,10 @@ mod tests {
         assert_eq!(t["title"], "How did I sleep?");
         assert_eq!(t["turns"][0]["id"], "t-send:0");
         assert_eq!(t["turns"][0]["status"], "done");
-        assert!(t["turns"][0]["answer"]
-            .as_str()
-            .unwrap()
-            .contains("sample answer"));
+        // The narration moved to the trace: the stored answer is the final text only.
+        let answer = t["turns"][0]["answer"].as_str().unwrap();
+        assert!(answer.starts_with("This is a sample answer"));
+        assert!(!answer.contains("I will read your recovery"));
         // The first step is the note of the fixture, the second is the tool.
         assert_eq!(t["turns"][0]["steps"][0]["kind"], "note");
         assert_eq!(t["turns"][0]["steps"][1]["ok"], true);

@@ -50,6 +50,10 @@ pub struct HttpTransport {
     model: String,
     key: Option<String>,
     cloud: Option<CloudClient>,
+    /// How long the provider may take to start the answer.
+    headers: Duration,
+    /// How long a stream may go without a data event.
+    idle: Duration,
 }
 
 impl HttpTransport {
@@ -70,8 +74,9 @@ impl HttpTransport {
             ),
             _ => None,
         };
+        // No total timeout: a long answer streams for minutes.
         let http = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(180))
+            .connect_timeout(Duration::from_secs(15))
             .build()?;
         Ok(Self {
             http,
@@ -80,6 +85,8 @@ impl HttpTransport {
             model,
             key,
             cloud: None,
+            headers: HEADERS,
+            idle: IDLE,
         })
     }
 
@@ -92,6 +99,8 @@ impl HttpTransport {
             model: String::new(),
             key: None,
             cloud: Some(client),
+            headers: HEADERS,
+            idle: IDLE,
         }
     }
 
@@ -159,10 +168,10 @@ impl Transport for HttpTransport {
         };
         // Stop must work while the provider is slow to answer.
         let resp = tokio::select! {
-            r = request => r?,
+            r = tokio::time::timeout(self.headers, request) => r.map_err(|_| anyhow!(STALLED))??,
             () = stopped(stop) => return Ok(StreamResult::default()),
         };
-        read_stream(resp, sink, stop).await
+        read_events(resp.bytes_stream(), sink, stop, self.idle).await
     }
 
     fn caches_prompt(&self) -> bool {
@@ -173,16 +182,11 @@ impl Transport for HttpTransport {
 /// The longest wait for the next data event. A keepalive comment does not
 /// count: a queued model can send them for ever.
 const IDLE: Duration = Duration::from_secs(120);
+/// The longest wait for the first byte of the answer. A local model can need
+/// minutes to load before it replies.
+const HEADERS: Duration = Duration::from_secs(300);
 /// How often a silent wait looks at the stop flag.
 const TICK: Duration = Duration::from_millis(250);
-
-async fn read_stream(
-    resp: reqwest::Response,
-    sink: &dyn EventSink,
-    stop: &AtomicBool,
-) -> Result<StreamResult> {
-    read_events(resp.bytes_stream(), sink, stop, IDLE).await
-}
 
 async fn read_events<B, E>(
     mut stream: impl Stream<Item = Result<B, E>> + Unpin,
@@ -223,7 +227,7 @@ where
     }
 }
 
-const STALLED: &str = "The model stopped answering. Try again, or choose a different model.";
+const STALLED: &str = "The model stopped answering. Try again.";
 
 /// Wait until `stop` is set.
 async fn stopped(stop: &AtomicBool) {
@@ -237,6 +241,86 @@ mod tests {
     use super::*;
     use crate::turn::Event;
     use std::io;
+
+    use crate::cloud::{CloudClient, MemoryVault, Vault};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// A server that accepts a request and then says nothing, or only sends
+    /// the head of an event stream. It returns the base address.
+    async fn mute(head: Option<&'static str>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/v2", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 8192];
+                    let _ = sock.read(&mut buf).await;
+                    if let Some(head) = head {
+                        let _ = sock.write_all(head.as_bytes()).await;
+                    }
+                    std::future::pending::<()>().await;
+                });
+            }
+        });
+        base
+    }
+
+    fn cloud_at(base: &str, headers: Duration, idle: Duration) -> HttpTransport {
+        let vault = MemoryVault::default();
+        vault.save_install_id("install-1").unwrap();
+        let mut t = HttpTransport::cloud(CloudClient::new(base, std::sync::Arc::new(vault)));
+        (t.headers, t.idle) = (headers, idle);
+        t
+    }
+
+    const MSG: [Value; 1] = [Value::Null];
+
+    #[tokio::test]
+    async fn a_provider_that_never_answers_ends_at_the_header_deadline() {
+        let t = cloud_at(&mute(None).await, Duration::from_millis(300), IDLE);
+        let stop = AtomicBool::new(false);
+        let out = tokio::time::timeout(
+            Duration::from_secs(5),
+            t.complete(&MSG, None, None, &Quiet, &stop),
+        )
+        .await
+        .expect("the request must end");
+        assert_eq!(out.unwrap_err().to_string(), STALLED);
+    }
+
+    #[tokio::test]
+    async fn stop_before_the_first_byte_returns_at_once() {
+        let t = cloud_at(&mute(None).await, Duration::from_secs(60), IDLE);
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            flag.store(true, Ordering::Relaxed);
+        });
+        let start = Instant::now();
+        let out = t.complete(&MSG, None, None, &Quiet, &stop).await.unwrap();
+        assert!(out.content.is_empty());
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn a_silent_cloud_stream_gives_the_stalled_text() {
+        let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n\
+                    transfer-encoding: chunked\r\n\r\n";
+        let t = cloud_at(&mute(Some(head)).await, HEADERS, Duration::from_millis(300));
+        let stop = AtomicBool::new(false);
+        let out = tokio::time::timeout(
+            Duration::from_secs(5),
+            t.complete(&MSG, None, None, &Quiet, &stop),
+        )
+        .await
+        .expect("the stream must end");
+        assert_eq!(out.unwrap_err().to_string(), STALLED);
+    }
 
     struct Quiet;
     impl EventSink for Quiet {

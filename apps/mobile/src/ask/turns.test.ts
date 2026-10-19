@@ -147,3 +147,10 @@ test("a note moves the round text out of the answer and into the steps", () => {
   const rows = historyFor([{ ...t, status: "done" }], "next");
   assert.equal(rows[1]?.content, "Rest today.");
 });
+
+test("a blank note clears the answer and adds no row", () => {
+  let t = startLive("s", 0, "q").turn;
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "delta", text: "\n\n" });
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "note", text: "" });
+  assert.deepEqual([t.answer, t.steps.length], ["", 0]);
+});

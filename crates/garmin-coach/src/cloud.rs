@@ -402,14 +402,15 @@ impl CloudClient {
     pub fn new(base: &str, vault: Arc<dyn Vault>) -> Self {
         Self {
             http: reqwest::Client::builder()
-                // No total timeout: a long answer streams for minutes. A dead
-                // connection stops the read.
+                // No total timeout: a long answer streams for minutes. The read
+                // limit is above the idle limit of a stream, which ends the
+                // turn first with its own text.
                 .default_headers(reqwest::header::HeaderMap::from_iter([(
                     reqwest::header::HeaderName::from_static("x-client-version"),
                     reqwest::header::HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
                 )]))
                 .connect_timeout(Duration::from_secs(15))
-                .read_timeout(Duration::from_secs(90))
+                .read_timeout(Duration::from_secs(150))
                 .build()
                 .unwrap_or_default(),
             base: base.trim_end_matches('/').into(),
