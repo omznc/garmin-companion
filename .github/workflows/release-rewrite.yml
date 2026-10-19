@@ -345,11 +345,6 @@ jobs:
       contents: read
     env:
       APP_VERSION: ${{ inputs.version }}
-      # The Podfile of Expo starts the compilers through ccache (ios.ccacheEnabled).
-      CCACHE_DIR: /Users/runner/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPILERCHECK: content
-      CCACHE_MAXSIZE: 1G
     steps:
       - uses: actions/checkout@v7
 
@@ -379,16 +374,19 @@ jobs:
         run: brew install ccache
 
       # ccache keeps the object files of the C++ and Objective-C code of the pods.
+      # The Podfile of Expo starts the compilers through ccache (ios.ccacheEnabled).
+      # Xcode does not pass variables like CCACHE_DIR to the compilers, so
+      # ccache uses its default folder on macOS.
       # CocoaPods keeps the downloaded pod sources and the spec repository.
       - name: Restore the ccache and CocoaPods folders
         uses: actions/cache@v6
         with:
           path: |
-            ~/.ccache
+            ~/Library/Caches/ccache
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
-          key: ios-pods-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
-          restore-keys: ios-pods-${{ runner.arch }}-
+          key: ios-ccache-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
+          restore-keys: ios-ccache-${{ runner.arch }}-
 
       - name: Build the Rust bridge
         working-directory: apps/mobile
