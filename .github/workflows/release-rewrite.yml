@@ -289,6 +289,9 @@ jobs:
   ios:
     needs: check
     runs-on: macos-latest
+    # This job runs third-party install scripts. It needs no write access.
+    permissions:
+      contents: read
     env:
       APP_VERSION: ${{ inputs.version }}
     steps:
@@ -319,6 +322,10 @@ jobs:
       - name: Build the Rust bridge
         working-directory: apps/mobile
         # The device slice only. The simulator slices are not in the IPA.
+        # The C code (sqlite, zstd) must target the iOS version of the app.
+        # Without this value cc-rs uses the SDK version, and a newer Xcode breaks the link.
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "16.4"
         run: pnpm bridge:ios --targets aarch64-apple-ios
 
       - name: Make the iOS project

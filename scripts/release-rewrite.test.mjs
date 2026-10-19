@@ -36,6 +36,12 @@ test("manifest has every platform key and the full signature", () => {
   assert.ok(!Number.isNaN(Date.parse(m.pub_date)));
 });
 
+test("manifest ignores the unsigned iOS IPA", () => {
+  const dir = dirWith([...FILES, `garmin-companion_${V}_unsigned.ipa`]);
+  const urls = Object.values(buildManifest(V, "o/r", "n", dir).platforms).map((p) => p.url);
+  assert.ok(urls.every((u) => !u.endsWith(".ipa")));
+});
+
 test("manifest refuses a missing platform", () => {
   assert.throws(() => buildManifest(V, "o/r", "n", dirWith(FILES.slice(0, 3))), /missing platform/);
 });
