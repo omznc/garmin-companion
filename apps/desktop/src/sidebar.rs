@@ -1,20 +1,24 @@
 //! The sidebar: the nav list, the lit entry that slides between rows, and the
 //! sync and theme controls. From `app/src/components/Sidebar.tsx`.
 //!
-//! Only the order of the entries and the sliding highlight are ported. Drag to
-//! reorder and the context menu come with the later phases.
+//! The user orders the entries by drag or by the right-click menu. The entry at
+//! the top is the screen the app opens on. The keyboard moves of the old
+//! sidebar are not ported.
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Instant;
 
 use gpui::{
-    div, prelude::*, px, relative, BoxShadow, ClickEvent, Context, Div, FontWeight, SharedString,
-    TextTransform, Window,
+    anchored, deferred, div, point, prelude::*, px, relative, AnyElement, Bounds, BoxShadow,
+    ClickEvent, Context, Div, DragMoveEvent, FontWeight, MouseButton, Pixels, Point, Render,
+    SharedString, TextTransform, Window,
 };
 
 use crate::icons::{icon, icon_hover, Icon};
 use crate::scroll::SmoothScroll;
 use crate::spring::{Spring, SETTLE};
-use crate::theme::{Theme, FS_MD};
+use crate::theme::{Theme, FS_MD, FS_SMALL};
 use crate::ui::SANS;
 
 pub const SIDEBAR_W: f32 = 228.0;
@@ -24,6 +28,8 @@ const ROW_H: f32 = 16.0 * 1.2 + 14.0;
 const GAP: f32 = 2.0;
 /// The divider under the first entry: its rule, and the 7px and 8px around it.
 const DIVIDE_H: f32 = 16.0;
+/// The width of the list, and so of an entry.
+const LIST_W: f32 = 188.0;
 
 /// The entries in the shipped order.
 pub const NAV: [(&str, Icon); 15] = [
@@ -44,15 +50,107 @@ pub const NAV: [(&str, Icon); 15] = [
     ("Settings", Icon::NavSettings),
 ];
 
-/// Where an entry rests inside the list, from the list's top edge.
-fn row_top(index: usize) -> f32 {
+/// Where a row rests by the stylesheet's numbers, from the list's top edge. The
+/// sidebar uses this only until it has measured the real rows.
+fn row_top(position: usize) -> f32 {
     let pitch = ROW_H + GAP;
     // The first entry has the divider after it, and the divider has its own gap.
-    index as f32 * pitch + if index > 0 { DIVIDE_H + GAP } else { 0.0 }
+    position as f32 * pitch + if position > 0 { DIVIDE_H + GAP } else { 0.0 }
+}
+
+/// The saved key of an entry. It stays the same when the order changes.
+fn key_of(nav: usize) -> String {
+    NAV[nav].0.to_lowercase()
+}
+
+/// The entries in the order of the saved keys. An unknown or repeated key is
+/// dropped. An entry that the keys miss goes last, so a new screen never takes
+/// over as the default.
+fn order_from_keys(keys: &[String]) -> Vec<usize> {
+    let mut order = Vec::with_capacity(NAV.len());
+    for key in keys {
+        let found = (0..NAV.len()).find(|&i| key_of(i) == *key);
+        if let Some(i) = found.filter(|i| !order.contains(i)) {
+            order.push(i);
+        }
+    }
+    let missing: Vec<usize> = (0..NAV.len()).filter(|i| !order.contains(i)).collect();
+    order.extend(missing);
+    order
+}
+
+/// The order with the entry at `from` put at `to`.
+fn moved(order: &[usize], from: usize, to: usize) -> Vec<usize> {
+    let mut next = order.to_vec();
+    let entry = next.remove(from);
+    next.insert(to, entry);
+    next
+}
+
+/// A drag in progress, by position in the order.
+#[derive(Clone, Copy)]
+struct Drag {
+    from: usize,
+    to: usize,
+}
+
+/// The context menu: the position of its entry and where the pointer was.
+#[derive(Clone, Copy)]
+struct Menu {
+    position: usize,
+    at: Point<Pixels>,
+}
+
+/// What the event handlers of the list write. `tick` reads it each frame.
+#[derive(Default)]
+struct Shared {
+    /// Where each row rests, from the first row, as the layout puts it.
+    /// Empty until the first paint.
+    tops: Vec<f32>,
+    row_h: f32,
+    /// Where the first row is in the window, for the pointer.
+    origin_y: f32,
+    drag: Option<Drag>,
+    menu: Option<Menu>,
+    /// A move to apply: the position it starts at, and where it ends.
+    command: Option<(usize, usize)>,
+}
+
+impl Shared {
+    /// Keep the measured rows. True when the rows moved, so the view must draw again.
+    fn store_rows(&mut self, tops: Vec<f32>, row_h: f32, origin_y: f32) -> bool {
+        self.origin_y = origin_y;
+        let same = self.tops.len() == tops.len()
+            && self
+                .tops
+                .iter()
+                .zip(&tops)
+                .all(|(a, b)| (a - b).abs() < 0.01)
+            && (self.row_h - row_h).abs() < 0.01;
+        if !same {
+            self.tops = tops;
+            self.row_h = row_h;
+        }
+        !same
+    }
+
+    /// The position that a pointer at this window height is over.
+    fn position_at(&self, y: f32) -> usize {
+        let y = y - self.origin_y;
+        let passed = self.tops.iter().filter(|top| **top + self.row_h / 2.0 < y);
+        passed.count().min(NAV.len() - 1)
+    }
 }
 
 pub struct Sidebar {
+    /// The lit entry, as an index into `NAV`.
     pub active: usize,
+    /// The entries in the user's order, as indices into `NAV`.
+    order: Vec<usize>,
+    shared: Rc<RefCell<Shared>>,
+    /// How far each entry is drawn from its row, by index into `NAV`. A
+    /// moved entry springs to zero.
+    shift: Vec<Spring>,
     /// How far the lit entry's ground is from its row. It springs to zero.
     pill: Spring,
     last_tick: Option<Instant>,
@@ -62,13 +160,54 @@ pub struct Sidebar {
 }
 
 impl Sidebar {
-    pub fn new(reduced_motion: bool) -> Self {
+    /// `keys` is the saved order. The app starts on the first entry of it.
+    pub fn new(reduced_motion: bool, keys: &[String]) -> Self {
+        let order = order_from_keys(keys);
         Self {
-            active: 0,
+            active: order[0],
+            order,
+            shared: Rc::default(),
+            shift: vec![Spring::new(SETTLE); NAV.len()],
             pill: Spring::new(SETTLE),
             last_tick: None,
             scroll: SmoothScroll::new(reduced_motion),
             reduced_motion,
+        }
+    }
+
+    /// The keys to save, in the order of the list.
+    pub fn keys(&self) -> Vec<String> {
+        self.order.iter().map(|&i| key_of(i)).collect()
+    }
+
+    fn position(&self, nav: usize) -> usize {
+        self.order.iter().position(|&i| i == nav).unwrap_or(0)
+    }
+
+    /// Where a row rests: as measured, or by the stylesheet before the first paint.
+    fn top_of(&self, position: usize) -> f32 {
+        let shared = self.shared.borrow();
+        shared
+            .tops
+            .get(position)
+            .copied()
+            .unwrap_or_else(|| row_top(position))
+    }
+
+    fn row_height(&self) -> f32 {
+        let h = self.shared.borrow().row_h;
+        if h > 0.0 {
+            h
+        } else {
+            ROW_H
+        }
+    }
+
+    /// The entry that opens when the app starts. A drag shows where it would end.
+    fn default_nav(&self) -> usize {
+        match self.shared.borrow().drag {
+            Some(d) => moved(&self.order, d.from, d.to)[0],
+            None => self.order[0],
         }
     }
 
@@ -79,9 +218,10 @@ impl Sidebar {
         }
         // Start from where the ground is drawn now, so a second click mid-slide
         // continues from the current position.
-        let drawn_top = row_top(self.active) + self.pill.x;
+        let drawn_top = self.pill_top();
         self.active = index;
-        self.pill.set(drawn_top - row_top(index));
+        let rest = self.pill_top() - self.pill.x;
+        self.pill.set(drawn_top - rest);
         if self.reduced_motion {
             self.pill.set(0.0);
         } else {
@@ -90,12 +230,67 @@ impl Sidebar {
         self.last_tick = None;
     }
 
-    /// Advance the spring. Ask for another frame while it moves.
-    pub fn tick(&mut self, window: &mut Window) {
-        self.scroll.tick(window);
-        if !self.pill.is_moving() {
-            self.last_tick = None;
+    /// Put the entry at position `from` at position `to`. The rows keep the
+    /// place they are drawn at and glide to the new place. True when the order changed.
+    fn apply_move(&mut self, from: usize, to: usize) -> bool {
+        if from == to || from >= self.order.len() || to >= self.order.len() {
+            return false;
+        }
+        let next = moved(&self.order, from, to);
+        for (new, &nav) in next.iter().enumerate() {
+            let shift = self.top_of(self.position(nav)) - self.top_of(new);
+            let spring = &mut self.shift[nav];
+            spring.x += shift;
+            spring.target = 0.0;
+            if self.reduced_motion {
+                spring.set(0.0);
+            }
+        }
+        self.order = next;
+        self.last_tick = None;
+        true
+    }
+
+    /// Take in what the handlers wrote since the last frame.
+    fn take_gestures(&mut self, dragging: bool) -> bool {
+        let command = {
+            let mut shared = self.shared.borrow_mut();
+            // The pointer was let go, maybe outside the window: the drag ends here.
+            if !dragging {
+                if let Some(d) = shared.drag.take() {
+                    shared.command = Some((d.from, d.to));
+                }
+            }
+            shared.command.take()
+        };
+        command.is_some_and(|(from, to)| self.apply_move(from, to))
+    }
+
+    /// During a drag, send each row to the place that a release would leave it in.
+    fn aim_rows(&mut self) {
+        let Some(d) = self.shared.borrow().drag else {
             return;
+        };
+        for (new, &nav) in moved(&self.order, d.from, d.to).iter().enumerate() {
+            let target = self.top_of(new) - self.top_of(self.position(nav));
+            if self.reduced_motion {
+                self.shift[nav].set(target);
+            } else {
+                self.shift[nav].to(target);
+            }
+        }
+    }
+
+    /// Advance the springs. Ask for another frame while one moves.
+    /// `dragging` is true while a drag is in flight. True when the order changed.
+    pub fn tick(&mut self, window: &mut Window, dragging: bool) -> bool {
+        self.scroll.tick(window);
+        let changed = self.take_gestures(dragging);
+        self.aim_rows();
+        let moving = self.pill.is_moving() || self.shift.iter().any(Spring::is_moving);
+        if !moving {
+            self.last_tick = None;
+            return changed;
         }
         let now = Instant::now();
         let dt = self
@@ -103,11 +298,15 @@ impl Sidebar {
             .map_or(1.0 / 60.0, |t| now.duration_since(t).as_secs_f32());
         self.last_tick = Some(now);
         self.pill.step(dt);
+        for spring in &mut self.shift {
+            spring.step(dt);
+        }
         window.request_animation_frame();
+        changed
     }
 
     fn pill_top(&self) -> f32 {
-        row_top(self.active) + self.pill.x
+        self.top_of(self.position(self.active)) + self.shift[self.active].x + self.pill.x
     }
 }
 
@@ -132,21 +331,74 @@ fn quiet_row(t: &Theme) -> Div {
         .text_color(t.faint)
 }
 
+/// The hairline lift under the lit row and under a row in hand.
+fn lift(t: &Theme) -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color: t.shadow,
+        offset: point(px(0.0), px(1.0)),
+        blur_radius: px(2.0),
+        spread_radius: px(0.0),
+        inset: false,
+    }]
+}
+
+/// What a drag carries: the entry, by position in the order.
+struct NavDrag {
+    position: usize,
+}
+
+/// The view that follows the pointer during a drag: a copy of the row.
+struct Ghost {
+    nav: usize,
+    t: Theme,
+}
+
+impl Render for Ghost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        let (label, glyph) = NAV[self.nav];
+        div()
+            .w(px(LIST_W))
+            .h(px(ROW_H))
+            .flex()
+            .items_center()
+            .gap(px(11.0))
+            .px(px(10.0))
+            .rounded(px(8.0))
+            .bg(self.t.bg)
+            .shadow(lift(&self.t))
+            .font_family(SANS)
+            .text_size(px(FS_MD))
+            .line_height(relative(1.2))
+            .text_color(self.t.fg)
+            .child(icon(glyph, 17.0, &self.t, self.t.fg))
+            .child(SharedString::from(label))
+    }
+}
+
 fn entry<V: 'static>(
-    index: usize,
+    position: usize,
     state: &Sidebar,
     t: &Theme,
     cx: &mut Context<V>,
     select: fn(&mut V, usize, &mut Window, &mut Context<V>),
 ) -> impl IntoElement {
+    let index = state.order[position];
     let (label, glyph) = NAV[index];
     let active = index == state.active;
+    let held = state
+        .shared
+        .borrow()
+        .drag
+        .is_some_and(|d| d.from == position);
     let fg = t.fg;
     let colour = if active { t.fg } else { t.mutd };
+    let shared = state.shared.clone();
+    let ghost_theme = *t;
     let mut row = div()
         .id(("nav", index))
         .group("nav-row")
         .relative()
+        .top(px(state.shift[index].x))
         .flex_none()
         .flex()
         .items_center()
@@ -159,10 +411,31 @@ fn entry<V: 'static>(
         .text_size(px(FS_MD))
         .line_height(relative(1.2))
         .text_color(colour)
+        .when(held, |d| d.opacity(0.35))
         .hover(move |s| s.text_color(fg))
         .on_click(
             cx.listener(move |view, _: &ClickEvent, window, cx| select(view, index, window, cx)),
         )
+        .on_drag(NavDrag { position }, {
+            let shared = shared.clone();
+            move |drag, _, _, cx| {
+                shared.borrow_mut().drag = Some(Drag {
+                    from: drag.position,
+                    to: drag.position,
+                });
+                cx.new(|_| Ghost {
+                    nav: index,
+                    t: ghost_theme,
+                })
+            }
+        })
+        .on_mouse_down(MouseButton::Right, move |event, window, _| {
+            shared.borrow_mut().menu = Some(Menu {
+                position,
+                at: event.position,
+            });
+            window.refresh();
+        })
         .child(icon_hover(glyph, 17.0, t, colour, Some(("nav-row", t.fg))))
         .child(
             div()
@@ -171,7 +444,7 @@ fn entry<V: 'static>(
                 .when(active, |d| d.font_weight(FontWeight::MEDIUM))
                 .child(SharedString::from(label)),
         );
-    if index == 0 {
+    if index == state.default_nav() {
         // The word shows under the pointer only: the state it names never
         // changes on its own.
         row = row.child(
@@ -188,7 +461,93 @@ fn entry<V: 'static>(
                 .child("Default"),
         );
     }
-    row
+    // The wrapper stays on its row when the entry is drawn away from it, so
+    // the measured rows are the real ones.
+    div().flex_none().child(row)
+}
+
+/// The right-click menu: three moves, as in the old sidebar.
+fn context_menu(state: &Sidebar, t: &Theme) -> Option<AnyElement> {
+    let menu = state.shared.borrow().menu?;
+    let at = menu.position;
+    let last = state.order.len() - 1;
+    let items = [
+        ("Set as default screen", at > 0, 0),
+        ("Move up", at > 0, at.saturating_sub(1)),
+        ("Move down", at < last, (at + 1).min(last)),
+    ];
+    let close = {
+        let shared = state.shared.clone();
+        move |window: &mut Window| {
+            shared.borrow_mut().menu = None;
+            window.refresh();
+        }
+    };
+    let (fg, sel) = (t.fg, t.sel);
+    let mut list = div()
+        .occlude()
+        .w(px(190.0))
+        .py(px(4.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(t.line)
+        .bg(t.bg)
+        .shadow(lift(t))
+        .font_family(SANS)
+        .text_size(px(FS_SMALL))
+        .line_height(relative(1.26))
+        .on_mouse_down_out({
+            let close = close.clone();
+            move |_, window, _| close(window)
+        });
+    for (i, (label, enabled, to)) in items.into_iter().enumerate() {
+        let item = div()
+            .id(("nav-menu", i))
+            .px(px(12.0))
+            .py(px(6.0))
+            .text_color(if enabled { t.mutd } else { t.faint });
+        let shared = state.shared.clone();
+        let close = close.clone();
+        list = list.child(if enabled {
+            item.cursor_pointer()
+                .hover(move |s| s.bg(sel).text_color(fg))
+                .on_click(move |_, window, _| {
+                    shared.borrow_mut().command = Some((at, to));
+                    close(window);
+                })
+                .child(label)
+        } else {
+            item.opacity(0.5).child(label)
+        });
+    }
+    Some(
+        deferred(
+            anchored()
+                .position(menu.at)
+                .snap_to_window_with_margin(px(8.0))
+                .child(list),
+        )
+        .with_priority(1)
+        .into_any_element(),
+    )
+}
+
+/// Keep the real row tops. Asks for a new frame only when they changed.
+fn measure(shared: &RefCell<Shared>, kids: &[Bounds<Pixels>], window: &mut Window) {
+    // The children are the ground, then each row, with the divider after the first.
+    if kids.len() != NAV.len() + 2 {
+        return;
+    }
+    let rows: Vec<&Bounds<Pixels>> = std::iter::once(&kids[1]).chain(&kids[3..]).collect();
+    let base = rows[0].origin.y;
+    let tops = rows.iter().map(|b| f32::from(b.origin.y - base)).collect();
+    let height = f32::from(rows[0].size.height);
+    if shared
+        .borrow_mut()
+        .store_rows(tops, height, f32::from(base))
+    {
+        window.refresh();
+    }
 }
 
 /// What the sidebar does when the user clicks. Each one is a function of the view.
@@ -217,27 +576,33 @@ pub fn render<V: 'static>(
         .top(px(state.pill_top()))
         .left_0()
         .right_0()
-        .h(px(ROW_H))
+        .h(px(state.row_height()))
         .rounded(px(8.0))
         .bg(t.bg)
-        .shadow(vec![BoxShadow {
-            color: t.shadow,
-            offset: gpui::point(px(0.0), px(1.0)),
-            blur_radius: px(2.0),
-            spread_radius: px(0.0),
-            inset: false,
-        }]);
+        .shadow(lift(t));
 
+    let measured = state.shared.clone();
+    let dragged = state.shared.clone();
     let mut list = div()
         .relative()
         .flex()
         .flex_col()
         .gap(px(GAP))
-        .w(px(188.0))
+        .w(px(LIST_W))
+        .on_children_prepainted(move |kids, window, _| measure(&measured, &kids, window))
+        // The listener runs wherever the pointer is, so a drag out of the sidebar goes on.
+        .on_drag_move(move |event: &DragMoveEvent<NavDrag>, window, _| {
+            let mut shared = dragged.borrow_mut();
+            let to = shared.position_at(f32::from(event.event.position.y));
+            if let Some(d) = shared.drag.as_mut().filter(|d| d.to != to) {
+                d.to = to;
+                window.refresh();
+            }
+        })
         .child(pill);
-    for index in 0..NAV.len() {
-        list = list.child(entry(index, state, t, cx, select));
-        if index == 0 {
+    for position in 0..NAV.len() {
+        list = list.child(entry(position, state, t, cx, select));
+        if position == 0 {
             list = list.child(
                 div()
                     .flex_none()
@@ -342,11 +707,16 @@ pub fn render<V: 'static>(
                 .children(sync_note)
                 .child(theme_row),
         )
+        .children(context_menu(state, t))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn keys(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
 
     #[test]
     fn rows_rest_where_the_stylesheet_puts_them() {
@@ -358,7 +728,7 @@ mod tests {
 
     #[test]
     fn selecting_a_row_starts_the_ground_where_it_was_drawn() {
-        let mut bar = Sidebar::new(false);
+        let mut bar = Sidebar::new(false, &[]);
         bar.select(3);
         assert!((bar.pill_top() - row_top(0)).abs() < 1e-3);
         assert!(bar.pill.is_moving());
@@ -375,8 +745,58 @@ mod tests {
 
     #[test]
     fn selecting_the_lit_row_changes_nothing() {
-        let mut bar = Sidebar::new(false);
+        let mut bar = Sidebar::new(false, &[]);
         bar.select(0);
         assert!(!bar.pill.is_moving());
+    }
+
+    #[test]
+    fn the_ground_sits_on_the_measured_row() {
+        let mut bar = Sidebar::new(true, &[]);
+        // A pitch of 37.1 and not the 35.2 of the stylesheet.
+        let tops: Vec<f32> = (0..NAV.len()).map(|i| i as f32 * 37.1).collect();
+        assert!(bar.shared.borrow_mut().store_rows(tops, 33.4, 100.0));
+        bar.select(14);
+        assert!((bar.pill_top() - 14.0 * 37.1).abs() < 1e-3);
+        assert!((bar.row_height() - 33.4).abs() < 1e-3);
+        // The same rows again need no new frame.
+        let same: Vec<f32> = (0..NAV.len()).map(|i| i as f32 * 37.1).collect();
+        assert!(!bar.shared.borrow_mut().store_rows(same, 33.4, 100.0));
+    }
+
+    #[test]
+    fn a_saved_order_is_reconciled_with_the_entries() {
+        // An unknown and a repeated key drop out. The missing entries go last.
+        let order = order_from_keys(&keys(&["sleep", "gone", "sleep", "today"]));
+        assert_eq!(&order[..2], &[3, 0]);
+        assert_eq!(order.len(), NAV.len());
+        assert_eq!(order_from_keys(&[]), (0..NAV.len()).collect::<Vec<_>>());
+        let bar = Sidebar::new(false, &keys(&["settings"]));
+        assert_eq!(bar.active, NAV.len() - 1);
+        assert_eq!(bar.keys()[..2], ["settings", "today"]);
+    }
+
+    #[test]
+    fn a_move_keeps_the_rows_where_they_are_drawn() {
+        let mut bar = Sidebar::new(false, &[]);
+        assert!(bar.apply_move(3, 0));
+        assert_eq!(bar.order[..2], [3, 0]);
+        // The entry that was at row 3 is drawn there until it glides to row 0.
+        assert!((bar.shift[3].x - (row_top(3) - row_top(0))).abs() < 1e-3);
+        assert!((bar.shift[0].x - (row_top(0) - row_top(1))).abs() < 1e-3);
+        assert!(!bar.apply_move(2, 2));
+    }
+
+    #[test]
+    fn the_pointer_picks_the_position_under_it() {
+        let mut shared = Shared::default();
+        shared.store_rows(
+            (0..NAV.len()).map(|i| i as f32 * 35.0).collect(),
+            33.0,
+            50.0,
+        );
+        assert_eq!(shared.position_at(0.0), 0);
+        assert_eq!(shared.position_at(50.0 + 35.0 * 2.0 + 5.0), 2);
+        assert_eq!(shared.position_at(5000.0), NAV.len() - 1);
     }
 }
