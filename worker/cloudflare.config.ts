@@ -39,8 +39,8 @@ export default defineConfig({
       POLAR_API_BASE: bindings.text("https://api.polar.sh"),
       POLAR_PRODUCT_ID: bindings.text("0f637cf7-4de6-4956-b90b-23b7e9e3b42a"),
       CHECKOUT_RETURN_URL: bindings.text("https://github.com/omznc/garmin-companion"),
-      // Needs a domain with Resend set up. Until then login mail answers 503.
-      MAIL_FROM: bindings.text(""),
+      // A Resend domain. RESEND_KEY must belong to the same Resend account.
+      MAIL_FROM: bindings.text("Garmin Companion <login@noreply.omarzunic.com>"),
       // Users, sessions, login codes, entitlements and webhook ids.
       // Schema in migrations/. Apply with `cf d1 migrations apply <id>`.
       DB: bindings.d1({ name: "garmin-coach", id: "9791e324-7a61-49a2-a513-e2d63d778bd8" }),
