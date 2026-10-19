@@ -438,13 +438,7 @@ fn exercise_row(e: &ExerciseHistory, t: &Theme) -> Div {
     let reps: Vec<Option<f32>> = e.history.iter().map(|d| Some(d.reps as f32)).collect();
     row(
         e.name.clone(),
-        &[
-            (e.detail.clone(), t.faint),
-            (
-                format!("{} {}", e.reps, if e.reps == 1 { "rep" } else { "reps" }),
-                t.fg,
-            ),
-        ],
+        &[(e.detail.clone(), t.faint), (e.reps_text.clone(), t.fg)],
         t,
     )
     .child(div().child(spark(&reps, t)))

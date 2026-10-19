@@ -331,11 +331,7 @@ fn set_row(s: &SetRow, t: &Theme) -> Div {
     table_row(
         [
             (&s.label, 60.0, false),
-            (
-                &format!("{} reps", s.reps.as_deref().unwrap_or(none)),
-                80.0,
-                true,
-            ),
+            (s.reps.as_deref().unwrap_or(none), 80.0, true),
             (s.work.as_deref().unwrap_or(none), 60.0, true),
             (
                 &format!("rest {}", s.rest.as_deref().unwrap_or(none)),

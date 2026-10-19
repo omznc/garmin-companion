@@ -402,6 +402,7 @@
     "shown": true,
     "empty": null,
     "sessionsExamined": 6,
+    "sessionsText": "6 sessions",
     "avgSets": 6.0,
     "avgReps": 56.7,
     "medianRestS": 90.0,
@@ -458,6 +459,7 @@
         "sessions": 6,
         "sets": 12,
         "reps": 112,
+        "repsText": "112 reps",
         "detail": "6 sessions, 12 sets",
         "history": [
           {
@@ -503,6 +505,7 @@
         "sessions": 6,
         "sets": 12,
         "reps": 116,
+        "repsText": "116 reps",
         "detail": "6 sessions, 12 sets",
         "history": [
           {
@@ -548,6 +551,7 @@
         "sessions": 6,
         "sets": 6,
         "reps": 55,
+        "repsText": "55 reps",
         "detail": "6 sessions, 6 sets",
         "history": [
           {
