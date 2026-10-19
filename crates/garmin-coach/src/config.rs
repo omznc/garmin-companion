@@ -81,18 +81,33 @@ pub(crate) fn default_provider(has_own_key: bool) -> Provider {
     }
 }
 
+/// A phone cannot reach a local Ollama, so a phone drops that choice.
+fn usable(saved: Option<Provider>, phone: bool) -> Option<Provider> {
+    saved.filter(|p| !(phone && *p == Provider::Ollama))
+}
+
 /// The saved choice, or the default. The provider is always set.
+/// On a phone, a saved Ollama choice counts as unset.
 pub fn load_config(db: &Db) -> Result<(Option<Provider>, Option<String>)> {
-    let provider = match db
+    load_on(db, cfg!(any(target_os = "android", target_os = "ios")))
+}
+
+fn load_on(db: &Db, phone: bool) -> Result<(Option<Provider>, Option<String>)> {
+    let saved = db
         .sync_state("chat_provider")?
-        .and_then(|s| Provider::parse(&s))
-    {
+        .and_then(|s| Provider::parse(&s));
+    let kept = usable(saved, phone);
+    let dropped = saved.is_some() && kept.is_none();
+    let provider = match kept {
         Some(p) => p,
         None => default_provider(matches!(openrouter_key(), Ok(Some(_)))),
     };
     let provider = Some(provider);
     // An empty model was saved by an older build when it chose the hosted coach.
-    let saved = db.sync_state("chat_model")?.filter(|m| !m.is_empty());
+    // The model of a dropped Ollama choice does not fit the new provider.
+    let saved = db
+        .sync_state("chat_model")?
+        .filter(|m| !m.is_empty() && !dropped);
     let model = match (saved, provider) {
         (Some(m), _) => Some(m),
         (None, Some(p)) => p.default_model().map(str::to_string),
@@ -159,6 +174,16 @@ mod tests {
     }
 
     #[test]
+    fn a_phone_drops_a_saved_ollama_choice() {
+        assert_eq!(usable(Some(Provider::Ollama), true), None);
+        assert_eq!(
+            usable(Some(Provider::Ollama), false),
+            Some(Provider::Ollama)
+        );
+        assert_eq!(usable(Some(Provider::Cloud), true), Some(Provider::Cloud));
+    }
+
+    #[test]
     fn an_empty_saved_model_reads_as_none() {
         let path = std::env::temp_dir().join(format!("gc-config-{}.db", std::process::id()));
         let db = Db::open(&path).unwrap();
@@ -171,6 +196,18 @@ mod tests {
         assert_eq!(model.as_deref(), Some(DEFAULT_OPENROUTER_MODEL));
         save_config(&db, Provider::Ollama, "llama3.2").unwrap();
         assert_eq!(load_config(&db).unwrap().1.as_deref(), Some("llama3.2"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_phone_drops_the_provider_and_the_model_of_ollama() {
+        let path = std::env::temp_dir().join(format!("gc-config-phone-{}.db", std::process::id()));
+        let db = Db::open(&path).unwrap();
+        save_config(&db, Provider::Ollama, "llama3.2").unwrap();
+        let (provider, model) = load_on(&db, true).unwrap();
+        assert_ne!(provider, Some(Provider::Ollama));
+        assert_ne!(model.as_deref(), Some("llama3.2"));
+        assert_eq!(load_on(&db, false).unwrap().0, Some(Provider::Ollama));
         let _ = std::fs::remove_file(path);
     }
 
