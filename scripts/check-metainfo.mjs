@@ -20,7 +20,7 @@
  */
 import { readFileSync } from "node:fs";
 
-const CONF = "app/src-tauri/tauri.conf.json";
+const CONF = "apps/desktop/tauri.conf.json";
 const METAINFO = "app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml";
 
 // The release workflow passes the version of the release as an argument.

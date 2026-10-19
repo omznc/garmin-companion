@@ -147,6 +147,15 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.0" date="2026-10-19">
+      <description>
+        <p>
+          A new app. The desktop app is now native, and Android uses a new
+          app. Your data, your Garmin sign-in and your settings stay. The
+          cloud coach has free daily credits and an optional premium plan.
+        </p>
+      </description>
+    </release>
     <release version="0.9.1" date="2026-09-14">
       <description>
         <p>
