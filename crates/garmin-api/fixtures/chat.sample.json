@@ -1,0 +1,38 @@
+[
+  {
+    "sessionId": "sample-recovery",
+    "title": "Am I recovered enough for a hard day?",
+    "updatedAt": "2026-10-18T07:30:00.000Z",
+    "turns": [
+      {
+        "id": "sample-recovery:0",
+        "question": "Am I recovered enough for a hard day?",
+        "answer": "Yes, with one note. Your resting heart rate is close to your usual value, and your HRV is steady. Sleep was a little short last night, so keep the first part of the day easy.",
+        "steps": [
+          { "callId": "s1", "label": "Reading 14 days of recovery signals", "running": false, "ok": true }
+        ],
+        "status": "done",
+        "error": null
+      }
+    ]
+  },
+  {
+    "sessionId": "sample-week",
+    "title": "How did my week go?",
+    "updatedAt": "2026-10-17T18:00:00.000Z",
+    "turns": [
+      {
+        "id": "sample-week:0",
+        "question": "How did my week go?",
+        "answer": "# Your week in short\n\nSleep and recovery held up well. Activity was a little lower than last month.\n\n## What the data shows\n\n- Sleep: **7 h 12 min** a night on average\n- Resting heart rate: *flat* at 52 bpm\n- HRV: inside your normal range\n\n## What to do next\n\n1. Keep your bedtime the same.\n2. Add one easy walk on a low day.\n3. Check the `body battery` in the morning.\n\n---\n\n| Day | Sleep | Resting HR |\n| --- | --- | --- |\n| Mon | 7 h 40 min | 52 |\n| Tue | 6 h 50 min | 53 |\n| Wed | 7 h 05 min | 52 |\n\nFor the full numbers, open your [Garmin Connect](https://connect.garmin.com) account.",
+        "steps": [
+          { "callId": "w1", "label": "Reading 7 days of sleep", "running": false, "ok": true },
+          { "callId": "w2", "label": "Reading resting heart rate and HRV", "running": false, "ok": true },
+          { "callId": "w3", "label": "Reading activities of the week", "running": false, "ok": true }
+        ],
+        "status": "done",
+        "error": null
+      }
+    ]
+  }
+]

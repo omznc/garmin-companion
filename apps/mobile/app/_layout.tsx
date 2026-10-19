@@ -1,16 +1,18 @@
-import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { focusManager, QueryClientProvider } from "@tanstack/react-query";
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { AppState } from "react-native";
+import { AppState, useColorScheme } from "react-native";
+import { queryClient } from "../src/data/queryClient";
 import "../src/theme/prefs";
+import { useReduceMotion } from "../src/theme/motion";
 import { useRootColor } from "../src/theme/useRootColor";
 import { UpdateBanner } from "../src/update/UpdateBanner";
 
-const queryClient = new QueryClient();
-
 export default function RootLayout() {
   const root = useRootColor();
+  const dark = useColorScheme() === "dark";
+  const reduceMotion = useReduceMotion();
   // Refetch Today when the app returns to the foreground.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (status) =>
@@ -21,13 +23,22 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: root } }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
-        <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
-      </Stack>
-      <UpdateBanner />
+      {/* The native header takes its text colours from this theme. */}
+      <ThemeProvider value={dark ? DarkTheme : DefaultTheme}>
+        <StatusBar style="auto" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: root },
+            animation: reduceMotion ? "fade" : "default",
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
+          <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
+        </Stack>
+        <UpdateBanner />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
