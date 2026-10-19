@@ -1,4 +1,5 @@
 // The pages of More: one for each settings area. The core builds the sentences.
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 import { THEMES, useSettingsActions } from "../data/useSettingsActions";
@@ -96,7 +97,8 @@ export function AboutPage() {
     <Page title="About">
       {s ? (
         <Section>
-          <Item title="Version" value={s.version} />
+          {/* The app version, as the stores and the updater see it. s.version is the Rust crate. */}
+          <Item title="Version" value={Constants.expoConfig?.version ?? s.version} />
           <Item title="Open source" chevron onPress={() => Linking.openURL(REPO)} />
           {s.dataFolder ? <Item title="Data folder" value={s.dataFolder} /> : null}
         </Section>
