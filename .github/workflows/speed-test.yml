@@ -5,134 +5,6 @@ on:
 permissions:
   contents: read
 jobs:
-  android:
-    runs-on: ubuntu-24.04
-    env:
-      # app.config.js turns this into the version name and the version code.
-      APP_VERSION: 9.9.9
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - uses: android-actions/setup-android@v4
-
-      - name: Install the NDK
-        run: |
-          sdkmanager --install "ndk;28.2.13676358"
-          NDK="$ANDROID_HOME/ndk/28.2.13676358"
-          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
-          # The NDK has only llvm-ranlib. The vendored OpenSSL needs RANLIB.
-          LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          for target in aarch64_linux_android armv7_linux_androideabi; do
-            echo "RANLIB_$target=$LLVM_BIN/llvm-ranlib" >> "$GITHUB_ENV"
-          done
-
-      - run: sudo apt-get update && sudo apt-get install -y perl make ccache
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-ndk
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          key: rewrite-android
-
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: apps/mobile/pnpm-lock.yaml
-
-      - name: Install JavaScript dependencies
-        working-directory: apps/mobile
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the Rust bridge
-        working-directory: apps/mobile
-        # The same two ABIs as the old APK. No x86_64: that is an emulator ABI.
-        run: pnpm bridge:android --targets arm64-v8a,armeabi-v7a
-
-      - name: Make the Android project
-        working-directory: apps/mobile
-        run: pnpm prebuild:android
-
-      # The Gradle cache holds the wrapper, the dependencies and the build cache.
-      # The step comes after prebuild, because prebuild makes the Gradle files.
-      # This workflow runs only on the default branch, so it may write the cache.
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: false
-          build-root-directory: apps/mobile/android
-
-      # ccache keeps the object files of the C++ code (React Native, Hermes glue,
-      # Expo modules). The NDK version is in the key, because a new compiler
-      # makes all old entries useless.
-      - name: Restore the ccache folder
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ccache
-          key: ccache-android-ndk28.2.13676358-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
-          restore-keys: ccache-android-ndk28.2.13676358-
-
-      # Lint Vital checks the release build for fatal errors. It takes minutes
-      # and finds nothing that CI does not find. An init script turns it off.
-      # An -x option would fail the build if a task name is missing.
-      - name: Make the Gradle init script
-        run: |
-          cat > "$RUNNER_TEMP/no-lint-vital.gradle" <<'EOF'
-          allprojects {
-            tasks.configureEach { task ->
-              if (task.name.startsWith("lintVital")) {
-                task.enabled = false
-              }
-            }
-          }
-          EOF
-
-      - name: Build the APK
-        working-directory: apps/mobile/android
-        env:
-          # CMake reads these two variables and starts the compilers through ccache.
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
-          CCACHE_BASEDIR: ${{ github.workspace }}
-          CCACHE_COMPILERCHECK: content
-          CCACHE_MAXSIZE: 1G
-        # The -P value replaces buildArchs of app.json (that list has x86_64 for dev).
-        # The -D value gives the Gradle process more heap.
-        run: |
-          ccache -z
-          ./gradlew assembleRelease --build-cache \
-            --init-script "$RUNNER_TEMP/no-lint-vital.gradle" \
-            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g" \
-            -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
-
-      # If the hit rate is zero, ccache is not in use.
-      - name: Show the ccache statistics
-        if: always()
-        run: ccache -s
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: android
-          path: apps/mobile/android/app/build/outputs/apk/release/
-          if-no-files-found: error
-
-  # An unsigned device IPA for testers who sign it themselves (Sideloadly,
-  # AltStore). It is not in latest.json, and no updater reads it.
   ios:
     runs-on: macos-latest
     # This job runs third-party install scripts. It needs no write access.
@@ -207,14 +79,18 @@ jobs:
         working-directory: apps/mobile
         # The index store and the full debug symbols give no value in a CI build.
         run: |
+          grep -c 'ccache-clang' ios/Pods/Pods.xcodeproj/project.pbxproj || true
+          grep -m3 -n 'CCACHE_BINARY' ios/Pods/Pods.xcodeproj/project.pbxproj || true
           ccache -z
           WORKSPACE="$(ls -d ios/*.xcworkspace)"
           SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
-          xcodebuild -quiet -workspace "$WORKSPACE" -scheme "$SCHEME" \
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/derived" \
             COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee "$RUNNER_TEMP/xb.log" | tail -n 0
+          grep -c 'ccache-clang' "$RUNNER_TEMP/xb.log" || true
+          grep -m5 'ccache-clang' "$RUNNER_TEMP/xb.log" | cut -c1-300 || true
 
       # If the hit rate is zero, ccache is not in use.
       - name: Show the ccache statistics
