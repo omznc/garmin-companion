@@ -324,8 +324,59 @@ fn run_nsis(bytes: &[u8], version: &str) -> Result<()> {
     let dir = fresh_dir(version)?;
     let setup = dir.join("garmin-companion-setup.exe");
     fs::write(&setup, bytes)?;
+    // An install in a folder that this user cannot write (Program Files) needs
+    // admin rights to update: ask for them (UAC).
+    #[cfg(windows)]
+    if !std::env::current_exe()?
+        .parent()
+        .is_some_and(folder_is_writable)
+    {
+        return run_elevated(&setup);
+    }
     Command::new(&setup).args(nsis_args()).spawn()?;
     Ok(())
+}
+
+/// Can this user create a file in the folder? A test file shows it, because
+/// the folder attributes and the ACL do not give a simple answer.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn folder_is_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".write-test-{}", std::process::id()));
+    let ok = fs::File::create(&probe).is_ok();
+    // Best effort: the answer does not depend on the delete.
+    let _ = fs::remove_file(&probe);
+    ok
+}
+
+/// Start the setup file with the "runas" verb, which shows the UAC prompt.
+/// `ShellExecuteW` returns a value above 32 when the start works. A refused
+/// prompt gives `SE_ERR_ACCESSDENIED` (5), like a real access denial.
+#[cfg(windows)]
+fn run_elevated(setup: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
+    let verb = wide("runas".as_ref());
+    let file = wide(setup.as_os_str());
+    let args = wide(nsis_args().join(" ").as_ref());
+    // SAFETY: each pointer is null or points to a NUL-terminated buffer that
+    // lives until the call returns.
+    let code = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            args.as_ptr(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    match code {
+        c if c > 32 => Ok(()),
+        c => bail!("Windows did not start the installer with admin rights (code {c})"),
+    }
 }
 
 /// A new, empty folder in the temp folder.
@@ -471,6 +522,27 @@ pub fn record_check() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_writable_folder_is_writable() {
+        let dir = fresh_dir("writable").unwrap();
+        assert!(folder_is_writable(&dir));
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_folder_is_not_writable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_dir("read-only").unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+        // Root writes anywhere, so the check says nothing for root.
+        let root_writes = fs::File::create(dir.join("x")).is_ok();
+        assert!(root_writes || !folder_is_writable(&dir));
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     // A throwaway key pair, made for these tests. The private key is gone.
     const TEST_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyQTdGRUYwNUE3QTk3RTEKUldUaGwzcGE4UDZuc3RWeDhxWVpDVC9heldsaWVobm9hemFtRit0bUFhWE51aUViMzVSMVQ1VnkK";
