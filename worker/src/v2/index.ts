@@ -126,8 +126,22 @@ async function withWho(
   return next(who);
 }
 
+/** An IPv6 network is a /64: one home gets a whole /64, so the first 4 groups name it. */
+export function networkOf(address: string): string {
+  if (!address.includes(":")) return address;
+  const [head = "", tail = ""] = address.split("::");
+  const first = head ? head.split(":") : [];
+  const last = tail ? tail.split(":") : [];
+  const gap = address.includes("::") ? Math.max(0, 8 - first.length - last.length) : 0;
+  const groups = [...first, ...Array<string>(gap).fill("0"), ...last];
+  return groups
+    .slice(0, 4)
+    .map((g) => g.toLowerCase().padStart(4, "0"))
+    .join(":");
+}
+
 async function addressBucket(request: Request, env: V2Env, day: string): Promise<string> {
-  const address = request.headers.get("CF-Connecting-IP") ?? "local";
+  const address = networkOf(request.headers.get("CF-Connecting-IP") ?? "local");
   const material = new TextEncoder().encode(`v2:${day}:${env.OPENROUTER_KEY}:${address}`);
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", material));
   return Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -260,13 +274,51 @@ async function callWallet<T>(env: V2Env, name: string, msg: Record<string, unkno
 
 /* ------------------------------------------------------------------------ chat --- */
 
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Only text reaches the model, and only function tools. An OpenRouter server
+ * tool (web search, an advisor model) or an image part costs money that the
+ * wallet does not count, and it breaks the bytes-per-token hold.
+ */
+function content(message: unknown): string | null {
+  if (!isObject(message)) return "a message is not an object";
+  const c = message.content;
+  if (c === undefined || c === null || typeof c === "string") return null;
+  if (!Array.isArray(c)) return "message content must be text";
+  const text = (part: unknown) => isObject(part) && part.type === "text";
+  return c.every(text) ? null : "only text content parts are accepted";
+}
+
+function toolsProblem(input: Record<string, unknown>): string | null {
+  const { tools, tool_choice: choice, reasoning } = input;
+  if (tools !== undefined) {
+    const fn = (t: unknown) => isObject(t) && t.type === "function";
+    if (!Array.isArray(tools) || !tools.every(fn)) return "only function tools are accepted";
+  }
+  if (choice !== undefined && typeof choice !== "string") {
+    if (!isObject(choice) || choice.type !== "function") return "tool_choice must name a function";
+  }
+  if (reasoning !== undefined) {
+    const keys = isObject(reasoning) ? Object.keys(reasoning) : ["?"];
+    if (keys.some((k) => k !== "effort")) return "reasoning accepts only effort";
+  }
+  return null;
+}
+
 /** A sentence saying why the request is refused, or null. */
 function problem(input: unknown, p: ModelProfile): string | null {
-  if (typeof input !== "object" || input === null) return "body is not an object";
-  const { model, messages } = input as Record<string, unknown>;
+  if (!isObject(input)) return "body is not an object";
+  const { model, messages } = input;
   if (model !== undefined && model !== p.slug) return "this endpoint serves one model";
   if (!Array.isArray(messages) || messages.length === 0) return "messages is required";
-  return messages.length > MAX_MESSAGES ? "too many messages" : null;
+  if (messages.length > MAX_MESSAGES) return "too many messages";
+  for (const m of messages) {
+    const why = content(m);
+    if (why) return why;
+  }
+  return toolsProblem(input);
 }
 
 /** Why a request cannot go upstream, or the body to send. */
@@ -314,8 +366,9 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
   const p = profileOf(env.MODEL_PROFILE);
   const day = today();
 
-  const budget = Number(env.DAILY_BUDGET_V2_USD);
-  if (Number.isFinite(budget) && (await spentToday(env, day)) >= budget) {
+  // Premium has its own budget: free installs must not pause a paying user.
+  const premium = who.kind === "user" && (await entitlementOf(env, who.id)).premium;
+  if (await overBudget(env, day, premium)) {
     return fail(503, "coach_paused", "the cloud coach is paused");
   }
 
@@ -328,7 +381,6 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
     return fail(400, "bad_request", "body is not JSON");
   }
 
-  const premium = who.kind === "user" && (await entitlementOf(env, who.id)).premium;
   const forwarded = prepare(parsed, p, premium);
   if (typeof forwarded === "string") return fail(400, "bad_request", forwarded);
 
@@ -358,7 +410,7 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
     });
     await bump(
       env,
-      `v2spend:${day}:${Math.floor(Math.random() * SPEND_SHARDS)}`,
+      `${spendKey(premium)}:${day}:${Math.floor(Math.random() * SPEND_SHARDS)}`,
       units / UNITS_PER_USD,
     );
     return r.snapshot;
@@ -379,7 +431,12 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
   });
 
   if (!(upstream.headers.get("Content-Type") ?? "").includes("event-stream")) {
-    const text = await upstream.text();
+    // A body that breaks off is a failed call: nothing was read, so nothing is charged.
+    const text = await upstream.text().catch(() => null);
+    if (text === null) {
+      await release();
+      return upstreamRefusal(502, "");
+    }
     const parsed = safeJson(text);
     // OpenRouter answers 200 and puts a provider failure in the body.
     if (parsed?.error && !parsed.choices) {
@@ -501,11 +558,23 @@ function meterStream(
 
 /* ------------------------------------------------------------------ the budget --- */
 
-async function spentToday(env: V2Env, day: string): Promise<number> {
+/** Free and premium spend are counted apart, so one cannot pause the other. */
+const spendKey = (premium: boolean) => (premium ? "v2pspend" : "v2spend");
+
+async function spentToday(env: V2Env, day: string, premium: boolean): Promise<number> {
   const shards = await Promise.all(
-    Array.from({ length: SPEND_SHARDS }, (_, i) => env.COUNTERS.get(`v2spend:${day}:${i}`)),
+    Array.from({ length: SPEND_SHARDS }, (_, i) =>
+      env.COUNTERS.get(`${spendKey(premium)}:${day}:${i}`),
+    ),
   );
   return shards.reduce((n, v) => n + Number(v ?? 0), 0);
+}
+
+/** The premium budget is optional: without it the wallet limits are the guard. */
+async function overBudget(env: V2Env, day: string, premium: boolean): Promise<boolean> {
+  const raw = premium ? env.DAILY_BUDGET_V2_PREMIUM_USD : env.DAILY_BUDGET_V2_USD;
+  const budget = raw === undefined || raw === "" ? Number.NaN : Number(raw);
+  return Number.isFinite(budget) && (await spentToday(env, day, premium)) >= budget;
 }
 
 /** A soft counter in KV. It can lose an increment under load, like /v1's. */

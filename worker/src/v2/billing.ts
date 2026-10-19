@@ -10,6 +10,7 @@ import { fail, json } from "./http";
 
 const DAY_MS = 86_400_000;
 const PAST_DUE_GRACE = 7 * DAY_MS;
+const PERIOD_GRACE = 2 * DAY_MS;
 const POLAR = "polar";
 
 interface Row {
@@ -22,7 +23,9 @@ function rowIsPremium(r: Row, now: number): boolean {
   switch (r.status) {
     case "active":
     case "trialing":
-      return true;
+      // A renewal moves the period end. If the revoke webhook never arrives,
+      // the period end still stops premium, after a short grace.
+      return r.current_period_end === null || now < r.current_period_end + PERIOD_GRACE;
     case "past_due":
       return r.past_due_since !== null && now < r.past_due_since + PAST_DUE_GRACE;
     default:
@@ -195,23 +198,25 @@ export async function handlePolarWebhook(request: Request, env: V2Env): Promise<
     ? stamp
     : Number(request.headers.get("webhook-timestamp")) * 1000;
 
-  const first = await env.DB.prepare(
-    "INSERT OR IGNORE INTO webhook_event (source, event_id, type, received_at) VALUES (?, ?, ?, ?)",
-  )
-    .bind(POLAR, eventId, type, Date.now())
-    .run();
-  if (!first.meta.changes) return json({ ok: true, duplicate: true });
+  const seen = await env.DB.prepare("SELECT 1 FROM webhook_event WHERE source = ? AND event_id = ?")
+    .bind(POLAR, eventId)
+    .first();
+  if (seen) return json({ ok: true, duplicate: true });
 
+  // The id is recorded after the event is applied. A crash or a failed apply
+  // leaves it unrecorded, so the provider's retry is applied and not skipped.
+  // Applying twice is safe: the entitlement write checks `last_event_at`.
   try {
     let result: Applied = "ignored";
     if (SUBSCRIPTION_EVENTS.has(type)) result = await applySubscription(env, event, at);
     else if (type === "order.refunded") result = await applyRefund(env, event, at);
+    await env.DB.prepare(
+      "INSERT OR IGNORE INTO webhook_event (source, event_id, type, received_at) VALUES (?, ?, ?, ?)",
+    )
+      .bind(POLAR, eventId, type, Date.now())
+      .run();
     return json({ ok: true, result });
   } catch (err) {
-    // Forget the event id so the provider's retry is applied, not skipped.
-    await env.DB.prepare("DELETE FROM webhook_event WHERE source = ? AND event_id = ?")
-      .bind(POLAR, eventId)
-      .run();
     console.error("polar webhook failed", err instanceof Error ? err.message : "unknown");
     return fail(500, "apply_failed");
   }

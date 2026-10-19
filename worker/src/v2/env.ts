@@ -16,6 +16,8 @@ export interface V2Env {
   FREE_REQUIRES_LOGIN?: string;
   /** Second guard on all /v2 spend. The main limit is on the OpenRouter key. */
   DAILY_BUDGET_V2_USD?: string;
+  /** Optional guard on premium spend alone. Without it, only the wallet limits apply. */
+  DAILY_BUDGET_V2_PREMIUM_USD?: string;
   POLAR_TOKEN?: string;
   POLAR_WEBHOOK_SECRET?: string;
   /** `https://sandbox-api.polar.sh` for the sandbox. */
