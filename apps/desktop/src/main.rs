@@ -16,6 +16,9 @@
 //! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
 //! Without `--db`, a persona runs the Ask screen as a canned demo.
 
+// No console window on Windows in a release build.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod account;
 mod activities;
 mod ask;
@@ -28,6 +31,7 @@ mod data;
 mod editor;
 mod field;
 mod icons;
+mod instance;
 mod map;
 mod markdown;
 mod motion;
@@ -114,6 +118,7 @@ struct Cli {
     question: Option<String>,
     draft: Option<String>,
     start_sync: bool,
+    background: bool,
 }
 
 fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
@@ -170,7 +175,44 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
         question: required(args, "--ask")?,
         draft: required(args, "--draft")?,
         start_sync: args.iter().any(|a| a == "--sync"),
+        background: args.iter().any(|a| a == "--background"),
     })
+}
+
+fn log_error<T>(what: &str, result: anyhow::Result<T>) -> anyhow::Result<T> {
+    if let Err(error) = &result {
+        eprintln!("could not load {what}: {error:#}");
+    }
+    result
+}
+
+/// The value, or the view of an empty cache when the default cache does not
+/// read. A wrong `--db` path must stop here: `open_db` creates a missing file.
+fn or_empty<T>(
+    source: &Source,
+    what: &str,
+    result: anyhow::Result<T>,
+    empty: fn() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    if matches!(source, Source::Default) {
+        log_error(what, result).or_else(|_| empty())
+    } else {
+        result
+    }
+}
+
+fn empty_db() -> anyhow::Result<garmin_core::Db> {
+    Ok(garmin_api::open_db(std::path::Path::new(":memory:"))?)
+}
+
+fn empty_today() -> anyhow::Result<data::Today> {
+    let view = garmin_api::today_view(&empty_db()?, chrono::Local::now().date_naive())?;
+    Ok(map::today(&view, None))
+}
+
+fn empty_body() -> anyhow::Result<body::BodyData> {
+    let views = garmin_api::body::body_views(&empty_db()?, chrono::Local::now().date_naive())?;
+    Ok(body::BodyData(views))
 }
 
 fn main() -> anyhow::Result<()> {
@@ -186,6 +228,7 @@ fn main() -> anyhow::Result<()> {
         question,
         draft,
         start_sync,
+        background,
     } = parse_args(&args)?;
     if let Some(spec) = coach {
         let Source::Db { path, .. } = &source else {
@@ -205,11 +248,27 @@ fn main() -> anyhow::Result<()> {
         question,
         draft,
     };
-    let today = data::load_today(&source)?;
+    // One copy only. A second launch brings the window of the first one forward.
+    let second_launch = if matches!(source, Source::Default) {
+        instance::claim()
+    } else {
+        instance::Claim::Off
+    };
+    if matches!(second_launch, instance::Claim::Second) {
+        return Ok(());
+    }
+    // A bad cache must not close the app before a window opens. On Windows
+    // nobody sees stderr. Show the empty views, and log the reason.
+    let today = or_empty(&source, "Today", data::load_today(&source), empty_today)?;
     let store = activities::Store::for_source(&source)?;
-    let wellness = wellness::load(&source)?;
-    let body = body::load_body(&source)?;
-    let training = training::load(&source, 0)?;
+    let wellness = log_error("Health and Sleep", wellness::load(&source)).ok();
+    let body = or_empty(
+        &source,
+        "the body screens",
+        body::load_body(&source),
+        empty_body,
+    )?;
+    let training = log_error("Insights, Fitness and Reports", training::load(&source, 0)).ok();
 
     gpui_platform::application()
         .with_assets(icons::Icons)
@@ -255,9 +314,13 @@ fn main() -> anyhow::Result<()> {
                 cx.new(|cx| {
                     let ask = shell::new_ask(ask_start, palette, cx);
                     let mut root =
-                        shell::Root::new(today, palette, store, body, source, account, ask)
-                            .with_wellness(wellness)
-                            .with_training(training);
+                        shell::Root::new(today, palette, store, body, source, account, ask);
+                    if let Some(wellness) = wellness {
+                        root = root.with_wellness(wellness);
+                    }
+                    if let Some(training) = training {
+                        root = root.with_training(training);
+                    }
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }
@@ -270,11 +333,32 @@ fn main() -> anyhow::Result<()> {
                     root
                 })
             });
-            if let Err(error) = opened {
-                eprintln!("could not open the window: {error:#}");
-                cx.quit();
+            let handle = match opened {
+                Ok(handle) => handle,
+                Err(error) => {
+                    eprintln!("could not open the window: {error:#}");
+                    cx.quit();
+                    return;
+                }
+            };
+            if background {
+                // The login item passes --background. The app has no tray icon,
+                // so the window starts minimised and stays in the task bar.
+                let _ = handle.update(cx, |_, window, _| window.minimize_window());
+            } else {
+                cx.activate(true);
             }
-            cx.activate(true);
+            if let instance::Claim::First(rx) = second_launch {
+                cx.spawn(async move |cx| {
+                    while rx.recv().await.is_ok() {
+                        cx.update(|cx| {
+                            cx.activate(true);
+                            let _ = handle.update(cx, |_, window, _| window.activate_window());
+                        });
+                    }
+                })
+                .detach();
+            }
         });
     Ok(())
 }
@@ -300,6 +384,24 @@ mod tests {
         assert_eq!(parse_palette("nope"), None);
         assert_eq!(parse_size("wide"), None);
         assert_eq!(option(&args, "--missing"), None);
+    }
+
+    #[test]
+    fn a_bad_cache_degrades_to_the_empty_views() {
+        assert!(or_empty(
+            &Source::Default,
+            "Today",
+            Err(anyhow::anyhow!("bad row")),
+            empty_today
+        )
+        .is_ok());
+        assert!(or_empty(
+            &Source::Default,
+            "body",
+            Err(anyhow::anyhow!("bad row")),
+            empty_body
+        )
+        .is_ok());
     }
 
     #[test]

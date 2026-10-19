@@ -681,9 +681,9 @@ fn duration_insight(avg: &SleepAverages) -> Option<SleepInsight> {
             Tone::Watch,
             format!("You're averaging {} a night, under seven hours.", hm(total)),
             format!(
-                "{short} of {n} nights were short. At 88 kg and three months into running, sleep \
-                 is where the adaptation actually happens — a short week shows up as a higher \
-                 resting HR and a flatter HRV before it shows up as a bad session."
+                "{short} of {n} nights were short. Recovery depends on sleep, and a short week \
+                 often shows up as a higher resting HR and a flatter HRV before it shows up in \
+                 how you feel."
             ),
         )
     };
@@ -895,7 +895,7 @@ fn late_session_insight(
             detail: format!(
                 "The {n} nights after a session starting past {:.0}:{:02.0} scored {late:.0} on \
                  average, against {rest:.0} for the rest — a difference small enough to be \
-                 nothing. Worth knowing, since evening is when you actually train.",
+                 nothing.",
                 LATE_HOUR.floor(),
                 LATE_HOUR.fract() * 60.0
             ),

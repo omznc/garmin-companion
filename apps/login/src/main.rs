@@ -11,6 +11,9 @@
 //! garmin.com. Exit code 1 means that no ticket came: the user closed the
 //! window, or the wait ran out. Exit code 2 means bad arguments.
 
+// No console window on Windows in a release build.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use std::process::exit;
 use std::time::{Duration, Instant};
 

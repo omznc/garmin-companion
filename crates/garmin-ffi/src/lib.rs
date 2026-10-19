@@ -120,7 +120,7 @@ fn leave_fixture_mode() {
 /// A synchronous call. It proves the plain function path.
 #[uniffi::export]
 pub fn version() -> String {
-    env!("CARGO_PKG_VERSION").to_owned()
+    garmin_api::settings::APP_VERSION.to_owned()
 }
 
 #[uniffi::export]
