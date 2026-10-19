@@ -15,14 +15,15 @@ export type UpdateState =
   | { at: "ready"; release: ApkRelease; path: string }
   // The user must allow "Install unknown apps" first. Android has no callback for it.
   | { at: "blocked"; release: ApkRelease; path: string }
-  | { at: "failed"; release: ApkRelease; message: string };
+  | { at: "failed"; release: ApkRelease };
 
 // The result of the last look at the manifest. The Settings row shows it.
 export type CheckState = "none" | "checking" | "current" | "offline";
 
 // One store for the banner and the Settings row, so both show the same update.
-type Snapshot = { state: UpdateState; check: CheckState };
-let snapshot: Snapshot = { state: { at: "idle" }, check: "none" };
+// `hidden` is "Later": it hides the banner only. The Settings row still shows the update.
+type Snapshot = { state: UpdateState; check: CheckState; hidden: boolean };
+let snapshot: Snapshot = { state: { at: "idle" }, check: "none", hidden: false };
 const listeners = new Set<() => void>();
 const subscribe = (listener: () => void) => {
   listeners.add(listener);
@@ -34,9 +35,13 @@ function patch(next: Partial<Snapshot>) {
   for (const listener of listeners) listener();
 }
 const setState = (next: UpdateState | ((s: UpdateState) => UpdateState)) =>
-  patch({ state: typeof next === "function" ? next(snapshot.state) : next });
+  patch({ state: typeof next === "function" ? next(snapshot.state) : next, hidden: false });
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+// The screens show one sentence. The reason goes to the log.
+function fail(release: ApkRelease, reason: unknown) {
+  console.warn("The update failed.", reason);
+  setState({ at: "failed", release });
+}
 
 async function check() {
   if (!SELF_UPDATE || !ApkUpdater || snapshot.check === "checking") return;
@@ -64,7 +69,7 @@ async function install(release: ApkRelease, path: string) {
     setState({ at: "ready", release, path });
     await ApkUpdater.install(path);
   } catch (e) {
-    setState({ at: "failed", release, message: message(e) });
+    fail(release, e);
   }
 }
 
@@ -75,11 +80,11 @@ async function start(release: ApkRelease) {
     const path = await ApkUpdater.download(release.url, release.version, release.sha256);
     await install(release, path);
   } catch (e) {
-    setState({ at: "failed", release, message: message(e) });
+    fail(release, e);
   }
 }
 
-const dismiss = () => setState({ at: "idle" });
+const dismiss = () => patch({ hidden: true });
 
 // Check once per launch.
 let launched = false;
@@ -90,7 +95,7 @@ function checkOnLaunch() {
 }
 
 export function useApkUpdate() {
-  const { state, check: checkState } = useSyncExternalStore(subscribe, getSnapshot);
+  const { state, check: checkState, hidden } = useSyncExternalStore(subscribe, getSnapshot);
 
   useEffect(() => {
     if (!SELF_UPDATE || !ApkUpdater) return;
@@ -98,14 +103,14 @@ export function useApkUpdate() {
     const progress = ApkUpdater.addListener("progress", ({ received, total }) =>
       setState((s) => (s.at === "downloading" ? { ...s, received, total } : s)),
     );
-    const failed = ApkUpdater.addListener("installFailed", ({ message: m }) =>
-      setState((s) => ("release" in s ? { at: "failed", release: s.release, message: m } : s)),
-    );
+    const failed = ApkUpdater.addListener("installFailed", ({ message }) => {
+      if ("release" in snapshot.state) fail(snapshot.state.release, message);
+    });
     return () => {
       progress.remove();
       failed.remove();
     };
   }, []);
 
-  return { state, checkState, check, start, install, dismiss };
+  return { state, checkState, hidden, check, start, install, dismiss };
 }

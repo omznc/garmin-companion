@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, rewrite]
   pull_request:
 
 jobs:
@@ -109,7 +109,7 @@ jobs:
   # Push-only. A pull request can read master's cache but writes into its own
   # scope, so running it there would pay for a cache thrown away on merge.
   android:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref != 'refs/heads/rewrite'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -203,3 +203,39 @@ jobs:
       - name: Test worker
         working-directory: worker
         run: pnpm test
+
+  # The Expo app and the release scripts. The typecheck needs no Rust build:
+  # src/data/garmin-bridge.d.ts declares the generated bridge module.
+  mobile:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+
+      - name: Install mobile dependencies
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Test mobile
+        working-directory: apps/mobile
+        run: pnpm test
+
+      - name: Check the format
+        working-directory: apps/mobile
+        run: pnpm format:check
+
+      - name: Typecheck mobile
+        working-directory: apps/mobile
+        run: pnpm typecheck
+
+      - name: Test the release scripts
+        run: node --test scripts/release-rewrite.test.mjs

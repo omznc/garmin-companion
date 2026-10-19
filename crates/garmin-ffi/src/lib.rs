@@ -11,6 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+// The plain `release` profile sets panic = "abort". A panic in a Rust task
+// would then kill the app. Build for mobile with `--profile release-mobile`.
+#[cfg(all(any(target_os = "android", target_os = "ios"), panic = "abort"))]
+compile_error!("garmin-ffi needs unwinding on mobile: build with --profile release-mobile");
+
 mod ask;
 #[cfg(target_os = "ios")]
 mod backup;
@@ -105,7 +110,10 @@ pub fn init(base_dir: String, fixture_mode: bool) {
 fn leave_fixture_mode() {
     FIXTURE_MODE.store(false, Ordering::Relaxed);
     if let Ok(dir) = garmin_core::paths::base_dir() {
-        let _ = std::fs::remove_file(dir.join("sample-mode"));
+        // The app writes the marker in its document folder: `files/` on Android, the base on iOS.
+        for marker in [dir.join("files/sample-mode"), dir.join("sample-mode")] {
+            let _ = std::fs::remove_file(marker);
+        }
     }
 }
 
