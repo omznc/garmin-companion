@@ -149,10 +149,10 @@ async fn fixture_turn(stop: Arc<AtomicBool>) {
 async fn config(fixture: bool) -> Result<String, FfiError> {
     if fixture {
         let saved = SAMPLE_CONFIG.lock().unwrap_or_else(|e| e.into_inner());
-        let (provider, model) = saved.clone().unwrap_or(("ollama".into(), "sample".into()));
+        let (provider, model) = saved.clone().unwrap_or(("cloud".into(), String::new()));
         return Ok(
             json!({ "provider": provider, "model": model, "hasKey": false,
-            "ollamaReachable": true, "ollamaModels": ["sample"] })
+            "ollamaReachable": false, "ollamaModels": [] })
             .to_string(),
         );
     }
