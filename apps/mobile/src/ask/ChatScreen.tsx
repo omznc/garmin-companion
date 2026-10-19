@@ -52,24 +52,31 @@ function useKeyboardOpen() {
   return open;
 }
 
-// Follows a growing answer only while the person is near the end. A person who
-// scrolled up is not pulled back.
+// Follows a growing answer only while the person is near the end. A drag lets go of
+// the pin, and a scroll back near the end takes it again.
 function usePinnedScroll() {
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const pinned = useRef(true);
+  const toEnd = () => {
+    if (pinned.current) scroll.current?.scrollToEnd({ animated: false });
+  };
   return {
     scroll,
     pin: () => {
       pinned.current = true;
     },
+    onScrollBeginDrag: () => {
+      pinned.current = false;
+    },
     onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      pinned.current =
-        contentSize.height - contentOffset.y - layoutMeasurement.height < PIN_DISTANCE;
+      if (contentSize.height - contentOffset.y - layoutMeasurement.height < PIN_DISTANCE) {
+        pinned.current = true;
+      }
     },
-    onContentSizeChange: () => {
-      if (pinned.current) scroll.current?.scrollToEnd({ animated: false });
-    },
+    // The content grows, or the list gets shorter under the keyboard.
+    onContentSizeChange: toEnd,
+    onLayout: toEnd,
   };
 }
 
@@ -105,6 +112,7 @@ function Transcript({
   const theme = useChatTheme();
   const config = useCoachConfig();
   const [suggestions] = useState(openers);
+  const runningId = useRunningId();
   const { turns, loading, error, refetch } = thread;
   const showHero = id === null || (!loading && !error && turns.length === 0);
   return (
@@ -126,7 +134,12 @@ function Transcript({
       ) : null}
       {showHero ? (
         <View>
-          <EmptyHero body={EMPTY_BODY} suggestions={suggestions} onPick={onPick} />
+          <EmptyHero
+            body={EMPTY_BODY}
+            suggestions={suggestions}
+            onPick={onPick}
+            locked={runningId !== null && runningId !== id}
+          />
           {id === null && needsSetup(config.data) ? (
             <Setup onSaved={() => void config.refetch()} />
           ) : null}
@@ -203,6 +216,10 @@ export function ChatScreen({
   const frame = useRef<ComponentRef<typeof View>>(null);
   const [offset, setOffset] = useState(0);
   const keyboardOpen = useKeyboardOpen();
+  // The thread of this draft was deleted: the root goes back to an empty draft.
+  useEffect(() => {
+    if (routeId === null && thread.gone) setStartedId(null);
+  }, [routeId, thread.gone]);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -231,8 +248,10 @@ export function ChatScreen({
             keyboardShouldPersistTaps="handled"
             contentInsetAdjustmentBehavior="never"
             scrollEventThrottle={64}
+            onScrollBeginDrag={pinned.onScrollBeginDrag}
             onScroll={pinned.onScroll}
             onContentSizeChange={pinned.onContentSizeChange}
+            onLayout={pinned.onLayout}
           >
             <Transcript id={id} thread={thread} onPick={(question) => void send(question)} />
           </ScrollView>

@@ -24,8 +24,8 @@ export type Thread = {
   turns: Turn[];
 };
 export type HistoryRow = { role: "user" | "assistant"; content: string };
-// An `ask` event: the JSON of the turn event, with the session it belongs to.
-export type AskEventPayload = { sessionId: string } & (
+// An `ask` event: the JSON of the turn event, with its session and its turn.
+export type AskEventPayload = { sessionId: string; turnId: string } & (
   | { type: "delta"; text: string }
   | { type: "tool"; callId: string; label: string; running: boolean; ok: boolean }
   | { type: "done"; sources: string[] }

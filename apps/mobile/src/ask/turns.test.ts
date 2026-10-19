@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Turn } from "../data/chatTypes.ts";
-import { applyEvent, historyFor, overlay, startLive } from "./turns.ts";
+import {
+  applyEvent,
+  canStart,
+  failRun,
+  historyFor,
+  type Lives,
+  overlay,
+  reduceEvent,
+  runningOf,
+  settleRun,
+  startLive,
+  startRun,
+} from "./turns.ts";
 
 const turn = (id: string, status: Turn["status"], answer = ""): Turn => ({
   id,
@@ -52,6 +64,7 @@ test("events build the turn: steps by call id, text, end", () => {
   let t = startLive("s", 0, "q").turn;
   t = applyEvent(t, {
     sessionId: "s",
+    turnId: "",
     type: "tool",
     callId: "c",
     label: "L",
@@ -61,20 +74,62 @@ test("events build the turn: steps by call id, text, end", () => {
   assert.equal(t.steps[0]?.ok, null);
   t = applyEvent(t, {
     sessionId: "s",
+    turnId: "",
     type: "tool",
     callId: "c",
     label: "L",
     running: false,
     ok: true,
   });
-  t = applyEvent(t, { sessionId: "s", type: "delta", text: "Hi" });
-  t = applyEvent(t, { sessionId: "s", type: "done", sources: [] });
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "delta", text: "Hi" });
+  t = applyEvent(t, { sessionId: "s", turnId: "", type: "done", sources: [] });
   assert.equal(t.steps.length, 1);
   assert.deepEqual([t.steps[0]?.ok, t.answer, t.status], [true, "Hi", "done"]);
   const failed = applyEvent(startLive("s", 0, "q").turn, {
     sessionId: "s",
+    turnId: "",
     type: "error",
     text: "no",
   });
   assert.deepEqual([failed.status, failed.error], ["error", "no"]);
+});
+
+const delta = (sessionId: string, turnId: string, text = "x") =>
+  ({ sessionId, turnId, type: "delta", text }) as const;
+
+test("an event of another run changes nothing", () => {
+  const lives = startRun(new Map(), "s", 0, "q", "run-2");
+  assert.equal(reduceEvent(lives, delta("s", "run-1")), lives);
+  assert.equal(reduceEvent(lives, delta("gone", "run-2")), lives);
+  assert.equal(reduceEvent(lives, delta("s", "run-2")).get("s")?.turn.answer, "x");
+});
+
+test("settle drops a finished run and keeps a newer running run", () => {
+  let lives: Lives = startRun(new Map(), "s", 0, "q", "run-1");
+  lives = reduceEvent(lives, { sessionId: "s", turnId: "run-1", type: "done", sources: [] });
+  assert.equal(settleRun(lives, "s", "run-1").has("s"), false);
+  const newer = startRun(lives, "s", 1, "q2", "run-2");
+  assert.equal(settleRun(newer, "s", "run-1"), newer);
+  assert.equal(settleRun(newer, "s", "run-2"), newer);
+});
+
+test("a new run stops the running turn of another session", () => {
+  const first = startRun(new Map(), "a", 0, "q", "run-a");
+  assert.equal(runningOf(first), "a");
+  const second = startRun(first, "b", 0, "q", "run-b");
+  assert.equal(second.get("a")?.turn.status, "stopped");
+  assert.equal(runningOf(second), "b");
+});
+
+test("a send is refused while another session runs", () => {
+  const lives = startRun(new Map(), "a", 0, "q", "run-a");
+  assert.deepEqual([canStart(lives, "b"), canStart(lives, "a")], [false, true]);
+  assert.equal(canStart(new Map(), "b"), true);
+});
+
+test("a failed ask_send drops its own unsaved run only", () => {
+  const lives = startRun(new Map(), "s", 0, "q", "run-1");
+  assert.equal(failRun(lives, "s", "run-0"), lives);
+  const dropped = failRun(lives, "s", "run-1");
+  assert.deepEqual([dropped.has("s"), runningOf(dropped)], [false, null]);
 });

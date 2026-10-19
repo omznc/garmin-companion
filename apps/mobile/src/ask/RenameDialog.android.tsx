@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View } from "react-native";
 import { useMd } from "../theme/md";
 
-// The longest title the core keeps.
+// The longest title the core keeps. The core cuts a longer title to this length.
 const MAX_TITLE = 200;
 
 // A Material 3 dialog with one field, to rename a chat.

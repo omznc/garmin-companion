@@ -32,6 +32,8 @@ export function useThread(sessionId: string | null) {
     title: query.data?.title ?? null,
     turns,
     loading: sessionId !== null && query.isPending && !live,
+    // The thread was read and is not there: deleted.
+    gone: sessionId !== null && query.data === null && !live,
     error: query.error as Error | null,
     refetch: query.refetch,
   };
@@ -42,8 +44,7 @@ export async function sendMessage(sessionId: string, text: string): Promise<bool
   try {
     // Read the saved thread now: the cache can be a turn behind.
     const stored = (await callJson<Thread | null>("chat_get", { sessionId }))?.turns ?? [];
-    await startTurn(sessionId, stored.length, text, historyFor(stored, text));
-    return true;
+    return await startTurn(sessionId, stored.length, text, historyFor(stored, text));
   } catch {
     return false;
   }
@@ -60,7 +61,8 @@ export async function renameThread(sessionId: string, title: string) {
 export async function deleteThread(sessionId: string) {
   await callJson("chat_delete", { sessionId });
   dropLive(sessionId);
-  queryClient.removeQueries({ queryKey: threadKey(sessionId) });
+  // removeQueries does not tell the screens. The null tells them the thread is gone.
+  queryClient.setQueryData(threadKey(sessionId), null);
   await queryClient.invalidateQueries({ queryKey: threadsKey });
 }
 

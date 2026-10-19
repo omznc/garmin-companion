@@ -12,8 +12,7 @@ import golfer from "../../../../crates/garmin-api/fixtures/today.golfer.json";
 import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
 import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
-import { beginTurn, fixtureChat, setRunning } from "./chatFixtures";
-import type { HistoryRow, Turn } from "./chatTypes";
+import { fixtureChat } from "./chatFixtures";
 import { presentToday } from "./present";
 import { placesFixture } from "./placesFixtures";
 import { trainingFixture } from "./trainingFixtures";
@@ -83,38 +82,8 @@ function fixtureAccountCall(cmd: string, args: unknown): unknown {
 }
 
 const fixtureListeners = new Set<(event: BridgeEvent) => void>();
-let fixtureStop = false;
-
-// A canned answer for the Ask screen, so it runs in Expo Go with no model.
-const FIXTURE_ANSWER =
-  "This is a sample answer, so the screen works with no setup.\n\nWith a model set up, the coach reads **your own Garmin data** first, then answers. Health comes first:\n\n- Sleep, resting heart rate and HRV\n- Recovery, stress and body battery\n- Activity of any sport, but only the sport your data shows\n\nA number that the data cannot support is left out, and the answer says why.";
-
-// One turn at a time: a new turn stops the old one. The turn is saved in the thread as it grows.
-let fixtureRun = 0;
-
-async function fixtureTurn(sessionId: string, turn: Turn) {
-  const run = ++fixtureRun;
-  const send = (payload: unknown) =>
-    fixtureListeners.forEach((l) =>
-      l({ kind: "ask", payload: { ...(payload as object), sessionId } }),
-    );
-  const label = "Reading 14 days of recovery signals";
-  const step = { callId: "fixture", label };
-  send({ type: "tool", ...step, running: true, ok: true });
-  turn.steps = [{ ...step, running: true, ok: null }];
-  await new Promise((r) => setTimeout(r, 400));
-  turn.steps = [{ ...step, running: false, ok: true }];
-  send({ type: "tool", ...step, running: false, ok: true });
-  for (const text of FIXTURE_ANSWER.split(/(?<= )/)) {
-    if (fixtureStop || run !== fixtureRun) break;
-    turn.answer += text;
-    send({ type: "delta", text });
-    await new Promise((r) => setTimeout(r, 40));
-  }
-  turn.status = fixtureStop || run !== fixtureRun ? "stopped" : "done";
-  if (run === fixtureRun) setRunning(null);
-  send({ type: "done", sources: [] });
-}
+const emitFixture = (payload: object) =>
+  fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
 
 // The Expo Go coach state. It lives in memory and resets on reload.
 let fixtureProvider = "cloud";
@@ -145,21 +114,8 @@ const fixtureSource: Source = {
     if (recorded) return JSON.stringify(recorded);
     const body = bodyCommands[cmd];
     if (body) return JSON.stringify(bodyViews[body]);
-    if (cmd === "ask_send") {
-      const { sessionId, history } = args as { sessionId: string; history: HistoryRow[] };
-      const question = [...history].reverse().find((m) => m.role === "user")?.content ?? "";
-      fixtureStop = false;
-      const turn = beginTurn(sessionId, question);
-      setRunning(sessionId);
-      void fixtureTurn(sessionId, turn);
-      return "{}";
-    }
-    const chat = fixtureChat(cmd, args);
+    const chat = fixtureChat(cmd, args, emitFixture);
     if (chat !== undefined) return JSON.stringify(chat);
-    if (cmd === "ask_stop") {
-      fixtureStop = true;
-      return "{}";
-    }
     if (cmd === "ask_config")
       return JSON.stringify({ provider: fixtureProvider, model: "sample", hasKey: false });
     if (cmd === "ask_save_config") {

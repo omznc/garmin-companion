@@ -5,14 +5,24 @@ import { useSyncExternalStore } from "react";
 import type { AskEventPayload, HistoryRow, Thread } from "../data/chatTypes";
 import { queryClient } from "../data/queryClient";
 import { callJson, subscribe as subscribeBridge } from "../data/source";
-import { applyEvent, type Live, startLive } from "./turns";
+import {
+  canStart,
+  failRun,
+  isCurrent,
+  type Live,
+  type Lives,
+  newTurnId,
+  reduceEvent,
+  runningOf,
+  settleRun,
+  startRun,
+} from "./turns";
 
 export const threadsKey = ["askThreads"] as const;
 export const threadKey = (sessionId: string) => ["askThread", sessionId] as const;
 
-const lives = new Map<string, Live>();
+let lives: Lives = new Map();
 const listeners = new Set<() => void>();
-let runningId: string | null = null;
 // The frame that will tell the screens about the stream, if one waits.
 let frame: ReturnType<typeof requestAnimationFrame> | null = null;
 
@@ -44,23 +54,20 @@ const subscribe = (listener: () => void) => {
   };
 };
 
-const patch = (sessionId: string, change: (live: Live) => Live["turn"], soon = false) => {
-  const live = lives.get(sessionId);
-  if (!live) return;
-  lives.set(sessionId, { ...live, turn: change(live) });
-  runningId = [...lives].find(([, l]) => l.turn.status === "running")?.[0] ?? null;
+const setLives = (next: Lives, soon = false) => {
+  if (next === lives) return;
+  lives = next;
   if (soon) notifySoon();
   else notify();
 };
 
 // The turn is over: read the saved thread, then drop the live copy. The core saves
 // before it sends "done", so the saved copy is the final one.
-async function settle(sessionId: string) {
+async function settle(sessionId: string, turnId: string) {
   try {
     const thread = await callJson<Thread | null>("chat_get", { sessionId });
     queryClient.setQueryData(threadKey(sessionId), thread);
-    if (lives.get(sessionId)?.turn.status !== "running") lives.delete(sessionId);
-    notify();
+    setLives(settleRun(lives, sessionId, turnId));
   } catch {
     // The live copy stays, so the answer stays on screen.
   }
@@ -72,8 +79,11 @@ async function settle(sessionId: string) {
 subscribeBridge((event) => {
   if (event.kind !== "ask") return;
   const payload = event.payload as AskEventPayload;
-  patch(payload.sessionId, (live) => applyEvent(live.turn, payload), payload.type === "delta");
-  if (payload.type === "done" || payload.type === "error") void settle(payload.sessionId);
+  if (!isCurrent(lives, payload)) return;
+  setLives(reduceEvent(lives, payload), payload.type === "delta");
+  if (payload.type === "done" || payload.type === "error") {
+    void settle(payload.sessionId, payload.turnId);
+  }
 });
 
 export const hasLive = (sessionId: string) => lives.has(sessionId);
@@ -89,33 +99,29 @@ export const useLive = (sessionId: string | null): Live | undefined =>
 export const useRunningId = (): string | null =>
   useSyncExternalStore(
     subscribe,
-    () => runningId,
+    () => runningOf(lives),
     () => null,
   );
 
+// True when the core took the message. False when another chat answers, or ask_send
+// failed: the unsaved live turn is dropped, and the composer takes the text back.
 export async function startTurn(
   sessionId: string,
   index: number,
   question: string,
   history: HistoryRow[],
-) {
-  // The core stops the old turn. Show it as stopped now, and let its "done" confirm.
-  for (const [other, live] of lives) {
-    if (other !== sessionId && live.turn.status === "running") {
-      patch(other, ({ turn }) => ({ ...turn, status: "stopped" }));
-    }
-  }
-  lives.set(sessionId, startLive(sessionId, index, question));
-  runningId = sessionId;
-  notify();
+): Promise<boolean> {
+  if (!canStart(lives, sessionId)) return false;
+  const turnId = newTurnId();
+  setLives(startRun(lives, sessionId, index, question, turnId));
   try {
-    await callJson("ask_send", { sessionId, history });
-    void queryClient.invalidateQueries({ queryKey: threadsKey });
-  } catch (error) {
-    patch(sessionId, ({ turn }) =>
-      applyEvent(turn, { sessionId, type: "error", text: (error as Error).message }),
-    );
+    await callJson("ask_send", { sessionId, turnId, history });
+  } catch {
+    setLives(failRun(lives, sessionId, turnId));
+    return false;
   }
+  void queryClient.invalidateQueries({ queryKey: threadsKey });
+  return true;
 }
 
 export function stopTurn() {
@@ -123,7 +129,7 @@ export function stopTurn() {
 }
 
 export function dropLive(sessionId: string) {
-  lives.delete(sessionId);
-  if (runningId === sessionId) runningId = null;
-  notify();
+  const next = new Map(lives);
+  next.delete(sessionId);
+  setLives(next);
 }

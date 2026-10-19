@@ -4,13 +4,19 @@ import type { AskEventPayload, HistoryRow, Turn } from "../data/chatTypes.ts";
 
 // The turn that runs now. `index` is the place it has in the thread, which is the
 // number of turns stored before it. The core numbers its turn ids the same way.
-export type Live = { index: number; turn: Turn };
+// `turnId` is the id that the app gave to this run. An event of another run is stale.
+export type Live = { index: number; turn: Turn; turnId: string };
+export type Lives = ReadonlyMap<string, Live>;
+
+export function newTurnId(): string {
+  return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function startLive(sessionId: string, index: number, question: string): Live {
+export function startLive(sessionId: string, index: number, question: string, turnId = ""): Live {
   const turn: Turn = {
     id: `${sessionId}:${index}`,
     question,
@@ -19,7 +25,7 @@ export function startLive(sessionId: string, index: number, question: string): L
     status: "running",
     error: null,
   };
-  return { index, turn };
+  return { index, turn, turnId };
 }
 
 // Steps are keyed by call id: a call comes twice, when it starts and when it ends.
@@ -66,4 +72,61 @@ export function historyFor(stored: Turn[], question: string): HistoryRow[] {
   }
   rows.push({ role: "user", content: question });
   return rows;
+}
+
+// The session that has a running turn, or null. One turn runs at a time.
+export function runningOf(lives: Lives): string | null {
+  for (const [id, live] of lives) if (live.turn.status === "running") return id;
+  return null;
+}
+
+// A send is refused while a turn of another session runs.
+export function canStart(lives: Lives, sessionId: string): boolean {
+  const running = runningOf(lives);
+  return running === null || running === sessionId;
+}
+
+// An event counts only for the current run of its session. A late event of a
+// deleted thread, or of an older run, changes nothing.
+export function isCurrent(lives: Lives, event: AskEventPayload): boolean {
+  return lives.get(event.sessionId)?.turnId === event.turnId;
+}
+
+export function reduceEvent(lives: Lives, event: AskEventPayload): Lives {
+  const live = lives.get(event.sessionId);
+  if (!live || !isCurrent(lives, event)) return lives;
+  return new Map(lives).set(event.sessionId, { ...live, turn: applyEvent(live.turn, event) });
+}
+
+// The core stops the old turn when a new one starts: show it as stopped at once.
+export function startRun(
+  lives: Lives,
+  sessionId: string,
+  index: number,
+  question: string,
+  turnId: string,
+): Lives {
+  const next = new Map<string, Live>();
+  for (const [id, live] of lives) {
+    const stop = id !== sessionId && live.turn.status === "running";
+    next.set(id, stop ? { ...live, turn: { ...live.turn, status: "stopped" } } : live);
+  }
+  return next.set(sessionId, startLive(sessionId, index, question, turnId));
+}
+
+// The saved thread is read: drop the live copy of that run. A newer run that still runs stays.
+export function settleRun(lives: Lives, sessionId: string, turnId: string): Lives {
+  const live = lives.get(sessionId);
+  if (!live || live.turnId !== turnId || live.turn.status === "running") return lives;
+  const next = new Map(lives);
+  next.delete(sessionId);
+  return next;
+}
+
+// ask_send failed: the turn was never saved, so drop it. The text goes back to the composer.
+export function failRun(lives: Lives, sessionId: string, turnId: string): Lives {
+  if (lives.get(sessionId)?.turnId !== turnId) return lives;
+  const next = new Map(lives);
+  next.delete(sessionId);
+  return next;
 }

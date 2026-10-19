@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 
-// The longest title the core keeps.
+// The longest title the core keeps. The core cuts a longer title to this length.
 const MAX_TITLE = 200;
 
 // The rename of a chat, as the system alert with a text field.

@@ -8,12 +8,15 @@ export function EmptyHero({
   body,
   suggestions,
   onPick,
+  locked = false,
 }: {
   title?: string;
   body: string;
   suggestions: string[];
   /** Called with the question of the chip that the person pressed. */
   onPick: (question: string) => void;
+  /** Another chat answers, so the chips are off. */
+  locked?: boolean;
 }) {
   const theme = useChatTheme();
   return (
@@ -27,6 +30,8 @@ export function EmptyHero({
           <Pressable
             key={question}
             accessibilityRole="button"
+            disabled={locked}
+            accessibilityState={{ disabled: locked }}
             onPress={() => onPick(question)}
             android_ripple={{ color: theme.line }}
             style={({ pressed }) => ({
@@ -36,6 +41,7 @@ export function EmptyHero({
               paddingHorizontal: 12,
               paddingVertical: 8,
               backgroundColor: Platform.OS === "ios" && pressed ? theme.pressed : undefined,
+              opacity: locked ? 0.4 : 1,
             })}
           >
             <Text style={{ color: theme.text, fontSize: 14, lineHeight: 20 }}>{question}</Text>
