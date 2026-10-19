@@ -12,11 +12,6 @@ jobs:
       contents: read
     env:
       APP_VERSION: 9.9.9
-      # The Podfile of Expo starts the compilers through ccache (ios.ccacheEnabled).
-      CCACHE_DIR: /Users/runner/.ccache
-      CCACHE_BASEDIR: ${{ github.workspace }}
-      CCACHE_COMPILERCHECK: content
-      CCACHE_MAXSIZE: 1G
     steps:
       - uses: actions/checkout@v7
 
@@ -51,11 +46,11 @@ jobs:
         uses: actions/cache@v6
         with:
           path: |
-            ~/.ccache
+            ~/Library/Caches/ccache
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
-          key: ios-pods-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
-          restore-keys: ios-pods-${{ runner.arch }}-
+          key: ios-ccache-${{ runner.arch }}-${{ hashFiles('apps/mobile/pnpm-lock.yaml') }}
+          restore-keys: ios-ccache-${{ runner.arch }}-
 
       - name: Build the Rust bridge
         working-directory: apps/mobile
@@ -79,20 +74,14 @@ jobs:
         working-directory: apps/mobile
         # The index store and the full debug symbols give no value in a CI build.
         run: |
-          grep -c 'ccache-clang' ios/Pods/Pods.xcodeproj/project.pbxproj || true
-          grep -m3 -n 'CCACHE_BINARY' ios/Pods/Pods.xcodeproj/project.pbxproj || true
           ccache -z
           WORKSPACE="$(ls -d ios/*.xcworkspace)"
           SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
-          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
+          xcodebuild -quiet -workspace "$WORKSPACE" -scheme "$SCHEME" \
             -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/derived" \
             COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee "$RUNNER_TEMP/xb.log" | tail -n 0
-          for k in CompileC SwiftCompile CompileSwift SwiftDriver PhaseScriptExecution Ld CompileAssetCatalog; do echo "$k $(grep -c "^$k " "$RUNNER_TEMP/xb.log")"; done
-          grep -m1 -A12 '^CompileC ' "$RUNNER_TEMP/xb.log" | cut -c1-400 || true
-          grep -m1 -A3 'ccache-clang' "$RUNNER_TEMP/xb.log" | cut -c1-200 || true
-          grep -m5 'ccache-clang' "$RUNNER_TEMP/xb.log" | cut -c1-300 || true
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
       # If the hit rate is zero, ccache is not in use.
       - name: Show the ccache statistics
