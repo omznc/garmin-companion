@@ -499,8 +499,8 @@ pub struct EnergyCheck {
 #[serde(rename_all = "camelCase")]
 pub struct WeightGoal {
     pub target_kg: f64,
-    /// Signed: negative means there is weight to lose.
-    pub delta_kg: f64,
+    /// Signed: negative means there is weight to lose. `None` with no weight.
+    pub delta_kg: Option<f64>,
     /// Projected arrival, from the current rate. `None` when the rate is flat
     /// or pointing away from the target — an honest "not on this trajectory"
     /// rather than a date centuries out.
@@ -853,7 +853,7 @@ fn goal_check(
     let Some(current) = current else {
         return Ok(Some(WeightGoal {
             target_kg: target,
-            delta_kg: 0.0,
+            delta_kg: None,
             eta_date: None,
             eta_days: None,
         }));
@@ -870,7 +870,7 @@ fn goal_check(
 
     Ok(Some(WeightGoal {
         target_kg: target,
-        delta_kg: delta,
+        delta_kg: Some(delta),
         eta_date: eta_days.map(|d| {
             (today + chrono::Duration::days(d))
                 .format("%Y-%m-%d")
@@ -1265,6 +1265,19 @@ pub fn cache_status_with(db: &Db, connected_to_garmin: bool) -> Result<CacheStat
 mod tests {
     use super::*;
     use crate::db::WeighIn;
+
+    #[test]
+    fn a_goal_without_a_weight_has_no_delta() {
+        let path =
+            std::env::temp_dir().join(format!("garmin-query-goal-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        db.set_sync_state("weight_goal_kg", "75").unwrap();
+        let goal = weight(&db, 30).unwrap().goal.unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(goal.delta_kg, None);
+        assert!(serde_json::to_value(&goal).unwrap()["deltaKg"].is_null());
+    }
 
     fn w(pk: i64, date: &str, kg: f64) -> WeighIn {
         WeighIn {

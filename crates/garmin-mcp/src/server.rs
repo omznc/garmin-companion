@@ -20,6 +20,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Default)]
 pub struct GarminServer;
 
+/// The longest window that a tool reads, as in the desktop dispatcher.
+const MAX_DAYS: u32 = 3650;
+
+fn clamp_days(days: Option<u32>, default: u32) -> u32 {
+    days.unwrap_or(default).clamp(1, MAX_DAYS)
+}
+
 fn db() -> Result<Db, ErrorData> {
     Db::open_default().map_err(internal)
 }
@@ -921,7 +928,7 @@ impl GarminServer {
         Parameters(p): Parameters<DaysParams>,
     ) -> Result<Json<Vec<RecoveryDay>>, ErrorData> {
         let db = db()?;
-        let days = query::recovery(&db, p.days.unwrap_or(14)).map_err(internal)?;
+        let days = query::recovery(&db, clamp_days(p.days, 14)).map_err(internal)?;
         Ok(Json(days.into_iter().map(RecoveryDay::from).collect()))
     }
 
@@ -944,7 +951,7 @@ impl GarminServer {
         Parameters(p): Parameters<DaysParams>,
     ) -> Result<Json<SleepReport>, ErrorData> {
         let db = db()?;
-        let days = p.days.unwrap_or(30);
+        let days = clamp_days(p.days, 30);
         let report = query::sleep(&db, days).map_err(internal)?;
         // The window is capped independently of `days`: thirty nights is
         // already more than any answer quotes, and the averages above them
@@ -962,7 +969,7 @@ impl GarminServer {
         Parameters(p): Parameters<DaysParams>,
     ) -> Result<Json<NutritionReport>, ErrorData> {
         let db = db()?;
-        let report = query::nutrition(&db, p.days.unwrap_or(30)).map_err(internal)?;
+        let report = query::nutrition(&db, clamp_days(p.days, 30)).map_err(internal)?;
         Ok(Json(NutritionReport::from(report)))
     }
 
@@ -1024,7 +1031,7 @@ impl GarminServer {
         Parameters(p): Parameters<DaysParams>,
     ) -> Result<Json<serde_json::Value>, ErrorData> {
         let db = db()?;
-        let report = query::weight(&db, p.days.unwrap_or(90)).map_err(internal)?;
+        let report = query::weight(&db, clamp_days(p.days, 90)).map_err(internal)?;
         Ok(Json(serde_json::to_value(report).map_err(|e| {
             ErrorData::internal_error(e.to_string(), None)
         })?))
@@ -1089,7 +1096,7 @@ impl GarminServer {
         // `garmin_core::findings` forever, and the descriptions above are what
         // the model actually reads.
         let db = db()?;
-        let days = p.days.unwrap_or(365);
+        let days = clamp_days(p.days, 365);
         let daily = db
             .daily_since(&garmin_core::days_ago(days))
             .map_err(internal)?;
@@ -1148,7 +1155,7 @@ impl GarminServer {
         Parameters(p): Parameters<DaysParams>,
     ) -> Result<Json<FitnessReport>, ErrorData> {
         let db = db()?;
-        let r = query::fitness(&db, p.days.unwrap_or(30)).map_err(internal)?;
+        let r = query::fitness(&db, clamp_days(p.days, 30)).map_err(internal)?;
         let latest = r.latest.as_ref();
         let s = latest.map(|d| &d.status);
         let pred = latest.map(|d| &d.predictions);
@@ -1306,7 +1313,7 @@ impl GarminServer {
         &self,
         Parameters(p): Parameters<SyncParams>,
     ) -> Result<Json<SyncSummary>, ErrorData> {
-        let (days, full) = (p.days.unwrap_or(30), p.full.unwrap_or(false));
+        let (days, full) = (clamp_days(p.days, 30), p.full.unwrap_or(false));
 
         // `rusqlite::Connection` isn't `Sync`, and a sync interleaves DB writes
         // with network awaits — so the whole thing runs on a blocking thread
@@ -1393,5 +1400,18 @@ impl ServerHandler for GarminServer {
                 .into(),
         );
         info
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_huge_day_count_is_clamped() {
+        assert_eq!(clamp_days(Some(u32::MAX), 30), MAX_DAYS);
+        assert_eq!(clamp_days(Some(0), 30), 1);
+        assert_eq!(clamp_days(None, 30), 30);
+        garmin_core::days_ago(clamp_days(Some(u32::MAX), 30));
     }
 }

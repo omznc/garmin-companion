@@ -185,7 +185,9 @@ fn stats(a: &CachedActivity, discipline: Discipline) -> Vec<Stat> {
         rate,
         positive(a.avg_hr).map(|v| ("Avg HR", format!("{v:.0}"))),
         positive(a.max_hr).map(|v| ("Max HR", format!("{v:.0}"))),
-        positive(a.avg_cadence).map(|c| ("Cadence", format!("{c:.0} spm"))),
+        positive(a.avg_cadence)
+            .zip(garmin_api::activities::cadence_unit(a.type_key.as_deref()))
+            .map(|(c, unit)| ("Cadence", format!("{c:.0} {unit}"))),
         positive(a.aerobic_te).map(|t| ("Aerobic TE", format!("{t:.1}"))),
     ]
     .into_iter()
@@ -300,6 +302,23 @@ fn week(view: &TodayView, day: Option<NaiveDate>) -> Option<Week> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cadence_takes_its_unit_from_the_sport() {
+        let cadence = |key: &str| {
+            let a: CachedActivity = serde_json::from_value(serde_json::json!({
+                "activityId": 1, "typeKey": key, "avgCadence": 85.0, "zoneSecs": [0.0, 0.0, 0.0, 0.0, 0.0],
+            }))
+            .unwrap();
+            let all = stats(&a, Discipline::Endurance);
+            all.into_iter()
+                .find(|s| s.label == "Cadence")
+                .map(|s| s.value)
+        };
+        assert_eq!(cadence("running").as_deref(), Some("85 spm"));
+        assert_eq!(cadence("cycling").as_deref(), Some("85 rpm"));
+        assert_eq!(cadence("motorcycling_v2"), None);
+    }
 
     #[test]
     fn numbers_get_thousands_separators_and_a_sign() {

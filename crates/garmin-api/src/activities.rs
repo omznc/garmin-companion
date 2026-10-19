@@ -312,7 +312,8 @@ fn rate_text(type_key: Option<&str>, min_per_km: f64) -> Option<String> {
     }
 }
 
-fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
+/// `spm` on foot, `rpm` on a bike, nothing for any other sport.
+pub fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
     if on_foot(type_key) {
         Some("spm")
     } else if is_wheeled(type_key) {

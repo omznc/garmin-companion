@@ -511,8 +511,10 @@ impl Db {
                 a.duration,
                 a.average_hr,
                 a.max_hr,
-                a.average_running_cadence_in_steps_per_minute,
-                a.max_running_cadence_in_steps_per_minute,
+                a.average_running_cadence_in_steps_per_minute
+                    .or(a.average_biking_cadence_in_rev_per_minute),
+                a.max_running_cadence_in_steps_per_minute
+                    .or(a.max_biking_cadence_in_rev_per_minute),
                 a.average_speed,
                 a.calories,
                 a.aerobic_training_effect,
@@ -2079,6 +2081,36 @@ mod tests {
             "activityType": { "typeKey": type_key },
         }))
         .expect("activity fixture")
+    }
+
+    #[test]
+    fn a_ride_keeps_its_cadence() {
+        let db = scratch("ride-cadence");
+        let row = |id: i64, key: &str, field: &str| {
+            serde_json::from_value::<ActivitySummary>(serde_json::json!({
+                "activityId": id,
+                "startTimeLocal": "2026-03-10 07:00:00",
+                "activityType": { "typeKey": key },
+                field: 88.0,
+            }))
+            .unwrap()
+        };
+        db.upsert_activity(&row(1, "cycling", "averageBikingCadenceInRevPerMinute"))
+            .unwrap();
+        db.upsert_activity(&row(2, "running", "averageRunningCadenceInStepsPerMinute"))
+            .unwrap();
+        db.upsert_activity(&row(3, "cycling", "averageSpeed"))
+            .unwrap();
+        let rows = db.activities_since("2026-03-01").unwrap();
+        let cadence = |id: i64| {
+            rows.iter()
+                .find(|a| a.activity_id == id)
+                .unwrap()
+                .avg_cadence
+        };
+        assert_eq!(cadence(1), Some(88.0));
+        assert_eq!(cadence(2), Some(88.0));
+        assert_eq!(cadence(3), None);
     }
 
     fn hours_since(db: &Db, from: &str) -> f64 {
