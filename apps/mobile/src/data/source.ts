@@ -12,6 +12,7 @@ import golfer from "../../../../crates/garmin-api/fixtures/today.golfer.json";
 import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
 import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
+import { fixtureChat } from "./chatFixtures";
 import { presentToday } from "./present";
 import { placesFixture } from "./placesFixtures";
 import { trainingFixture } from "./trainingFixtures";
@@ -81,25 +82,8 @@ function fixtureAccountCall(cmd: string, args: unknown): unknown {
 }
 
 const fixtureListeners = new Set<(event: BridgeEvent) => void>();
-let fixtureStop = false;
-
-// A canned answer for the Ask screen, so it runs in Expo Go with no model.
-const FIXTURE_ANSWER =
-  "This is a sample answer, so the screen works with no setup.\n\nWith a model set up, the coach reads **your own Garmin data** first, then answers. Health comes first:\n\n- Sleep, resting heart rate and HRV\n- Recovery, stress and body battery\n- Activity of any sport, but only the sport your data shows\n\nA number that the data cannot support is left out, and the answer says why.";
-
-async function fixtureTurn() {
-  const send = (payload: unknown) => fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
-  const tool = { type: "tool", callId: "fixture", label: "Reading 14 days of recovery signals" };
-  send({ ...tool, running: true, ok: true });
-  await new Promise((r) => setTimeout(r, 400));
-  send({ ...tool, running: false, ok: true });
-  for (const text of FIXTURE_ANSWER.split(/(?<= )/)) {
-    if (fixtureStop) break;
-    send({ type: "delta", text });
-    await new Promise((r) => setTimeout(r, 40));
-  }
-  send({ type: "done", sources: [] });
-}
+const emitFixture = (payload: object) =>
+  fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
 
 // The Expo Go coach state. It lives in memory and resets on reload.
 let fixtureProvider = "cloud";
@@ -113,40 +97,44 @@ const fixtureCloud = {
   low: false,
 };
 
+// Keep the list and the detail in agreement: answer with the id that was asked for.
+const activityDetail = (args: unknown) => {
+  const id = (args as { activityId?: number } | undefined)?.activityId;
+  return id === undefined ? activityFixture : { ...activityFixture, activityId: id };
+};
+
+const saveConfig = (args: unknown) => {
+  fixtureProvider = (args as { provider: string }).provider;
+  return {};
+};
+
+const firstFixtures: Record<string, (args: unknown) => unknown> = {
+  today: () => fixture,
+  activities: () => activitiesFixture,
+  activity_detail: activityDetail,
+};
+
+const lastFixtures: Record<string, (args: unknown) => unknown> = {
+  ask_config: () => ({ provider: fixtureProvider, model: "sample", hasKey: false }),
+  ask_save_config: saveConfig,
+  cloud_account: () => fixtureCloud,
+  cloud_sign_out: () => ({}),
+};
+
 const fixtureSource: Source = {
   async call(cmd, args) {
-    if (cmd === "today") return JSON.stringify(fixture);
-    if (cmd === "activities") return JSON.stringify(activitiesFixture);
-    if (cmd === "activity_detail") {
-      // Keep the list and the detail in agreement: answer with the id that was asked for.
-      const id = (args as { activityId?: number } | undefined)?.activityId;
-      return JSON.stringify(
-        id === undefined ? activityFixture : { ...activityFixture, activityId: id },
-      );
-    }
+    const first = firstFixtures[cmd];
+    if (first) return JSON.stringify(first(args));
     const account = fixtureAccountCall(cmd, args);
     if (account !== undefined) return JSON.stringify(account);
     const recorded = wellnessFixture(cmd) ?? trainingFixture(cmd, args) ?? placesFixture(cmd);
     if (recorded) return JSON.stringify(recorded);
     const body = bodyCommands[cmd];
     if (body) return JSON.stringify(bodyViews[body]);
-    if (cmd === "ask_send") {
-      fixtureStop = false;
-      void fixtureTurn();
-      return "{}";
-    }
-    if (cmd === "ask_stop") {
-      fixtureStop = true;
-      return "{}";
-    }
-    if (cmd === "ask_config")
-      return JSON.stringify({ provider: fixtureProvider, model: "sample", hasKey: false });
-    if (cmd === "ask_save_config") {
-      fixtureProvider = (args as { provider: string }).provider;
-      return "{}";
-    }
-    if (cmd === "cloud_account") return JSON.stringify(fixtureCloud);
-    if (cmd === "cloud_sign_out") return "{}";
+    const chat = fixtureChat(cmd, args, emitFixture);
+    if (chat !== undefined) return JSON.stringify(chat);
+    const last = lastFixtures[cmd];
+    if (last) return JSON.stringify(last(args));
     if (cmd.startsWith("cloud_")) throw new Error("Email sign-in is not available in this build.");
     throw new Error(`no fixture for command: ${cmd}`);
   },
