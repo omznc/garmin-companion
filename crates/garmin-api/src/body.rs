@@ -109,11 +109,11 @@ fn window_sentence(w: &query::WeightWindow) -> String {
     }
 }
 
-fn goal_sentence(g: &query::WeightGoal) -> String {
+fn goal_sentence(g: &query::WeightGoal, delta_kg: f64) -> String {
     let head = format!(
         "{:.1} kg {} your goal of {:.1} kg",
-        g.delta_kg.abs(),
-        if g.delta_kg < 0.0 { "above" } else { "below" },
+        delta_kg.abs(),
+        if delta_kg < 0.0 { "above" } else { "below" },
         g.target_kg
     );
     match &g.eta_date {
@@ -175,12 +175,11 @@ pub fn weight_view(db: &Db, today: NaiveDate) -> Result<WeightView, ApiError> {
             Vec::new()
         },
         composition: if has { composition(db, today)? } else { None },
-        // Without a weight the core gives a delta of 0.0. That is no distance to a goal.
+        // Without a weight there is no delta, and so no sentence.
         goal_sentence: r
             .goal
             .as_ref()
-            .filter(|_| r.trend_kg.or(r.latest_kg).is_some())
-            .map(goal_sentence),
+            .and_then(|g| g.delta_kg.map(|d| goal_sentence(g, d))),
         points: r
             .points
             .into_iter()
