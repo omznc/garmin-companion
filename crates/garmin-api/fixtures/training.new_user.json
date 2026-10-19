@@ -1,0 +1,46 @@
+{
+  "insights": {
+    "date": "2026-03-11",
+    "eyebrow": "Last 365 days",
+    "lede": "What a year of your own data says. Each insight shows the sample behind it, so you can judge how far to trust it. These are patterns, not causes.",
+    "empty": {
+      "title": "Not enough history yet.",
+      "body": "Insights compare your daily health data with your activity. After a few more weeks of synced data, the first ones appear. Nothing shows until the data supports it."
+    },
+    "sections": []
+  },
+  "fitness": {
+    "date": "2026-03-11",
+    "empty": {
+      "title": "Nothing synced yet.",
+      "body": "Training status, load balance and records arrive with a sync. Garmin works them out on the watch, so a watch that records activity is needed."
+    },
+    "lede": null,
+    "figures": [],
+    "notes": [],
+    "balance": null,
+    "predictions": null,
+    "records": []
+  },
+  "reports": [
+    {
+      "date": "2026-03-11",
+      "empty": {
+        "title": "No weeks to report on.",
+        "body": "The weekly report is built from synced activities. Sync some history and the report writes itself."
+      },
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 0,
+      "weeks": 0,
+      "hasEarlier": false,
+      "hasLater": false,
+      "eyebrow": "No weeks yet",
+      "headline": "",
+      "paragraphs": [],
+      "figures": [],
+      "dailyTitle": "",
+      "daily": [],
+      "sessions": []
+    }
+  ]
+}

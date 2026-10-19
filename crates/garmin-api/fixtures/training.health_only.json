@@ -1,0 +1,59 @@
+{
+  "insights": {
+    "date": "2026-03-11",
+    "eyebrow": "Last 365 days",
+    "lede": "What a year of your own data says. Each insight shows the sample behind it, so you can judge how far to trust it. These are patterns, not causes.",
+    "empty": {
+      "title": "Not enough history yet.",
+      "body": "Insights compare your daily health data with your activity. After a few more weeks of synced data, the first ones appear. Nothing shows until the data supports it."
+    },
+    "sections": []
+  },
+  "fitness": {
+    "date": "2026-03-11",
+    "empty": null,
+    "lede": null,
+    "figures": [],
+    "notes": [],
+    "balance": null,
+    "predictions": null,
+    "records": [
+      {
+        "label": "Most steps in a day",
+        "value": "17,840",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Most steps in a week",
+        "value": "71,200",
+        "date": "18 Jan"
+      },
+      {
+        "label": "Longest step-goal streak",
+        "value": "9 days",
+        "date": "18 Jan"
+      }
+    ]
+  },
+  "reports": [
+    {
+      "date": "2026-03-11",
+      "empty": {
+        "title": "No weeks to report on.",
+        "body": "The weekly report is built from synced activities. Sync some history and the report writes itself."
+      },
+      "lede": "Monday to Sunday, written up and set against the week before.",
+      "offset": 0,
+      "weeks": 0,
+      "hasEarlier": false,
+      "hasLater": false,
+      "eyebrow": "No weeks yet",
+      "headline": "",
+      "paragraphs": [],
+      "figures": [],
+      "dailyTitle": "",
+      "daily": [],
+      "sessions": []
+    }
+  ]
+}

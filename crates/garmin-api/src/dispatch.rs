@@ -25,6 +25,11 @@ struct Recent {
 }
 
 #[derive(Deserialize)]
+struct Offset {
+    offset: Option<usize>,
+}
+
+#[derive(Deserialize)]
 struct Since {
     from: String,
 }
@@ -69,6 +74,8 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// - `plan_view`: the Plan screen, from the saved workouts.
 /// - `routes_view` `{sort}`: the Routes screen. `sort` is `recent`, `repeats` or `distance`.
 /// - `gear_view`: the Gear screen. It reads Garmin live, so it needs a sign-in.
+/// - `insights_view`, `fitness_view`: the Insights and Fitness screens.
+/// - `report_view` `{offset}`: the weekly report. Offset 0 is the newest week.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
@@ -143,6 +150,22 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
         }
         // This one calls Garmin: the cache holds no gear. It blocks.
         "gear_view" => encode(&crate::gear::gear_view(&crate::gear::fetch_gear()?)),
+        "insights_view" => encode(&crate::insights::insights_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "fitness_view" => encode(&crate::fitness::fitness_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "report_view" => {
+            let a: Offset = parse(args_json)?;
+            encode(&crate::reports::report_view(
+                &open_default_db()?,
+                garmin_core::today(),
+                a.offset.unwrap_or(0),
+            )?)
+        }
         other => account_call(other, args_json),
     }
 }

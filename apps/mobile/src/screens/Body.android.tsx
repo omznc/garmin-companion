@@ -1,6 +1,6 @@
 // Weight, Food and Strength on Android: Material 3 Expressive cards.
 // The core sends the text. This file draws the blocks of `data/body.ts`.
-import type { UseQueryResult } from "@tanstack/react-query";
+import { useState } from "react";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
@@ -17,7 +17,7 @@ import {
   TileGrid,
 } from "../components/MdKit";
 import { RouteTrace, WearBar } from "../components/RouteTrace";
-import { type Block, type BodyKind, type BodyScreenData, useBody } from "../data/body";
+import { type Block, type ScreenKind, useBody } from "../data/body";
 import { useMd } from "../theme/md";
 
 const MAX_BARS = 48;
@@ -105,7 +105,23 @@ function RowsBlock({ b }: { b: Extract<Block, { kind: "rows" }> }) {
   );
 }
 
-function BlockView({ b }: { b: Block }) {
+function ActionsBlock({
+  b,
+  onAction,
+}: {
+  b: Extract<Block, { kind: "actions" }>;
+  onAction: (id: string) => void;
+}) {
+  return (
+    <Group>
+      {b.actions.map((a) => (
+        <ListRow key={a.id} title={a.label} action onPress={() => onAction(a.id)} />
+      ))}
+    </Group>
+  );
+}
+
+function BlockView({ b, onAction }: { b: Block; onAction: (id: string) => void }) {
   const md = useMd();
   switch (b.kind) {
     case "text":
@@ -116,6 +132,8 @@ function BlockView({ b }: { b: Block }) {
       return <ChartBlock b={b} />;
     case "rows":
       return <RowsBlock b={b} />;
+    case "actions":
+      return <ActionsBlock b={b} onAction={onAction} />;
     case "empty":
       return (
         <Card tone="secondary">
@@ -130,18 +148,19 @@ function BlockView({ b }: { b: Block }) {
   }
 }
 
-type Query = Pick<UseQueryResult<BodyScreenData>, "data" | "error" | "refetch">;
-
-/** Any screen that is a list of blocks. */
-export function BlocksScreen({ title, query }: { title: string; query: Query }) {
-  const { data, error, refetch } = query;
+export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string }) {
+  // The weekly report pages through its weeks. Offset 0 is the newest week.
+  const [offset, setOffset] = useState(0);
+  const { data, error, refetch } = useBody(kind, offset);
+  const onAction = (id: string) =>
+    setOffset((o) => (id === "earlier" ? o + 1 : Math.max(o - 1, 0)));
   return (
     <LargeAppBarScreen title={title} back>
       {data ? (
         <Content>
           {data.blocks.map((b, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
-            <BlockView key={i} b={b} />
+            <BlockView key={i} b={b} onAction={onAction} />
           ))}
         </Content>
       ) : null}
@@ -149,8 +168,4 @@ export function BlocksScreen({ title, query }: { title: string; query: Query }) 
       {error ? <ErrorCard message={String(error)} onRetry={() => refetch()} /> : null}
     </LargeAppBarScreen>
   );
-}
-
-export function BodyScreen({ kind, title }: { kind: BodyKind; title: string }) {
-  return <BlocksScreen title={title} query={useBody(kind)} />;
 }

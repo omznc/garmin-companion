@@ -1,5 +1,5 @@
-import { PlacesScreen } from "../../../src/screens/Places";
+import { BodyScreen } from "../../../src/screens/Body";
 
 export default function Screen() {
-  return <PlacesScreen kind="gear" title="Gear" />;
+  return <BodyScreen kind="gear" title="Gear" />;
 }

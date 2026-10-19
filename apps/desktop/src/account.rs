@@ -19,7 +19,7 @@ use crate::cloud::Cloud;
 use crate::field::Field;
 use crate::shell::Root;
 use crate::theme::Palette;
-use crate::{body, data, wellness};
+use crate::{body, data, training, wellness};
 
 /// How far back a recent sync reads.
 const RECENT_DAYS: u32 = 30;
@@ -300,6 +300,11 @@ impl Root {
         match body::load_body(&self.source) {
             Ok(body) => self.body = body,
             Err(e) => eprintln!("could not reload the body screens: {e:#}"),
+        }
+        let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
+        match training::load(&self.source, offset) {
+            Ok(training) => self.training = Some(training),
+            Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
         self.list = self.store.list();
         self.places.reload();

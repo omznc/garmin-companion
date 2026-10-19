@@ -1,6 +1,6 @@
 // The More tab: a grouped list. Each row pushes its own page in the More stack.
 import { useRouter } from "expo-router";
-import { useStrengthShown } from "../data/body";
+import { useFitnessShown, useStrengthShown } from "../data/body";
 import { THEMES } from "../data/useSettingsActions";
 import { updatesLine } from "../update/updatesLine";
 import { SELF_UPDATE, useApkUpdate } from "../update/useApkUpdate";
@@ -31,6 +31,7 @@ const row = (
 export function MoreHome() {
   const router = useRouter();
   const strength = useStrengthShown().data === true;
+  const fitness = useFitnessShown().data === true;
   const settings = useSettings().data;
   const coach = useCoachConfig().data;
   const theme = useAppearanceLine(THEMES.find((t) => t.value === settings?.theme)?.label);
@@ -59,6 +60,22 @@ export function MoreHome() {
       : []),
   ];
   const training: Row[] = [
+    row("Insights", "/more/insights", "lightbulb.fill", "systemYellow", {
+      icon: "lightbulb",
+      tone: "tertiary",
+    }),
+    ...(fitness
+      ? [
+          row("Fitness", "/more/fitness", "gauge.medium", "systemRed", {
+            icon: "speed",
+            tone: "primary",
+          }),
+        ]
+      : []),
+    row("Weekly report", "/more/reports", "doc.text.fill", "systemBlue", {
+      icon: "summarize",
+      tone: "secondary",
+    }),
     row("Plan", "/more/plan", "list.bullet.clipboard.fill", "systemIndigo", {
       icon: "event-note",
       tone: "primary",

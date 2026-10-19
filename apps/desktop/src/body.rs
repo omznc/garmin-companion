@@ -64,7 +64,7 @@ pub fn screen(label: &str, data: &BodyData, key: usize, t: &Theme) -> Option<Any
     })
 }
 
-fn tile(label: &str, value: Option<String>, unit: &str, accent: bool) -> Metric {
+pub(crate) fn tile(label: &str, value: Option<String>, unit: &str, accent: bool) -> Metric {
     let mut parts = vec![Part {
         text: value.clone().unwrap_or_else(|| DASH.into()),
         unit: false,
@@ -82,7 +82,7 @@ fn tile(label: &str, value: Option<String>, unit: &str, accent: bool) -> Metric 
     }
 }
 
-fn tiles(items: &[Metric], t: &Theme) -> Div {
+pub(crate) fn tiles(items: &[Metric], t: &Theme) -> Div {
     items.iter().fold(
         div().flex().flex_wrap().gap_x(px(44.0)).gap_y(px(24.0)),
         |row, m| row.child(metric(m, t)),
@@ -152,6 +152,12 @@ pub(crate) fn row(key: String, figures: &[(String, Hsla)], t: &Theme) -> Div {
         .child(cells)
 }
 
+/// `28 Sep` from `2026-09-28`. A date that does not parse stays as it is.
+fn short_day(date: &str) -> String {
+    chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .map_or_else(|_| date.to_string(), |d| d.format("%d %b").to_string())
+}
+
 fn kcal(v: Option<f64>) -> String {
     v.map_or(DASH.into(), |v| group(v.round()))
 }
@@ -190,7 +196,7 @@ fn signed_kg(v: Option<f64>) -> Option<String> {
 }
 
 /// A chart and the two dates under it.
-fn chart(values: &[f32], labels: [&str; 2], t: &Theme) -> Div {
+pub(crate) fn chart(values: &[f32], labels: [&str; 2], t: &Theme) -> Div {
     div()
         .child(line_chart(values, 140.0, 8.0, t))
         .child(axis_labels(&labels.map(String::from), t))
@@ -261,7 +267,7 @@ fn weight_chart(v: &WeightView, t: &Theme) -> Div {
     };
     div()
         .child(section("Trend", t))
-        .child(chart(&line, [&first.date, &last.date], t))
+        .child(chart(&line, [&first.label, &last.label], t))
 }
 
 fn composition(c: &garmin_api::body::Composition, t: &Theme) -> Div {
@@ -281,7 +287,10 @@ fn composition(c: &garmin_api::body::Composition, t: &Theme) -> Div {
             div().flex().flex_wrap().gap_x(px(38.0)).gap_y(px(20.0)),
             |r, s| r.child(s),
         ))
-        .child(note(&format!("From the scale reading of {}.", c.date), t))
+        .child(note(
+            &format!("From the scale reading of {}.", short_day(&c.date)),
+            t,
+        ))
 }
 
 fn weight_rows(v: &WeightView, t: &Theme) -> Div {
@@ -290,7 +299,7 @@ fn weight_rows(v: &WeightView, t: &Theme) -> Div {
         let flag = if p.outlier { "check this" } else { "" };
         let colour = if p.outlier { t.acc } else { t.faint };
         list.child(row(
-            p.date.clone(),
+            p.label.clone(),
             &[
                 (flag.into(), colour),
                 (trend, t.faint),
@@ -430,9 +439,11 @@ fn exercise_row(e: &ExerciseHistory, t: &Theme) -> Div {
     row(
         e.name.clone(),
         &[
-            (format!("{} sessions", e.sessions), t.faint),
-            (format!("{} sets", e.sets), t.mutd),
-            (format!("{} reps", e.reps), t.fg),
+            (e.detail.clone(), t.faint),
+            (
+                format!("{} {}", e.reps, if e.reps == 1 { "rep" } else { "reps" }),
+                t.fg,
+            ),
         ],
         t,
     )

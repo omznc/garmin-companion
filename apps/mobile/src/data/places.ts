@@ -1,7 +1,6 @@
 // Plan, Routes and Gear. The core builds the numbers and the sentences
 // (`garmin_api::plan`, `routes` and `gear`). This file types the JSON and turns
 // it into the blocks that `screens/Body.*` draws.
-import { useQuery } from "@tanstack/react-query";
 import type { Block, BodyScreenData, EmptyNote } from "./body";
 import { placesFixture } from "./placesFixtures";
 import { callJson } from "./source";
@@ -130,17 +129,8 @@ async function read<T>(kind: PlacesKind): Promise<T> {
   return (recorded as T | undefined) ?? callJson<T>(commands[kind]);
 }
 
-async function fetchPlaces(kind: PlacesKind): Promise<BodyScreenData> {
+export async function fetchPlaces(kind: PlacesKind): Promise<BodyScreenData> {
   if (kind === "plan") return presentPlan(await read<PlanView>(kind));
   if (kind === "routes") return presentRoutes(await read<RoutesView>(kind));
   return presentGear(await read<GearView>(kind));
 }
-
-// Gear reads Garmin live, so it stays fresh for ten minutes and does not retry.
-export const usePlaces = (kind: PlacesKind) =>
-  useQuery({
-    queryKey: ["places", kind],
-    queryFn: () => fetchPlaces(kind),
-    retry: false,
-    staleTime: kind === "gear" ? 10 * 60_000 : 0,
-  });

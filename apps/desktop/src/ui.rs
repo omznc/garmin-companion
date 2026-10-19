@@ -248,16 +248,22 @@ fn stroke(points: &[Option<Point<Pixels>>], width: f32, colour: Hsla, window: &m
     }
 }
 
-/// An inline sparkline: 90 by 20, accent stroke.
-pub fn spark(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
+fn spark_canvas(values: &[Option<f32>], t: &Theme) -> gpui::Canvas<()> {
     let (values, acc) = (values.to_vec(), t.acc);
     canvas(
         |_, _, _| (),
         move |bounds, (), window, _| stroke(&scale(&values, bounds, 3.0), 1.25, acc, window),
     )
-    .w(px(90.0))
-    .h(px(20.0))
-    .flex_none()
+}
+
+/// An inline sparkline: 90 by 20, accent stroke.
+pub fn spark(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
+    spark_canvas(values, t).w(px(90.0)).h(px(20.0)).flex_none()
+}
+
+/// A sparkline that fills the width of its row.
+pub fn spark_wide(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
+    spark_canvas(values, t).w_full().h(px(30.0))
 }
 
 /// The page's one chart: a baseline, a wash under the line, and the line.
