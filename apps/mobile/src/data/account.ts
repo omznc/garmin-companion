@@ -1,7 +1,7 @@
 // Typed calls for sign-in, sync and Settings. The core owns the sentences.
-import { File, Paths } from "expo-file-system";
+import { File } from "expo-file-system";
 import { Appearance } from "react-native";
-import { callJson, leaveSampleData } from "./source";
+import { callJson, dataRoot, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
 export const getStatus = () => callJson<Status>("status");
@@ -25,7 +25,8 @@ export const applyTheme = (theme: ThemeMode) =>
 
 // Sample data only: the choice to skip Setup lives in a marker file, so it lasts across launches.
 // Sign-in removes it. A build with EXPO_PUBLIC_FIXTURE=1 always skips Setup.
-const skipMarker = () => new File(Paths.document, "sample-mode");
+// It sits in the data folder of the core, which removes it at sign-in too.
+const skipMarker = () => new File(dataRoot(), "sample-mode");
 export const skipSetup = () => {
   if (!skipMarker().exists) skipMarker().create();
 };

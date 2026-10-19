@@ -183,14 +183,17 @@ function readable(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+// The old Tauri app keeps its files in the app data folder (the parent of
+// `files/`). The Rust core uses the same folder on Android, so the cache and the login stay.
+export const dataRoot = () =>
+  Platform.OS === "android" ? Paths.document.parentDirectory : Paths.document;
+
 function bridgeSource(): Source | null {
   try {
     // shortcut: a missing native module throws here, so the fixture takes over.
     const bridge =
       require("react-native-garmin-bridge") as typeof import("react-native-garmin-bridge");
-    // The old Tauri app keeps its files in the app data folder (the parent of
-    // `files/`). Open the same folder on Android so the cache and the login stay.
-    const root = Platform.OS === "android" ? Paths.document.parentDirectory : Paths.document;
+    const root = dataRoot();
     const base = root.uri.replace(/^file:\/\//, "").replace(/\/$/, "");
     // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build fakes data only when that flag is set.
     const noCache = !new File(root, "cache.sqlite3").exists;
@@ -239,8 +242,8 @@ export const leaveSampleData = () => {
 };
 export const bridgeVersion = impl.version;
 
-// Demo only: EXPO_PUBLIC_DEMO_DATE=YYYY-MM-DD shows Today for a day, for a cache that is not current.
-const demoDate = process.env.EXPO_PUBLIC_DEMO_DATE;
+// Dev only: EXPO_PUBLIC_DEMO_DATE=YYYY-MM-DD shows Today for a day, for a cache that is not current.
+const demoDate = __DEV__ ? process.env.EXPO_PUBLIC_DEMO_DATE : undefined;
 
 // Dev only: EXPO_PUBLIC_PERSONA=golfer|gym|health_only|new_user shows a recorded persona, to check the layouts.
 const personas: Record<string, unknown> = {
