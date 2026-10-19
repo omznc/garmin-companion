@@ -61,6 +61,11 @@ pub fn days_ago(days: u32) -> String {
     from.format("%Y-%m-%d").to_string()
 }
 
+/// `1 set`, `3 sets`.
+pub fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 /// Whole days between two `YYYY-MM-DD` dates, or `None` if `date` won't parse.
 /// Positive means `date` is in the past.
 pub fn days_between(date: &str, from: chrono::NaiveDate) -> Option<i64> {
@@ -98,7 +103,14 @@ pub fn require_client() -> Result<GarminClient> {
 
 #[cfg(test)]
 mod days_ago_tests {
-    use super::{days_ago, today};
+    use super::{days_ago, plural, today};
+
+    #[test]
+    fn plural_uses_the_singular_for_one() {
+        assert_eq!(plural(0, "day", "days"), "0 days");
+        assert_eq!(plural(1, "day", "days"), "1 day");
+        assert_eq!(plural(2, "day", "days"), "2 days");
+    }
 
     #[test]
     fn a_huge_window_saturates() {

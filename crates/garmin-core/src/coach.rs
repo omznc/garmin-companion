@@ -509,10 +509,15 @@ fn no_outdoor_run(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nu
         id: NudgeKind::NoOutdoorRun.id().into(),
         title: "Still no VO2 max — it needs one run outdoors".into(),
         body: format!(
-            "All {} runs in the window were indoors. Garmin only computes VO2 max \
+            "{} in the window {} indoors. Garmin only computes VO2 max \
              from outdoor GPS runs, so the number stays blank until one happens. \
              One easy 20 minutes outside is enough to start it.",
-            runs.len()
+            if runs.len() == 1 {
+                "The one run".to_string()
+            } else {
+                format!("All {} runs", runs.len())
+            },
+            if runs.len() == 1 { "was" } else { "were" }
         ),
         tone: Tone::Neutral,
         priority: 30,
