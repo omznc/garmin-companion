@@ -26,6 +26,7 @@ const METAINFO = "app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml";
 
 // The release workflow passes the version of the release as an argument.
 const version = process.argv[2] ?? JSON.parse(readFileSync(CONF, "utf8")).version;
+const source = process.argv[2] ? "the release input" : CONF;
 const xml = readFileSync(METAINFO, "utf8");
 
 const releases = [...xml.matchAll(/<release\s+version="([^"]+)"\s+date="([^"]+)"/g)].map(
@@ -38,7 +39,7 @@ if (!releases.length) {
   problems.push(`${METAINFO} has no <release> entries at all`);
 } else if (releases[0].version !== version) {
   problems.push(
-    `${CONF} is at ${version}, but the newest <release> in ${METAINFO} is ` +
+    `the version is ${version} (${source}), but the newest <release> in ${METAINFO} is ` +
       `${releases[0].version}. Add an entry for ${version} — see RELEASING.md.`,
   );
 }

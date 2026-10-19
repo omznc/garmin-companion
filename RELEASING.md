@@ -86,23 +86,26 @@ would have built the old app at 0.9.1 and replaced `latest.json` and
 Do not push a tag by hand. Publishing the draft release creates the tag, and no
 workflow runs on a tag.
 
-1. Open Actions, then "Release (rewrite)", then "Run workflow". Run it from
+1. Add the `<release>` entry to the metainfo file and set `version` in
+   `apps/desktop/tauri.conf.json` (see below). Merge both to `master`.
+2. Open Actions, then "Release (rewrite)", then "Run workflow". Run it from
    `master`.
-2. Enter the version (`major.minor.patch`, higher than 0.9.1) and the release
+3. Enter the version (`major.minor.patch`, higher than 0.9.1) and the release
    notes. The old app shows the notes in Settings.
-3. The `check` job refuses a bad version or a version that exists. The
+4. The `check` job refuses a bad version or a version that exists. The
    `desktop` jobs and the `android` job build the files. The `draft` job writes
    `latest.json` and opens a **draft** release. The draft has no tag.
-4. Check the draft. Install the files on a test machine if possible.
-5. Publish the draft in the GitHub UI. This creates the tag `vX.Y.Z` and makes
+5. Check the draft. Install the files on a test machine if possible.
+6. Publish the draft in the GitHub UI. This creates the tag `vX.Y.Z` and makes
    the updater see the release, because the endpoints point at
    `releases/latest`.
-6. Raise `version` in `apps/mobile/app.json` to the released version. A local
+7. Raise `version` in `apps/mobile/app.json` to the released version. A local
    build must not be lower than the latest release.
 
 The version is an input of the workflow. The workflow gives it to the Tauri
 bundler (`--config`) and to the Expo build (`APP_VERSION`). The Android version
-code is `major * 1000000 + minor * 1000 + patch`.
+code is `major * 1000000 + minor * 1000 + patch`. `apps/mobile/app.config.js`
+calculates it.
 
 `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml` needs a new
 `<release>` entry for the version. The `check` job of the release workflow
@@ -217,10 +220,10 @@ bundle would look wrong in the meantime.
 ### The Android version code
 
 Google Play orders builds by `versionCode`, an integer, not by the version
-string. The release workflow derives it as
-`major * 1000000 + minor * 1000 + patch` from the version input, so there is
-nothing extra to remember. It only matters if you ever put this on Play; a sideloaded
-APK installs over an older one regardless.
+string. Tauri derives it as `major * 1000000 + minor * 1000 + patch`, so
+bumping the version in `tauri.conf.json` carries it along and there is nothing
+extra to remember. It only matters if you ever put this on Play; a sideloaded
+APK with a lower code does not install over a newer one.
 
 ### Why Windows is NSIS and not MSI
 
@@ -366,8 +369,9 @@ notarization is the one worth buying.
   paragraphs are not — nothing can check whether a description describes
   anything. Write it with the version bump; CI will tell you if you didn't.
   Everything else about the changelog is generated, see above.
-- **Version bumping.** Deliberately manual — one number, and it has to agree
-  with the tag.
+- **Version bumping.** Deliberately manual. The version is in the workflow
+  input, the metainfo entry, `apps/desktop/tauri.conf.json` and
+  `apps/mobile/app.json`. See "Cutting a release".
 - **iOS.** The Rust side is already platform-split for it — `secrets`, `paths`
   and the mobile sign-in flow are written against `cfg(mobile)` rather than
   against Android — and the frontend branches on `IS_MOBILE`, not on `android`.
