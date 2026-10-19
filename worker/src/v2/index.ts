@@ -30,6 +30,8 @@ const INSTALLS_PER_IP = 3;
 // must be high enough for a release day, when every upgraded app enrols again.
 const INSTALLS_PER_DAY = 5000;
 const NEW_ACCOUNTS_PER_IP = 5;
+// Each new account gets a free grant and costs one mail, so it keeps a low cap.
+const NEW_ACCOUNTS_PER_DAY = 200;
 const MAX_MESSAGES = 80;
 const FREE_MAX_TOKENS = 4096;
 const SPEND_SHARDS = 8;
@@ -220,7 +222,8 @@ async function newAccountCap(env: V2Env, email: string, bucket: string) {
     env.COUNTERS.get(`v2newuser:${day}:${bucket}`),
     env.COUNTERS.get(`v2newuser:${day}:total`),
   ]);
-  if (Number(mine ?? 0) < NEW_ACCOUNTS_PER_IP && Number(total ?? 0) < INSTALLS_PER_DAY) return null;
+  if (Number(mine ?? 0) < NEW_ACCOUNTS_PER_IP && Number(total ?? 0) < NEW_ACCOUNTS_PER_DAY)
+    return null;
   const retry = { "Retry-After": String(secondsUntilMidnight()) };
   return fail(429, "install_limit", "too many new accounts today", {}, retry);
 }
@@ -242,6 +245,11 @@ async function authVerify(request: Request, env: V2Env) {
   const email = normalizeEmail(body?.email);
   const code = typeof body?.code === "string" ? body.code.trim() : "";
   if (!email || !/^\d{6}$/.test(code)) return fail(400, "bad_request");
+  // A wrong try counts against every live code, so a network that guesses must slow down.
+  const bucket = await addressBucket(request, env, today());
+  if (!(await env.ISSUE.limit({ key: `v2verify:${bucket}` })).success) {
+    return fail(429, "rate_limited", "too many tries", {}, { "Retry-After": "60" });
+  }
   const session = await verifyCode(env, email, code);
   if (!session) return fail(401, "invalid_code");
   return json({ token: session.token, email });

@@ -622,6 +622,14 @@ describe("login", () => {
     ).toBe(200);
   });
 
+  it("limits verify tries per address", async () => {
+    const h = harness({ ISSUE: { limit: async () => ({ success: false }) } });
+    const r = await h.call("/v2/auth/email/verify", {
+      json: { email: "a@example.com", code: "123456" },
+    });
+    expect(r.status).toBe(429);
+  });
+
   it("says so when no mail sender is set up", async () => {
     const h = harness({ MAILER: undefined });
     const r = await h.call("/v2/auth/email/send", { json: { email: "a@example.com" } });
