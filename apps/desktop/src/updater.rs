@@ -324,8 +324,49 @@ fn run_nsis(bytes: &[u8], version: &str) -> Result<()> {
     let dir = fresh_dir(version)?;
     let setup = dir.join("garmin-companion-setup.exe");
     fs::write(&setup, bytes)?;
-    Command::new(&setup).args(nsis_args()).spawn()?;
-    Ok(())
+    match Command::new(&setup).args(nsis_args()).spawn() {
+        Ok(_) => Ok(()),
+        // A per-machine install needs admin rights: ask for them (UAC).
+        #[cfg(windows)]
+        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => run_elevated(&setup),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// `ERROR_ELEVATION_REQUIRED`: the setup file asks for admin rights.
+#[cfg(windows)]
+const ERROR_ELEVATION_REQUIRED: i32 = 740;
+
+/// Start the setup file with the "runas" verb, which shows the UAC prompt.
+/// `ShellExecuteW` returns a value above 32 when the start works. A refused
+/// prompt gives `SE_ERR_ACCESSDENIED` (5) or `ERROR_CANCELLED` (1223).
+#[cfg(windows)]
+fn run_elevated(setup: &Path) -> Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
+    let verb = wide("runas".as_ref());
+    let file = wide(setup.as_os_str());
+    let args = wide(nsis_args().join(" ").as_ref());
+    // SAFETY: each pointer is null or points to a NUL-terminated buffer that
+    // lives until the call returns.
+    let code = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            args.as_ptr(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    match code {
+        c if c > 32 => Ok(()),
+        5 | 1223 => bail!("the update needs admin rights, and the request was refused"),
+        c => bail!("the setup did not start with admin rights (code {c})"),
+    }
 }
 
 /// A new, empty folder in the temp folder.
