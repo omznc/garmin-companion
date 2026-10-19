@@ -269,6 +269,7 @@ impl Root {
         self.account.connected = false;
         self.account.sync = Sync::Idle;
         self.account.settings = None;
+        self.places.forget_gear();
         cx.notify();
     }
 
@@ -307,6 +308,7 @@ impl Root {
             Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
         self.list = self.store.list();
+        self.places.reload();
         if !self.account.demo {
             self.account.synced_ago = settings::synced_ago();
         }

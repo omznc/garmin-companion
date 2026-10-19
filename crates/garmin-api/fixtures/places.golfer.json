@@ -1,0 +1,356 @@
+{
+  "plan": {
+    "empty": {
+      "title": "No workouts saved on your Garmin account.",
+      "body": "Garmin holds no training plan for you. A plan here comes from the structured workouts that you build in Garmin Connect, for any sport. You have none yet. Create one, and it appears here after the next sync."
+    },
+    "windowDays": 28,
+    "tiles": [],
+    "sentence": null,
+    "workouts": [],
+    "gapNote": "Garmin stores no goal event and no weekly plan for your account. This app does not invent them. This screen shows the workouts that Garmin holds."
+  },
+  "routes": {
+    "empty": null,
+    "sort": "recent",
+    "tiles": [
+      {
+        "label": "Distinct routes",
+        "value": "1"
+      },
+      {
+        "label": "Outings",
+        "value": "8"
+      },
+      {
+        "label": "Repeated routes",
+        "value": "1"
+      }
+    ],
+    "notes": [
+      "These routes come from golf."
+    ],
+    "total": 1,
+    "routes": [
+      {
+        "name": "Golf",
+        "sport": "Golf",
+        "distance": "7.0 km",
+        "times": 8,
+        "timesLine": "8 times",
+        "trace": [
+          [
+            1.0,
+            0.55560154
+          ],
+          [
+            0.9971654,
+            0.45271933
+          ],
+          [
+            0.98869365,
+            0.35037285
+          ],
+          [
+            0.97468084,
+            0.41589633
+          ],
+          [
+            0.9552857,
+            0.3161981
+          ],
+          [
+            0.93072796,
+            0.21858244
+          ],
+          [
+            0.9012859,
+            0.29032996
+          ],
+          [
+            0.86729306,
+            0.19827852
+          ],
+          [
+            0.8291346,
+            0.10964567
+          ],
+          [
+            0.78724295,
+            0.19161035
+          ],
+          [
+            0.74209267,
+            0.11089457
+          ],
+          [
+            0.6941954,
+            0.0345875
+          ],
+          [
+            0.64409375,
+            0.12972839
+          ],
+          [
+            0.5923555,
+            0.062889956
+          ],
+          [
+            0.53956676,
+            0.0010041514
+          ],
+          [
+            0.4863257,
+            0.11094682
+          ],
+          [
+            0.4332356,
+            0.05912297
+          ],
+          [
+            0.3808979,
+            0.012294429
+          ],
+          [
+            0.3299057,
+            0.13716644
+          ],
+          [
+            0.2808367,
+            0.09997485
+          ],
+          [
+            0.2342469,
+            0.067315705
+          ],
+          [
+            0.19066416,
+            0.20573369
+          ],
+          [
+            0.1505823,
+            0.18131119
+          ],
+          [
+            0.11445547,
+            0.16049956
+          ],
+          [
+            0.08269299,
+            0.30970925
+          ],
+          [
+            0.05565475,
+            0.29490036
+          ],
+          [
+            0.0336471,
+            0.28241533
+          ],
+          [
+            0.016919404,
+            0.43857026
+          ],
+          [
+            0.005661182,
+            0.4292466
+          ],
+          [
+            0.0,
+            0.42072457
+          ],
+          [
+            0.0,
+            0.5792754
+          ],
+          [
+            0.005661182,
+            0.5707534
+          ],
+          [
+            0.016919404,
+            0.56142974
+          ],
+          [
+            0.0336471,
+            0.71758467
+          ],
+          [
+            0.05565475,
+            0.70509964
+          ],
+          [
+            0.08269299,
+            0.69029075
+          ],
+          [
+            0.11445547,
+            0.8395004
+          ],
+          [
+            0.1505823,
+            0.8186888
+          ],
+          [
+            0.19066416,
+            0.7942663
+          ],
+          [
+            0.2342469,
+            0.9326843
+          ],
+          [
+            0.2808367,
+            0.9000251
+          ],
+          [
+            0.3299057,
+            0.86283356
+          ],
+          [
+            0.3808979,
+            0.9877056
+          ],
+          [
+            0.4332356,
+            0.940877
+          ],
+          [
+            0.4863257,
+            0.88905317
+          ],
+          [
+            0.53956676,
+            0.99899584
+          ],
+          [
+            0.5923555,
+            0.93711007
+          ],
+          [
+            0.64409375,
+            0.8702716
+          ],
+          [
+            0.6941954,
+            0.9654125
+          ],
+          [
+            0.74209267,
+            0.88910544
+          ],
+          [
+            0.78724295,
+            0.80838966
+          ],
+          [
+            0.8291346,
+            0.89035434
+          ],
+          [
+            0.86729306,
+            0.8017215
+          ],
+          [
+            0.9012859,
+            0.70967
+          ],
+          [
+            0.93072796,
+            0.78141755
+          ],
+          [
+            0.9552857,
+            0.6838019
+          ],
+          [
+            0.97468084,
+            0.58410364
+          ],
+          [
+            0.98869365,
+            0.64962715
+          ],
+          [
+            0.9971654,
+            0.54728067
+          ],
+          [
+            1.0,
+            0.44439846
+          ],
+          [
+            1.0,
+            0.44439846
+          ]
+        ],
+        "outings": [
+          {
+            "activityId": 9100000,
+            "date": "09 Mar",
+            "detail": "6.5 km · 4h 10m"
+          },
+          {
+            "activityId": 9100001,
+            "date": "05 Mar",
+            "detail": "6.8 km · 4h 14m"
+          },
+          {
+            "activityId": 9100002,
+            "date": "01 Mar",
+            "detail": "7.1 km · 4h 18m"
+          },
+          {
+            "activityId": 9100003,
+            "date": "25 Feb",
+            "detail": "7.4 km · 4h 22m"
+          },
+          {
+            "activityId": 9100004,
+            "date": "21 Feb",
+            "detail": "7.7 km · 4h 26m"
+          },
+          {
+            "activityId": 9100005,
+            "date": "17 Feb",
+            "detail": "6.5 km · 4h 30m"
+          },
+          {
+            "activityId": 9100006,
+            "date": "13 Feb",
+            "detail": "6.8 km · 4h 34m"
+          },
+          {
+            "activityId": 9100007,
+            "date": "09 Feb",
+            "detail": "7.1 km · 4h 38m"
+          }
+        ]
+      }
+    ]
+  },
+  "gear": {
+    "empty": null,
+    "items": [
+      {
+        "name": "Walking shoes",
+        "kind": "Shoes",
+        "distance": "380 km",
+        "status": "Good",
+        "accent": false,
+        "wearPct": 38.0,
+        "detail": "55 activities · limit 1,000 km"
+      },
+      {
+        "name": "Golf clubs",
+        "kind": "Other",
+        "distance": null,
+        "status": "",
+        "accent": false,
+        "wearPct": null,
+        "detail": "33 activities"
+      }
+    ],
+    "note": "Distances come from the totals that Garmin keeps for each item. The wear bar shows the distance against the limit that you set. An item with no limit has no bar, because the app does not guess a limit."
+  }
+}

@@ -2,6 +2,7 @@
 // (`garmin_api::body`). This file types the JSON and turns it into blocks.
 // The screens draw the blocks and have no other copy.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { fetchPlaces, type PlacesKind } from "./places";
 import { callJson } from "./source";
 import {
   type FitnessView,
@@ -77,13 +78,22 @@ export type StrengthView = {
 
 export type BodyKind = "weight" | "food" | "strength";
 /** A screen that draws blocks. Insights, Fitness and the weekly report come from `training.ts`. */
-export type ScreenKind = BodyKind | "insights" | "fitness" | "report";
+export type ScreenKind = BodyKind | "insights" | "fitness" | "report" | PlacesKind;
+
+/** A row may carry the shape of a route, or a wear bar from 0 to 1. */
+export type BlockRow = {
+  key: string;
+  value: string;
+  sub?: string;
+  trace?: [number, number][];
+  bar?: { fraction: number; accent: boolean };
+};
 
 export type Block =
   | { kind: "text"; text: string; tone?: "lede" | "note" | "heading" }
   | { kind: "tiles"; tiles: { label: string; value: string; accent?: boolean }[] }
   | { kind: "chart"; title: string; values: number[]; from: string; to: string }
-  | { kind: "rows"; title: string; rows: { key: string; value: string; sub?: string }[] }
+  | { kind: "rows"; title: string; rows: BlockRow[] }
   | { kind: "empty"; title: string; body: string }
   | { kind: "actions"; actions: { id: string; label: string }[] };
 
@@ -246,6 +256,7 @@ async function fetchBody(kind: ScreenKind, offset: number): Promise<BodyScreenDa
   if (kind === "fitness") return presentFitness(await callJson<FitnessView>("fitness_view"));
   if (kind === "report")
     return presentReport(await callJson<ReportView>("report_view", { offset }));
+  if (kind === "plan" || kind === "routes" || kind === "gear") return fetchPlaces(kind);
   if (kind === "weight") return presentWeight(await callJson<WeightView>(commands.weight));
   if (kind === "food") return presentFood(await callJson<FoodView>(commands.food));
   return presentStrength(await callJson<StrengthView>(commands.strength));
@@ -257,6 +268,8 @@ export const useBody = (kind: ScreenKind, offset = 0) =>
     queryFn: () => fetchBody(kind, offset),
     // Keep the old week on screen while the next one loads.
     placeholderData: keepPreviousData,
+    // Gear asks Garmin live, so it must not refetch on each focus.
+    staleTime: kind === "gear" ? 10 * 60_000 : 0,
     retry: false,
   });
 

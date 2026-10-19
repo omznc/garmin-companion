@@ -141,7 +141,9 @@ pub fn redeem_ticket(ticket: &str) -> Result<(), ApiError> {
     block_on(redeem_ticket_async(ticket))
 }
 
-fn block_on<T>(future: impl Future<Output = Result<T, ApiError>>) -> Result<T, ApiError> {
+pub(crate) fn block_on<T>(
+    future: impl Future<Output = Result<T, ApiError>>,
+) -> Result<T, ApiError> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

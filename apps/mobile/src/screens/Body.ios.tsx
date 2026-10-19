@@ -11,8 +11,9 @@ import {
   Text,
   View,
 } from "react-native";
+import { RouteTrace, WearBar } from "../components/RouteTrace";
 import { TrendBars } from "../components/TrendBars";
-import { type Block, type ScreenKind, useBody } from "../data/body";
+import { type Block, type BlockRow, type ScreenKind, useBody } from "../data/body";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -59,33 +60,53 @@ function Row({
   sub,
   accent,
   last,
+  trace,
+  bar,
 }: {
   left: string;
   right?: string;
   sub?: string;
   accent?: boolean;
   last?: boolean;
+  trace?: BlockRow["trace"];
+  bar?: BlockRow["bar"];
 }) {
   return (
     <View
       style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        minHeight: 44,
         paddingHorizontal: 16,
         paddingVertical: 10,
         borderBottomWidth: last ? 0 : 0.5,
         borderBottomColor: separator,
       }}
     >
-      <View style={{ flexShrink: 1 }}>
-        <Text style={{ fontSize: 17, color: label }}>{left}</Text>
-        {sub ? <Text style={{ fontSize: 13, color: secondary }}>{sub}</Text> : null}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          minHeight: 44,
+        }}
+      >
+        <View style={{ flexShrink: 1 }}>
+          <Text style={{ fontSize: 17, color: label }}>{left}</Text>
+          {sub ? <Text style={{ fontSize: 13, color: secondary }}>{sub}</Text> : null}
+        </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          {trace?.length ? <RouteTrace points={trace} color={tint} /> : null}
+          {right ? (
+            <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
+          ) : null}
+        </View>
       </View>
-      {right ? (
-        <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
+      {bar ? (
+        <WearBar
+          fraction={bar.fraction}
+          color={bar.accent ? tint : secondary}
+          track={separator}
+          inset={0}
+        />
       ) : null}
     </View>
   );
@@ -150,6 +171,8 @@ function BlockView({ b, onAction }: { b: Block; onAction: (id: string) => void }
               left={r.key}
               right={r.value}
               sub={r.sub}
+              trace={r.trace}
+              bar={r.bar}
               last={i === b.rows.length - 1}
             />
           ))}

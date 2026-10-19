@@ -76,6 +76,18 @@ export function MoreHome() {
       icon: "summarize",
       tone: "secondary",
     }),
+    row("Plan", "/more/plan", "list.bullet.clipboard.fill", "systemIndigo", {
+      icon: "event-note",
+      tone: "primary",
+    }),
+    row("Routes", "/more/routes", "map.fill", "systemGreen", {
+      icon: "route",
+      tone: "secondary",
+    }),
+    row("Gear", "/more/gear", "bag.fill", "systemBrown", {
+      icon: "hiking",
+      tone: "tertiary",
+    }),
   ];
   const prefs: Row[] = [
     row(

@@ -118,9 +118,22 @@ fn write_persona(persona: Persona, out: &Path) -> Result<(), Box<dyn std::error:
         .and_then(|v| write_view(&v, out))
         .and_then(|()| write_view(&health_view(&db, day)?, &beside("health")))
         .and_then(|()| write_view(&sleep_view(&db, day)?, &beside("sleep")))
-        .and_then(|()| write_activities(&db, persona, out.parent()));
+        .and_then(|()| write_activities(&db, persona, out.parent()))
+        .and_then(|()| write_places(&db, persona, &beside("places")));
     let _ = std::fs::remove_dir_all(dir);
     result
+}
+
+/// The Plan, Routes and Gear views of the persona.
+fn write_places(
+    db: &garmin_core::Db,
+    persona: Persona,
+    out: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    garmin_api::places::seed_places(db, persona)?;
+    let gear = garmin_api::places::persona_gear(persona);
+    let views = garmin_api::places::places_views(db, sample_day(), &gear)?;
+    write_view(&views, out)
 }
 
 /// The Activities list and detail files go next to the Today file.

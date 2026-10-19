@@ -31,6 +31,7 @@ mod icons;
 mod map;
 mod markdown;
 mod motion;
+mod places;
 mod scroll;
 mod settings;
 mod setup;

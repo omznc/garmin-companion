@@ -16,6 +16,7 @@ import {
   T,
   TileGrid,
 } from "../components/MdKit";
+import { RouteTrace, WearBar } from "../components/RouteTrace";
 import { type Block, type ScreenKind, useBody } from "../data/body";
 import { useMd } from "../theme/md";
 
@@ -76,17 +77,28 @@ function RowsBlock({ b }: { b: Extract<Block, { kind: "rows" }> }) {
       <SectionLabel>{b.title}</SectionLabel>
       <Group>
         {b.rows.map((r, i) => (
-          <ListRow
-            // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
-            key={`${r.key}-${i}`}
-            title={r.key}
-            supporting={r.sub}
-            trailing={
-              <T v="titleMedium" color={md.onSurfaceVariant}>
-                {r.value}
-              </T>
-            }
-          />
+          // biome-ignore lint/suspicious/noArrayIndexKey: a date can repeat in a list
+          <View key={`${r.key}-${i}`}>
+            <ListRow
+              title={r.key}
+              supporting={r.sub}
+              trailing={
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  {r.trace?.length ? <RouteTrace points={r.trace} color={md.primary} /> : null}
+                  <T v="titleMedium" color={md.onSurfaceVariant}>
+                    {r.value}
+                  </T>
+                </View>
+              }
+            />
+            {r.bar ? (
+              <WearBar
+                fraction={r.bar.fraction}
+                color={r.bar.accent ? md.tertiary : md.primary}
+                track={md.surfaceContainerHighest}
+              />
+            ) : null}
+          </View>
         ))}
       </Group>
     </>

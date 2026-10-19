@@ -1,0 +1,71 @@
+{
+  "plan": {
+    "empty": null,
+    "windowDays": 28,
+    "tiles": [
+      {
+        "label": "Saved workouts",
+        "value": "3"
+      },
+      {
+        "label": "Sessions in 28 days",
+        "value": "12"
+      },
+      {
+        "label": "Longest session",
+        "value": "1h 03m"
+      }
+    ],
+    "sentence": "Your longest saved walking workout asks for 0h 40m. You have no walking session in the last 28 days.",
+    "workouts": [
+      {
+        "workoutId": 1,
+        "name": "Full body A",
+        "description": null,
+        "sport": "Strength training",
+        "size": null
+      },
+      {
+        "workoutId": 2,
+        "name": "Full body B",
+        "description": "Heavy day.",
+        "sport": "Strength training",
+        "size": null
+      },
+      {
+        "workoutId": 3,
+        "name": "Easy walk",
+        "description": null,
+        "sport": "Walking",
+        "size": "0h 40m"
+      }
+    ],
+    "gapNote": "Garmin stores no goal event and no weekly plan for your account. This app does not invent them. This screen shows the workouts that Garmin holds."
+  },
+  "routes": {
+    "empty": {
+      "title": "No routes yet.",
+      "body": "A route comes from the GPS track of an outdoor activity, such as a walk, a ride, a hike or a round of golf. No activity in the cache has a track yet. Run a sync from Settings. Any outdoor activity that your watch recorded with GPS then appears here. An indoor session has no position, so it never appears."
+    },
+    "sort": "recent",
+    "tiles": [],
+    "notes": [],
+    "total": 0,
+    "routes": []
+  },
+  "gear": {
+    "empty": null,
+    "items": [
+      {
+        "name": "Training shoes",
+        "kind": "Shoes",
+        "distance": "590 km",
+        "status": "Retire soon",
+        "accent": true,
+        "wearPct": 98.33333333333333,
+        "detail": "120 activities · limit 600 km"
+      }
+    ],
+    "note": "Distances come from the totals that Garmin keeps for each item. The wear bar shows the distance against the limit that you set. An item with no limit has no bar, because the app does not guess a limit."
+  }
+}
