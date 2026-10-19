@@ -10,25 +10,15 @@ import {
   Content,
   DataTable,
   IconTile,
-  type IconName,
   Loading,
   SectionLabel,
   SplitBar,
   T,
   TileGrid,
 } from "../components/MdKit";
-import { sportIcon } from "../components/TodayKit";
+import { FAMILY_ICON, sportIcon } from "../components/TodayKit";
 import { type ActivityDetail, barHeights, useActivityDetail } from "../data/activities";
 import { useMd } from "../theme/md";
-
-const FAMILY_ICON: Record<string, IconName> = {
-  endurance: "directions-run",
-  gym: "fitness-center",
-  golf: "golf-course",
-  water: "pool",
-  mindbody: "self-improvement",
-  mind_body: "self-improvement",
-};
 
 function Stats({ d }: { d: ActivityDetail }) {
   const md = useMd();

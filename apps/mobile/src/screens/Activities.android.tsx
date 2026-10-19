@@ -3,27 +3,10 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import {
-  Card,
-  Content,
-  Group,
-  type IconName,
-  ListRow,
-  Loading,
-  SectionLabel,
-  T,
-} from "../components/MdKit";
+import { Card, Content, Group, ListRow, Loading, SectionLabel, T } from "../components/MdKit";
+import { FAMILY_ICON } from "../components/TodayKit";
 import { type ActivityCard, useActivities } from "../data/activities";
 import { useMd } from "../theme/md";
-
-const FAMILY_ICON: Record<string, IconName> = {
-  endurance: "directions-run",
-  gym: "fitness-center",
-  golf: "golf-course",
-  water: "pool",
-  mindbody: "self-improvement",
-  mind_body: "self-improvement",
-};
 
 function SessionRow({ c }: { c: ActivityCard }) {
   const router = useRouter();

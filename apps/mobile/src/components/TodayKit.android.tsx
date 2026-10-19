@@ -168,6 +168,16 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
   );
 }
 
+/** The icon of a sport family from the core. */
+export const FAMILY_ICON: Record<string, IconName> = {
+  endurance: "directions-run",
+  gym: "fitness-center",
+  golf: "golf-course",
+  water: "pool",
+  mindbody: "self-improvement",
+  mind_body: "self-improvement",
+};
+
 const SPORT_ICONS: [RegExp, IconName][] = [
   [/run/, "directions-run"],
   [/cycl|bik/, "directions-bike"],
