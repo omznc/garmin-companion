@@ -1,6 +1,7 @@
 // One chat, for the draft and for a saved thread. The draft has the opening and no
 // session. The first message makes the session, and this same screen goes on with it.
 import { useRouter } from "expo-router";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
@@ -227,6 +228,10 @@ export function ChatScreen({
   const frame = useRef<ComponentRef<typeof View>>(null);
   const [offset, setOffset] = useState(0);
   const keyboardOpen = useKeyboardOpen();
+  // The iOS header is translucent and the content starts under it. The automatic
+  // inset does not reach this nested scroll view, so the content pads itself.
+  const headerHeight = useHeaderHeight();
+  const top = Platform.OS === "ios" ? headerHeight + 16 : 16;
   // The thread of this draft was deleted: the root goes back to an empty draft.
   useEffect(() => {
     if (routeId === null && thread.gone) setStartedId(null);
@@ -254,10 +259,9 @@ export function ChatScreen({
           <ScrollView
             ref={pinned.scroll}
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, gap: 24, flexGrow: 1 }}
+            contentContainerStyle={{ padding: 16, paddingTop: top, gap: 24, flexGrow: 1 }}
             keyboardDismissMode="interactive"
             keyboardShouldPersistTaps="handled"
-            contentInsetAdjustmentBehavior="always"
             scrollEventThrottle={64}
             onScrollBeginDrag={pinned.onScrollBeginDrag}
             onScroll={pinned.onScroll}
