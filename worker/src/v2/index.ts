@@ -332,6 +332,12 @@ function problem(input: unknown, p: ModelProfile): string | null {
   return toolsProblem(input);
 }
 
+/** The model fields of the body. ALLOWED_FIELDS keeps the client from setting them. */
+const routeOf = (p: ModelProfile): Record<string, unknown> => ({
+  ...(p.free ? { models: [p.free, p.slug] } : { model: p.slug }),
+  ...(p.provider && { provider: p.provider }),
+});
+
 /** Why a request cannot go upstream, or the body to send. */
 function prepare(
   parsed: unknown,
@@ -342,7 +348,7 @@ function prepare(
   if (why) return why;
   const input = parsed as Record<string, unknown>;
 
-  const out: Record<string, unknown> = { model: p.slug };
+  const out: Record<string, unknown> = { ...routeOf(p) };
   for (const [k, v] of Object.entries(input)) if (ALLOWED_FIELDS.has(k)) out[k] = v;
   if (p.reasoning && out.reasoning === undefined) out.reasoning = p.reasoning;
 
@@ -454,18 +460,18 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
       await release();
       return upstreamRefusal(502, text);
     }
-    const units = costUnits(p, parsed?.usage) ?? estimate;
+    const units = costUnits(p, parsed?.usage, parsed?.model) ?? estimate;
     return new Response(text, { status: 200, headers: headers(await settle(units)) });
   }
 
   // The headers go out before the answer, so they show the balance before this
   // request is charged. GET /v2/balance has the exact figure afterwards.
-  const stream = meterStream(upstream.body, (usage, failed) => {
+  const stream = meterStream(upstream.body, (usage, failed, served) => {
     // A provider error before any content costs nothing.
     if (failed) return void ctx.waitUntil(release());
     // No usage block (a cut stream, a client that left): charge the estimate.
     // Refunding there would let a caller abort every request for free.
-    ctx.waitUntil(settle(costUnits(p, usage) ?? estimate));
+    ctx.waitUntil(settle(costUnits(p, usage, served) ?? estimate));
   });
   return new Response(stream, { status: 200, headers: headers(held.snapshot) });
 }
@@ -512,19 +518,20 @@ function safeJson(text: string): Record<string, any> | undefined {
  */
 function meterStream(
   source: ReadableStream<Uint8Array>,
-  done: (usage: Usage | undefined, failed: boolean) => void,
+  done: (usage: Usage | undefined, failed: boolean, served: string | undefined) => void,
 ): ReadableStream<Uint8Array> {
   const reader = source.getReader();
   const decoder = new TextDecoder();
   let tail = "";
   let usage: Usage | undefined;
+  let served: string | undefined;
   let sawContent = false;
   let sawError = false;
   let finished = false;
   const finish = () => {
     if (!finished) {
       finished = true;
-      done(usage, sawError && !sawContent && !usage);
+      done(usage, sawError && !sawContent && !usage, served);
     }
   };
   const scan = (chunk: Uint8Array) => {
@@ -537,6 +544,7 @@ function meterStream(
         const j = JSON.parse(line.slice(5).trim());
         const u = j?.usage;
         if (u && typeof u.prompt_tokens === "number") usage = u;
+        if (typeof j?.model === "string") served = j.model;
         if (j?.error) sawError = true;
         if (j?.choices?.some((c: any) => c?.delta?.content)) sawContent = true;
       } catch {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlementOf } from "./billing";
 import { networkOf } from "./index";
 import { harness, signed, sse, usageChunk } from "./harness";
+import { costUnits, profileOf } from "./models";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -329,9 +330,21 @@ describe("chat", () => {
     const r = await h.call("/v2/chat/completions", { token: id, body: bodyOf(150_000) });
     expect(r.status).toBe(200);
     await r.text();
-    expect(JSON.parse(h.fetchCalls[0].init.body as string).model).toBe(
-      "deepseek/deepseek-v4.1-flash",
-    );
+    const sent = JSON.parse(h.fetchCalls[0].init.body as string);
+    expect(sent.model).toBeUndefined();
+    expect(sent.models).toEqual([
+      "minimax/minimax-m3.1-flash:free",
+      "deepseek/deepseek-v4.1-flash-1017",
+    ]);
+    expect(sent.provider).toMatchObject({ sort: "price" });
+  });
+
+  it("charges nothing when the free model answered", () => {
+    const p = profileOf("deepseek");
+    const usage = { prompt_tokens: 100_000, completion_tokens: 8000 };
+    expect(costUnits(p, usage, "minimax/minimax-m3.1-flash:free")).toBe(0);
+    expect(costUnits(p, usage, "minimax/minimax-m3.1-flash")).toBe(0);
+    expect(costUnits(p, usage, "deepseek/deepseek-v4.1-flash-1017")).toBeGreaterThan(0);
   });
 
   it("rejects bad bodies and another model", async () => {
