@@ -302,6 +302,7 @@ impl Root {
             Err(e) => eprintln!("could not reload the body screens: {e:#}"),
         }
         self.list = self.store.list();
+        self.places.reload();
         if !self.account.demo {
             self.account.synced_ago = settings::synced_ago();
         }

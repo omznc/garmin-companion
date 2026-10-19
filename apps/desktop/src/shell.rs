@@ -14,6 +14,7 @@ use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::{Source, Today};
 use crate::motion;
+use crate::places::{self, Places};
 use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
@@ -72,6 +73,8 @@ pub struct Root {
     /// Health and Sleep. `None` leaves both entries as placeholders.
     pub(crate) wellness: Option<Wellness>,
     pub(crate) body: BodyData,
+    /// Plan, Routes and Gear.
+    pub(crate) places: Places,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// Counts the screens shown, so each one animates in again.
@@ -98,12 +101,14 @@ impl Root {
         ask: Entity<Ask>,
     ) -> Self {
         let list = store.list();
+        let places = Places::load(&source);
         Self {
             ask,
             list,
             today,
             wellness: None,
             body,
+            places,
             palette,
             sidebar: Sidebar::new(motion::reduced()),
             visits: 0,
@@ -188,6 +193,9 @@ impl Root {
                 self.reload_settings();
                 self.cloud_open(cx);
             }
+            if NAV[index].0 == "Gear" {
+                self.load_gear(cx);
+            }
             if index == ASK {
                 self.ask.update(cx, |ask, cx| ask.visit(cx));
             }
@@ -226,6 +234,9 @@ impl Root {
             return settings::render(self, t, window, cx);
         }
         let label = NAV[self.sidebar.active].0;
+        if let Some(screen) = places::screen(label, self, t, cx) {
+            return screen;
+        }
         if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
             return screen;
         }
