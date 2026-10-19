@@ -1026,3 +1026,21 @@ describe("network", () => {
     expect((await from("2001:db8:1:2:ffff::9")).status).toBe(429);
   });
 });
+
+describe("checkout return page", () => {
+  it("is public, static and locked down", async () => {
+    const h = harness();
+    const r = await h.call("/v2/checkout/done");
+    expect(r.status).toBe(200);
+    expect(r.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(r.headers.get("Content-Security-Policy")).toBe(
+      "default-src 'none'; style-src 'unsafe-inline'",
+    );
+    expect(r.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(r.headers.get("Cache-Control")).toBe("public, max-age=3600");
+    const html = await r.text();
+    expect(html).toContain("<title>Payment done</title>");
+    expect(html).not.toContain("<script");
+    expect((await h.call("/v2/checkout/done", { method: "POST" })).status).toBe(404);
+  });
+});
