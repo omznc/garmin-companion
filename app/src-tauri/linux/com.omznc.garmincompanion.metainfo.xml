@@ -147,6 +147,15 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.2" date="2026-10-19">
+      <description>
+        <p>
+          The phone app keeps your coach chats as threads. Open an earlier
+          chat from the chat history, and rename or delete it. Answers show
+          tables, lists and the tools the coach used.
+        </p>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-10-19">
       <description>
         <p>
