@@ -3,6 +3,7 @@
 //
 //   collect <bundle-dir> <target-triple> <version> <out-dir>
 //       Copy the updater bundles and their .sig files to plain file names.
+//       Copy the .dmg of a macOS target too. It has no .sig file.
 //   manifest <version> <repo> <notes-file> <in-dir> <out-file>
 //       Write the Tauri v2 latest.json from the .sig files in <in-dir>.
 //
@@ -19,9 +20,12 @@ const BUNDLES = {
   ],
   "aarch64-apple-darwin": [
     { find: /\.app\.tar\.gz$/, name: (v) => `garmin-companion_${v}_aarch64.app.tar.gz`, keys: ["darwin-aarch64", "darwin-aarch64-app"] },
+    // For a new user. The updater does not read it, so it has no .sig and no key.
+    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_aarch64.dmg`, keys: [], sig: false },
   ],
   "x86_64-apple-darwin": [
     { find: /\.app\.tar\.gz$/, name: (v) => `garmin-companion_${v}_x64.app.tar.gz`, keys: ["darwin-x86_64", "darwin-x86_64-app"] },
+    { find: /\.dmg$/, name: (v) => `garmin-companion_${v}_x64.dmg`, keys: [], sig: false },
   ],
   "x86_64-unknown-linux-gnu": [
     { find: /\.AppImage$/, name: (v) => `garmin-companion_${v}_amd64.AppImage`, keys: ["linux-x86_64", "linux-x86_64-appimage"] },
@@ -55,10 +59,11 @@ export function collect(bundleDir, target, version, outDir) {
   for (const rule of rules) {
     const hits = files.filter((f) => rule.find.test(f));
     if (hits.length !== 1) throw new Error(`expected one ${rule.find} in ${bundleDir}, found ${hits.length}`);
-    if (!files.includes(`${hits[0]}.sig`)) throw new Error(`no .sig file for ${hits[0]}`);
+    const signed = rule.sig !== false;
+    if (signed && !files.includes(`${hits[0]}.sig`)) throw new Error(`no .sig file for ${hits[0]}`);
     const out = join(outDir, rule.name(version));
     copyFileSync(hits[0], out);
-    copyFileSync(`${hits[0]}.sig`, `${out}.sig`);
+    if (signed) copyFileSync(`${hits[0]}.sig`, `${out}.sig`);
     console.log(`${hits[0]} -> ${out}`);
   }
 }
@@ -69,7 +74,7 @@ export function buildManifest(version, repo, notes, inDir) {
   for (const rules of Object.values(BUNDLES)) {
     for (const rule of rules) {
       const name = rule.name(version);
-      if (!names.has(name) || !names.has(`${name}.sig`)) continue;
+      if (rule.keys.length === 0 || !names.has(name) || !names.has(`${name}.sig`)) continue;
       const entry = {
         // The whole .sig file, as the file holds it. The updater decodes it itself.
         signature: readFileSync(join(inDir, `${name}.sig`), "utf8").trim(),

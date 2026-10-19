@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildManifest } from "./release-rewrite.mjs";
+import { buildManifest, collect } from "./release-rewrite.mjs";
 
 const V = "1.0.0";
 const FILES = [
@@ -38,4 +38,29 @@ test("manifest has every platform key and the full signature", () => {
 
 test("manifest refuses a missing platform", () => {
   assert.throws(() => buildManifest(V, "o/r", "n", dirWith(FILES.slice(0, 3))), /missing platform/);
+});
+
+test("collect copies the dmg of a macOS target without a signature", () => {
+  const bundle = mkdtempSync(join(tmpdir(), "rb-"));
+  const out = join(mkdtempSync(join(tmpdir(), "ro-")), "out");
+  mkdirSync(join(bundle, "macos"));
+  mkdirSync(join(bundle, "dmg"));
+  writeFileSync(join(bundle, "macos", "Garmin Companion.app.tar.gz"), "x");
+  writeFileSync(join(bundle, "macos", "Garmin Companion.app.tar.gz.sig"), "sig");
+  writeFileSync(join(bundle, "dmg", "Garmin Companion_1.0.0_aarch64.dmg"), "x");
+  collect(bundle, "aarch64-apple-darwin", V, out);
+  assert.deepEqual(readdirSync(out).sort(), [
+    `garmin-companion_${V}_aarch64.app.tar.gz`,
+    `garmin-companion_${V}_aarch64.app.tar.gz.sig`,
+    `garmin-companion_${V}_aarch64.dmg`,
+  ]);
+  // The manifest ignores the dmg.
+  assert.throws(() => buildManifest(V, "o/r", "n", out), /missing platform/);
+});
+
+test("collect fails when the dmg is missing", () => {
+  const bundle = mkdtempSync(join(tmpdir(), "rb-"));
+  writeFileSync(join(bundle, "a.app.tar.gz"), "x");
+  writeFileSync(join(bundle, "a.app.tar.gz.sig"), "sig");
+  assert.throws(() => collect(bundle, "aarch64-apple-darwin", V, join(bundle, "out")), /\.dmg/);
 });

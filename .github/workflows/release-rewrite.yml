@@ -102,6 +102,9 @@ jobs:
           node-version: 22
 
       - name: Build the app and the sign-in helper
+        env:
+          # Settings shows this version (garmin-api, settings::APP_VERSION).
+          APP_VERSION: ${{ inputs.version }}
         run: cargo build --release -p garmin-companion-desktop -p garmin-companion-login --target ${{ matrix.target }}
 
       # tauri.conf.json lists the helper as externalBin. The bundler looks for
@@ -242,6 +245,17 @@ jobs:
           "$BT/apksigner" verify --print-certs "$APK"
           "$BT/aapt2" dump badging "$APK" > badging.txt
           head -n 1 badging.txt
+          # The same application id as the old app, or Android installs a second app.
+          grep -q "^package: name='com.omznc.garmincompanion'" badging.txt
+          # The version code follows the formula of the old Tauri app. A lower
+          # code than the installed one makes Android refuse the update.
+          IFS=. read -r MAJOR MINOR PATCH <<< "$APP_VERSION"
+          CODE=$((10#$MAJOR * 1000000 + 10#$MINOR * 1000 + 10#$PATCH))
+          grep -q "versionCode='$CODE'" badging.txt || { echo "versionCode is not $CODE"; exit 1; }
+          grep -q "versionName='$APP_VERSION'" badging.txt || { echo "versionName is not $APP_VERSION"; exit 1; }
+          # This APK updates itself, so it needs the permission. (The Play build leaves it out.)
+          grep -q "uses-permission: name='android.permission.REQUEST_INSTALL_PACKAGES'" badging.txt \
+            || { echo "REQUEST_INSTALL_PACKAGES is missing"; exit 1; }
           # The old app: minSdk 24, arm64-v8a and armeabi-v7a.
           # Newer aapt2 writes minSdkVersion, older aapt2 writes sdkVersion.
           grep -Eq "^(min)?[sS]dkVersion:'24'" badging.txt
