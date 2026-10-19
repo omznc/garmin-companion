@@ -13,11 +13,13 @@ use garmin_core::db::{ChatSession, ChatSessionMeta, Db};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::ask::{bad, failed, live_turn, running_session, stop_session};
+use crate::ask::{bad, discard_session, failed, live_turn, running_session};
 use crate::FfiError;
 
 const SAMPLE_THREADS: &str = include_str!("../../garmin-api/fixtures/chat.sample.json");
 const TITLE_MAX: usize = 80;
+/// The longest title that a rename keeps. The rename dialogs use the same number.
+const RENAME_MAX: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -364,17 +366,17 @@ fn get(args: &Value, fixture: bool) -> Result<String, FfiError> {
 
 fn rename(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: Rename = parse(args)?;
-    let title = a.title.trim();
+    let title: String = a.title.trim().chars().take(RENAME_MAX).collect();
     if title.is_empty() {
         return Err(bad("title is empty"));
     }
-    with_store(fixture, |s| s.rename(&a.session_id, title)).map_err(failed)?;
+    with_store(fixture, |s| s.rename(&a.session_id, &title)).map_err(failed)?;
     Ok("{}".into())
 }
 
 fn delete(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: Id = parse(args)?;
-    stop_session(&a.session_id);
+    discard_session(&a.session_id);
     with_store(fixture, |s| s.delete(&a.session_id)).map_err(failed)?;
     Ok("{}".into())
 }
@@ -472,5 +474,32 @@ mod tests {
         assert!(pos("order-b") < pos("order-a"));
         assert_eq!(out["threads"][0]["running"], false);
         assert_eq!(get(&json!({ "sessionId": "nope" }), true).unwrap(), "null");
+    }
+
+    fn put_body(id: &str, body: &str) {
+        with_store(true, |s| {
+            s.put(&ChatSession {
+                session_id: id.into(),
+                started_at: "2030-01-01T00:00:00.000Z".into(),
+                updated_at: "2030-01-01T00:00:00.000Z".into(),
+                title: id.into(),
+                message_count: 0,
+                messages: body.into(),
+            })
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn a_rename_is_cut_to_the_cap_on_a_char() {
+        put_body("cap", "");
+        let long = "é".repeat(RENAME_MAX + 50);
+        rename(
+            &json!({ "sessionId": "cap", "title": format!("  {long}  ") }),
+            true,
+        )
+        .unwrap();
+        let title = with_store(true, |s| s.get("cap")).unwrap().unwrap().title;
+        assert_eq!(title.chars().count(), RENAME_MAX);
     }
 }

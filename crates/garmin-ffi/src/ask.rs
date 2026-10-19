@@ -18,17 +18,23 @@ use crate::FfiError;
 /// The turn that runs now: its session, its stop flag and its live state.
 static RUNNING: Mutex<Option<Arc<SinkState>>> = Mutex::new(None);
 
-/// The `ask` payload: the event JSON and the session it belongs to.
-fn payload(event: &Event, session_id: &str) -> Value {
+/// The `ask` payload: the event JSON, the session and the turn it belongs to.
+fn payload(event: &Event, session_id: &str, turn_id: &str) -> Value {
     let mut value = serde_json::to_value(event).unwrap_or(Value::Null);
     if let Some(map) = value.as_object_mut() {
         map.insert("sessionId".into(), session_id.into());
+        map.insert("turnId".into(), turn_id.into());
     }
     value
 }
 
 struct SinkState {
     session_id: String,
+    /// The id that the app gave to this turn. The ids of two turns never match.
+    turn_id: String,
+    /// The thread was deleted. The turn may end, but it saves nothing: the same
+    /// session id can already hold a new turn.
+    discarded: AtomicBool,
     fixture: bool,
     flag: Arc<AtomicBool>,
     turn: Mutex<Turn>,
@@ -81,11 +87,13 @@ impl EventSink for TurnSink {
     fn emit(&self, event: Event) {
         // The save comes first, so the app finds the turn in the store when it reads after `done`.
         if let Some(turn) = self.apply(&event) {
-            // A failed save cannot reach the app in a better way than the thread missing the turn.
-            let _ = chat::finish_turn(self.0.fixture, &self.0.session_id, &turn);
+            if !self.0.discarded.load(Ordering::Relaxed) {
+                // A failed save cannot reach the app in a better way than the thread missing the turn.
+                let _ = chat::finish_turn(self.0.fixture, &self.0.session_id, &turn);
+            }
             clear_running(&self.0);
         }
-        crate::emit("ask", payload(&event, &self.0.session_id));
+        crate::emit("ask", payload(&event, &self.0.session_id, &self.0.turn_id));
     }
 }
 
@@ -112,10 +120,14 @@ pub(crate) fn live_turn(session_id: &str) -> Option<Turn> {
     Some(turn)
 }
 
-/// Stop the running turn when it belongs to this session.
-pub(crate) fn stop_session(session_id: &str) {
-    if running_session().as_deref() == Some(session_id) {
-        stop();
+/// The thread is deleted: stop its turn, and let the turn save nothing.
+pub(crate) fn discard_session(session_id: &str) {
+    let mut running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    if running.as_ref().is_some_and(|s| s.session_id == session_id) {
+        if let Some(state) = running.take() {
+            state.discarded.store(true, Ordering::Relaxed);
+            state.flag.store(true, Ordering::Relaxed);
+        }
     }
 }
 
@@ -139,6 +151,7 @@ pub(crate) fn failed(e: impl ToString) -> FfiError {
 #[serde(rename_all = "camelCase")]
 struct Send {
     session_id: String,
+    turn_id: String,
     history: Vec<HistoryRow>,
 }
 
@@ -185,6 +198,9 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     if a.session_id.is_empty() {
         return Err(bad("sessionId is empty"));
     }
+    if a.turn_id.is_empty() {
+        return Err(bad("turnId is empty"));
+    }
     let question = a
         .history
         .iter()
@@ -205,6 +221,8 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let flag = Arc::new(AtomicBool::new(false));
     let state = Arc::new(SinkState {
         session_id: a.session_id,
+        turn_id: a.turn_id,
+        discarded: AtomicBool::new(false),
         fixture,
         flag,
         turn: Mutex::new(turn),
@@ -373,7 +391,8 @@ mod tests {
     }
 
     async fn send_to(id: &str, text: &str) {
-        let args = json!({ "sessionId": id, "history": [{ "role": "user", "content": text }] });
+        let args = json!({ "sessionId": id, "turnId": format!("{id}-{text}"),
+            "history": [{ "role": "user", "content": text }] });
         handle("ask_send", &args, true).await.unwrap().unwrap();
     }
 
@@ -429,6 +448,37 @@ mod tests {
         assert!(running_session().is_none());
         tokio::time::sleep(Duration::from_millis(900)).await;
         assert!(thread("t-del").is_null());
+    }
+
+    #[tokio::test]
+    async fn a_late_end_of_a_deleted_turn_leaves_the_new_turn_alone() {
+        let _seq = SEQ.lock().await;
+        send_to("t-reuse", "Q1").await;
+        let args = json!({ "sessionId": "t-reuse" });
+        chat::handle("chat_delete", &args, true).unwrap().unwrap();
+        send_to("t-reuse", "Q2").await;
+        // The old turn ends at about 400 ms, while the new turn still runs.
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let saved = chat::with_store(true, |s| s.get("t-reuse"))
+            .unwrap()
+            .unwrap();
+        let turns = chat::decode(&saved.messages);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(
+            (turns[0].question.as_str(), turns[0].status),
+            ("Q2", Status::Running)
+        );
+        wait_idle("t-reuse").await;
+        assert_eq!(thread("t-reuse")["turns"][0]["status"], "done");
+    }
+
+    #[test]
+    fn every_event_carries_its_turn_id() {
+        let value = payload(&Event::Delta { text: "x".into() }, "s", "s-1");
+        assert_eq!(
+            (value["sessionId"].as_str(), value["turnId"].as_str()),
+            (Some("s"), Some("s-1"))
+        );
     }
 
     #[tokio::test]
