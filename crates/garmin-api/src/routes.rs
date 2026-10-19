@@ -10,7 +10,7 @@ use crate::places::{km_text, Tile};
 use crate::text::{hours_minutes, short_date};
 use crate::ApiError;
 use garmin_core::query::{self, Route};
-use garmin_core::sport::sport_label;
+use garmin_core::sport::{is_exercise, sport_label};
 use garmin_core::Db;
 use serde::{Deserialize, Serialize};
 
@@ -181,7 +181,9 @@ fn notes_of(routes: &[Route], shown: &[RouteRow], total: usize) -> Vec<String> {
 }
 
 pub fn routes_view(db: &Db, sort: RouteSort) -> Result<RoutesView, ApiError> {
-    let all = query::routes(db, sort)?;
+    let mut all = query::routes(db, sort)?;
+    // A motorcycle or car trace is not a route that the user trains on.
+    all.retain(|r| is_exercise(r.type_key.as_deref()));
     if all.is_empty() {
         return Ok(RoutesView {
             empty: Some(empty_note()),
@@ -262,6 +264,39 @@ mod tests {
         let s = shape(&line);
         assert!(s.len() <= SHAPE_POINTS + 2, "{}", s.len());
         assert_eq!(s.last().unwrap()[1], 0.0);
+    }
+
+    #[test]
+    fn a_motorcycle_trace_is_not_a_route() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-routes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&dir.join("cache.sqlite3")).unwrap();
+        for (id, key) in [(1, "walking"), (2, "motorcycling_v2")] {
+            let a = serde_json::json!({
+                "activityId": id,
+                "startTimeLocal": "2026-03-10 09:00:00",
+                "distance": 5_000.0,
+                "duration": 3_600.0,
+                "activityType": { "typeKey": key },
+            });
+            db.upsert_activity(&serde_json::from_value(a).unwrap())
+                .unwrap();
+            db.upsert_track(&garmin_core::db::ActivityTrack {
+                activity_id: id,
+                point_count: 2,
+                start_lat: Some(50.0 + id as f64),
+                start_lon: Some(10.0),
+                end_lat: Some(50.1 + id as f64),
+                end_lon: Some(10.1),
+                points: vec![[50.0, 10.0], [50.1, 10.1]],
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let v = routes_view(&db, RouteSort::default()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert_eq!(v.total, 1);
+        assert_eq!(v.routes[0].sport, "Walking");
     }
 
     #[test]

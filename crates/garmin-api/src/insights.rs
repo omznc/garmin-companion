@@ -6,7 +6,9 @@
 //! about sleep, recovery and the shape of the week need no sport.
 
 use crate::body::EmptyNote;
-use crate::derive::{daily_series, date_key, days_since, easy_hard_split, is_run};
+use crate::derive::{
+    daily_series, date_key, days_since, easy_hard_split, is_run, MIN_RUNS_FOR_NOTES,
+};
 use crate::text::{num, short_date};
 use crate::{activity_profile, ApiError};
 use chrono::{Datelike, Duration, NaiveDate};
@@ -101,7 +103,7 @@ pub fn runs_now(activities: &[CachedActivity], today: NaiveDate) -> bool {
         })
         .count();
     // The audience plan: gate every run note on 3 or more runs in the window.
-    profile.active.contains(&Family::Endurance) && recent_runs >= 3
+    profile.active.contains(&Family::Endurance) && recent_runs >= MIN_RUNS_FOR_NOTES
 }
 
 fn ends(labels: &[String]) -> Vec<String> {
@@ -178,8 +180,17 @@ pub struct Load {
     pub ratio: f64,
 }
 
-/// The last 7 days against the weekly average of the last 28.
+/// Days of history that the 28-day average needs. A new user has less, so a
+/// first week would look like a spike against a month that never happened.
+const LOAD_HISTORY_DAYS: i64 = 28;
+
+/// The last 7 days against the weekly average of the last 28. `None` until
+/// the oldest session is 28 days old.
 pub fn load(activities: &[CachedActivity], today: NaiveDate) -> Option<Load> {
+    let oldest = activities.iter().filter_map(date_of).min()?;
+    if (today - oldest).num_days() < LOAD_HISTORY_DAYS {
+        return None;
+    }
     let acute = hours_in(activities, today, 7);
     let chronic = hours_in(activities, today, 28) / 4.0;
     (chronic > 0.0).then(|| Load {
@@ -497,11 +508,22 @@ mod tests {
         let acts = [
             act("2026-03-10", "golf", 60.0),
             act("2026-02-20", "golf", 180.0),
+            act("2026-02-01", "golf", 30.0),
         ];
         let l = load(&acts, today()).unwrap();
         assert!((l.acute - 1.0).abs() < 1e-9 && (l.chronic - 1.0).abs() < 1e-9);
         assert_eq!(load_status(l.ratio), "steady");
         assert!(load(&[], today()).is_none());
+    }
+
+    #[test]
+    fn a_new_user_gets_no_load_note() {
+        // Two sessions in the first week: the ratio would read as a spike.
+        let acts = [
+            act("2026-03-10", "running", 60.0),
+            act("2026-03-05", "running", 60.0),
+        ];
+        assert!(load(&acts, today()).is_none());
     }
 
     #[test]

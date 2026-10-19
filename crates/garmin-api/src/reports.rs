@@ -7,6 +7,7 @@
 use crate::body::EmptyNote;
 use crate::derive::{
     daily_series, date_key, easy_hard_split, fuel, hydration, is_run, mean, Fuel, Hydration,
+    MIN_RUNS_FOR_NOTES,
 };
 use crate::insights::Figure;
 use crate::text::{hours_minutes, num};
@@ -139,7 +140,9 @@ fn duration(secs: f64) -> String {
 
 /// The share of heart-rate time above Z2 in the runs of the week.
 fn hard_share(week: &Week) -> Option<(f64, f64, usize)> {
-    easy_hard_split(&week.runs()).map(|s| (s.hard_pct, s.easy_pct, s.counted))
+    easy_hard_split(&week.runs())
+        .filter(|s| s.counted >= MIN_RUNS_FOR_NOTES)
+        .map(|s| (s.hard_pct, s.easy_pct, s.counted))
 }
 
 /// What the week is set against.
@@ -160,7 +163,7 @@ fn headline(week: &Week, compare: &Compare) -> String {
         _ => None,
     };
     let share = hard_share(week);
-    if share.is_some_and(|(hard, ..)| hard <= 25.0) && week.runs().len() >= 2 {
+    if share.is_some_and(|(hard, ..)| hard <= 25.0) && week.runs().len() >= MIN_RUNS_FOR_NOTES {
         "A week close to the 80/20 split".into()
     } else if prior.is_some_and(|p| p.duration_s > 0.0 && week.duration_s > p.duration_s * 1.25) {
         "A bigger week than the one before".into()
@@ -519,6 +522,23 @@ mod tests {
         assert!(figures(&weeks[0], &[])
             .iter()
             .all(|f| f.label != "Time above Z2"));
+    }
+
+    #[test]
+    fn run_notes_need_three_runs_with_heart_rate_data() {
+        let mut runs: Vec<CachedActivity> = (1..=3)
+            .map(|i| {
+                let mut a = act(i, "2026-03-10", "running", 30.0, 5.0);
+                a.zone_secs = [900.0, 900.0, 0.0, 0.0, 0.0];
+                a
+            })
+            .collect();
+        assert!(hard_share(&by_week(&runs[..1])[0]).is_none());
+        assert!(hard_share(&by_week(&runs[..2])[0]).is_none());
+        assert!(hard_share(&by_week(&runs)[0]).is_some());
+        runs.truncate(2);
+        let week = &by_week(&runs)[0];
+        assert_eq!(headline(week, &Compare::Gap), "A steady week");
     }
 
     #[test]

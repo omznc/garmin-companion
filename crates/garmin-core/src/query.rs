@@ -726,7 +726,7 @@ fn slope_kg_per_day(points: &[WeightPoint]) -> Option<f64> {
 
 /// Weight, its trend, and what the food log says should have happened.
 pub fn weight(db: &Db, days: u32) -> Result<WeightReport> {
-    let today = chrono::Utc::now().date_naive();
+    let today = crate::today();
     let from = today - chrono::Duration::days(days.saturating_sub(1) as i64);
     let rows = db.weigh_ins_since(&from.format("%Y-%m-%d").to_string())?;
 

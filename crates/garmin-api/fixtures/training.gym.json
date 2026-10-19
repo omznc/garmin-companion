@@ -3,52 +3,11 @@
     "date": "2026-03-11",
     "eyebrow": "Last 365 days",
     "lede": "What a year of your own data says. Each insight shows the sample behind it, so you can judge how far to trust it. These are patterns, not causes.",
-    "empty": null,
-    "sections": [
-      {
-        "key": "load",
-        "title": "Training load",
-        "items": [
-          {
-            "id": "load",
-            "tone": "note",
-            "claim": "Your training load is steady.",
-            "detail": "You trained 2.9 h in the last seven days. Your weekly average over 28 days is 2.9 h. That is a steady ratio.",
-            "basis": "Weekly load is Edwards' training impulse: the minutes in each heart-rate zone, weighted one to five. A session with no heart rate counts as easy. At 0.63, monotony is under the usual limit of 2.0. Your hard days and easy days differ.",
-            "figures": [
-              {
-                "label": "Acute / chronic",
-                "value": "0.97",
-                "accent": false
-              },
-              {
-                "label": "Monotony",
-                "value": "0.63",
-                "accent": false
-              }
-            ],
-            "series": [
-              {
-                "name": "Weekly load",
-                "values": [
-                  118.0,
-                  355.0,
-                  355.0,
-                  355.0,
-                  237.0
-                ],
-                "muted": false
-              }
-            ],
-            "ends": [
-              "09 Feb",
-              "09 Mar"
-            ],
-            "rows": []
-          }
-        ]
-      }
-    ]
+    "empty": {
+      "title": "Not enough history yet.",
+      "body": "Insights compare your daily health data with your activity. After a few more weeks of synced data, the first ones appear. Nothing shows until the data supports it."
+    },
+    "sections": []
   },
   "fitness": {
     "date": "2026-03-11",

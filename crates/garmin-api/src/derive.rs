@@ -17,6 +17,9 @@ pub fn date_key(d: NaiveDate) -> String {
     d.format("%Y-%m-%d").to_string()
 }
 
+/// Runs that a user needs before any run note shows. Every screen uses it.
+pub const MIN_RUNS_FOR_NOTES: usize = 3;
+
 pub fn is_run(type_key: &Option<String>) -> bool {
     type_key.as_deref().is_some_and(|k| k.contains("running"))
 }

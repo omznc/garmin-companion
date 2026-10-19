@@ -281,31 +281,31 @@
   "insights": [
     {
       "id": "duration",
-      "tone": "good",
-      "claim": "You're averaging 7h 30m a night.",
-      "detail": "0 of 30 nights came in under seven hours, which is a normal amount of short nights rather than a pattern. Duration isn't the thing to work on.",
-      "nights": 30
+      "tone": "note",
+      "claim": "You're averaging 7h 29m a night.",
+      "detail": "That clears seven hours, but 0 of 31 nights didn't. The gap between a good week and a bad one here is bedtime, not wake time — the alarm doesn't move.",
+      "nights": 31
     },
     {
       "id": "consistency",
       "tone": "good",
       "claim": "Your bedtime is steady: ±15 minutes around 22:39.",
       "detail": "That consistency is doing more for you than any single long night would. Wake time swings about as much, at ±26 min.",
-      "nights": 30
+      "nights": 31
     },
     {
       "id": "stages",
       "tone": "good",
       "claim": "Stage mix is fine: 18% deep, 22% REM.",
-      "detail": "Garmin flagged deep on 0 of 30 nights and REM on 0. There's nothing to chase here — stage percentages are mostly a consequence of total time asleep, not something to optimise directly.",
-      "nights": 30
+      "detail": "Garmin flagged deep on 0 of 31 nights and REM on 0. There's nothing to chase here — stage percentages are mostly a consequence of total time asleep, not something to optimise directly.",
+      "nights": 31
     },
     {
       "id": "hrv-link",
       "tone": "note",
       "claim": "Your longer nights are also your higher-HRV nights.",
-      "detail": "Across 30 nights, hours asleep and next-morning HRV correlate at r = 1.00. Correlation over one window, not cause — HRV is the strongest recovery signal you have, so it's worth knowing which way it moves with sleep, but a long night and a good HRV usually share a cause rather than making each other.",
-      "nights": 30
+      "detail": "Across 31 nights, hours asleep and next-morning HRV correlate at r = 1.00. Correlation over one window, not cause — HRV is the strongest recovery signal you have, so it's worth knowing which way it moves with sleep, but a long night and a good HRV usually share a cause rather than making each other.",
+      "nights": 31
     }
   ]
 }

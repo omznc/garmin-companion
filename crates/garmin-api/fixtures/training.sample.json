@@ -291,7 +291,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "2 sessions, 12.4 km, 1h 12m of recorded time. The week is not over yet, so it has no comparison. The longest was Morning Run at 37 min.",
-        "Sleep averaged 7h 30m. Resting heart rate averaged 56 bpm. Food was logged on 1 of 3 days. That is too little to average. 30% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
+        "Sleep averaged 7h 30m. Resting heart rate averaged 56 bpm. Food was logged on 1 of 3 days. That is too little to average."
       ],
       "figures": [
         {
@@ -313,11 +313,6 @@
           "label": "Avg sleep",
           "value": "7h 30m",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "30%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -609,7 +604,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 7.0 km, 0h 39m of recorded time. That is 50% less time than the week before. The longest was Morning Run at 39 min.",
-        "Sleep averaged 7h 32m. Resting heart rate averaged 51 bpm. No food was logged, against 2,686 kcal burned each day. 53% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "Sleep averaged 7h 32m. Resting heart rate averaged 51 bpm. No food was logged, against 2,686 kcal burned each day."
       ],
       "figures": [
         {
@@ -631,11 +626,6 @@
           "label": "Avg sleep",
           "value": "7h 32m",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "53%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -699,7 +689,7 @@
       "headline": "A bigger week than the one before",
       "paragraphs": [
         "2 sessions, 13.0 km, 1h 17m of recorded time. That is 59% more time than the week before. The longest was Easy Run at 42 min.",
-        "Sleep averaged 7h 28m. Resting heart rate averaged 51 bpm. No food was logged, against 2,674 kcal burned each day. 34% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
+        "Sleep averaged 7h 28m. Resting heart rate averaged 51 bpm. No food was logged, against 2,674 kcal burned each day."
       ],
       "figures": [
         {
@@ -721,11 +711,6 @@
           "label": "Avg sleep",
           "value": "7h 28m",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -797,7 +782,7 @@
       "headline": "A bigger week than the one before",
       "paragraphs": [
         "1 session, 8.0 km, 0h 49m of recorded time. That is 34% more time than the week before. The longest was Easy Run at 49 min.",
-        "Sleep averaged 7h 34m. Resting heart rate averaged 51 bpm. No food was logged, against 2,691 kcal burned each day. 34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "Sleep averaged 7h 34m. Resting heart rate averaged 51 bpm. No food was logged, against 2,691 kcal burned each day."
       ],
       "figures": [
         {
@@ -819,11 +804,6 @@
           "label": "Avg sleep",
           "value": "7h 34m",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -887,7 +867,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 6.0 km, 0h 36m of recorded time. That is 16% less time than the week before. The longest was Easy Run at 36 min.",
-        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. No food was logged, against 2,680 kcal burned each day. 34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "Sleep averaged 7h 30m. Resting heart rate averaged 51 bpm. No food was logged, against 2,680 kcal burned each day."
       ],
       "figures": [
         {
@@ -909,11 +889,6 @@
           "label": "Avg sleep",
           "value": "7h 30m",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -977,7 +952,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 7.0 km, 0h 43m of recorded time. That is 14% less time than the week before. The longest was Easy Run at 43 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -994,11 +969,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1062,7 +1032,7 @@
       "headline": "A bigger week than the one before",
       "paragraphs": [
         "1 session, 8.0 km, 0h 50m of recorded time. That is 34% more time than the week before. The longest was Easy Run at 50 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1079,11 +1049,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1147,7 +1112,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 6.0 km, 0h 38m of recorded time. That is 61% less time than the week before. The longest was Easy Run at 38 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1164,11 +1129,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1232,7 +1192,7 @@
       "headline": "A bigger week than the one before",
       "paragraphs": [
         "2 sessions, 15.0 km, 1h 36m of recorded time. That is 149% more time than the week before. The longest was Easy Run at 52 min.",
-        "34% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1249,11 +1209,6 @@
           "label": "Sessions",
           "value": "2",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1325,7 +1280,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 6.0 km, 0h 39m of recorded time. That is 16% less time than the week before. The longest was Easy Run at 39 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1342,11 +1297,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1410,7 +1360,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 7.0 km, 0h 46m of recorded time. That is 14% less time than the week before. The longest was Easy Run at 46 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1427,11 +1377,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1495,7 +1440,7 @@
       "headline": "A bigger week than the one before",
       "paragraphs": [
         "1 session, 8.0 km, 0h 53m of recorded time. That is 34% more time than the week before. The longest was Easy Run at 53 min.",
-        "35% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1512,11 +1457,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "35%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1580,7 +1520,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 6.0 km, 0h 40m of recorded time. That is 16% less time than the week before. The longest was Easy Run at 40 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1597,11 +1537,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1665,7 +1600,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "1 session, 7.0 km, 0h 47m of recorded time. That is 51% less time than the week before. The longest was Easy Run at 47 min.",
-        "34% of the heart-rate time was above Z2, over 1 run that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1682,11 +1617,6 @@
           "label": "Sessions",
           "value": "1",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
@@ -1750,7 +1680,7 @@
       "headline": "A steady week",
       "paragraphs": [
         "2 sessions, 14.0 km, 1h 35m of recorded time. The week before had no sessions. The longest was Easy Run at 55 min.",
-        "34% of the heart-rate time was above Z2, over 2 runs that recorded it. The 80/20 model wants this nearer 20%."
+        "No recovery data was recorded for this week."
       ],
       "figures": [
         {
@@ -1767,11 +1697,6 @@
           "label": "Sessions",
           "value": "2",
           "accent": false
-        },
-        {
-          "label": "Time above Z2",
-          "value": "34%",
-          "accent": true
         }
       ],
       "dailyTitle": "Daily distance",
