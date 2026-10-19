@@ -57,6 +57,7 @@ pub struct Account {
     pub token_path_default: Option<String>,
     /// The coach settings and the cloud account.
     pub cloud: Cloud,
+    pub update: crate::update_ui::UpdateState,
 }
 
 impl Account {
@@ -89,6 +90,7 @@ impl Account {
             token_path: Field::new("Path to garmin_tokens.json", false, cx),
             token_path_default: status.and_then(|s| s.importable_token_path),
             cloud: Cloud::new(cx),
+            update: Default::default(),
         }
     }
 

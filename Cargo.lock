@@ -2799,15 +2799,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "base64 0.23.1",
  "chrono",
+ "flate2",
  "garmin-api",
  "garmin-coach",
  "garmin-core",
  "gpui-ce",
  "gpui_ce_platform",
+ "minisign-verify",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
+ "tar",
  "tokio",
 ]
 

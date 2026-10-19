@@ -42,6 +42,8 @@ mod theme;
 mod today;
 mod training;
 mod ui;
+mod update_ui;
+mod updater;
 mod wellness;
 
 use std::borrow::Cow;
@@ -267,6 +269,7 @@ fn main() -> anyhow::Result<()> {
                     if start_sync {
                         root.start_sync(false, cx);
                     }
+                    root.watch_for_updates(cx);
                     root
                 })
             });

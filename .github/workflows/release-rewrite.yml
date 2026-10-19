@@ -102,6 +102,9 @@ jobs:
           node-version: 22
 
       - name: Build the app and the sign-in helper
+        env:
+          # The app compares this version with latest.json (apps/desktop/src/updater.rs).
+          GC_VERSION: ${{ inputs.version }}
         run: cargo build --release -p garmin-companion-desktop -p garmin-companion-login --target ${{ matrix.target }}
 
       # tauri.conf.json lists the helper as externalBin. The bundler looks for

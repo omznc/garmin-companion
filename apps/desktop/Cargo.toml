@@ -22,6 +22,14 @@ serde_json = { workspace = true }
 reqwest = { workspace = true }
 tokio = { workspace = true }
 
+# The self-updater (updater.rs): the Tauri latest.json format, a minisign
+# check before any install, and the unpack of a macOS or AppImage bundle.
+base64 = { workspace = true }
+flate2 = "1"
+minisign-verify = "0.2"
+semver = "1"
+tar = "0.4"
+
 # The same pin as mbrd-rs. gpui-ce follows Zed's tree and cuts releases.
 # `gpui` is the core only. The backends live in `gpui_platform`, and the three
 # features below choose them: fontconfig for Linux fonts, and both display
