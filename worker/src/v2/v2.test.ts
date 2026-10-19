@@ -32,9 +32,9 @@ describe("install", () => {
     expect((await h.call("/v2/balance")).status).toBe(401);
   });
 
-  it("allows 3 ids a day for one address, then 429", async () => {
+  it("allows 10 ids a day for one address, then 429", async () => {
     const h = harness();
-    for (let i = 0; i < 3; i++)
+    for (let i = 0; i < 10; i++)
       expect((await h.call("/v2/install", { method: "POST" })).status).toBe(200);
     const r = await h.call("/v2/install", { method: "POST" });
     expect(r.status).toBe(429);
@@ -1020,7 +1020,7 @@ describe("network", () => {
     const h = harness();
     const from = (ip: string) =>
       h.call("/v2/install", { method: "POST", headers: { "CF-Connecting-IP": ip } });
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 10; i++) {
       expect((await from(`2001:db8:1:2::${i + 1}`)).status).toBe(200);
     }
     expect((await from("2001:db8:1:2:ffff::9")).status).toBe(429);
