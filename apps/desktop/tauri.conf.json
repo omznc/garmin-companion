@@ -31,6 +31,7 @@
           "libxkbcommon-x11-0",
           "libwebkit2gtk-4.1-0", "libgtk-3-0"
         ],
+        "recommends": ["libvulkan1"],
         "section": "utils",
         "priority": "optional",
         "desktopTemplate": "../../app/src-tauri/linux/garmin-companion.desktop",
@@ -43,6 +44,7 @@
           "libxkbcommon-x11",
           "webkit2gtk4.1", "gtk3"
         ],
+        "recommends": ["vulkan-loader"],
         "desktopTemplate": "../../app/src-tauri/linux/garmin-companion.desktop",
         "files": {
           "/usr/share/metainfo/com.omznc.garmincompanion.metainfo.xml": "../../app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml"
