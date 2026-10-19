@@ -25,6 +25,11 @@ struct Recent {
 }
 
 #[derive(Deserialize)]
+struct Offset {
+    offset: Option<usize>,
+}
+
+#[derive(Deserialize)]
 struct Since {
     from: String,
 }
@@ -61,6 +66,8 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// - `activities` `{limit}`: the Activities list view model, grouped by day.
 /// - `activity_detail` `{activityId}`: the detail view model of one session, or `null`.
 /// - `weight_view`, `food_view`, `strength_view`: the Weight, Food and Strength screens.
+/// - `insights_view`, `fitness_view`: the Insights and Fitness screens.
+/// - `report_view` `{offset}`: the weekly report. Offset 0 is the newest week.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
@@ -122,6 +129,22 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
             &open_default_db()?,
             garmin_core::today(),
         )?),
+        "insights_view" => encode(&crate::insights::insights_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "fitness_view" => encode(&crate::fitness::fitness_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "report_view" => {
+            let a: Offset = parse(args_json)?;
+            encode(&crate::reports::report_view(
+                &open_default_db()?,
+                garmin_core::today(),
+                a.offset.unwrap_or(0),
+            )?)
+        }
         other => account_call(other, args_json),
     }
 }

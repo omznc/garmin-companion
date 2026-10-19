@@ -210,11 +210,11 @@ fn window_summary(bars: &[NightBar], days: u32) -> String {
     out
 }
 
-fn window(by_date: &HashMap<&str, Basic>, days: u32, today: NaiveDate) -> SleepWindow {
+fn window(by_date: &HashMap<&str, Basic>, days: u32, end: NaiveDate) -> SleepWindow {
     let bars: Vec<NightBar> = (0..days)
         .rev()
         .map(|age| {
-            let day = today - chrono::Duration::days(age as i64);
+            let day = end - chrono::Duration::days(age as i64);
             let found = by_date.get(date_key(day).as_str());
             NightBar {
                 date: date_key(day),
@@ -275,6 +275,12 @@ pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
     let last_night = last.map(|b| night_view(b, today));
     let missing_detail = last.is_some_and(|b| b.night.is_none());
     let empty = last.is_none();
+    // Before the watch syncs this morning, the newest night is last night's
+    // wake date. The windows end there, so they hold no empty slot for today.
+    let end = last
+        .and_then(|b| NaiveDate::parse_from_str(b.date, "%Y-%m-%d").ok())
+        .filter(|d| (today - *d).num_days() == 1)
+        .unwrap_or(today);
     Ok(SleepView {
         date: date_key(today),
         empty,
@@ -285,8 +291,8 @@ pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
         note: missing_detail
             .then(|| "The stage detail for this night arrives with the next sync.".to_string()),
         last_night,
-        week: window(&by_date, WEEK, today),
-        month: window(&by_date, MONTH, today),
+        week: window(&by_date, WEEK, end),
+        month: window(&by_date, MONTH, end),
         insights: insights(&nights, &daily, &db.activities_since(&from)?),
     })
 }
@@ -355,6 +361,20 @@ mod tests {
         assert_eq!(v.week.bars.len(), 7);
         assert!(v.week.bars.iter().all(|b| b.hours.is_none()));
         assert_eq!(v.week.summary, "No sleep recorded in the last 7 nights.");
+    }
+
+    #[test]
+    fn the_windows_end_on_last_night_before_the_morning_sync() {
+        let db = db("before-sync");
+        let day = sample_day();
+        seed(&db, Persona::HealthOnly, day).unwrap();
+        seed_sleep(&db, Persona::HealthOnly, day).unwrap();
+        // The next calendar day: the watch has not synced a night for it yet.
+        let v = sleep_view(&db, day + chrono::Duration::days(1)).unwrap();
+        let last = v.week.bars.last().unwrap();
+        assert_eq!(last.date, date_key(day));
+        assert!(v.week.bars.iter().all(|b| b.hours.is_some()));
+        assert_eq!(v.month.bars.last().unwrap().date, date_key(day));
     }
 
     #[test]

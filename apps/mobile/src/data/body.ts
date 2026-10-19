@@ -1,8 +1,16 @@
 // Weight, Food and Strength. The core builds the numbers and the sentences
 // (`garmin_api::body`). This file types the JSON and turns it into blocks.
 // The screens draw the blocks and have no other copy.
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { callJson } from "./source";
+import {
+  type FitnessView,
+  type InsightsView,
+  presentFitness,
+  presentInsights,
+  presentReport,
+  type ReportView,
+} from "./training";
 
 export type EmptyNote = { title: string; body: string };
 
@@ -15,7 +23,7 @@ export type WeightView = {
   changeKg: number | null;
   bmi: number | null;
   windows: { days: number; sentence: string }[];
-  points: { date: string; kg: number; trendKg: number | null; outlier: boolean }[];
+  points: { date: string; label: string; kg: number; trendKg: number | null; outlier: boolean }[];
   composition: {
     date: string;
     bodyFatPct: number | null;
@@ -62,18 +70,22 @@ export type StrengthView = {
     sessions: number;
     sets: number;
     reps: number;
+    detail: string;
     history: { reps: number }[];
   }[];
 };
 
 export type BodyKind = "weight" | "food" | "strength";
+/** A screen that draws blocks. Insights, Fitness and the weekly report come from `training.ts`. */
+export type ScreenKind = BodyKind | "insights" | "fitness" | "report";
 
 export type Block =
   | { kind: "text"; text: string; tone?: "lede" | "note" | "heading" }
   | { kind: "tiles"; tiles: { label: string; value: string; accent?: boolean }[] }
   | { kind: "chart"; title: string; values: number[]; from: string; to: string }
   | { kind: "rows"; title: string; rows: { key: string; value: string; sub?: string }[] }
-  | { kind: "empty"; title: string; body: string };
+  | { kind: "empty"; title: string; body: string }
+  | { kind: "actions"; actions: { id: string; label: string }[] };
 
 export type BodyScreenData = { title: string; blocks: Block[] };
 
@@ -126,8 +138,8 @@ export function presentWeight(v: WeightView): BodyScreenData {
             kind: "chart",
             title: "Trend",
             values: v.points.map((p) => p.trendKg ?? p.kg),
-            from: first.date,
-            to: last.date,
+            from: first.label,
+            to: last.label,
           }
         : null,
       comp && { kind: "text", text: "Body composition", tone: "heading" },
@@ -140,7 +152,7 @@ export function presentWeight(v: WeightView): BodyScreenData {
           .reverse()
           .slice(0, 60)
           .map((p) => ({
-            key: p.date,
+            key: p.label,
             value: `${one(p.kg)} kg`,
             sub: p.outlier ? "Check this reading" : undefined,
           })),
@@ -209,8 +221,8 @@ export function presentStrength(v: StrengthView): BodyScreenData {
             title: "By movement",
             rows: v.exercises.map((e) => ({
               key: e.name,
-              value: `${e.reps} reps`,
-              sub: `${e.sessions} sessions, ${e.sets} sets`,
+              value: `${e.reps} ${e.reps === 1 ? "rep" : "reps"}`,
+              sub: e.detail,
             })),
           }
         : null,
@@ -229,14 +241,32 @@ export function presentStrength(v: StrengthView): BodyScreenData {
 
 const commands = { weight: "weight_view", food: "food_view", strength: "strength_view" } as const;
 
-async function fetchBody(kind: BodyKind): Promise<BodyScreenData> {
+async function fetchBody(kind: ScreenKind, offset: number): Promise<BodyScreenData> {
+  if (kind === "insights") return presentInsights(await callJson<InsightsView>("insights_view"));
+  if (kind === "fitness") return presentFitness(await callJson<FitnessView>("fitness_view"));
+  if (kind === "report")
+    return presentReport(await callJson<ReportView>("report_view", { offset }));
   if (kind === "weight") return presentWeight(await callJson<WeightView>(commands.weight));
   if (kind === "food") return presentFood(await callJson<FoodView>(commands.food));
   return presentStrength(await callJson<StrengthView>(commands.strength));
 }
 
-export const useBody = (kind: BodyKind) =>
-  useQuery({ queryKey: ["body", kind], queryFn: () => fetchBody(kind), retry: false });
+export const useBody = (kind: ScreenKind, offset = 0) =>
+  useQuery({
+    queryKey: ["body", kind, offset],
+    queryFn: () => fetchBody(kind, offset),
+    // Keep the old week on screen while the next one loads.
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+
+// Fitness shows only when the cache has a training status or a record.
+export const useFitnessShown = () =>
+  useQuery({
+    queryKey: ["body", "fitness-shown"],
+    queryFn: async () => (await callJson<FitnessView>("fitness_view")).empty == null,
+    retry: false,
+  });
 
 // The Health list shows Strength only when the profile shows gym sessions.
 export const useStrengthShown = () =>

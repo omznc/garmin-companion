@@ -14,7 +14,7 @@ use garmin_api::{HealthView, SleepView};
 use crate::data::{Metric, Part, Source};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, block_in, body, ch, eyebrow, eyebrow_lg, h1, metric, spark, LH_NORMAL, SANS,
+    axis_labels, block_in, body, ch, eyebrow, eyebrow_lg, h1, metric, spark_wide, LH_NORMAL, SANS,
 };
 
 /// The made-up users of `garmin-api`, as the Health and Sleep views.
@@ -141,7 +141,7 @@ fn metric_row(m: &MetricTrend, t: &Theme) -> Div {
                 .min_w(px(260.0))
                 .child(body(m.sentence.clone(), FS_BASE, t.mutd).line_height(relative(1.6)))
                 .child(body(m.caption.clone(), FS_CAPTION, t.faint).mt(px(7.0)))
-                .child(div().mt(px(12.0)).child(spark(&points, t))),
+                .child(div().mt(px(12.0)).child(spark_wide(&points, t))),
         )
 }
 

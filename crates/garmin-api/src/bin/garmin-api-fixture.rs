@@ -9,6 +9,7 @@
 //!   with made-up rows and writes `crates/garmin-api/fixtures/today.sample.json` by default.
 //!   The sample is safe to commit. Its date is fixed, so the output is stable.
 //! - `garmin-api-fixture --body` writes `body.sample.json` and `body.empty.json` (Weight, Food, Strength).
+//! - `garmin-api-fixture --training` writes `training.<persona>.json` for each persona (Insights, Fitness, Reports).
 //! - `garmin-api-fixture --personas` writes all the made-up persona files
 //!   (`today.sample.json`, `today.golfer.json`, `today.gym.json`,
 //!   `today.health_only.json`, `today.new_user.json`). All are safe to commit.
@@ -35,6 +36,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if first == "--body" {
         return write_body();
+    }
+    if first == "--training" {
+        return write_training();
     }
     if first == "--sample" {
         let out = args.next().map_or_else(
@@ -70,6 +74,29 @@ fn write_body() -> Result<(), Box<dyn std::error::Error>> {
         std::fs::write(&out, serde_json::to_string_pretty(&views)? + "\n")?;
         eprintln!("wrote {}", out.display());
         let _ = std::fs::remove_dir_all(dir);
+    }
+    Ok(())
+}
+
+/// Write `training.<persona>.json` for each persona: Insights, Fitness and every Reports week.
+fn write_training() -> Result<(), Box<dyn std::error::Error>> {
+    use garmin_api::training_fixtures::{seed_training, training_views};
+    for persona in Persona::ALL {
+        let dir = std::env::temp_dir().join(format!(
+            "garmin-api-training-{}-{}",
+            persona.name(),
+            std::process::id()
+        ));
+        let db = open_db(&dir.join("cache.sqlite3"))?;
+        let day = sample_day();
+        seed(&db, persona, day)?;
+        seed_training(&db, persona, day)?;
+        let result = write_view(
+            &training_views(&db, day)?,
+            &fixtures_dir().join(persona.training_file_name()),
+        );
+        let _ = std::fs::remove_dir_all(dir);
+        result?;
     }
     Ok(())
 }

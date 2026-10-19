@@ -7,7 +7,7 @@ use crate::derive::{daily_series, date_key, hydration};
 use crate::text::{num, short_date, weight_sentence};
 use crate::{activity_profile, ApiError};
 use chrono::NaiveDate;
-use garmin_core::query::{self, WeightPoint};
+use garmin_core::query;
 use garmin_core::sport::is_exercise;
 use garmin_core::{Db, Family};
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,17 @@ pub struct Composition {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WeightPointView {
+    pub date: String,
+    /// The short date, such as `06 Aug`.
+    pub label: String,
+    pub kg: f64,
+    pub trend_kg: Option<f64>,
+    pub outlier: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WeightView {
     pub empty: Option<EmptyNote>,
     /// Weigh-ins in the window, outliers included.
@@ -76,7 +87,7 @@ pub struct WeightView {
     pub bmi: Option<f64>,
     pub windows: Vec<WeightWindowView>,
     /// Oldest first, for the chart. An outlier stays in the list and is marked.
-    pub points: Vec<WeightPoint>,
+    pub points: Vec<WeightPointView>,
     pub composition: Option<Composition>,
     pub goal_sentence: Option<String>,
 }
@@ -94,7 +105,7 @@ fn window_sentence(w: &query::WeightWindow) -> String {
             "In {span} the trend held steady over {}.",
             plural(n, "weigh-in", "weigh-ins")
         ),
-        (_, None) => format!("One weigh-in in {span}, so no trend yet."),
+        (_, None) => format!("One weigh-in in {span}, so there is no change to report for it."),
     }
 }
 
@@ -165,7 +176,17 @@ pub fn weight_view(db: &Db, today: NaiveDate) -> Result<WeightView, ApiError> {
         },
         composition: if has { composition(db, today)? } else { None },
         goal_sentence: r.goal.as_ref().map(goal_sentence),
-        points: r.points,
+        points: r
+            .points
+            .into_iter()
+            .map(|p| WeightPointView {
+                label: label(&p.date),
+                date: p.date,
+                kg: p.kg,
+                trend_kg: p.trend_kg,
+                outlier: p.outlier,
+            })
+            .collect(),
     })
 }
 
@@ -314,6 +335,9 @@ pub struct ExerciseHistory {
     pub sessions: usize,
     pub sets: usize,
     pub reps: i64,
+    /// For example `1 session, 3 sets`.
+    #[serde(default)]
+    pub detail: String,
     /// Oldest first.
     pub history: Vec<ExerciseDay>,
 }
@@ -378,7 +402,11 @@ fn strength_row(s: &garmin_core::StrengthSession) -> StrengthRow {
         } else {
             label(&date)
         },
-        summary: format!("{} sets, {} reps{rest}", s.work_sets, s.total_reps),
+        summary: format!(
+            "{}, {}{rest}",
+            plural(s.work_sets, "set", "sets"),
+            plural(s.total_reps.max(0) as usize, "rep", "reps")
+        ),
         movements,
         date,
     }
@@ -397,6 +425,7 @@ fn exercise_histories(sessions: &[garmin_core::StrengthSession]) -> Vec<Exercise
                     sessions: 0,
                     sets: 0,
                     reps: 0,
+                    detail: String::new(),
                     history: Vec::new(),
                 });
             h.sessions += 1;
@@ -411,6 +440,13 @@ fn exercise_histories(sessions: &[garmin_core::StrengthSession]) -> Vec<Exercise
         }
     }
     let mut out: Vec<ExerciseHistory> = by_name.into_values().collect();
+    for h in &mut out {
+        h.detail = format!(
+            "{}, {}",
+            plural(h.sessions, "session", "sessions"),
+            plural(h.sets, "set", "sets")
+        );
+    }
     out.sort_by(|a, b| b.sets.cmp(&a.sets).then_with(|| a.name.cmp(&b.name)));
     out
 }
@@ -642,7 +678,7 @@ mod tests {
             window_sentence(&w(0, None)),
             "No weigh-ins in the last 7 days."
         );
-        assert!(window_sentence(&w(1, None)).contains("no trend"));
+        assert!(window_sentence(&w(1, None)).contains("no change"));
         assert!(window_sentence(&w(3, Some(-0.4))).contains("down 0.4 kg"));
         assert!(window_sentence(&w(3, Some(0.0))).contains("steady"));
     }
