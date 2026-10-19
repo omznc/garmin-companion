@@ -1386,6 +1386,15 @@ fn climb_highlight(activity: &CachedActivity, series: &Series, out: &mut Vec<Hig
     }
 }
 
+/// `session` for one earlier session, `3 sessions` for more.
+fn recent_sessions(n: usize) -> String {
+    if n == 1 {
+        "session".into()
+    } else {
+        format!("{n} sessions")
+    }
+}
+
 /// This session set against the recent ones like it.
 fn comparison_highlight(
     comparison: Option<&Comparison>,
@@ -1417,9 +1426,9 @@ fn comparison_highlight(
             };
             let detail = if is_continuous(discipline) {
                 format!(
-                    "Your last {} sessions of this sport averaged {avg:.0}% above Z2. \
+                    "Your last {} of this sport averaged {avg:.0}% above Z2. \
                      This one {} that.",
-                    c.sessions,
+                    recent_sessions(c.sessions),
                     if delta < 0.0 {
                         "came in under"
                     } else {
@@ -1428,10 +1437,10 @@ fn comparison_highlight(
                 )
             } else {
                 format!(
-                    "Your last {} sessions of this sport averaged {avg:.0}% above Z2, so \
+                    "Your last {} of this sport averaged {avg:.0}% above Z2, so \
                      this one was {} than your usual — which is the only sense in which \
                      that number means anything here.",
-                    c.sessions,
+                    recent_sessions(c.sessions),
                     if delta < 0.0 { "easier" } else { "harder" }
                 )
             };
@@ -1473,8 +1482,8 @@ fn comparison_highlight(
                             if delta < 0.0 { "shorter" } else { "longer" }
                         ),
                         format!(
-                            "Your last {} sessions of this sport averaged {}. This one ran {}.",
-                            c.sessions,
+                            "Your last {} of this sport averaged {}. This one ran {}.",
+                            recent_sessions(c.sessions),
                             clock(avg),
                             clock(dur)
                         ),
@@ -1497,8 +1506,8 @@ fn comparison_highlight(
                         if delta < 0.0 { "quicker" } else { "slower" }
                     ),
                     format!(
-                        "The last {} sessions of this sport averaged {}/km.",
-                        c.sessions,
+                        "The last {} of this sport averaged {}/km.",
+                        recent_sessions(c.sessions),
                         pace_label(avg)
                     ),
                 ),
@@ -1556,6 +1565,12 @@ pub fn decode(json: &str) -> Result<ActivityAnalysis> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_sessions_uses_the_singular_for_one() {
+        assert_eq!(recent_sessions(1), "session");
+        assert_eq!(recent_sessions(3), "3 sessions");
+    }
 
     fn activity() -> CachedActivity {
         CachedActivity {

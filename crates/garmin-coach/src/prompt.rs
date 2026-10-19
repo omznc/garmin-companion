@@ -135,7 +135,10 @@ pub(crate) fn grounding_message(db: &Db) -> Result<Value> {
         targets.push(format!("{v:.0} training minutes a week"));
     }
     if let Some(v) = goals.weekly_sessions {
-        targets.push(format!("{v} sessions a week"));
+        targets.push(format!(
+            "{} a week",
+            garmin_core::plural(v as usize, "session", "sessions")
+        ));
     }
     if !targets.is_empty() {
         s.push_str(&format!(

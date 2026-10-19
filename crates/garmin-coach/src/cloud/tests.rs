@@ -571,3 +571,9 @@ fn the_balance_becomes_lines_and_flags() {
         "300 credits left today. 0 of 6000 used this month."
     );
 }
+
+#[test]
+fn a_wait_of_one_second_is_singular() {
+    assert_eq!(wait(1), "1 second");
+    assert_eq!(wait(40), "40 seconds");
+}

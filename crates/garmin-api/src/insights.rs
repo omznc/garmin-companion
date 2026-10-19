@@ -9,7 +9,7 @@ use crate::body::EmptyNote;
 use crate::derive::{
     daily_series, date_key, days_since, easy_hard_split, is_run, MIN_RUNS_FOR_NOTES,
 };
-use crate::text::{num, short_date};
+use crate::text::{num, plural, short_date};
 use crate::{activity_profile, ApiError};
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_core::findings::{self, edwards_trimp, Finding, Section, Tone};
@@ -284,8 +284,8 @@ fn monotony_sentence(shape: &[WeekLoad]) -> String {
     };
     if high > 0 {
         out.push_str(&format!(
-            " {high} of the last {} weeks passed 2.0.",
-            shape.len()
+            " {high} of the last {} passed 2.0.",
+            plural(shape.len(), "week", "weeks")
         ));
     }
     out
@@ -369,7 +369,7 @@ fn run_flags(activities: &[CachedActivity]) -> Vec<InsightItem> {
             "hard-runs",
             true,
             "Most of your recent running was hard.",
-            format!("Across your last {} runs with heart-rate data, {:.0}% of the time was above Z2. Short and hard runs are fine as a choice. They are not a choice when every run is like that.", s.counted, s.hard_pct),
+            format!("Across your last {} with heart-rate data, {:.0}% of the time was above Z2. Short and hard runs are fine as a choice. They are not a choice when every run is like that.", plural(s.counted, "run", "runs"), s.hard_pct),
         ));
     }
     let short = recent

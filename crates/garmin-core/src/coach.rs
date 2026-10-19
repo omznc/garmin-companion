@@ -509,10 +509,15 @@ fn no_outdoor_run(ctx: &CoachContext<'_>, runs: &[&CachedActivity]) -> Option<Nu
         id: NudgeKind::NoOutdoorRun.id().into(),
         title: "Still no VO2 max — it needs one run outdoors".into(),
         body: format!(
-            "All {} runs in the window were indoors. Garmin only computes VO2 max \
+            "{} in the window {} indoors. Garmin only computes VO2 max \
              from outdoor GPS runs, so the number stays blank until one happens. \
              One easy 20 minutes outside is enough to start it.",
-            runs.len()
+            if runs.len() == 1 {
+                "The one run".to_string()
+            } else {
+                format!("All {} runs", runs.len())
+            },
+            if runs.len() == 1 { "was" } else { "were" }
         ),
         tone: Tone::Neutral,
         priority: 30,
@@ -1633,5 +1638,21 @@ mod tests {
             assert!(!n.title.is_empty());
             assert!(!n.body.is_empty());
         }
+    }
+
+    #[test]
+    fn the_outdoor_nudge_agrees_with_the_run_count() {
+        let goals = Goals::default();
+        let week = week_progress(&goals, &[], saturday());
+        let body = |dates: &[&str]| {
+            let acts: Vec<_> = dates.iter().map(|d| run(d, 30.0, [0.0; 5], None)).collect();
+            let refs: Vec<_> = acts.iter().collect();
+            let c = ctx(saturday(), &goals, &week, &acts, &[]);
+            no_outdoor_run(&c, &refs).map(|n| n.body)
+        };
+        let one = body(&["2026-07-18"]).unwrap();
+        assert!(one.starts_with("The one run in the window was indoors."));
+        let two = body(&["2026-07-18", "2026-07-20"]).unwrap();
+        assert!(two.starts_with("All 2 runs in the window were indoors."));
     }
 }

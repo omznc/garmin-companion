@@ -204,8 +204,10 @@ pub fn progress_line(p: &SyncProgress) -> String {
 
 fn summary_of(r: &garmin_core::sync::SyncReport) -> SyncSummary {
     let mut line = format!(
-        "{} seen, {} new or updated, {} days of health data.",
-        r.activities_seen, r.activities_written, r.days_written
+        "{} seen, {} new or updated, {} of health data.",
+        r.activities_seen,
+        r.activities_written,
+        garmin_core::plural(r.days_written, "day", "days")
     );
     if let Some(first) = r.warnings.first() {
         let n = r.warnings.len();
@@ -283,5 +285,14 @@ mod tests {
             summary_of(&report).line,
             "5 seen, 2 new or updated, 7 days of health data. 2 warnings: a"
         );
+    }
+
+    #[test]
+    fn the_summary_says_one_day_in_the_singular() {
+        let report = garmin_core::sync::SyncReport {
+            days_written: 1,
+            ..Default::default()
+        };
+        assert!(summary_of(&report).line.ends_with("1 day of health data."));
     }
 }
