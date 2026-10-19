@@ -36,7 +36,7 @@ function NewChatFab({ onPress }: { onPress: () => void }) {
           elevation: 3,
         }}
       >
-        <MaterialIcons name="add" size={24} color={md.onPrimaryContainer as string} />
+        <MaterialIcons name="add" size={24} color={md.onPrimaryContainer} />
         <Text style={{ color: md.onPrimaryContainer, fontSize: 14, fontWeight: "500" }}>
           New chat
         </Text>

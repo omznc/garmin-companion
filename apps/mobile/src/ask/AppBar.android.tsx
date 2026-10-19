@@ -27,7 +27,7 @@ function BarButton({
       android_ripple={{ color: `${md.onSurfaceVariant}33`, borderless: true, radius: 24 }}
       style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center" }}
     >
-      <MaterialIcons name={icon} size={24} color={md.onSurfaceVariant as string} />
+      <MaterialIcons name={icon} size={24} color={md.onSurfaceVariant} />
     </Pressable>
   );
 }
