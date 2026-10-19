@@ -5,11 +5,10 @@
 //! comes back to the view through a channel. The view never sees a token: the
 //! core sends an `AccountView` with the sentences already built.
 //!
-//! In a persona demo nothing leaves the computer: the numbers are a sample, and
-//! the actions say so.
+//! In a demo (`--persona` or `--db`) nothing leaves the computer: the account
+//! section shows a note, and the actions say that they are off.
 
 use std::future::Future;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use chrono::Utc;
@@ -41,10 +40,9 @@ pub struct Note {
 }
 
 pub struct Cloud {
-    /// False in a persona demo: no network, no secret store, no database.
+    /// False in a demo (`--persona` or `--db`): no network, no secret store, no
+    /// database write.
     pub live: bool,
-    /// The cache that holds the provider choice. `None` is the data folder.
-    config_db: Option<PathBuf>,
     pub provider: Provider,
     pub view: Option<AccountView>,
     pub note: Option<Note>,
@@ -65,7 +63,6 @@ impl Cloud {
     pub fn new(cx: &mut App) -> Self {
         Self {
             live: false,
-            config_db: None,
             provider: Provider::Cloud,
             view: None,
             note: None,
@@ -136,6 +133,12 @@ fn model_for(provider: Provider, previous: Provider) -> &'static str {
     }
 }
 
+/// Only the default source may reach the network, the keyring or the saved
+/// choice. A persona and a database copy are demos.
+fn is_live(source: &Source) -> bool {
+    matches!(source, Source::Default)
+}
+
 /// What the sample view says in a persona demo.
 pub fn sample_account() -> AccountView {
     Balance {
@@ -151,14 +154,9 @@ pub fn sample_account() -> AccountView {
 impl Root {
     /// The Settings screen was opened: read the provider and the balance.
     pub fn cloud_open(&mut self, cx: &mut Context<Self>) {
-        let (live, path) = match &self.source {
-            Source::Persona(_) => (false, None),
-            Source::Db { path, .. } => (true, Some(path.clone())),
-            Source::Default => (true, None),
-        };
+        let live = is_live(&self.source);
         let cloud = &mut self.account.cloud;
         cloud.live = live;
-        cloud.config_db = path;
         if live {
             cloud.provider = cloud.read_provider().unwrap_or(Provider::Cloud);
             cloud.has_key = matches!(store::load_openrouter_key(), Ok(Some(_)));
@@ -430,10 +428,7 @@ async fn poll_once(this: &gpui::WeakEntity<Root>, cx: &mut gpui::AsyncApp) -> bo
 
 impl Cloud {
     fn db(&self) -> anyhow::Result<Db> {
-        match &self.config_db {
-            Some(path) => Db::open(path),
-            None => Db::open_default(),
-        }
+        Db::open_default()
     }
 
     fn read_provider(&self) -> Option<Provider> {
@@ -487,8 +482,14 @@ fn describe(provider: Provider) -> &'static str {
     }
 }
 
+/// The cloud account section of a demo. No sign-in form: nothing is sent.
+const DEMO_NOTE: &str = "The cloud account is off in a demo. Nothing is sent.";
+
 fn account_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
     let cloud = &root.account.cloud;
+    if !cloud.live {
+        return div().mt(px(20.0)).child(body(DEMO_NOTE, FS_SMALL, t.mutd));
+    }
     let mut block = div().mt(px(20.0)).flex().flex_col().gap(px(12.0));
     if let Some(view) = &cloud.view {
         block = block
@@ -633,6 +634,17 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_default_source_is_live() {
+        assert!(is_live(&Source::Default));
+        assert!(!is_live(&Source::Persona("sample".into())));
+        let copy = Source::Db {
+            path: "copy.db".into(),
+            date: None,
+        };
+        assert!(!is_live(&copy));
+    }
 
     #[test]
     fn the_sample_view_has_a_credit_line() {

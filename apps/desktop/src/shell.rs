@@ -138,14 +138,15 @@ impl Root {
     /// The Ask screen wants premium or the coach settings.
     fn on_ask(&mut self, event: &AskEvent, cx: &mut Context<Self>) {
         match event {
-            AskEvent::Premium { signed_in: true } => {
+            // A demo takes this path too: the checkout says that it is off.
+            AskEvent::Premium { signed_in } if *signed_in || self.account.demo => {
                 // Settings may not have opened yet: the cloud state is not live.
                 if !self.account.cloud.live {
                     self.cloud_open(cx);
                 }
                 self.cloud_checkout(true, cx);
             }
-            AskEvent::Premium { signed_in: false } => {
+            AskEvent::Premium { .. } => {
                 self.show_settings(cx);
                 self.account.cloud.say(
                     "Sign in with your email to get premium. Premium belongs to an account.",
