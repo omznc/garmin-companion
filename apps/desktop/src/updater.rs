@@ -62,7 +62,10 @@ fn current_version() -> String {
 
 /// A download address must be https. A debug build also takes loopback http.
 fn address_ok(url: &str) -> bool {
-    url.starts_with("https://") || (cfg!(debug_assertions) && url.starts_with("http://127.0.0.1"))
+    let loopback = url
+        .strip_prefix("http://127.0.0.1")
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with(':') || rest.starts_with('/'));
+    url.starts_with("https://") || (cfg!(debug_assertions) && loopback)
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,7 +219,7 @@ pub fn enabled() -> bool {
 /// Read the manifest. `None` means the app is up to date.
 pub async fn check() -> Result<Option<Offer>> {
     if !enabled() {
-        return Ok(None);
+        bail!("updates are off in this build");
     }
     let manifest: Manifest = client()?
         .get(manifest_url())
@@ -338,12 +341,11 @@ fn fresh_dir(tag: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Start the new program. This process gives up the single-instance port
-/// first, so the new one finds it free. The marker tells the new one to retry
-/// the claim for a short time, in case the port is not free yet. The child
-/// outlives this process, which quits when the caller returns.
+/// Start the new program, then give up the single-instance port. If the start
+/// fails, this copy keeps its guard. The marker tells the new copy to retry the
+/// claim for a short time, because it can run before the port is free. The
+/// child outlives this process, which quits when the caller returns.
 fn relaunch(exe: &Path) -> Result<()> {
-    crate::instance::release();
     Command::new(exe)
         .env(crate::instance::RELAUNCH_ENV, "1")
         .stdin(std::process::Stdio::null())
@@ -351,6 +353,7 @@ fn relaunch(exe: &Path) -> Result<()> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .context("could not start the new version")?;
+    crate::instance::release();
     Ok(())
 }
 
@@ -637,6 +640,15 @@ mod tests {
         assert!(due(Some(now - CHECK_EVERY), now));
         // A stamp from the future (clock moved back) does not block for ever.
         assert!(due(Some(now + Duration::from_secs(60)), now));
+    }
+
+    #[test]
+    fn only_https_or_exact_loopback_is_an_address() {
+        assert!(address_ok("https://github.com/x"));
+        assert!(!address_ok("http://github.com/x"));
+        assert!(address_ok("http://127.0.0.1:8000/x"));
+        assert!(!address_ok("http://127.0.0.1.nip.io/x"));
+        assert!(!address_ok("http://127.0.0.1@example.com/x"));
     }
 
     #[test]
