@@ -380,6 +380,39 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_blank_note_clears_the_answer_and_stores_no_step() {
+        let turn = Turn {
+            id: "s:0".into(),
+            question: "q".into(),
+            answer: String::new(),
+            steps: Vec::new(),
+            status: Status::Running,
+            error: None,
+        };
+        let sink = TurnSink(Arc::new(SinkState {
+            session_id: "s".into(),
+            turn_id: "t".into(),
+            discarded: AtomicBool::new(false),
+            fixture: true,
+            flag: Arc::new(AtomicBool::new(false)),
+            turn: Mutex::new(turn),
+        }));
+        sink.apply(&Event::Delta {
+            text: "\n\n".into(),
+        });
+        sink.apply(&Event::Note {
+            text: String::new(),
+        });
+        sink.apply(&Event::Note {
+            text: "Real.".into(),
+        });
+        let turn = sink.0.turn.lock().unwrap();
+        assert_eq!(turn.answer, "");
+        assert_eq!(turn.steps.len(), 1);
+        assert_eq!(turn.steps[0].label, "Real.");
+    }
+
     #[tokio::test]
     async fn a_panicking_turn_ends_with_an_error_event() {
         let rec = Rec::default();

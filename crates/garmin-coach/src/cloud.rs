@@ -15,6 +15,9 @@ use garmin_core::store;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// The longest silence that the cloud client reads. It also bounds the wait for
+/// the response head. A stream ends sooner by its own idle limit.
+pub(crate) const CLOUD_READ: Duration = Duration::from_secs(150);
 pub const CLOUD_BASE: &str = "https://coach.omznc.workers.dev/v2";
 /// The worker refuses a larger chat body with 413.
 const BODY_LIMIT: usize = 100_000;
@@ -410,7 +413,7 @@ impl CloudClient {
                     reqwest::header::HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
                 )]))
                 .connect_timeout(Duration::from_secs(15))
-                .read_timeout(Duration::from_secs(150))
+                .read_timeout(CLOUD_READ)
                 .build()
                 .unwrap_or_default(),
             base: base.trim_end_matches('/').into(),

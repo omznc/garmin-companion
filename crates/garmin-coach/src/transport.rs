@@ -185,6 +185,9 @@ const IDLE: Duration = Duration::from_secs(120);
 /// The longest wait for the first byte of the answer. A local model can need
 /// minutes to load before it replies.
 const HEADERS: Duration = Duration::from_secs(300);
+// The cloud read limit runs first for the head (150 s). The idle limit must be
+// shorter, so a silent body ends with the stalled text.
+const _: () = assert!(crate::cloud::CLOUD_READ.as_secs() > IDLE.as_secs());
 /// How often a silent wait looks at the stop flag.
 const TICK: Duration = Duration::from_millis(250);
 
