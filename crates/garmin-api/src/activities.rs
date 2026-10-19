@@ -11,7 +11,7 @@
 //! Left out on purpose: the map and the per-activity chat.
 
 use crate::derive::{above_z2_pct, has_zone_data};
-use crate::text::num;
+use crate::text::{num, plural};
 use crate::ApiError;
 use chrono::NaiveDate;
 use garmin_core::analysis::{self, cadence_unit, is_paced, Lap};
@@ -96,6 +96,7 @@ pub struct LapRow {
 pub struct SetRow {
     /// "Set 1".
     pub label: String,
+    /// The count with its unit, such as "1 rep" or "10 reps".
     pub reps: Option<String>,
     pub work: Option<String>,
     /// The rest after the set. The last set has none.
@@ -215,8 +216,12 @@ fn card_text(a: &CachedActivity, sets: &[ExerciseSet]) -> (String, String) {
     let (headline, extras): (Option<String>, Vec<Option<String>>) =
         match family(a.type_key.as_deref()) {
             Family::Gym if n_sets > 0 => (
-                Some(format!("{n_sets} sets")),
-                vec![Some(format!("{reps} reps")), duration, hr],
+                Some(plural(n_sets, "set", "sets")),
+                vec![
+                    Some(plural(reps.max(0) as usize, "rep", "reps")),
+                    duration,
+                    hr,
+                ],
             ),
             Family::Endurance | Family::NonExercise | Family::Water if distance.is_some() => {
                 (distance, vec![duration, hr])
@@ -426,9 +431,9 @@ fn strength_block(sets: &[ExerciseSet]) -> Option<StrengthBlock> {
         return None;
     }
     let mut sentence = format!(
-        "{} sets and {} reps, {} of work.",
-        summary.work_sets,
-        summary.total_reps,
+        "{} and {}, {} of work.",
+        plural(summary.work_sets, "set", "sets"),
+        plural(summary.total_reps.max(0) as usize, "rep", "reps"),
         duration_text(summary.work_s)
     );
     if let Some(rest) = summary.median_rest_s {
@@ -439,7 +444,7 @@ fn strength_block(sets: &[ExerciseSet]) -> Option<StrengthBlock> {
         if s.active {
             rows.push(SetRow {
                 label: format!("Set {}", rows.len() + 1),
-                reps: s.reps.map(|r| r.to_string()),
+                reps: s.reps.map(|r| plural(r.max(0) as usize, "rep", "reps")),
                 work: s.duration_s.map(duration_text_exact),
                 rest: None,
                 exercise: s
@@ -550,6 +555,28 @@ mod tests {
             anaerobic_te: None,
             zone_secs: [0.0; 5],
         }
+    }
+
+    #[test]
+    fn one_set_and_one_rep_read_in_the_singular() {
+        let set = ExerciseSet {
+            activity_id: 1,
+            set_index: 0,
+            active: true,
+            duration_s: Some(30.0),
+            reps: Some(1),
+            exercise: None,
+            exercise_confidence: None,
+            weight_kg: None,
+            start_time: None,
+        };
+        let (headline, detail) =
+            card_text(&session("strength_training"), std::slice::from_ref(&set));
+        assert_eq!(headline, "1 set");
+        assert!(detail.starts_with("1 rep - "));
+        let block = strength_block(&[set]).unwrap();
+        assert!(block.sentence.starts_with("1 set and 1 rep, "));
+        assert_eq!(block.sets[0].reps.as_deref(), Some("1 rep"));
     }
 
     fn stat_of(a: &CachedActivity, label: &str) -> Option<String> {

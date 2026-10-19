@@ -4,7 +4,7 @@
 //! Every function here reads the cache. Nothing writes, and nothing calls Garmin.
 
 use crate::derive::{daily_series, date_key, hydration};
-use crate::text::{num, short_date, weight_sentence};
+use crate::text::{num, plural, short_date, weight_sentence};
 use crate::{activity_profile, ApiError};
 use chrono::NaiveDate;
 use garmin_core::query;
@@ -30,10 +30,6 @@ fn empty(title: &str, body: &str) -> EmptyNote {
 
 fn label(date: &str) -> String {
     short_date(date).unwrap_or_else(|| date.to_string())
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 fn moved(v: f64) -> String {
@@ -105,7 +101,9 @@ fn window_sentence(w: &query::WeightWindow) -> String {
             "In {span} the trend held steady over {}.",
             plural(n, "weigh-in", "weigh-ins")
         ),
-        (_, None) => format!("One weigh-in in {span}, so there is no change to report for it."),
+        (_, None) => format!(
+            "One weigh-in in {span}, so this window shows no change. The weight trend covers a longer span."
+        ),
     }
 }
 
@@ -339,6 +337,9 @@ pub struct ExerciseHistory {
     pub sessions: usize,
     pub sets: usize,
     pub reps: i64,
+    /// For example `1 rep`.
+    #[serde(default)]
+    pub reps_text: String,
     /// For example `1 session, 3 sets`.
     #[serde(default)]
     pub detail: String,
@@ -353,6 +354,9 @@ pub struct StrengthView {
     pub shown: bool,
     pub empty: Option<EmptyNote>,
     pub sessions_examined: usize,
+    /// For example `1 session`.
+    #[serde(default)]
+    pub sessions_text: String,
     pub avg_sets: Option<f64>,
     pub avg_reps: Option<f64>,
     pub median_rest_s: Option<f64>,
@@ -429,6 +433,7 @@ fn exercise_histories(sessions: &[garmin_core::StrengthSession]) -> Vec<Exercise
                     sessions: 0,
                     sets: 0,
                     reps: 0,
+                    reps_text: String::new(),
                     detail: String::new(),
                     history: Vec::new(),
                 });
@@ -445,6 +450,7 @@ fn exercise_histories(sessions: &[garmin_core::StrengthSession]) -> Vec<Exercise
     }
     let mut out: Vec<ExerciseHistory> = by_name.into_values().collect();
     for h in &mut out {
+        h.reps_text = plural(h.reps.max(0) as usize, "rep", "reps");
         h.detail = format!(
             "{}, {}",
             plural(h.sessions, "session", "sessions"),
@@ -483,6 +489,7 @@ pub fn strength_view(db: &Db, today: NaiveDate) -> Result<StrengthView, ApiError
         shown: gym || !none,
         empty: none.then(strength_empty),
         sessions_examined: r.sessions_examined,
+        sessions_text: plural(r.sessions_examined, "session", "sessions"),
         avg_sets: r.avg_work_sets,
         avg_reps: r.avg_reps,
         median_rest_s: r.median_rest_s,
@@ -679,6 +686,12 @@ mod tests {
             .as_deref()
             .unwrap()
             .starts_with("Probably "));
+        assert_eq!(
+            v.sessions_text,
+            plural(v.sessions_examined, "session", "sessions")
+        );
+        assert_eq!(bench.reps_text, plural(bench.reps as usize, "rep", "reps"));
+        assert_eq!(plural(1, "rep", "reps"), "1 rep");
         assert_eq!(mmss(90.0), "1:30");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -698,7 +711,9 @@ mod tests {
             window_sentence(&w(0, None)),
             "No weigh-ins in the last 7 days."
         );
-        assert!(window_sentence(&w(1, None)).contains("no change"));
+        let one = window_sentence(&w(1, None));
+        assert!(one.contains("shows no change") && one.contains("longer span"));
+        assert!(!one.contains("no trend"));
         assert!(window_sentence(&w(3, Some(-0.4))).contains("down 0.4 kg"));
         assert!(window_sentence(&w(3, Some(0.0))).contains("steady"));
     }

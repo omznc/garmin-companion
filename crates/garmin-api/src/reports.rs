@@ -10,7 +10,7 @@ use crate::derive::{
     MIN_RUNS_FOR_NOTES,
 };
 use crate::insights::Figure;
-use crate::text::{hours_minutes, num};
+use crate::text::{hours_minutes, num, plural};
 use crate::ApiError;
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_core::sport::{is_exercise, sport_label};
@@ -123,10 +123,6 @@ fn total(values: impl Iterator<Item = f64>) -> f64 {
 
 fn short(d: NaiveDate) -> String {
     d.format("%d %b").to_string()
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 /// `39 min`, or `1h 05m`.

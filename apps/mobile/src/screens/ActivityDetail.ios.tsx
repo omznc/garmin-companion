@@ -192,7 +192,7 @@ function Detail({ d }: { d: ActivityDetail }) {
                 key={s.label}
                 left={s.label}
                 sub={[s.exercise, s.rest ? `rest ${s.rest}` : null].filter(Boolean).join(", ")}
-                right={s.reps ? `${s.reps} reps` : undefined}
+                right={s.reps ?? undefined}
                 last={i === (d.strength?.sets.length ?? 0) - 1}
               />
             ))}

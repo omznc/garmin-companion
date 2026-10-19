@@ -134,7 +134,7 @@ function DetailBody({ md, d }: { md: Md; d: ActivityDetail }) {
           note={d.strength.sentence}
           rows={d.strength.sets.map((s) => [
             s.label,
-            `${s.reps ?? "-"} reps`,
+            s.reps ?? "-",
             s.rest ? `rest ${s.rest}` : "",
             s.exercise ?? "",
           ])}

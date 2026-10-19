@@ -59,6 +59,7 @@ export type StrengthView = {
   shown: boolean;
   empty: EmptyNote | null;
   sessionsExamined: number;
+  sessionsText: string;
   avgSets: number | null;
   avgReps: number | null;
   medianRestS: number | null;
@@ -71,6 +72,7 @@ export type StrengthView = {
     sessions: number;
     sets: number;
     reps: number;
+    repsText: string;
     detail: string;
     history: { reps: number }[];
   }[];
@@ -231,7 +233,7 @@ export function presentStrength(v: StrengthView): BodyScreenData {
             title: "By movement",
             rows: v.exercises.map((e) => ({
               key: e.name,
-              value: `${e.reps} ${e.reps === 1 ? "rep" : "reps"}`,
+              value: e.repsText,
               sub: e.detail,
             })),
           }
@@ -305,8 +307,7 @@ export function bodyLine(kind: BodyKind, raw: WeightView | FoodView | StrengthVi
     const v = raw as FoodView;
     return v.avgEatenKcal == null ? null : `${whole(v.avgEatenKcal)} kcal a day`;
   }
-  const n = (raw as StrengthView).sessionsExamined;
-  return `${n} ${n === 1 ? "session" : "sessions"}`;
+  return (raw as StrengthView).sessionsText;
 }
 
 /** The value line of a row on the Health and More lists. */

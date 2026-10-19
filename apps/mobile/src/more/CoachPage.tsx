@@ -4,7 +4,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type KeyboardTypeOptions, Platform, TextInput, View } from "react-native";
-import { needsSetup, saveKey, useCoachConfig } from "../data/useAsk";
+import { isSampleData } from "../data/source";
+import { SAMPLE_KEY_NOTE, needsSetup, saveKey, useCoachConfig } from "../data/useAsk";
 import {
   type CloudAccount,
   PREMIUM_LATER,
@@ -169,6 +170,7 @@ function KeySection({ hasKey, onSaved }: { hasKey: boolean; onSaved: () => void 
       setKey("");
       onSaved();
     });
+  if (isSampleData()) return <Note>{SAMPLE_KEY_NOTE}</Note>;
   return (
     <>
       <Section>
@@ -215,7 +217,7 @@ export function CoachPage() {
       {provider === "openrouter" ? (
         <KeySection hasKey={c?.hasKey === true} onSaved={() => void config.refetch()} />
       ) : null}
-      {needsSetup(c) && provider === "openrouter" && !c?.hasKey ? (
+      {needsSetup(c) && provider === "openrouter" && !c?.hasKey && !isSampleData() ? (
         <Note>The coach needs a key. Paste your own OpenRouter key.</Note>
       ) : null}
       {problem ? <Note>{problem}</Note> : null}

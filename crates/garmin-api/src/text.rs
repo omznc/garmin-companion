@@ -37,6 +37,11 @@ pub fn short_date(date: &str) -> Option<String> {
     Some(d.format("%d %b").to_string())
 }
 
+/// `1 set`, `3 sets`.
+pub fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 fn litres(ml: f64) -> String {
     format!("{:.2} L", ml / 1000.0)
 }
