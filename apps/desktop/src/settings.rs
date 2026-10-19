@@ -77,6 +77,8 @@ fn garmin(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -
                     FS_MD,
                     t.fg,
                 )
+                .flex_1()
+                .min_w_0()
                 .line_height(relative(1.6)),
             ),
     );
@@ -87,6 +89,11 @@ fn garmin(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -
                 .font_family(MONO)
                 .text_size(px(FS_CAPTION))
                 .text_color(t.faint)
+                // A path has no break points. A long one ends in an ellipsis.
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
                 .child(folder.clone()),
         );
     }

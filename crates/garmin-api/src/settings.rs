@@ -33,6 +33,9 @@ pub enum ThemeMode {
 #[serde(default)]
 pub struct Prefs {
     pub theme: ThemeMode,
+    /// The sidebar entries in the order the user chose, as stable keys. The
+    /// first key is the screen the app opens on. Empty means the shipped order.
+    pub nav_order: Vec<String>,
 }
 
 fn prefs_path() -> Result<PathBuf, ApiError> {
@@ -49,12 +52,36 @@ pub fn prefs() -> Prefs {
 }
 
 pub fn set_theme(theme: ThemeMode) -> Result<Prefs, ApiError> {
-    let prefs = Prefs { theme };
+    save(Prefs { theme, ..prefs() })
+}
+
+/// Save the sidebar order. The theme stays as it was.
+pub fn set_nav_order(nav_order: Vec<String>) -> Result<Prefs, ApiError> {
+    save(Prefs {
+        nav_order,
+        ..prefs()
+    })
+}
+
+fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
     let json =
         serde_json::to_string_pretty(&prefs).map_err(|e| ApiError::Internal(e.to_string()))?;
     paths::ensure_base_dir()?;
-    std::fs::write(prefs_path()?, json).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let path = prefs_path()?;
+    // Write a temp file and flush it to disk, then rename it. A crash or a
+    // power loss never leaves half a file.
+    let temp = path.with_extension("json.tmp");
+    write_synced(&temp, &json)
+        .and_then(|()| std::fs::rename(&temp, &path))
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(prefs)
+}
+
+fn write_synced(path: &std::path::Path, data: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::File::create(path)?;
+    file.write_all(data.as_bytes())?;
+    file.sync_all()
 }
 
 /// What the Settings screen draws.
@@ -228,6 +255,11 @@ mod tests {
         assert_eq!(prefs().theme, ThemeMode::System);
         assert_eq!(set_theme(ThemeMode::Dark).unwrap().theme, ThemeMode::Dark);
         assert_eq!(prefs().theme, ThemeMode::Dark);
+        // Each setting keeps the other one.
+        set_nav_order(vec!["sleep".into()]).unwrap();
+        assert_eq!(prefs().theme, ThemeMode::Dark);
+        set_theme(ThemeMode::Light).unwrap();
+        assert_eq!(prefs().nav_order, vec!["sleep".to_string()]);
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
         let _ = std::fs::remove_file(base.join(PREFS_FILE));

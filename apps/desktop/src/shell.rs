@@ -107,6 +107,12 @@ impl Root {
     ) -> Self {
         let list = store.list();
         let places = Places::load(&source);
+        // A demo shows the shipped order and leaves the saved one alone.
+        let saved_order = if account.demo {
+            Vec::new()
+        } else {
+            garmin_api::settings::prefs().nav_order
+        };
         Self {
             ask,
             list,
@@ -116,7 +122,7 @@ impl Root {
             body,
             places,
             palette,
-            sidebar: Sidebar::new(motion::reduced()),
+            sidebar: Sidebar::new(motion::reduced(), &saved_order),
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
             store,
@@ -128,7 +134,7 @@ impl Root {
     }
 
     /// Show the screen with this nav label. For a start flag and the screenshots.
-    /// An unknown label keeps Today.
+    /// An unknown label keeps the default screen.
     pub fn open(&mut self, label: &str, cx: &mut Context<Self>) {
         if let Some(index) = NAV.iter().position(|(n, _)| n.eq_ignore_ascii_case(label)) {
             self.select_index(index, cx);
@@ -234,22 +240,42 @@ impl Root {
     fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
-            self.loads.remove("detail");
-            self.page = Page::List;
-            self.visits += 1;
-            if index == SETTINGS {
-                self.reload_settings(cx);
-                self.cloud_open(cx);
-            }
-            if NAV[index].0 == "Gear" {
-                self.load_gear(cx);
-            }
-            if index == ASK {
-                self.ask.update(cx, |ask, cx| ask.visit(cx));
-            }
-            // A new screen starts at the top.
-            self.scroll = SmoothScroll::new(motion::reduced());
-            cx.notify();
+            self.enter(index, cx);
+        }
+    }
+
+    /// Load what the screen of the lit entry needs. Call it once at start, for
+    /// the default screen, which no click opened.
+    pub fn start(&mut self, cx: &mut Context<Self>) {
+        self.enter(self.sidebar.active, cx);
+    }
+
+    fn enter(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.loads.remove("detail");
+        self.page = Page::List;
+        self.visits += 1;
+        if index == SETTINGS {
+            self.reload_settings(cx);
+            self.cloud_open(cx);
+        }
+        if NAV[index].0 == "Gear" {
+            self.load_gear(cx);
+        }
+        if index == ASK {
+            self.ask.update(cx, |ask, cx| ask.visit(cx));
+        }
+        // A new screen starts at the top.
+        self.scroll = SmoothScroll::new(motion::reduced());
+        cx.notify();
+    }
+
+    /// Save the sidebar order, except in demo mode.
+    fn save_nav_order(&self) {
+        if self.account.demo {
+            return;
+        }
+        if let Err(e) = garmin_api::settings::set_nav_order(self.sidebar.keys()) {
+            eprintln!("could not save the sidebar order: {e}");
         }
     }
 
@@ -344,7 +370,9 @@ impl Root {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sidebar.tick(window);
+        if self.sidebar.tick(window, cx.has_active_drag()) {
+            self.save_nav_order();
+        }
 
         let t = self.palette.theme();
         if !self.account.connected {
