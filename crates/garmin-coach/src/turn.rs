@@ -8,7 +8,7 @@ use garmin_core::db::Db;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::prompt::{grounding_message, trim_history, SYSTEM_PROMPT};
+use crate::prompt::{grounding_message, system_message, trim_history};
 use crate::tools;
 use crate::transport::{HttpTransport, Transport};
 
@@ -108,7 +108,7 @@ async fn rounds<T: Transport>(
     open_db: &(dyn Fn() -> Result<Db> + Sync),
 ) -> Result<Vec<String>> {
     let mut messages = vec![
-        json!({ "role": "system", "content": SYSTEM_PROMPT }),
+        system_message(transport.caches_prompt()),
         grounding_message(&open_db()?)?,
     ];
     messages.extend(
@@ -125,23 +125,20 @@ async fn rounds<T: Transport>(
         if stop.load(Ordering::Relaxed) {
             return Ok(sources);
         }
-        // The last round has no tools, so the model must answer with what it has.
-        let offer = (round < MAX_TOOL_ROUNDS).then_some(&schemas);
-        let stream = transport.complete(&messages, offer, sink, stop).await?;
+        // The last round forbids tools, so the model must answer with what it
+        // has. The schemas stay in the request: the messages hold tool calls.
+        let last = round == MAX_TOOL_ROUNDS;
+        let choice = last.then_some("none");
+        let stream = transport
+            .complete(&messages, Some(&schemas), choice, sink, stop)
+            .await?;
         said_anything |= !stream.content.trim().is_empty();
 
         if stop.load(Ordering::Relaxed) {
             return Ok(sources);
         }
-        if stream.tool_calls.is_empty() {
-            // A reasoning model can spend its whole budget thinking and return
-            // nothing. Say so: a blank reply looks like a broken app.
-            if !said_anything {
-                return Err(anyhow!(
-                    "The model finished without writing an answer. Ask again, or try a different model."
-                ));
-            }
-            return Ok(sources);
+        if last || stream.tool_calls.is_empty() {
+            return answered(said_anything, sources);
         }
 
         // The tool-call message goes back before the results, or the API
@@ -174,7 +171,18 @@ async fn rounds<T: Transport>(
             }
         }
     }
-    Ok(sources)
+    answered(said_anything, sources)
+}
+
+/// A reasoning model can spend its whole budget thinking and return nothing.
+/// Say so: a blank reply looks like a broken app.
+fn answered(said_anything: bool, sources: Vec<String>) -> Result<Vec<String>> {
+    if said_anything {
+        return Ok(sources);
+    }
+    Err(anyhow!(
+        "The model finished without writing an answer. Ask again, or try a different model."
+    ))
 }
 
 fn tool_event(call_id: &str, label: &str, running: bool, ok: bool) -> Event {
@@ -209,7 +217,8 @@ mod tests {
     /// the parser sees partial events. It records the requests it received.
     struct Mock {
         replies: Mutex<Vec<String>>,
-        seen: Mutex<Vec<(usize, bool)>>,
+        /// Per request: message count, tools sent, tool choice.
+        seen: Mutex<Vec<(usize, bool, Option<String>)>>,
     }
     impl Mock {
         fn new(replies: &[&str]) -> Self {
@@ -224,13 +233,15 @@ mod tests {
             &self,
             messages: &[Value],
             tools: Option<&Value>,
+            tool_choice: Option<&str>,
             sink: &dyn EventSink,
             _stop: &AtomicBool,
         ) -> Result<StreamResult> {
-            self.seen
-                .lock()
-                .unwrap()
-                .push((messages.len(), tools.is_some()));
+            self.seen.lock().unwrap().push((
+                messages.len(),
+                tools.is_some(),
+                tool_choice.map(String::from),
+            ));
             let reply = self.replies.lock().unwrap().pop().expect("a reply is left");
             let mut parser = SseParser::default();
             for piece in reply.as_bytes().chunks(7) {
@@ -297,7 +308,7 @@ mod tests {
         assert_eq!(deltas, "Your sleep is fine.");
         // Two requests. The second carries the assistant call and the result.
         let seen = mock.seen.lock().unwrap().clone();
-        assert_eq!(seen, vec![(3, true), (5, true)]);
+        assert_eq!(seen, vec![(3, true, None), (5, true, None)]);
     }
 
     #[tokio::test]
@@ -318,7 +329,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_last_round_offers_no_tools() {
+    async fn the_last_round_forbids_tools_but_still_sends_them() {
         let calls: Vec<String> = (0..MAX_TOOL_ROUNDS)
             .map(|_| call("cache_status", "{}"))
             .collect();
@@ -332,7 +343,33 @@ mod tests {
             .unwrap();
         let seen = mock.seen.lock().unwrap().clone();
         assert_eq!(seen.len(), MAX_TOOL_ROUNDS + 1);
-        assert!(!seen.last().unwrap().1);
+        // The earlier requests leave the choice open.
+        assert!(seen[..MAX_TOOL_ROUNDS].iter().all(|s| s.2.is_none()));
+        // The messages hold tool calls, so the schemas must stay.
+        assert!(seen.last().unwrap().1);
+        assert_eq!(seen.last().unwrap().2.as_deref(), Some("none"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_final_round_is_an_error_too() {
+        let calls: Vec<String> = (0..MAX_TOOL_ROUNDS)
+            .map(|_| call("cache_status", "{}"))
+            .collect();
+        let mut replies: Vec<&str> = calls.iter().map(String::as_str).collect();
+        // The model ignores the choice and asks for a tool again.
+        let again = call("cache_status", "{}");
+        replies.push(&again);
+        let mock = Mock::new(&replies);
+        let err = run_turn(
+            &mock,
+            &Rec::default(),
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("without writing an answer"));
     }
 
     #[tokio::test]

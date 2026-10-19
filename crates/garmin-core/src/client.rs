@@ -487,6 +487,11 @@ pub struct ActivitySummary {
     pub average_running_cadence_in_steps_per_minute: Option<f64>,
     #[serde(default)]
     pub max_running_cadence_in_steps_per_minute: Option<f64>,
+    /// Ride cadence. Garmin sends it in place of the running fields.
+    #[serde(default)]
+    pub average_biking_cadence_in_rev_per_minute: Option<f64>,
+    #[serde(default)]
+    pub max_biking_cadence_in_rev_per_minute: Option<f64>,
     #[serde(default)]
     pub average_speed: Option<f64>,
     #[serde(default)]

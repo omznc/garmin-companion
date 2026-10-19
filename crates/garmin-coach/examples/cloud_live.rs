@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let messages = [json!({ "role": "user", "content": "Reply with the single word: ready." })];
     print!("answer: ");
     let out = transport
-        .complete(&messages, None, &Print, &AtomicBool::new(false))
+        .complete(&messages, None, None, &Print, &AtomicBool::new(false))
         .await?;
     println!("\nchars: {}", out.content.len());
 

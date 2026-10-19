@@ -14,7 +14,7 @@ use crate::derive::{above_z2_pct, has_zone_data};
 use crate::text::num;
 use crate::ApiError;
 use chrono::NaiveDate;
-use garmin_core::analysis::{self, is_paced, Lap};
+use garmin_core::analysis::{self, cadence_unit, is_paced, Lap};
 use garmin_core::sport::{family, is_wheeled, shows_zone_verdict, sport_label};
 use garmin_core::strength::{self, ExerciseSet};
 use garmin_core::{CachedActivity, Db, Family};
@@ -307,16 +307,6 @@ fn rate_text(type_key: Option<&str>, min_per_km: f64) -> Option<String> {
         Some(format!("{} /km", pace_text(min_per_km)))
     } else if is_wheeled(type_key) && min_per_km > 0.0 {
         Some(format!("{:.1} km/h", 60.0 / min_per_km))
-    } else {
-        None
-    }
-}
-
-fn cadence_unit(type_key: Option<&str>) -> Option<&'static str> {
-    if on_foot(type_key) {
-        Some("spm")
-    } else if is_wheeled(type_key) {
-        Some("rpm")
     } else {
         None
     }

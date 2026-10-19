@@ -10,7 +10,7 @@ use crate::places::{km_text, Tile};
 use crate::text::{hours_minutes, short_date};
 use crate::ApiError;
 use garmin_core::query::{self, Route};
-use garmin_core::sport::sport_label;
+use garmin_core::sport::{is_motorised, sport_label};
 use garmin_core::Db;
 use serde::{Deserialize, Serialize};
 
@@ -152,6 +152,16 @@ fn empty_note() -> EmptyNote {
     }
 }
 
+/// Tracks exist, but a motor made every one of them.
+fn motor_only_note() -> EmptyNote {
+    EmptyNote {
+        title: "No routes to show.".into(),
+        body: "Routes shows walks, runs, rides and other workouts. Motor sports are not shown. \
+               The tracks in the cache all come from motor sports."
+            .into(),
+    }
+}
+
 fn notes_of(routes: &[Route], shown: &[RouteRow], total: usize) -> Vec<String> {
     let mut notes = Vec::new();
     let mut sports: Vec<String> = routes
@@ -183,8 +193,16 @@ fn notes_of(routes: &[Route], shown: &[RouteRow], total: usize) -> Vec<String> {
 pub fn routes_view(db: &Db, sort: RouteSort) -> Result<RoutesView, ApiError> {
     let all = query::routes(db, sort)?;
     if all.is_empty() {
+        let motor_only = db
+            .track_headers()?
+            .iter()
+            .any(|t| t.point_count > 1 && is_motorised(t.type_key.as_deref()));
         return Ok(RoutesView {
-            empty: Some(empty_note()),
+            empty: Some(if motor_only {
+                motor_only_note()
+            } else {
+                empty_note()
+            }),
             sort,
             tiles: Vec::new(),
             notes: Vec::new(),
@@ -295,6 +313,34 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
         assert_eq!(v.total, 1);
         assert_eq!(v.routes[0].sport, "Walking");
+    }
+
+    #[test]
+    fn only_motorcycle_tracks_get_the_motor_message() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-motor-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&dir.join("cache.sqlite3")).unwrap();
+        let a = serde_json::json!({
+            "activityId": 1,
+            "startTimeLocal": "2026-03-10 09:00:00",
+            "activityType": { "typeKey": "motorcycling_v2" },
+        });
+        db.upsert_activity(&serde_json::from_value(a).unwrap())
+            .unwrap();
+        db.upsert_track(&garmin_core::db::ActivityTrack {
+            activity_id: 1,
+            point_count: 2,
+            start_lat: Some(50.0),
+            start_lon: Some(10.0),
+            end_lat: Some(50.1),
+            end_lon: Some(10.1),
+            points: vec![[50.0, 10.0], [50.1, 10.1]],
+            ..Default::default()
+        })
+        .unwrap();
+        let v = routes_view(&db, RouteSort::default()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert!(v.empty.unwrap().body.contains("Motor sports are not shown"));
     }
 
     #[test]

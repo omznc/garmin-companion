@@ -187,7 +187,7 @@ export function CoachPage() {
   const config = useCoachConfig();
   const c = config.data;
   const provider = c?.provider === "openrouter" || c?.provider === "ollama" ? c.provider : "cloud";
-  const cloud = useCloudAccount(provider === "cloud");
+  const cloud = useCloudAccount(provider === "cloud", true);
   const { problem, run } = useJob();
   const choose = (p: "cloud" | "openrouter") =>
     run(async () => {
@@ -209,7 +209,9 @@ export function CoachPage() {
         />
       </Section>
       <Note>{WHERE[provider]}</Note>
-      {provider === "cloud" ? <CloudSection account={cloud.data} error={cloud.error} /> : null}
+      {provider === "cloud" ? (
+        <CloudSection account={cloud.data ?? undefined} error={cloud.error} />
+      ) : null}
       {provider === "openrouter" ? (
         <KeySection hasKey={c?.hasKey === true} onSaved={() => void config.refetch()} />
       ) : null}

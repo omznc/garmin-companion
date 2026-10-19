@@ -12,7 +12,7 @@ use crate::text::{num, short_date};
 use crate::ApiError;
 use chrono::NaiveDate;
 use garmin_core::records::RecordUnit;
-use garmin_core::sport::is_exercise;
+use garmin_core::sport::{is_exercise, is_wheeled};
 use garmin_core::{query, CachedActivity, Db, PersonalRecord, TrainingStatus};
 use serde::{Deserialize, Serialize};
 
@@ -97,10 +97,7 @@ fn record_value(r: &PersonalRecord) -> String {
 }
 
 fn rides_now(activities: &[CachedActivity]) -> bool {
-    activities.iter().any(|a| {
-        let k = a.type_key.as_deref().unwrap_or("");
-        ["cycling", "biking", "ride"].iter().any(|p| k.contains(p))
-    })
+    activities.iter().any(|a| is_wheeled(a.type_key.as_deref()))
 }
 
 fn shown_record(r: &PersonalRecord, runs: bool, rides: bool) -> bool {
@@ -268,6 +265,18 @@ pub fn fitness_view(db: &Db, today: NaiveDate) -> Result<FitnessView, ApiError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_motorcycle_is_not_a_ride() {
+        let one = |key: &str| {
+            serde_json::from_value::<CachedActivity>(serde_json::json!({
+                "activityId": 1, "typeKey": key, "zoneSecs": [0.0, 0.0, 0.0, 0.0, 0.0],
+            }))
+            .unwrap()
+        };
+        assert!(rides_now(&[one("mountain_biking")]));
+        assert!(!rides_now(&[one("motorcycling_v2")]));
+    }
 
     #[test]
     fn garmin_phrases_become_words() {
