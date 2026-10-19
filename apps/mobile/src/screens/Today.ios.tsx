@@ -82,7 +82,7 @@ function Row({
   } as const;
   const content = (
     <>
-      <Text style={{ fontSize: 17, color: label, flex: 1 }}>{left}</Text>
+      <Text style={{ fontSize: 17, color: label, flexGrow: 1, flexShrink: 1 }}>{left}</Text>
       {right ? (
         <Text style={{ fontSize: 17, color: accent ? tint : secondary }}>{right}</Text>
       ) : null}
@@ -92,7 +92,12 @@ function Row({
     </>
   );
   // A plain View, not a disabled Pressable: VoiceOver reads a disabled button as "dimmed".
-  if (!onPress) return <View style={style}>{content}</View>;
+  if (!onPress)
+    return (
+      <View accessible style={style}>
+        {content}
+      </View>
+    );
   return (
     <Pressable
       accessibilityRole="button"

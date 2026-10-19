@@ -167,12 +167,12 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
   );
 }
 
-/** The icon of a sport family from the core. */
 /** The tones of heart rate zones 1 to 5. Z1 uses outline, so it shows on a tonal card. */
 export function zoneTones(md: Md) {
   return [md.outline, md.secondary, md.tertiary, md.primary, md.error];
 }
 
+/** The icon of a sport family from the core. */
 export const FAMILY_ICON: Record<string, IconName> = {
   endurance: "directions-run",
   gym: "fitness-center",
@@ -182,6 +182,8 @@ export const FAMILY_ICON: Record<string, IconName> = {
 };
 
 const SPORT_ICONS: [RegExp, IconName][] = [
+  // Before the cycling match, as in the core (sport.rs).
+  [/motorcycl/, "two-wheeler"],
   [/run/, "directions-run"],
   [/cycl|bik|ride/, "directions-bike"],
   [/hik/, "hiking"],

@@ -347,7 +347,7 @@ export function DataTable({ head, rows }: { head: string[]; rows: string[][] }) 
             v={header ? "labelSmall" : "bodyMedium"}
             color={header ? md.onSurfaceVariant : md.onSurface}
             align={i === 0 ? "left" : "right"}
-            lines={header ? 1 : 2}
+            lines={header ? 1 : i === 0 ? undefined : 2}
           >
             {c}
           </T>
