@@ -1,7 +1,8 @@
 // Material 3 Expressive pieces of Today: a cookie shape for the key figure,
 // vital tiles with an icon, and the sport icon of the last session.
+import { useRouter } from "expo-router";
 import { useEffect } from "react";
-import { View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -10,9 +11,39 @@ import Animated, {
   withRepeat,
   withTiming,
 } from "react-native-reanimated";
+import { metricRoute } from "../data/present";
 import type { Metric } from "../data/types";
 import { useMd } from "../theme/md";
 import { GAP, type IconName, IconTile, T, toneColors } from "./MdKit";
+
+/** A figure that stays on one line. A long value shrinks, it does not wrap. */
+export function FitText({
+  size,
+  color,
+  children,
+}: {
+  size: 24 | 32;
+  color: string;
+  children: string;
+}) {
+  return (
+    <Text
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.6}
+      style={{
+        color,
+        fontSize: size,
+        lineHeight: size + 8,
+        fontWeight: "600",
+        fontVariant: ["tabular-nums"],
+        flexShrink: 1,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
 
 /**
  * A 12-point cookie, from three rounded squares turned by 30 degrees each.
@@ -92,18 +123,24 @@ export function VitalGrid({ metrics }: { metrics: Metric[] }) {
 
 function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
   const md = useMd();
+  const router = useRouter();
   const c = toneColors(md, m.accent ? "tertiary" : "high");
   // The big corner leans one way and then the other, so the grid does not look stamped.
   const big = 36;
   const small = 14;
   return (
-    <View
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${m.label}, ${m.unit ? `${m.value} ${m.unit}` : m.value}`}
+      onPress={() => router.push(metricRoute(m.id))}
+      android_ripple={{ color: `${c.fg}22` }}
       style={{
         flex: 1,
         minHeight: 132,
         padding: 16,
         gap: 14,
         justifyContent: "space-between",
+        overflow: "hidden",
         backgroundColor: c.bg,
         borderTopLeftRadius: lean === "left" ? big : small,
         borderBottomRightRadius: lean === "left" ? big : small,
@@ -114,9 +151,9 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
       <IconTile name={VITAL_ICONS[m.id] ?? "insights"} tone={m.accent ? "tertiary" : "primary"} />
       <View>
         <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-          <T v="headline" color={c.fg}>
+          <FitText size={32} color={c.fg}>
             {m.value}
-          </T>
+          </FitText>
           {m.unit ? (
             <T v="labelSmall" color={c.quiet}>
               {m.unit}
@@ -127,7 +164,7 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
           {m.label}
         </T>
       </View>
-    </View>
+    </Pressable>
   );
 }
 

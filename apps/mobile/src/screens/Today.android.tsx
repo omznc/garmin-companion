@@ -1,6 +1,7 @@
 // Today on Android: Material 3 Expressive cards in the colours of the scheme.
 // The core sends the sections in order. A section that has no data is not drawn.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { Pressable, View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
@@ -16,7 +17,8 @@ import {
   SplitBar,
   T,
 } from "../components/MdKit";
-import { Cookie, sportIcon, VitalGrid } from "../components/TodayKit";
+import { Cookie, FitText, sportIcon, VitalGrid } from "../components/TodayKit";
+import { metricRoute } from "../data/present";
 import { useGreeting } from "../data/useGreeting";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
@@ -27,12 +29,33 @@ function zoneTones(md: Md) {
   return [md.outlineVariant, md.secondary, md.tertiary, md.primary, md.error];
 }
 
+// A fixed grid: equal columns, so a long value cannot push the next one away.
+function StatGrid({ stats }: { stats: LastSession["stats"] }) {
+  const md = useMd();
+  const width = stats.length <= 4 ? "50%" : "33.33%";
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: 12 }}>
+      {stats.map((stat) => (
+        <View key={stat.label} style={{ width, paddingRight: 8 }}>
+          <FitText size={24} color={md.onSurface}>
+            {stat.value}
+          </FitText>
+          <T v="labelSmall" color={md.onSurfaceVariant}>
+            {stat.label}
+          </T>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function SessionCard({ s }: { s: LastSession }) {
   const md = useMd();
   const tones = zoneTones(md);
+  const router = useRouter();
   const sub = [s.sport, s.when, s.zones ? `${s.zones.aboveZ2Pct}% above Z2` : null];
   return (
-    <Card gap={12}>
+    <Card gap={12} onPress={() => router.push(`/today/activity/${s.id}`)}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         <IconTile name={sportIcon(s.typeKey)} tone="primary" size={56} />
         <View style={{ flex: 1 }}>
@@ -49,25 +72,17 @@ function SessionCard({ s }: { s: LastSession }) {
           parts={s.zones.percents.map((p, i) => ({ weight: p, color: tones[i] ?? md.primary }))}
         />
       ) : null}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", columnGap: 28, rowGap: 12 }}>
-        {s.stats.map((stat) => (
-          <View key={stat.label}>
-            <T v="headlineSmall">{stat.value}</T>
-            <T v="labelSmall" color={md.onSurfaceVariant}>
-              {stat.label}
-            </T>
-          </View>
-        ))}
-      </View>
+      <StatGrid stats={s.stats} />
     </Card>
   );
 }
 
 function WeekCard({ s }: { s: Extract<TodaySection, { kind: "week" }> }) {
   const md = useMd();
+  const router = useRouter();
   const any = s.minutes.some((m) => m > 0);
   return (
-    <Card gap={12}>
+    <Card gap={12} onPress={() => router.push("/activities")}>
       <T v="titleMedium">Last seven days</T>
       {any ? (
         <>
@@ -90,9 +105,10 @@ function WeekCard({ s }: { s: Extract<TodaySection, { kind: "week" }> }) {
 
 function DriftCard({ s }: { s: Extract<TodaySection, { kind: "drift" }> }) {
   const md = useMd();
+  const router = useRouter();
   const labels = s.runs.map((r) => r.label);
   return (
-    <Card gap={12}>
+    <Card gap={12} onPress={() => router.push("/activities")}>
       <T v="titleMedium">Zone drift</T>
       <T v="bodyMedium" color={md.onSurfaceVariant}>
         {s.summary}
@@ -158,9 +174,15 @@ function SectionView({ s, hero }: { s: TodaySection; hero: Hero | null }) {
 
 function HeroCard({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   const md = useMd();
+  const router = useRouter();
   const hero = today.hero;
   return (
-    <Card tone="primary" gap={16} style={{ borderRadius: 40 }}>
+    <Card
+      tone="primary"
+      gap={16}
+      style={{ borderRadius: 40 }}
+      onPress={hero ? () => router.push(metricRoute(hero.id)) : undefined}
+    >
       <T v="label" color={md.onPrimaryContainer}>
         {today.dateLabel}
       </T>

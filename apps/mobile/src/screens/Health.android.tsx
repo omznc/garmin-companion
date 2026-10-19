@@ -34,9 +34,10 @@ function SleepCard() {
 
 function MetricCard({ m }: { m: MetricTrend }) {
   const md = useMd();
+  const router = useRouter();
   const value = m.unit ? `${m.valueText} ${m.unit}` : m.valueText;
   return (
-    <Card gap={12}>
+    <Card gap={12} onPress={() => router.push(`/health/metric/${m.key}`)}>
       <View
         style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}
       >

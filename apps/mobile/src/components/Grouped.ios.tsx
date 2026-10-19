@@ -1,6 +1,7 @@
 // The grouped list pieces that the Health and Sleep screens share. System colours and Dynamic Type.
+import { SymbolView } from "expo-symbols";
 import type { ReactNode } from "react";
-import { ActivityIndicator, Button, PlatformColor, Text, View } from "react-native";
+import { ActivityIndicator, Button, PlatformColor, Pressable, Text, View } from "react-native";
 
 export const label = PlatformColor("label");
 export const secondary = PlatformColor("secondaryLabel");
@@ -39,10 +40,24 @@ export function Group({ title, children }: { title?: string; children: ReactNode
   );
 }
 
-export function Row({ left, right, last }: { left: string; right?: string; last?: boolean }) {
+/** A row of a group. With `onPress` it is a button with a chevron. */
+export function Row({
+  left,
+  right,
+  last,
+  onPress,
+}: {
+  left: string;
+  right?: string;
+  last?: boolean;
+  onPress?: () => void;
+}) {
   return (
-    <View
-      style={{
+    <Pressable
+      accessibilityRole={onPress ? "button" : "text"}
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => ({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
@@ -52,7 +67,8 @@ export function Row({ left, right, last }: { left: string; right?: string; last?
         paddingVertical: 10,
         borderBottomWidth: last ? 0 : 0.5,
         borderBottomColor: separator,
-      }}
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
       <Text style={{ fontSize: 17, color: label, flexShrink: 1 }}>{left}</Text>
       {right ? (
@@ -60,7 +76,10 @@ export function Row({ left, right, last }: { left: string; right?: string; last?
           {right}
         </Text>
       ) : null}
-    </View>
+      {onPress ? (
+        <SymbolView name="chevron.right" size={13} tintColor={PlatformColor("tertiaryLabel")} />
+      ) : null}
+    </Pressable>
   );
 }
 

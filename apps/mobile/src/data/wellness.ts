@@ -94,3 +94,12 @@ export function shortDay(date: string): string {
     month: "short",
   });
 }
+
+/** The first and last day of a metric window, as `11 Mar`. The last point is `view.date`. */
+export function windowEnds(view: HealthView, m: MetricTrend): [string, string] {
+  const last = new Date(`${view.date}T12:00:00`);
+  const first = new Date(last);
+  first.setDate(first.getDate() - (m.points.length - 1));
+  const day = (d: Date) => d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return [day(first), day(last)];
+}
