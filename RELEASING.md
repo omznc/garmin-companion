@@ -120,10 +120,17 @@ Artifacts:
 | Windows | `-setup.exe` (NSIS) | the `-setup.exe` + `.sig` |
 | Linux | `.AppImage`, `.deb`, `.rpm` | the same files + `.sig` |
 | Android | `.apk` | the `.apk` itself |
+| iOS | `_unsigned.ipa` | none |
 
 `latest.json` is written by `scripts/release-rewrite.mjs manifest` from the
 `.sig` files. `latest-android.json` is written by the `android` job. Test the
 script with `node --test scripts/release-rewrite.test.mjs`.
+
+The `ios` job builds an unsigned device IPA, `garmin-companion_<version>_unsigned.ipa`.
+Testers sign it themselves with Sideloadly or AltStore. It is not in
+`latest.json`, and no updater reads it. When a tester signs the IPA again, the
+new signature must keep an application identifier. The Keychain items of the
+app need one, and the app cannot read its tokens without it.
 
 > The sections below, up to "Building locally", describe the old Tauri
 > release. They stay as background for the APK format, the signing keys and
