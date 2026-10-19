@@ -324,22 +324,32 @@ fn run_nsis(bytes: &[u8], version: &str) -> Result<()> {
     let dir = fresh_dir(version)?;
     let setup = dir.join("garmin-companion-setup.exe");
     fs::write(&setup, bytes)?;
-    match Command::new(&setup).args(nsis_args()).spawn() {
-        Ok(_) => Ok(()),
-        // A per-machine install needs admin rights: ask for them (UAC).
-        #[cfg(windows)]
-        Err(e) if e.raw_os_error() == Some(ERROR_ELEVATION_REQUIRED) => run_elevated(&setup),
-        Err(e) => Err(e.into()),
+    // An install in a folder that this user cannot write (Program Files) needs
+    // admin rights to update: ask for them (UAC).
+    #[cfg(windows)]
+    if !std::env::current_exe()?
+        .parent()
+        .is_some_and(folder_is_writable)
+    {
+        return run_elevated(&setup);
     }
+    Command::new(&setup).args(nsis_args()).spawn()?;
+    Ok(())
 }
 
-/// `ERROR_ELEVATION_REQUIRED`: the setup file asks for admin rights.
-#[cfg(windows)]
-const ERROR_ELEVATION_REQUIRED: i32 = 740;
+/// Can this user create a file in the folder? A test file shows it, because
+/// the folder attributes and the ACL do not give a simple answer.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn folder_is_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".write-test-{}", std::process::id()));
+    let ok = fs::File::create(&probe).is_ok();
+    let _ = fs::remove_file(&probe);
+    ok
+}
 
 /// Start the setup file with the "runas" verb, which shows the UAC prompt.
 /// `ShellExecuteW` returns a value above 32 when the start works. A refused
-/// prompt gives `SE_ERR_ACCESSDENIED` (5).
+/// prompt gives `SE_ERR_ACCESSDENIED` (5), like a real access denial.
 #[cfg(windows)]
 fn run_elevated(setup: &Path) -> Result<()> {
     use std::os::windows::ffi::OsStrExt;
@@ -364,8 +374,7 @@ fn run_elevated(setup: &Path) -> Result<()> {
     } as isize;
     match code {
         c if c > 32 => Ok(()),
-        5 => bail!("the update needs admin rights, and the request was refused"),
-        c => bail!("the setup did not start with admin rights (code {c})"),
+        c => bail!("Windows did not start the installer with admin rights (code {c})"),
     }
 }
 
@@ -511,6 +520,25 @@ pub fn record_check() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_writable_folder_is_writable() {
+        let dir = fresh_dir("writable").unwrap();
+        assert!(folder_is_writable(&dir));
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_folder_is_not_writable() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = fresh_dir("read-only").unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+        // Root writes anywhere, so the check says nothing for root.
+        let root_writes = fs::File::create(dir.join("x")).is_ok();
+        assert!(root_writes || !folder_is_writable(&dir));
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     use super::*;
 
     // A throwaway key pair, made for these tests. The private key is gone.
