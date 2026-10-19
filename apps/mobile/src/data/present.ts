@@ -17,7 +17,9 @@ export function clock(secs: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
 }
 
-function greeting(now: Date): string {
+// The greeting depends on the clock. It must not live in the cached Today,
+// which keeps the hour of the last fetch. See useGreeting.
+export function greeting(now = new Date()): string {
   const h = now.getHours();
   if (h < 5) return "Good night";
   if (h < 12) return "Good morning";
@@ -160,12 +162,11 @@ function hero(v: TodayView): Hero | null {
   return null;
 }
 
-export function presentToday(v: TodayView, now = new Date()): Today {
+export function presentToday(v: TodayView): Today {
   const day = parseDay(v.date);
   return {
     hero: v.empty ? null : hero(v),
     dateLabel: day.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }),
-    greeting: greeting(now),
     lede: v.empty ? "Nothing cached yet. Run a sync to pull your Garmin history." : v.lede,
     sections: v.sections.flatMap((key) => buildSection(v, key, day) ?? []),
   };
