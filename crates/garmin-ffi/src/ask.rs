@@ -265,12 +265,11 @@ async fn report_panic(turn: tokio::task::JoinHandle<()>, sink: impl EventSink) {
 async fn fixture_turn(sink: &TurnSink) {
     let stop = &sink.0.flag;
     let label = "Reading 14 days of recovery signals";
-    for word in "I will read your recovery first.".split_inclusive(' ') {
+    let note = "I will read your recovery first.";
+    for word in note.split_inclusive(' ') {
         sink.emit(Event::Delta { text: word.into() });
     }
-    sink.emit(Event::Note {
-        text: "I will read your recovery first.".into(),
-    });
+    sink.emit(Event::Note { text: note.into() });
     sink.emit(Event::Tool {
         call_id: "fixture".into(),
         label: label.into(),
