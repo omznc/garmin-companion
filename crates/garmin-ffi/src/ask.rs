@@ -339,6 +339,8 @@ mod tests {
 
     #[tokio::test]
     async fn only_ask_commands_are_taken() {
+        // `ask_stop` ends the turn of a parallel test, so it takes the lock.
+        let _seq = crate::TEST_LOCK.lock().await;
         assert!(handle("today", &json!({}), true).await.is_none());
         assert!(handle("ask_stop", &json!({}), true).await.is_some());
     }
@@ -380,9 +382,6 @@ mod tests {
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
     }
 
-    // One turn runs at a time in the process, so the tests that send run one by one.
-    static SEQ: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
     fn thread(id: &str) -> Value {
         let out = chat::handle("chat_get", &json!({ "sessionId": id }), true)
             .unwrap()
@@ -408,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_send_saves_the_turn_and_finishes_it() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-send", "How did I sleep?").await;
         assert_eq!(thread("t-send")["turns"][0]["status"], "running");
         wait_idle("t-send").await;
@@ -428,7 +427,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_rename_during_a_run_survives_the_finish_and_a_later_turn() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-name", "First question").await;
         let args = json!({ "sessionId": "t-name", "title": "Mine" });
         chat::handle("chat_rename", &args, true).unwrap().unwrap();
@@ -440,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_delete_during_a_run_stops_it_and_keeps_it_deleted() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-del", "Question").await;
         assert_eq!(running_session().as_deref(), Some("t-del"));
         let args = json!({ "sessionId": "t-del" });
@@ -452,7 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_late_end_of_a_deleted_turn_leaves_the_new_turn_alone() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-reuse", "Q1").await;
         let args = json!({ "sessionId": "t-reuse" });
         chat::handle("chat_delete", &args, true).unwrap().unwrap();
@@ -483,7 +482,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_send_to_another_thread_stops_the_old_turn_under_its_id() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-old", "Old").await;
         send_to("t-new", "New").await;
         wait_idle("t-new").await;
@@ -494,7 +493,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_thread_that_opens_during_a_run_shows_the_partial_answer() {
-        let _seq = SEQ.lock().await;
+        let _seq = crate::TEST_LOCK.lock().await;
         send_to("t-live", "Question").await;
         tokio::time::sleep(Duration::from_millis(700)).await;
         let t = thread("t-live");

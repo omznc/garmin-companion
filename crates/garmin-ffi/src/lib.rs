@@ -36,6 +36,11 @@ const TRAINING_SAMPLE: &str = include_str!("../../garmin-api/fixtures/training.s
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
+/// One turn runs at a time, and `init` sets the sample mode for the process.
+/// A test that sends, stops or deletes a turn, or reads the mode, takes this lock.
+#[cfg(test)]
+pub(crate) static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum FfiError {
     #[error("bad arguments: {reason}")]
@@ -371,6 +376,9 @@ mod tests {
 
     #[tokio::test]
     async fn today_with_a_bad_date_fails() {
+        let _seq = TEST_LOCK.lock().await;
+        // A parallel `init` may have set sample mode, which skips the date check.
+        FIXTURE_MODE.store(false, Ordering::Relaxed);
         let err = call("today".into(), r#"{"date":"soon"}"#.into())
             .await
             .unwrap_err();
@@ -408,6 +416,7 @@ mod tests {
 
     #[tokio::test]
     async fn fixture_commands_create_no_cache() {
+        let _seq = TEST_LOCK.lock().await;
         let dir = std::env::temp_dir().join(format!("garmin-ffi-fixture-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         init(dir.to_string_lossy().into_owned(), true);
