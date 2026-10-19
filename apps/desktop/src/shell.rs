@@ -140,17 +140,22 @@ impl Root {
                 if !self.account.cloud.live {
                     self.cloud_open(cx);
                 }
-                self.cloud_checkout(cx);
+                self.cloud_checkout(true, cx);
             }
             AskEvent::Premium { signed_in: false } => {
-                self.select_index(SETTINGS, cx);
+                self.show_settings(cx);
                 self.account.cloud.say(
                     "Sign in with your email to get premium. Premium belongs to an account.",
                     false,
                 );
             }
-            AskEvent::Settings => self.select_index(SETTINGS, cx),
+            AskEvent::Settings => self.show_settings(cx),
         }
+    }
+
+    /// Show the Settings screen, where the coach notes are drawn.
+    pub(crate) fn show_settings(&mut self, cx: &mut Context<Self>) {
+        self.select_index(SETTINGS, cx);
     }
 
     /// Show one session. The page starts at the top, like a new screen.

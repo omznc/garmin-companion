@@ -182,7 +182,8 @@ impl Ask {
             return;
         }
         cx.spawn(async move |this, cx| {
-            if let Ok(view) = cloud::on_thread(cloud::account()).await {
+            // A quiet read: it must not enrol an install that has asked nothing yet.
+            if let Ok(Some(view)) = cloud::on_thread(cloud::account_quiet()).await {
                 let _ = this.update(cx, |ask, cx| {
                     ask.credits = Some(view);
                     cx.notify();

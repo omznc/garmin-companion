@@ -251,8 +251,15 @@ fn main() -> anyhow::Result<()> {
             } else {
                 account::palette_for(account.mode, cx.window_appearance())
             };
-            let opened = cx.open_window(options, |_, cx| {
+            let opened = cx.open_window(options, |window, cx| {
                 cx.new(|cx| {
+                    // A returning window reads the balance while a checkout is watched.
+                    cx.observe_window_activation(window, |root: &mut shell::Root, window, cx| {
+                        if window.is_window_active() {
+                            root.on_activated(cx);
+                        }
+                    })
+                    .detach();
                     let ask = shell::new_ask(ask_start, palette, cx);
                     let mut root =
                         shell::Root::new(today, palette, store, body, source, account, ask)
