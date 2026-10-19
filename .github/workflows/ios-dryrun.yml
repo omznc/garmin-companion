@@ -1,0 +1,87 @@
+name: iOS dry run
+on:
+  push:
+    branches: [ios-dryrun-2]
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-latest
+    # This job runs third-party install scripts. It needs no write access.
+    permissions:
+      contents: read
+    env:
+      APP_VERSION: 0.99.0
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: rewrite-ios
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+
+      - name: Install JavaScript dependencies
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the Rust bridge
+        working-directory: apps/mobile
+        # The device slice only. The simulator slices are not in the IPA.
+        # The C code (sqlite, zstd) must target the iOS version of the app.
+        # Without this value cc-rs uses the SDK version, and a newer Xcode breaks the link.
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "16.4"
+        run: pnpm bridge:ios --targets aarch64-apple-ios
+
+      - name: Make the iOS project
+        working-directory: apps/mobile
+        run: |
+          rm -rf ios
+          npx expo prebuild -p ios --no-install
+          cd ios && pod install
+
+      - name: Build the app without a signature
+        working-directory: apps/mobile
+        run: |
+          WORKSPACE="$(ls -d ios/*.xcworkspace)"
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+
+      - name: Make the IPA and check it
+        run: |
+          APP="$(ls -d "$RUNNER_TEMP"/derived/Build/Products/Release-iphoneos/*.app)"
+          mkdir -p ios-out "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          IPA="$PWD/ios-out/garmin-companion_${APP_VERSION}_unsigned.ipa"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$IPA" Payload)
+          ls -la ios-out
+          BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          lipo -info "$BIN" | tee lipo.txt
+          grep -q arm64 lipo.txt || { echo "no arm64 slice"; exit 1; }
+          GOT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")"
+          [[ "$GOT" == "$APP_VERSION" ]] || { echo "version is $GOT, not $APP_VERSION"; exit 1; }
+          [[ -f "$APP/main.jsbundle" ]] || { echo "main.jsbundle is missing"; exit 1; }
+          unzip -l "$IPA" | grep -q "Payload/.*\.app/main.jsbundle"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios
+          path: ios-out/
+          if-no-files-found: error
+
