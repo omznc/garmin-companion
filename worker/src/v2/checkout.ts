@@ -22,6 +22,7 @@ p{margin:0 0 .75rem}
 <h1>Payment done</h1>
 <p>Thank you. Your premium plan is active in a minute.</p>
 <p>Go back to Garmin Companion. The app updates when it gets focus.</p>
+<p>If the plan still shows free, open Settings in the app.</p>
 <p class="small">You can close this page.</p>
 </main>
 </body>
