@@ -115,6 +115,41 @@ describe("chat", () => {
     expect(((await r.json()) as any).choices[0].message.content).toBe("ok");
   });
 
+  it("charges nothing for a stream that ends with keepalives and no data", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(new TextEncoder().encode(": OPENROUTER PROCESSING\n\n"));
+              c.close();
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    await (await h.ask(id)).text();
+    await h.settled();
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+  });
+
+  it("releases the hold when the client leaves before any data", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(
+      () =>
+        new Response(new ReadableStream({ start() {} }), {
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    );
+    const r = await h.ask(id);
+    await r.body?.cancel();
+    await h.settled();
+    expect((await h.balance(id)).credits_remaining).toBe(30);
+  });
+
   it("charges the estimate when the client leaves before the usage chunk", async () => {
     const h = harness();
     const id = await h.install();

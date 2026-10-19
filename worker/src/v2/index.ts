@@ -526,12 +526,14 @@ function meterStream(
   let usage: Usage | undefined;
   let served: string | undefined;
   let sawContent = false;
+  let sawData = false;
   let sawError = false;
   let finished = false;
   const finish = () => {
     if (!finished) {
       finished = true;
-      done(usage, sawError && !sawContent && !usage, served);
+      // A stream with no data line gave the client nothing: it costs nothing.
+      done(usage, !sawData || (sawError && !sawContent && !usage), served);
     }
   };
   const scan = (chunk: Uint8Array) => {
@@ -540,6 +542,7 @@ function meterStream(
     tail = events.pop() ?? "";
     for (const line of events.flatMap((e) => e.split("\n"))) {
       if (!line.startsWith("data:") || line.includes("[DONE]")) continue;
+      sawData = true;
       try {
         const j = JSON.parse(line.slice(5).trim());
         const u = j?.usage;
