@@ -147,6 +147,16 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.3" date="2026-10-19">
+      <description>
+        <p>
+          The coach no longer stops in the middle of an answer. A model that
+          stops answering now ends with a message. On the phone, the notes of
+          the coach show in the list of tools, and only the answer stays below
+          it.
+        </p>
+      </description>
+    </release>
     <release version="1.0.2" date="2026-10-19">
       <description>
         <p>
