@@ -110,7 +110,10 @@ pub fn init(base_dir: String, fixture_mode: bool) {
 fn leave_fixture_mode() {
     FIXTURE_MODE.store(false, Ordering::Relaxed);
     if let Ok(dir) = garmin_core::paths::base_dir() {
-        let _ = std::fs::remove_file(dir.join("sample-mode"));
+        // The app writes the marker in its document folder: `files/` on Android, the base on iOS.
+        for marker in [dir.join("files/sample-mode"), dir.join("sample-mode")] {
+            let _ = std::fs::remove_file(marker);
+        }
     }
 }
 

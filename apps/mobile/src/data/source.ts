@@ -185,7 +185,7 @@ function readable(error: unknown): Error {
 
 // The old Tauri app keeps its files in the app data folder (the parent of
 // `files/`). The Rust core uses the same folder on Android, so the cache and the login stay.
-export const dataRoot = () =>
+const dataRoot = () =>
   Platform.OS === "android" ? Paths.document.parentDirectory : Paths.document;
 
 function bridgeSource(): Source | null {
