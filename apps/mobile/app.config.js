@@ -1,6 +1,7 @@
 // Reads app.json and lets the release build set the version.
 // The version in app.json is the floor for a local build. It must not be lower than the
 // latest release, or the updater offers the release to a local build.
+// Raise it after each release.
 // APP_VERSION is "major.minor.patch". The version code follows the formula of the
 // old Tauri app (major * 1000000 + minor * 1000 + patch), so it always grows.
 module.exports = ({ config }) => {

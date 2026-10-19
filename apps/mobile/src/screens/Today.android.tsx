@@ -17,7 +17,7 @@ import {
   T,
 } from "../components/MdKit";
 import { Cookie, sportIcon, VitalGrid } from "../components/TodayKit";
-import { greeting } from "../data/present";
+import { useGreeting } from "../data/useGreeting";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
@@ -202,6 +202,7 @@ function SyncButton({ busy, onPress }: { busy: boolean; onPress: () => void }) {
       accessibilityState={{ disabled: busy, busy }}
       disabled={busy}
       onPress={onPress}
+      android_ripple={{ color: `${md.onPrimary}33` }}
       style={{
         alignSelf: "flex-start",
         minHeight: 48,
@@ -245,9 +246,10 @@ function SyncLine({ line, error }: { line: string | null; error: string | null }
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
   const sync = useSync();
+  const greeting = useGreeting();
   return (
     <LargeAppBarScreen
-      title={data ? greeting() : "Today"}
+      title={data ? greeting : "Today"}
       refreshing={sync.busy}
       onRefresh={() => sync.refresh()}
     >

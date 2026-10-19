@@ -17,11 +17,10 @@ export function clock(secs: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(total % 60)}` : `${m}:${pad(total % 60)}`;
 }
 
-// The greeting depends on the clock, so a screen calls this on each render.
-// It must not live in the cached Today, which keeps the hour of the last fetch.
-// `offsetMin` is the local offset from UTC in minutes. The default is the device offset.
-export function greeting(now = new Date(), offsetMin = -now.getTimezoneOffset()): string {
-  const h = Math.floor(((now.getTime() / 3600000 + offsetMin / 60) % 24) + 24) % 24;
+// The greeting depends on the clock. It must not live in the cached Today,
+// which keeps the hour of the last fetch. See useGreeting.
+export function greeting(now = new Date()): string {
+  const h = now.getHours();
   if (h < 5) return "Good night";
   if (h < 12) return "Good morning";
   if (h < 18) return "Good afternoon";
