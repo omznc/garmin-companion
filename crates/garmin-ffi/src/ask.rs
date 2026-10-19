@@ -12,17 +12,112 @@ use garmin_coach::{Event, EventSink, HistoryMessage};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::chat::{self, Status, Step, Turn};
 use crate::FfiError;
 
-struct HubSink;
+/// The turn that runs now: its session, its stop flag and its live state.
+static RUNNING: Mutex<Option<Arc<SinkState>>> = Mutex::new(None);
 
-impl EventSink for HubSink {
-    fn emit(&self, event: Event) {
-        crate::emit("ask", serde_json::to_value(&event).unwrap_or(Value::Null));
+/// The `ask` payload: the event JSON and the session it belongs to.
+fn payload(event: &Event, session_id: &str) -> Value {
+    let mut value = serde_json::to_value(event).unwrap_or(Value::Null);
+    if let Some(map) = value.as_object_mut() {
+        map.insert("sessionId".into(), session_id.into());
+    }
+    value
+}
+
+struct SinkState {
+    session_id: String,
+    fixture: bool,
+    flag: Arc<AtomicBool>,
+    turn: Mutex<Turn>,
+}
+
+/// Keeps the turn of one thread: it sends each event to the app, applies the
+/// event to the turn, and saves the turn when it ends.
+#[derive(Clone)]
+struct TurnSink(Arc<SinkState>);
+
+impl TurnSink {
+    fn apply(&self, event: &Event) -> Option<Turn> {
+        let mut turn = self.0.turn.lock().unwrap_or_else(|e| e.into_inner());
+        match event {
+            Event::Tool {
+                call_id,
+                label,
+                running,
+                ok,
+            } => {
+                let step = Step {
+                    call_id: call_id.clone(),
+                    label: label.clone(),
+                    running: *running,
+                    ok: (!running).then_some(*ok),
+                };
+                match turn.steps.iter_mut().find(|s| s.call_id == *call_id) {
+                    Some(slot) => *slot = step,
+                    None => turn.steps.push(step),
+                }
+            }
+            Event::Delta { text } => turn.answer.push_str(text),
+            Event::Done { .. } => {
+                turn.status = if self.0.flag.load(Ordering::Relaxed) {
+                    Status::Stopped
+                } else {
+                    Status::Done
+                }
+            }
+            Event::Error { text } => {
+                turn.status = Status::Error;
+                turn.error = Some(text.clone());
+            }
+        }
+        (turn.status != Status::Running).then(|| turn.clone())
     }
 }
 
-static RUNNING: Mutex<Option<Arc<AtomicBool>>> = Mutex::new(None);
+impl EventSink for TurnSink {
+    fn emit(&self, event: Event) {
+        // The save comes first, so the app finds the turn in the store when it reads after `done`.
+        if let Some(turn) = self.apply(&event) {
+            // A failed save cannot reach the app in a better way than the thread missing the turn.
+            let _ = chat::finish_turn(self.0.fixture, &self.0.session_id, &turn);
+            clear_running(&self.0);
+        }
+        crate::emit("ask", payload(&event, &self.0.session_id));
+    }
+}
+
+fn clear_running(state: &Arc<SinkState>) {
+    let mut running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    if running.as_ref().is_some_and(|s| Arc::ptr_eq(s, state)) {
+        *running = None;
+    }
+}
+
+/// The session of the turn that runs now, if any.
+pub(crate) fn running_session() -> Option<String> {
+    let running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
+    running.as_ref().map(|s| s.session_id.clone())
+}
+
+/// The turn of this session as it is now in memory, with its partial answer.
+pub(crate) fn live_turn(session_id: &str) -> Option<Turn> {
+    let state = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).clone()?;
+    if state.session_id != session_id {
+        return None;
+    }
+    let turn = state.turn.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    Some(turn)
+}
+
+/// Stop the running turn when it belongs to this session.
+pub(crate) fn stop_session(session_id: &str) {
+    if running_session().as_deref() == Some(session_id) {
+        stop();
+    }
+}
 
 /// The coach choice in sample mode: provider and model. It stays in memory,
 /// because a real save would create the cache and end sample mode.
@@ -41,7 +136,9 @@ pub(crate) fn failed(e: impl ToString) -> FfiError {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Send {
+    session_id: String,
     history: Vec<HistoryRow>,
 }
 
@@ -78,13 +175,23 @@ pub(crate) async fn handle(
 }
 
 fn stop() {
-    if let Some(flag) = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).take() {
-        flag.store(true, Ordering::Relaxed);
+    if let Some(state) = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        state.flag.store(true, Ordering::Relaxed);
     }
 }
 
 fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: Send = serde_json::from_value(args.clone()).map_err(bad)?;
+    if a.session_id.is_empty() {
+        return Err(bad("sessionId is empty"));
+    }
+    let question = a
+        .history
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .ok_or_else(|| bad("history has no user message"))?;
     let history: Vec<HistoryMessage> = a
         .history
         .into_iter()
@@ -94,14 +201,23 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
         })
         .collect();
     stop();
+    let turn = chat::begin_turn(fixture, &a.session_id, &question).map_err(failed)?;
     let flag = Arc::new(AtomicBool::new(false));
-    *RUNNING.lock().unwrap_or_else(|e| e.into_inner()) = Some(flag.clone());
-    let turn = if fixture {
-        tokio::spawn(fixture_turn(flag))
+    let state = Arc::new(SinkState {
+        session_id: a.session_id,
+        fixture,
+        flag,
+        turn: Mutex::new(turn),
+    });
+    *RUNNING.lock().unwrap_or_else(|e| e.into_inner()) = Some(state.clone());
+    let sink = TurnSink(state);
+    let run = sink.clone();
+    let task = if fixture {
+        tokio::spawn(async move { fixture_turn(&run).await })
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &HubSink, &flag).await })
+        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag).await })
     };
-    tokio::spawn(report_panic(turn, HubSink));
+    tokio::spawn(report_panic(task, sink));
     Ok("{}".into())
 }
 
@@ -115,8 +231,8 @@ async fn report_panic(turn: tokio::task::JoinHandle<()>, sink: impl EventSink) {
 }
 
 /// A canned answer for the sample mode, so the screen runs with no model.
-async fn fixture_turn(stop: Arc<AtomicBool>) {
-    let sink = HubSink;
+async fn fixture_turn(sink: &TurnSink) {
+    let stop = &sink.0.flag;
     let label = "Reading 14 days of recovery signals";
     sink.emit(Event::Tool {
         call_id: "fixture".into(),
@@ -244,5 +360,99 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
+    }
+
+    // One turn runs at a time in the process, so the tests that send run one by one.
+    static SEQ: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    fn thread(id: &str) -> Value {
+        let out = chat::handle("chat_get", &json!({ "sessionId": id }), true)
+            .unwrap()
+            .unwrap();
+        serde_json::from_str(&out).unwrap()
+    }
+
+    async fn send_to(id: &str, text: &str) {
+        let args = json!({ "sessionId": id, "history": [{ "role": "user", "content": text }] });
+        handle("ask_send", &args, true).await.unwrap().unwrap();
+    }
+
+    async fn wait_idle(id: &str) {
+        for _ in 0..100 {
+            if thread(id)["running"] == false {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("the turn did not end");
+    }
+
+    #[tokio::test]
+    async fn a_send_saves_the_turn_and_finishes_it() {
+        let _seq = SEQ.lock().await;
+        send_to("t-send", "How did I sleep?").await;
+        assert_eq!(thread("t-send")["turns"][0]["status"], "running");
+        wait_idle("t-send").await;
+        let t = thread("t-send");
+        assert_eq!(t["title"], "How did I sleep?");
+        assert_eq!(t["turns"][0]["id"], "t-send:0");
+        assert_eq!(t["turns"][0]["status"], "done");
+        assert!(t["turns"][0]["answer"]
+            .as_str()
+            .unwrap()
+            .contains("sample answer"));
+        assert_eq!(t["turns"][0]["steps"][0]["ok"], true);
+        send_to("t-send", "And last week?").await;
+        wait_idle("t-send").await;
+        assert_eq!(thread("t-send")["turns"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_rename_during_a_run_survives_the_finish_and_a_later_turn() {
+        let _seq = SEQ.lock().await;
+        send_to("t-name", "First question").await;
+        let args = json!({ "sessionId": "t-name", "title": "Mine" });
+        chat::handle("chat_rename", &args, true).unwrap().unwrap();
+        wait_idle("t-name").await;
+        send_to("t-name", "Second question").await;
+        wait_idle("t-name").await;
+        assert_eq!(thread("t-name")["title"], "Mine");
+    }
+
+    #[tokio::test]
+    async fn a_delete_during_a_run_stops_it_and_keeps_it_deleted() {
+        let _seq = SEQ.lock().await;
+        send_to("t-del", "Question").await;
+        assert_eq!(running_session().as_deref(), Some("t-del"));
+        let args = json!({ "sessionId": "t-del" });
+        chat::handle("chat_delete", &args, true).unwrap().unwrap();
+        assert!(running_session().is_none());
+        tokio::time::sleep(Duration::from_millis(900)).await;
+        assert!(thread("t-del").is_null());
+    }
+
+    #[tokio::test]
+    async fn a_send_to_another_thread_stops_the_old_turn_under_its_id() {
+        let _seq = SEQ.lock().await;
+        send_to("t-old", "Old").await;
+        send_to("t-new", "New").await;
+        wait_idle("t-new").await;
+        let old = thread("t-old");
+        assert_eq!(old["turns"][0]["status"], "stopped");
+        assert_eq!(thread("t-new")["turns"][0]["status"], "done");
+    }
+
+    #[tokio::test]
+    async fn a_thread_that_opens_during_a_run_shows_the_partial_answer() {
+        let _seq = SEQ.lock().await;
+        send_to("t-live", "Question").await;
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let t = thread("t-live");
+        assert_eq!(t["running"], true);
+        let turn = &t["turns"][0];
+        assert_eq!(turn["status"], "running");
+        assert!(!turn["answer"].as_str().unwrap().is_empty());
+        assert_eq!(turn["steps"].as_array().unwrap().len(), 1);
+        wait_idle("t-live").await;
     }
 }

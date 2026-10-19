@@ -19,6 +19,7 @@ compile_error!("garmin-ffi needs unwinding on mobile: build with --profile relea
 mod ask;
 #[cfg(target_os = "ios")]
 mod backup;
+mod chat;
 mod cloud;
 
 uniffi::setup_scaffolding!();
@@ -144,6 +145,9 @@ pub async fn call(cmd: String, args_json: String) -> Result<String, FfiError> {
 
 async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<String, FfiError> {
     if let Some(out) = ask::handle(cmd, args, fixture).await {
+        return out;
+    }
+    if let Some(out) = chat::handle(cmd, args, fixture) {
         return out;
     }
     if let Some(out) = cloud::handle(cmd, args, fixture).await {
@@ -353,7 +357,9 @@ mod tests {
         assert_eq!(summary["daysWritten"], 0);
         sub.cancel();
         dispatch("sync", &one, true).await.unwrap();
-        let seen = recorder.0.lock().unwrap();
+        // The hub is global, so `ask` events of parallel tests are not counted.
+        let all = recorder.0.lock().unwrap();
+        let seen: Vec<_> = all.iter().filter(|(k, _)| k == "sync-progress").collect();
         assert_eq!(seen.len(), 2);
         let last: serde_json::Value = serde_json::from_str(&seen[1].1).unwrap();
         assert_eq!(
@@ -407,6 +413,8 @@ mod tests {
         init(dir.to_string_lossy().into_owned(), true);
         let none = serde_json::json!({});
         let save = serde_json::json!({ "provider": "openrouter", "key": "k" });
+        let sid = serde_json::json!({ "sessionId": "guard" });
+        let rename = serde_json::json!({ "sessionId": "guard", "title": "t" });
         let cmds = [
             ("today", &none),
             ("activities", &none),
@@ -428,6 +436,10 @@ mod tests {
             ("settings", &none),
             ("ask_config", &none),
             ("ask_save_config", &save),
+            ("chat_list", &none),
+            ("chat_get", &sid),
+            ("chat_rename", &rename),
+            ("chat_delete", &sid),
             ("cloud_account", &none),
             ("cloud_sign_out", &none),
         ];

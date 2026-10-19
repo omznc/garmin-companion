@@ -1756,6 +1756,32 @@ impl Db {
             .optional()?)
     }
 
+    /// Change only the turns of a thread. A missing thread stays missing.
+    pub fn update_chat_messages(
+        &self,
+        session_id: &str,
+        updated_at: &str,
+        message_count: i64,
+        messages: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chat_sessions
+             SET updated_at = ?2, message_count = ?3, messages = ?4
+             WHERE session_id = ?1",
+            params![session_id, updated_at, message_count, messages],
+        )?;
+        Ok(())
+    }
+
+    /// Change only the title. `save_chat_session` would overwrite the rest.
+    pub fn rename_chat_session(&self, session_id: &str, title: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE chat_sessions SET title = ?2 WHERE session_id = ?1",
+            params![session_id, title],
+        )?;
+        Ok(())
+    }
+
     pub fn delete_chat_session(&self, session_id: &str) -> Result<()> {
         self.conn.execute(
             "DELETE FROM chat_sessions WHERE session_id = ?1",

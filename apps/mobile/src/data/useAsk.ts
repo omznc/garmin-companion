@@ -68,6 +68,8 @@ export function historyOf(turns: Turn[]) {
 export function useAsk() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [busy, setBusy] = useState(false);
+  // One thread per mount for now. A later change lets the user pick a thread.
+  const sessionId = useRef(`s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = turns;
 
@@ -89,7 +91,7 @@ export function useAsk() {
     setTurns([...asked, { who: "coach", text: "", steps: [] }]);
     setBusy(true);
     try {
-      await callJson("ask_send", { history: historyOf(asked) });
+      await callJson("ask_send", { sessionId: sessionId.current, history: historyOf(asked) });
     } catch (error) {
       setTurns((t) => applyEvent(t, { type: "error", text: (error as Error).message }));
       setBusy(false);
