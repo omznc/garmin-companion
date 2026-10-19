@@ -35,6 +35,11 @@ struct ActivityId {
     activity_id: i64,
 }
 
+#[derive(Deserialize)]
+struct RoutesArgs {
+    sort: Option<crate::routes::RouteSort>,
+}
+
 fn parse<T: DeserializeOwned>(args: &str) -> Result<T, ApiError> {
     // A caller with no arguments may send an empty string.
     let json = if args.trim().is_empty() { "{}" } else { args };
@@ -61,6 +66,9 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
 /// - `activities` `{limit}`: the Activities list view model, grouped by day.
 /// - `activity_detail` `{activityId}`: the detail view model of one session, or `null`.
 /// - `weight_view`, `food_view`, `strength_view`: the Weight, Food and Strength screens.
+/// - `plan_view`: the Plan screen, from the saved workouts.
+/// - `routes_view` `{sort}`: the Routes screen. `sort` is `recent`, `repeats` or `distance`.
+/// - `gear_view`: the Gear screen. It reads Garmin live, so it needs a sign-in.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
@@ -122,6 +130,19 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
             &open_default_db()?,
             garmin_core::today(),
         )?),
+        "plan_view" => encode(&crate::plan::plan_view(
+            &open_default_db()?,
+            garmin_core::today(),
+        )?),
+        "routes_view" => {
+            let a: RoutesArgs = parse(args_json)?;
+            encode(&crate::routes::routes_view(
+                &open_default_db()?,
+                a.sort.unwrap_or_default(),
+            )?)
+        }
+        // This one calls Garmin: the cache holds no gear. It blocks.
+        "gear_view" => encode(&crate::gear::gear_view(&crate::gear::fetch_gear()?)),
         other => account_call(other, args_json),
     }
 }
