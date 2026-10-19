@@ -248,7 +248,11 @@ pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
         );
     }
     if let Some((text, bad)) = status {
-        row = row.child(body(text, FS_SMALL, if bad { t.warn } else { t.mutd }));
+        row = row.child(
+            body(text, FS_SMALL, if bad { t.warn } else { t.mutd })
+                .flex_1()
+                .min_w_0(),
+        );
     }
     row
 }
