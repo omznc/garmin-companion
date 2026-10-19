@@ -31,7 +31,6 @@ const withVersion = ({ config }) => {
   return {
     ...config,
     version,
-    backgroundColor: BACKGROUND_LIGHT,
     android: {
       ...config.android,
       backgroundColor: BACKGROUND_LIGHT,
