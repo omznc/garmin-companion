@@ -12,7 +12,8 @@ use crate::derive::{
     daily_series, date_key, days_since, fuel, has_zone_data, hydration, is_run, latest, mean, Fuel,
     Hydration, Latest, Observation,
 };
-use crate::profile::{activity_profile, ActivityProfile};
+use crate::insights::runs_now;
+use crate::profile::{activity_profile, ActivityProfile, WINDOW_DAYS};
 use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence, weight_sentence};
 use crate::ApiError;
 use chrono::NaiveDate;
@@ -160,7 +161,7 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
     let water = hydration(&rows, 7);
 
     let profile = activity_profile(&activities, data_days, today);
-    let visible = run_visible(&activities, &profile, today);
+    let visible = run_visible(&activities, today);
 
     let mut view = TodayView {
         date: date_key(today),
@@ -200,19 +201,15 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
 }
 
 /// The sessions that run-only copy may read. A run counts only when the user
-/// is active in endurance sport and the run is inside the profile window, so a
-/// user who stopped running does not get run advice from an old session.
-fn run_visible(
-    activities: &[CachedActivity],
-    profile: &ActivityProfile,
-    today: NaiveDate,
-) -> Vec<CachedActivity> {
-    let runs_count = profile.active.contains(&Family::Endurance);
+/// runs now (the same test as Insights) and the run is inside the window, so a
+/// user with one run, or one who stopped running, gets no run advice.
+fn run_visible(activities: &[CachedActivity], today: NaiveDate) -> Vec<CachedActivity> {
+    let runs_count = runs_now(activities, today);
     activities
         .iter()
         .filter(|a| {
             !is_run(&a.type_key)
-                || (runs_count && days_since(a, today).is_some_and(|d| d < profile.window_days))
+                || (runs_count && days_since(a, today).is_some_and(|d| d < WINDOW_DAYS))
         })
         .cloned()
         .collect()
@@ -373,6 +370,37 @@ mod tests {
         assert_eq!(rhr.value, 56.0);
         assert!(rhr.accent);
         assert!(v.lede.starts_with("You slept"));
+    }
+
+    #[test]
+    fn run_copy_needs_three_runs_like_insights() {
+        let run = |id: i64, date: &str, key: &str| CachedActivity {
+            activity_id: id,
+            name: None,
+            type_key: Some(key.into()),
+            start_time_local: None,
+            local_date: Some(date.into()),
+            distance_m: None,
+            duration_s: None,
+            moving_duration_s: None,
+            avg_hr: None,
+            max_hr: None,
+            avg_cadence: None,
+            calories: None,
+            elevation_gain: None,
+            steps: None,
+            aerobic_te: None,
+            anaerobic_te: None,
+            zone_secs: [0.0; 5],
+        };
+        let one = [
+            run(1, "2026-03-10", "running"),
+            run(2, "2026-03-10", "golf"),
+        ];
+        let kept = run_visible(&one, today());
+        assert_eq!(kept.iter().map(|a| a.activity_id).collect::<Vec<_>>(), [2]);
+        let three: Vec<_> = (1..=3).map(|i| run(i, "2026-03-10", "running")).collect();
+        assert_eq!(run_visible(&three, today()).len(), 3);
     }
 
     #[test]

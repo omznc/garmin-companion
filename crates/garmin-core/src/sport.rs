@@ -77,9 +77,24 @@ pub fn family_with(type_key: Option<&str>, overrides: &[(&str, Family)]) -> Fami
         .map_or(Family::Mixed, |(_, f)| *f)
 }
 
+/// Whether a motor does the work: motorcycle, drive, ATV. It is never load.
+pub fn is_motorised(type_key: Option<&str>) -> bool {
+    family(type_key) == Family::NonExercise
+}
+
 /// Whether the session counts as exercise.
 pub fn is_exercise(type_key: Option<&str>) -> bool {
-    family(type_key) != Family::NonExercise
+    !is_motorised(type_key)
+}
+
+/// Whether the user rides on wheels with leg power: bike, e-bike, mountain
+/// bike, virtual ride. A motorcycle is not one of these.
+pub fn is_wheeled(type_key: Option<&str>) -> bool {
+    let k = type_key.unwrap_or("");
+    !is_motorised(type_key)
+        && ["cycling", "biking", "bike", "ride"]
+            .iter()
+            .any(|p| k.contains(p))
 }
 
 /// Whether a zone verdict ("above Z2") says anything true about the session.
@@ -164,6 +179,23 @@ mod tests {
         assert_eq!(family(Some("quidditch_v9")), Family::Mixed);
         assert_eq!(family(None), Family::Mixed);
         assert!(is_exercise(Some("quidditch_v9")));
+    }
+
+    #[test]
+    fn motorised_and_wheeled_are_apart() {
+        for key in ["motorcycling_v2", "driving", "atv"] {
+            assert!(is_motorised(Some(key)), "{key}");
+            assert!(!is_wheeled(Some(key)), "{key}");
+        }
+        for key in [
+            "cycling",
+            "mountain_biking",
+            "virtual_ride",
+            "e_bike_fitness",
+        ] {
+            assert!(is_wheeled(Some(key)) && !is_motorised(Some(key)), "{key}");
+        }
+        assert!(!is_wheeled(Some("running")) && !is_wheeled(None));
     }
 
     #[test]

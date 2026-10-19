@@ -28,7 +28,7 @@ function sentence(s: Exclude<UpdateState, { at: "idle" }>): string {
     case "blocked":
       return 'Turn on "Install unknown apps" for this app, then tap Install';
     case "failed":
-      return `Update failed: ${s.message}`;
+      return "The update failed. Try again.";
   }
 }
 
@@ -63,7 +63,7 @@ export function UpdateBanner() {
   const host = useHostTheme();
   const insets = useSafeAreaInsets();
   const s = api.state;
-  if (!SELF_UPDATE || s.at === "idle") return null;
+  if (!SELF_UPDATE || s.at === "idle" || api.hidden) return null;
 
   const progress = s.at === "downloading" && s.total > 0 ? s.received / s.total : null;
   return (

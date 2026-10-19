@@ -91,6 +91,8 @@ pub struct Root {
     /// Where Today reads from. A sync reads it again.
     pub(crate) source: Source,
     pub(crate) account: Account,
+    /// The background reads in flight, one for each key. A new read drops the old one.
+    pub(crate) loads: std::collections::HashMap<&'static str, gpui::Task<()>>,
 }
 
 impl Root {
@@ -121,6 +123,7 @@ impl Root {
             page: Page::List,
             source,
             account,
+            loads: Default::default(),
         }
     }
 
@@ -160,11 +163,20 @@ impl Root {
 
     /// Show one session. The page starts at the top, like a new screen.
     pub fn open_activity(&mut self, id: i64, cx: &mut Context<Self>) {
-        self.page = match self.store.detail(id) {
-            Ok(Some(view)) => Page::Detail(Box::new(view)),
-            _ => Page::Missing,
-        };
-        self.restart_page(cx);
+        let store = self.store.clone();
+        crate::account::load_async(
+            self,
+            "detail",
+            cx,
+            move || store.detail(id),
+            |root, detail, cx| {
+                root.page = match detail {
+                    Ok(Some(view)) => Page::Detail(Box::new(view)),
+                    _ => Page::Missing,
+                };
+                root.restart_page(cx);
+            },
+        );
     }
 
     /// Open on the Activities entry, with one session shown.
@@ -174,6 +186,7 @@ impl Root {
     }
 
     pub fn close_activity(&mut self, cx: &mut Context<Self>) {
+        self.loads.remove("detail");
         self.page = Page::List;
         self.restart_page(cx);
     }
@@ -196,15 +209,21 @@ impl Root {
 
     /// Show another week of the report. The page keeps its scroll position.
     pub fn show_report(&mut self, offset: usize, cx: &mut Context<Self>) {
-        match (
-            training::load_report(&self.source, offset),
-            &mut self.training,
-        ) {
-            (Ok(report), Some(training)) => training.report = report,
-            (Err(e), _) => eprintln!("could not load the week: {e:#}"),
-            _ => {}
-        }
-        cx.notify();
+        let source = self.source.clone();
+        crate::account::load_async(
+            self,
+            "report",
+            cx,
+            move || training::load_report(&source, offset),
+            |root, report, cx| {
+                match (report, &mut root.training) {
+                    (Ok(report), Some(training)) => training.report = report,
+                    (Err(e), _) => eprintln!("could not load the week: {e:#}"),
+                    _ => {}
+                }
+                cx.notify();
+            },
+        );
     }
 
     fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
@@ -214,10 +233,11 @@ impl Root {
     fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
+            self.loads.remove("detail");
             self.page = Page::List;
             self.visits += 1;
             if index == SETTINGS {
-                self.reload_settings();
+                self.reload_settings(cx);
                 self.cloud_open(cx);
             }
             if NAV[index].0 == "Gear" {

@@ -25,6 +25,7 @@ export const applyTheme = (theme: ThemeMode) =>
 
 // Sample data only: the choice to skip Setup lives in a marker file, so it lasts across launches.
 // Sign-in removes it. A build with EXPO_PUBLIC_FIXTURE=1 always skips Setup.
+// Expo can write only in the document folder (`files/` on Android). The core removes it there too.
 const skipMarker = () => new File(Paths.document, "sample-mode");
 export const skipSetup = () => {
   if (!skipMarker().exists) skipMarker().create();

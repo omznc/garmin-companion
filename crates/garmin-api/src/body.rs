@@ -175,7 +175,12 @@ pub fn weight_view(db: &Db, today: NaiveDate) -> Result<WeightView, ApiError> {
             Vec::new()
         },
         composition: if has { composition(db, today)? } else { None },
-        goal_sentence: r.goal.as_ref().map(goal_sentence),
+        // Without a weight the core gives a delta of 0.0. That is no distance to a goal.
+        goal_sentence: r
+            .goal
+            .as_ref()
+            .filter(|_| r.trend_kg.or(r.latest_kg).is_some())
+            .map(goal_sentence),
         points: r
             .points
             .into_iter()
@@ -638,6 +643,22 @@ mod tests {
         assert_eq!(v.goal_kcal, None);
         assert_eq!(v.water.as_ref().unwrap().goal_ml, None);
         assert!(v.days.iter().any(|d| !d.logged && d.water_ml.is_some()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_goal_without_a_weight_has_no_sentence() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-goal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = crate::open_db(&dir.join("cache.sqlite3")).unwrap();
+        db.set_sync_state("weight_goal_kg", "75").unwrap();
+        let today = garmin_core::today();
+        assert!(weight_view(&db, today).unwrap().goal_sentence.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+        let (db, today, dir) = seeded();
+        db.set_sync_state("weight_goal_kg", "75").unwrap();
+        let text = weight_view(&db, today).unwrap().goal_sentence.unwrap();
+        assert!(text.contains("your goal of 75.0 kg") && !text.starts_with("0.0 kg"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

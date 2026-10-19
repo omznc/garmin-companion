@@ -103,25 +103,40 @@ impl Places {
 
     /// Read Plan and Routes again, after a sync or a new order.
     pub fn reload(&mut self) {
-        let result = garmin_api::open_db(&self.path).map_err(|e| e.to_string());
-        let (plan, routes) = match result {
+        (self.plan, self.routes) = self.reader()();
+    }
+
+    /// A job that reads Plan and Routes. It owns its inputs, so it can run on a thread.
+    fn reader(&self) -> impl FnOnce() -> PlacesRead + Send + 'static {
+        let (path, today, sort) = (self.path.clone(), self.today, self.sort);
+        move || match garmin_api::open_db(&path).map_err(|e| e.to_string()) {
             Ok(db) => (
-                plan_view(&db, self.today).map_err(|e| e.to_string()),
-                routes_view(&db, self.sort).map_err(|e| e.to_string()),
+                plan_view(&db, today).map_err(|e| e.to_string()),
+                routes_view(&db, sort).map_err(|e| e.to_string()),
             ),
             Err(e) => (Err(e.clone()), Err(e)),
-        };
-        self.plan = plan;
-        self.routes = routes;
+        }
     }
 }
 
+type PlacesRead = (Result<PlanView, String>, Result<RoutesView, String>);
+
 impl Root {
+    /// Read Plan and Routes on the background executor. The screens keep the
+    /// old figures until the new ones arrive.
+    pub fn reload_places(&mut self, cx: &mut Context<Self>) {
+        let read = self.places.reader();
+        crate::account::load_async(self, "places", cx, read, |root, (plan, routes), cx| {
+            root.places.plan = plan;
+            root.places.routes = routes;
+            cx.notify();
+        });
+    }
+
     /// Choose the order of the routes and read them again.
     fn set_route_sort(&mut self, sort: RouteSort, cx: &mut Context<Self>) {
         self.places.sort = sort;
-        self.places.reload();
-        cx.notify();
+        self.reload_places(cx);
     }
 
     /// Fill the Gear screen. A persona answers at once. A live account asks Garmin on a thread.
