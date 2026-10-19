@@ -186,13 +186,19 @@ fn log_error<T>(what: &str, result: anyhow::Result<T>) -> anyhow::Result<T> {
     result
 }
 
-/// The value, or the view of an empty cache when the cache does not read.
+/// The value, or the view of an empty cache when the default cache does not
+/// read. A wrong `--db` path must stop here: `open_db` creates a missing file.
 fn or_empty<T>(
+    source: &Source,
     what: &str,
     result: anyhow::Result<T>,
     empty: fn() -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    log_error(what, result).or_else(|_| empty())
+    if matches!(source, Source::Default) {
+        log_error(what, result).or_else(|_| empty())
+    } else {
+        result
+    }
 }
 
 fn empty_db() -> anyhow::Result<garmin_core::Db> {
@@ -253,10 +259,15 @@ fn main() -> anyhow::Result<()> {
     }
     // A bad cache must not close the app before a window opens. On Windows
     // nobody sees stderr. Show the empty views, and log the reason.
-    let today = or_empty("Today", data::load_today(&source), empty_today)?;
+    let today = or_empty(&source, "Today", data::load_today(&source), empty_today)?;
     let store = activities::Store::for_source(&source)?;
     let wellness = log_error("Health and Sleep", wellness::load(&source)).ok();
-    let body = or_empty("the body screens", body::load_body(&source), empty_body)?;
+    let body = or_empty(
+        &source,
+        "the body screens",
+        body::load_body(&source),
+        empty_body,
+    )?;
     let training = log_error("Insights, Fitness and Reports", training::load(&source, 0)).ok();
 
     gpui_platform::application()
@@ -377,8 +388,20 @@ mod tests {
 
     #[test]
     fn a_bad_cache_degrades_to_the_empty_views() {
-        assert!(or_empty("Today", Err(anyhow::anyhow!("bad row")), empty_today).is_ok());
-        assert!(or_empty("body", Err(anyhow::anyhow!("bad row")), empty_body).is_ok());
+        assert!(or_empty(
+            &Source::Default,
+            "Today",
+            Err(anyhow::anyhow!("bad row")),
+            empty_today
+        )
+        .is_ok());
+        assert!(or_empty(
+            &Source::Default,
+            "body",
+            Err(anyhow::anyhow!("bad row")),
+            empty_body
+        )
+        .is_ok());
     }
 
     #[test]

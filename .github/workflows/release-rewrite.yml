@@ -52,6 +52,10 @@ jobs:
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "release v$VERSION exists"; exit 1
           fi
+      - name: Check the AppStream release entry
+        run: node scripts/check-metainfo.mjs "$VERSION"
+        env:
+          VERSION: ${{ inputs.version }}
       - name: Test the manifest script
         run: node --test scripts/release-rewrite.test.mjs
 

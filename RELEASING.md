@@ -106,7 +106,8 @@ bundler (`--config`) and to the Expo build (`APP_VERSION`). The Android version
 code is `major * 1000000 + minor * 1000 + patch`.
 
 `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml` needs a new
-`<release>` entry for the version. `scripts/check-metainfo.mjs` checks it in CI.
+`<release>` entry for the version. The `check` job of the release workflow
+stops if the entry is missing.
 
 Artifacts:
 

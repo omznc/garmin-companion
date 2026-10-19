@@ -12,7 +12,7 @@ module.exports = function withSelfUpdate(config) {
     const perms = (manifest["uses-permission"] ??= []);
     const has = perms.some((p) => p.$["android:name"] === PERMISSION);
     if (process.env.EXPO_PUBLIC_SELF_UPDATE === "0") {
-      // A prebuild over an old android/ folder keeps the permission, so remove it.
+      // Remove the permission if a template or an old folder added it.
       manifest["uses-permission"] = perms.filter((p) => p.$["android:name"] !== PERMISSION);
     } else if (!has) {
       perms.push({ $: { "android:name": PERMISSION } });
