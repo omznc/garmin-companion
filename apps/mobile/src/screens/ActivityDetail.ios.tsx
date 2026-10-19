@@ -112,7 +112,12 @@ function Zones({ z }: { z: NonNullable<ActivityDetail["zones"]> }) {
           ))}
       </View>
       {z.rows.map((r, i) => (
-        <Row key={r.zone} left={`Zone ${r.zone}`} right={r.time} last={i === z.rows.length - 1} />
+        <Row
+          key={r.zone}
+          left={`Zone ${r.zone}`}
+          right={`${r.time}, ${Math.round(r.percent)}%`}
+          last={i === z.rows.length - 1}
+        />
       ))}
     </Group>
   );
@@ -177,7 +182,7 @@ function Detail({ d }: { d: ActivityDetail }) {
             <Row
               key={l.label}
               left={l.label}
-              sub={l.pace ?? undefined}
+              sub={[l.pace, l.avgHr ? `${l.avgHr} bpm` : null].filter(Boolean).join(", ")}
               right={[l.distance, l.time].filter(Boolean).join(", ")}
               last={i === d.laps.length - 1}
             />
@@ -191,7 +196,13 @@ function Detail({ d }: { d: ActivityDetail }) {
               <Row
                 key={s.label}
                 left={s.label}
-                sub={[s.exercise, s.rest ? `rest ${s.rest}` : null].filter(Boolean).join(", ")}
+                sub={[
+                  s.exercise,
+                  s.work ? `work ${s.work}` : null,
+                  s.rest ? `rest ${s.rest}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
                 right={s.reps ?? undefined}
                 last={i === (d.strength?.sets.length ?? 0) - 1}
               />

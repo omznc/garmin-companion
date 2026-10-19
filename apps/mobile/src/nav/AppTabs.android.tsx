@@ -51,9 +51,10 @@ function TabBar({ index }: { index: number }) {
 }
 
 export function AppTabs() {
+  const md = useMd();
   return (
     <Tabs
-      screenOptions={{ headerShown: false }}
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: md.surface } }}
       tabBar={(props) => <TabBar index={props.state.index} />}
     >
       {TABS.map((tab) => (
