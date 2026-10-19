@@ -26,7 +26,9 @@ const UPSTREAM = "https://openrouter.ai/api/v1/chat/completions";
 const DAY_SECONDS = 86_400;
 const INSTALL_TTL = 400 * DAY_SECONDS;
 const INSTALLS_PER_IP = 3;
-const INSTALLS_PER_DAY = 200;
+// The per-network cap above stops a farm. The daily total only stops a flood, and
+// must be high enough for a release day, when every upgraded app enrols again.
+const INSTALLS_PER_DAY = 5000;
 const NEW_ACCOUNTS_PER_IP = 5;
 const MAX_MESSAGES = 80;
 const FREE_MAX_TOKENS = 4096;

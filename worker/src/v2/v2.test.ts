@@ -139,6 +139,59 @@ describe("chat", () => {
     expect((await h.balance(id)).credits_remaining).toBe(25);
   });
 
+  it("charges the real cost when the client leaves after the usage chunk", async () => {
+    const h = harness();
+    const id = await h.install();
+    const enc = new TextEncoder();
+    h.upstream(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(c) {
+              c.enqueue(enc.encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
+              c.enqueue(enc.encode(`data: ${JSON.stringify(usageChunk(1000, 200))}\n\n`));
+              // Never ends: the client leaves before the [DONE] line.
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        ),
+    );
+    const r = await h.ask(id);
+    const reader = r.body!.getReader();
+    await reader.read();
+    await reader.read();
+    await reader.cancel();
+    await h.settled();
+    // 0.4 credit, not the hold of about 4.1 credits.
+    expect((await h.balance(id)).credits_remaining).toBe(29);
+  });
+
+  it("holds less for a smaller max_tokens", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [{ delta: { content: "x" } }] }));
+    await (await h.ask(id, { max_tokens: 1500 })).text();
+    await h.settled();
+    // No usage block, so the whole hold is charged: 1500 tokens, about 1.5 credits.
+    expect((await h.balance(id)).credits_remaining).toBe(28);
+    const sent = JSON.parse(h.fetchCalls[0].init.body as string);
+    expect(sent.max_tokens).toBe(1500);
+  });
+
+  it("holds a prompt at about 3.5 bytes a token, not one token a byte", async () => {
+    const h = harness();
+    const id = await h.install();
+    h.upstream(() => sse({ choices: [{ delta: { content: "x" } }] }));
+    const big = { messages: [{ role: "user", content: "a".repeat(90_000) }], max_tokens: 100 };
+    await (await h.ask(id, big)).text();
+    await h.settled();
+    // 90,000 bytes: 25,700 tokens x 0.1 + 100 x 0.5 per million is 0.0026 USD, 5.2 credits.
+    // At one token a byte it would be 18 credits.
+    const used = 30 - (await h.balance(id)).credits_remaining;
+    expect(used).toBeGreaterThanOrEqual(5);
+    expect(used).toBeLessThanOrEqual(6);
+  });
+
   it("releases the hold and answers 503 when the OpenRouter key limit is reached", async () => {
     const h = harness();
     const id = await h.install();
