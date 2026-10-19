@@ -30,10 +30,7 @@ function BodyRow({ kind, label, last }: { kind: BodyKind; label: string; last: b
       }}
     >
       <Text style={{ fontSize: 17, color: PlatformColor("label") }}>{label}</Text>
-      <Text
-        numberOfLines={1}
-        style={{ flex: 1, fontSize: 17, color: secondary, textAlign: "right" }}
-      >
+      <Text style={{ flex: 1, fontSize: 17, color: secondary, textAlign: "right" }}>
         {data ?? ""}
       </Text>
       <Text style={{ fontSize: 17, color: PlatformColor("tertiaryLabel") }}>{">"}</Text>
