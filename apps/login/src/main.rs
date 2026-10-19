@@ -35,11 +35,56 @@ fn is_garmin_https(link: &str) -> bool {
     url.scheme() == "https" && (host == "garmin.com" || host.ends_with(".garmin.com"))
 }
 
+/// Linux: the WebKitGTK DMA-BUF renderer fails to allocate buffers on NVIDIA
+/// with Wayland. The web process then dies and the window stays blank. Set the
+/// variable before WebKit starts. A value that the user already set wins.
+#[cfg(target_os = "linux")]
+fn work_around_webkit_bugs() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        // SAFETY: this runs first in `main`, before any thread starts.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
+    }
+}
+
+/// macOS: a window has no Edit menu by default, so the copy, paste and select
+/// all shortcuts do nothing. Add the standard items. The first submenu is the
+/// app menu. It holds only "Close Window", because "Quit" would exit with code
+/// 0 and no ticket.
+#[cfg(target_os = "macos")]
+fn install_menu() {
+    use muda::{Menu, PredefinedMenuItem, Submenu};
+
+    let menu = Menu::new();
+    let app = Submenu::with_items("", true, &[&PredefinedMenuItem::close_window(None)]);
+    let edit = Submenu::with_items(
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(None),
+            &PredefinedMenuItem::redo(None),
+            &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::cut(None),
+            &PredefinedMenuItem::copy(None),
+            &PredefinedMenuItem::paste(None),
+            &PredefinedMenuItem::select_all(None),
+        ],
+    );
+    if let (Ok(app), Ok(edit)) = (app, edit) {
+        if menu.append(&app).is_ok() && menu.append(&edit).is_ok() {
+            menu.init_for_nsapp();
+        }
+    }
+    // The menu must live as long as the process.
+    std::mem::forget(menu);
+}
+
 fn main() -> wry::Result<()> {
     let Some(start) = std::env::args().nth(1).filter(|u| is_garmin_https(u)) else {
         eprintln!("usage: garmin-companion-login <https sign-in url on garmin.com>");
         exit(2);
     };
+    #[cfg(target_os = "linux")]
+    work_around_webkit_bugs();
 
     let event_loop = EventLoopBuilder::<String>::with_user_event().build();
     let proxy = event_loop.create_proxy();
@@ -48,6 +93,8 @@ fn main() -> wry::Result<()> {
         .with_inner_size(tao::dpi::LogicalSize::new(520.0, 760.0))
         .build(&event_loop)
         .expect("could not open the sign-in window");
+    #[cfg(target_os = "macos")]
+    install_menu();
 
     let builder = WebViewBuilder::new()
         .with_url(&start)

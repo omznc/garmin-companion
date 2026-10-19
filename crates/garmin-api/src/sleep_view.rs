@@ -10,6 +10,7 @@ use crate::text::{hours_minutes, short_date};
 use crate::ApiError;
 use chrono::{Datelike, NaiveDate};
 use garmin_core::sleep::{insights, SleepInsight, SleepNight};
+use garmin_core::sport::is_exercise;
 use garmin_core::{DailyMetrics, Db};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -267,9 +268,16 @@ fn merge<'a>(nights: &'a [SleepNight], daily: &'a [DailyMetrics]) -> HashMap<&'a
 
 /// Build the Sleep view for `today`.
 pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
-    let from = date_key(today - chrono::Duration::days(MONTH as i64 - 1));
+    // One day more than the chart: before the morning sync the window ends yesterday.
+    let from = date_key(today - chrono::Duration::days(MONTH as i64));
     let nights = db.sleep_nights_since(&from)?;
-    let daily = daily_series(db.daily_since(&from)?, MONTH, today);
+    let daily = daily_series(db.daily_since(&from)?, MONTH + 1, today);
+    // A motorcycle ride is not an evening session or a hard day.
+    let exercise: Vec<_> = db
+        .activities_since(&from)?
+        .into_iter()
+        .filter(|a| is_exercise(a.type_key.as_deref()))
+        .collect();
     let by_date = merge(&nights, &daily);
     let last = by_date.values().max_by_key(|b| b.date);
     let last_night = last.map(|b| night_view(b, today));
@@ -293,7 +301,13 @@ pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
         last_night,
         week: window(&by_date, WEEK, end),
         month: window(&by_date, MONTH, end),
-        insights: insights(&nights, &daily, &db.activities_since(&from)?),
+        insights: {
+            // The insights read the same 30 nights as the chart.
+            let first = date_key(end - chrono::Duration::days(MONTH as i64 - 1));
+            let nights: Vec<_> = nights.into_iter().filter(|n| n.date >= first).collect();
+            let daily: Vec<_> = daily.into_iter().filter(|d| d.date >= first).collect();
+            insights(&nights, &daily, &exercise)
+        },
     })
 }
 
@@ -375,6 +389,37 @@ mod tests {
         assert_eq!(last.date, date_key(day));
         assert!(v.week.bars.iter().all(|b| b.hours.is_some()));
         assert_eq!(v.month.bars.last().unwrap().date, date_key(day));
+        // The first bar of the 30 nights has data too, not an empty slot.
+        assert!(v.month.bars.iter().all(|b| b.hours.is_some()));
+    }
+
+    #[test]
+    fn a_motorcycle_ride_is_not_an_evening_session() {
+        let db = db("moto");
+        let day = sample_day();
+        seed(&db, Persona::HealthOnly, day).unwrap();
+        seed_sleep(&db, Persona::HealthOnly, day).unwrap();
+        for age in (0..20).step_by(2) {
+            let date = date_key(day - chrono::Duration::days(age));
+            let ride = serde_json::json!({
+                "activityId": 9000 + age,
+                "startTimeLocal": format!("{date} 20:30:00"),
+                "duration": 3600.0,
+                "activityType": { "typeKey": "motorcycling_v2" },
+                "hrTimeInZone_1": 0.0,
+                "hrTimeInZone_2": 0.0,
+                "hrTimeInZone_3": 0.0,
+                "hrTimeInZone_4": 600.0,
+                "hrTimeInZone_5": 600.0,
+            });
+            db.upsert_activity(&serde_json::from_value(ride).unwrap())
+                .unwrap();
+        }
+        let v = sleep_view(&db, day).unwrap();
+        assert!(v
+            .insights
+            .iter()
+            .all(|i| i.id != "late-session" && i.id != "hard-day"));
     }
 
     #[test]

@@ -286,45 +286,107 @@ impl Root {
                 eprintln!("could not save the theme: {e}");
             }
         }
-        self.reload_settings();
+        self.reload_settings(cx);
         cx.notify();
     }
 
-    /// Read the Today view and the settings again, after a sync.
+    /// Read the Today view and the settings again, after a sync. The reads run
+    /// on the background executor. The screens keep the old data until then.
     fn reload(&mut self, cx: &mut Context<Self>) {
-        match data::load_today(&self.source) {
+        let source = self.source.clone();
+        let store = self.store.clone();
+        let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
+        let live = !self.account.demo;
+        load_async(
+            self,
+            "reload",
+            cx,
+            move || Reloaded {
+                today: data::load_today(&source),
+                wellness: wellness::load(&source),
+                body: body::load_body(&source),
+                training: training::load(&source, offset),
+                list: store.list(),
+                synced_ago: live.then(settings::synced_ago),
+            },
+            |root, read, cx| {
+                root.apply_reload(read);
+                root.reload_places(cx);
+                root.reload_settings(cx);
+                cx.notify();
+            },
+        );
+    }
+
+    fn apply_reload(&mut self, read: Reloaded) {
+        match read.today {
             Ok(today) => self.today = today,
             Err(e) => eprintln!("could not reload Today: {e:#}"),
         }
-        match wellness::load(&self.source) {
+        match read.wellness {
             Ok(wellness) => self.wellness = Some(wellness),
             Err(e) => eprintln!("could not reload Health and Sleep: {e:#}"),
         }
-        match body::load_body(&self.source) {
+        match read.body {
             Ok(body) => self.body = body,
             Err(e) => eprintln!("could not reload the body screens: {e:#}"),
         }
-        let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
-        match training::load(&self.source, offset) {
+        match read.training {
             Ok(training) => self.training = Some(training),
             Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
-        self.list = self.store.list();
-        self.places.reload();
-        if !self.account.demo {
-            self.account.synced_ago = settings::synced_ago();
+        self.list = read.list;
+        if let Some(synced_ago) = read.synced_ago {
+            self.account.synced_ago = synced_ago;
         }
-        self.reload_settings();
-        cx.notify();
     }
 
-    pub fn reload_settings(&mut self) {
-        self.account.settings = Some(if self.account.demo {
-            demo_settings(self.account.mode)
-        } else {
-            settings::settings_view().unwrap_or_else(|e| failed_settings(&e.to_string()))
-        });
+    /// Read the Settings view. A live account reads the keyring and the cache,
+    /// so that read runs on the background executor. The old view stays on
+    /// screen until the new one arrives.
+    pub fn reload_settings(&mut self, cx: &mut Context<Self>) {
+        if self.account.demo {
+            self.account.settings = Some(demo_settings(self.account.mode));
+            return;
+        }
+        load_async(
+            self,
+            "settings",
+            cx,
+            || settings::settings_view().unwrap_or_else(|e| failed_settings(&e.to_string())),
+            |root, view, cx| {
+                root.account.settings = Some(view);
+                cx.notify();
+            },
+        );
     }
+}
+
+/// What a reload reads. The UI thread stores it.
+struct Reloaded {
+    today: anyhow::Result<data::Today>,
+    wellness: anyhow::Result<wellness::Wellness>,
+    body: anyhow::Result<body::BodyData>,
+    training: anyhow::Result<training::Training>,
+    list: anyhow::Result<garmin_api::ActivitiesView>,
+    synced_ago: Option<Option<String>>,
+}
+
+/// Run `job` on the background executor. Then give its result to `done` on
+/// the UI thread. The UI thread never waits for the keyring or the database.
+/// A new load with the same `key` cancels the old one, so the last request wins.
+pub(crate) fn load_async<T: Send + 'static>(
+    root: &mut Root,
+    key: &'static str,
+    cx: &mut Context<Root>,
+    job: impl FnOnce() -> T + Send + 'static,
+    done: impl FnOnce(&mut Root, T, &mut Context<Root>) + 'static,
+) {
+    let task = cx.spawn(async move |this, cx| {
+        let out = cx.background_executor().spawn(async move { job() }).await;
+        let _ = this.update(cx, |root, cx| done(root, out, cx));
+    });
+    root.loads.insert(key, task);
 }
 
 /// The Settings view of a demo run. It reads nothing from the machine.

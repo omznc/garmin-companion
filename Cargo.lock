@@ -2821,6 +2821,7 @@ name = "garmin-companion-login"
 version = "0.1.0"
 dependencies = [
  "garmin-api",
+ "muda",
  "tao",
  "url",
  "wry",
