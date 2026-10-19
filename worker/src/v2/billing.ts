@@ -224,17 +224,36 @@ export async function handlePolarWebhook(request: Request, env: V2Env): Promise<
 
 /* ---------------------------------------------------------------- Polar API --- */
 
-async function polar(env: V2Env, path: string, body: unknown): Promise<Response> {
+async function polar(env: V2Env, path: string, body?: unknown): Promise<Response> {
   return fetch(`${env.POLAR_API_BASE ?? "https://api.polar.sh"}${path}`, {
-    method: "POST",
+    method: body === undefined ? "GET" : "POST",
     headers: { Authorization: `Bearer ${env.POLAR_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
+}
+
+/**
+ * False only when Polar says no organization takes payments. Polar still makes
+ * a checkout for an unapproved organization, but the page cannot take a payment.
+ * If the answer is missing or unreadable, this is true and Polar decides.
+ */
+async function paymentsOpen(env: V2Env): Promise<boolean> {
+  try {
+    const r = await polar(env, "/v1/organizations/");
+    if (!r.ok) return true;
+    const { items } = (await r.json()) as {
+      items?: { capabilities?: { checkout_payments?: boolean } }[];
+    };
+    return !Array.isArray(items) || items.some((o) => o.capabilities?.checkout_payments === true);
+  } catch {
+    return true;
+  }
 }
 
 export async function createCheckout(env: V2Env, user: { id: string; email: string }) {
   if (!env.POLAR_TOKEN || !env.POLAR_PRODUCT_ID) return fail(503, "billing_unavailable");
   if ((await entitlementOf(env, user.id)).premium) return fail(409, "already_premium");
+  if (!(await paymentsOpen(env))) return fail(503, "billing_unavailable");
   const r = await polar(env, "/v1/checkouts/", {
     products: [env.POLAR_PRODUCT_ID],
     external_customer_id: user.id,

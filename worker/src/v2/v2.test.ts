@@ -695,11 +695,17 @@ describe("billing", () => {
   it("creates a Polar checkout for the signed-in user", async () => {
     const h = harness({ CHECKOUT_RETURN_URL: "https://example.com/thanks" });
     const { token, userId } = await h.login();
-    h.upstream(() => jsonResponse({ url: "https://sandbox.polar.sh/checkout/abc" }, 201));
+    h.upstream((url) =>
+      url.endsWith("/v1/organizations/")
+        ? jsonResponse({ items: [{ capabilities: { checkout_payments: true } }] })
+        : jsonResponse({ url: "https://sandbox.polar.sh/checkout/abc" }, 201),
+    );
     const r = await h.call("/v2/billing/checkout", { method: "POST", token });
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ url: "https://sandbox.polar.sh/checkout/abc" });
-    const call = h.fetchCalls[0];
+    expect(h.fetchCalls[0].url).toBe("https://sandbox-api.polar.sh/v1/organizations/");
+    expect(h.fetchCalls[0].init.method).toBe("GET");
+    const call = h.fetchCalls[1];
     expect(call.url).toBe("https://sandbox-api.polar.sh/v1/checkouts/");
     expect(new Headers(call.init.headers).get("Authorization")).toBe("Bearer polar-test-token");
     expect(JSON.parse(call.init.body as string)).toMatchObject({
@@ -708,6 +714,31 @@ describe("billing", () => {
       customer_email: "a@example.com",
       success_url: "https://example.com/thanks",
     });
+  });
+
+  it("refuses checkout while the organization cannot take payments", async () => {
+    const h = harness();
+    const { token } = await h.login();
+    h.upstream(() => jsonResponse({ items: [{ capabilities: { checkout_payments: false } }] }));
+    const r = await h.call("/v2/billing/checkout", { method: "POST", token });
+    expect(r.status).toBe(503);
+    expect(await r.json()).toMatchObject({ error: { type: "billing_unavailable" } });
+    expect(h.fetchCalls.map((c) => c.url)).toEqual([
+      "https://sandbox-api.polar.sh/v1/organizations/",
+    ]);
+  });
+
+  it("still creates the checkout when the organization lookup fails", async () => {
+    const h = harness();
+    const { token } = await h.login();
+    h.upstream((url) =>
+      url.endsWith("/v1/organizations/")
+        ? new Response("oops", { status: 500 })
+        : jsonResponse({ url: "https://sandbox.polar.sh/checkout/abc" }, 201),
+    );
+    const r = await h.call("/v2/billing/checkout", { method: "POST", token });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ url: "https://sandbox.polar.sh/checkout/abc" });
   });
 
   it("maps Polar failures and missing setup", async () => {
