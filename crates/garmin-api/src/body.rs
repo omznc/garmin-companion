@@ -686,6 +686,12 @@ mod tests {
             .as_deref()
             .unwrap()
             .starts_with("Probably "));
+        assert_eq!(
+            v.sessions_text,
+            plural(v.sessions_examined, "session", "sessions")
+        );
+        assert_eq!(bench.reps_text, plural(bench.reps as usize, "rep", "reps"));
+        assert_eq!(plural(1, "rep", "reps"), "1 rep");
         assert_eq!(mmss(90.0), "1:30");
         let _ = std::fs::remove_dir_all(dir);
     }

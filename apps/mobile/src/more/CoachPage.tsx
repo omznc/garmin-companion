@@ -217,7 +217,7 @@ export function CoachPage() {
       {provider === "openrouter" ? (
         <KeySection hasKey={c?.hasKey === true} onSaved={() => void config.refetch()} />
       ) : null}
-      {needsSetup(c) && provider === "openrouter" && !c?.hasKey ? (
+      {needsSetup(c) && provider === "openrouter" && !c?.hasKey && !isSampleData() ? (
         <Note>The coach needs a key. Paste your own OpenRouter key.</Note>
       ) : null}
       {problem ? <Note>{problem}</Note> : null}
