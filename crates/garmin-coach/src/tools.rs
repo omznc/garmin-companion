@@ -207,18 +207,51 @@ pub(crate) fn run(name: &str, args: &Value, open_db: &dyn Fn() -> Result<Db>) ->
     capped(out)
 }
 
-/// A result over `MAX_RESULT_BYTES` becomes an error that tells the model to
-/// ask for less. The result goes back on every later round, so one large result
-/// would push the request over the body limit of the hosted coach.
-pub(crate) fn capped(out: Value) -> Value {
-    let size = out.to_string().len();
+/// Room for the note that says rows were dropped.
+const NOTE_BYTES: usize = 200;
+
+/// The largest list in a result: the rows that can be dropped.
+fn rows_of(out: &mut Value) -> Option<&mut Vec<Value>> {
+    out.as_object_mut()?
+        .values_mut()
+        .filter_map(Value::as_array_mut)
+        .max_by_key(|rows| rows.iter().map(|r| r.to_string().len()).sum::<usize>())
+}
+
+/// A result over `MAX_RESULT_BYTES` loses its oldest rows (every list is newest
+/// first) and gets a note. When no list can shrink enough, it becomes an error
+/// that tells the model to ask for less. The result goes back on every later
+/// round, so one large result would push the request over the body limit of the
+/// hosted coach.
+pub(crate) fn capped(mut out: Value) -> Value {
+    let mut size = out.to_string().len();
     if size <= MAX_RESULT_BYTES {
         return out;
     }
-    json!({ "error": format!(
-        "The result is too large ({} KB) to read. Call this tool again with fewer days or a smaller limit.",
-        size / 1000
-    ) })
+    if out.is_array() {
+        out = json!({ "rows": out });
+    }
+    let total = rows_of(&mut out).map_or(0, |rows| rows.len());
+    let mut kept = total;
+    while size > MAX_RESULT_BYTES - NOTE_BYTES {
+        let Some(rows) = rows_of(&mut out) else { break };
+        if rows.len() <= 1 {
+            break;
+        }
+        kept = (rows.len() * (MAX_RESULT_BYTES - NOTE_BYTES) / size).clamp(1, rows.len() - 1);
+        rows.truncate(kept);
+        size = out.to_string().len();
+    }
+    if size > MAX_RESULT_BYTES - NOTE_BYTES {
+        return json!({ "error": format!(
+            "The result is too large ({} KB) to read. Call this tool again with fewer days or a smaller limit.",
+            size / 1000
+        ) });
+    }
+    out["truncated"] = json!(format!(
+        "Only the newest {kept} of {total} rows fit. Ask for fewer days to see them all."
+    ));
+    out
 }
 
 fn to<T: serde::Serialize>(v: T) -> Result<Value> {
@@ -327,6 +360,24 @@ mod tests {
         assert!(out.to_string().len() < 300);
         let small = json!({ "rows": [1, 2, 3] });
         assert_eq!(capped(small.clone()), small);
+    }
+
+    #[test]
+    fn a_large_list_loses_its_oldest_rows() {
+        let rows: Vec<Value> = (0..100)
+            .map(|i| json!({ "day": i, "pad": "é".repeat(500) }))
+            .collect();
+        let out = capped(json!({ "nights": rows, "averages": { "a": 1 } }));
+        assert!(out.to_string().len() <= MAX_RESULT_BYTES);
+        let kept = out["nights"].as_array().unwrap();
+        assert!(kept.len() < 100 && kept.len() > 10);
+        // Newest first: the head stays.
+        assert_eq!(kept[0]["day"], 0);
+        assert_eq!(out["averages"]["a"], 1);
+        assert!(out["truncated"].as_str().unwrap().contains("of 100 rows"));
+        // A bare list is wrapped so that the note has a place.
+        let bare = capped(json!(vec![json!({ "pad": "x".repeat(10_000) }); 5]));
+        assert!(bare["rows"].as_array().unwrap().len() < 5);
     }
 
     #[test]

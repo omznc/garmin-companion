@@ -15,7 +15,9 @@ use crate::turn::EventSink;
 
 /// The answer ceiling that the hosted coach asks for. The worker holds credits
 /// for this many answer tokens, so a lower value leaves room for a later turn.
-const CLOUD_MAX_TOKENS: u32 = 1500;
+/// The model thinks first, and the thinking counts in this limit (at least 1024
+/// tokens at low effort), so a value near 1500 leaves almost no room to answer.
+const CLOUD_MAX_TOKENS: u32 = 3000;
 
 pub trait Transport: Send + Sync {
     /// Send the messages and read the answer. Text deltas go to the sink as
@@ -134,6 +136,9 @@ impl Transport for HttpTransport {
         stop: &AtomicBool,
     ) -> Result<StreamResult> {
         let mut body = json!({ "messages": messages, "stream": true });
+        // Ollama ignores `tool_choice`, so for it "none" means: send no tools.
+        let tools =
+            tools.filter(|_| !(self.provider == Provider::Ollama && tool_choice == Some("none")));
         if let Some(tools) = tools {
             body["tools"] = tools.clone();
             if let Some(choice) = tool_choice {
