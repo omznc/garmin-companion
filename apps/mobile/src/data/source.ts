@@ -95,7 +95,9 @@ let fixtureRun = 0;
 async function fixtureTurn(sessionId: string, turn: Turn) {
   const run = ++fixtureRun;
   const send = (payload: unknown) =>
-    fixtureListeners.forEach((l) => l({ kind: "ask", payload: { ...(payload as object), sessionId } }));
+    fixtureListeners.forEach((l) =>
+      l({ kind: "ask", payload: { ...(payload as object), sessionId } }),
+    );
   const label = "Reading 14 days of recovery signals";
   const step = { callId: "fixture", label };
   send({ type: "tool", ...step, running: true, ok: true });

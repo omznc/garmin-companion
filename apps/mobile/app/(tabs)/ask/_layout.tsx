@@ -1,5 +1,5 @@
-import { TabStack } from "../../../src/nav/TabStack";
+import { AskStack } from "../../../src/ask/AskStack";
 
 export default function Layout() {
-  return <TabStack title="Ask" />;
+  return <AskStack />;
 }

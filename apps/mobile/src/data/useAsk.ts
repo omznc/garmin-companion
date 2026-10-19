@@ -1,21 +1,10 @@
-// The state of the Ask screen: the turns, and the events of the running turn.
-// The core streams `ask` events through the bridge: delta, tool, done, error.
+// The coach settings and the opening questions of the Ask screen.
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { callJson, isSampleData, subscribe } from "./source";
+import { callJson, isSampleData } from "./source";
 
 // Sample mode stores no secret, so the key field is hidden and this line takes its place.
 export const SAMPLE_KEY_NOTE =
   "This build shows sample data. The coach key is saved only after you sign in.";
-
-export type Step = { callId: string; label: string; running: boolean; ok: boolean };
-export type Turn = { who: "you" | "coach"; text: string; steps: Step[]; error?: string };
-
-type AskEvent =
-  | { type: "delta"; text: string }
-  | { type: "tool"; callId: string; label: string; running: boolean; ok: boolean }
-  | { type: "done"; sources: string[] }
-  | { type: "error"; text: string };
 
 // Questions for an empty thread. None of them names a sport.
 export const OPENERS = [
@@ -32,77 +21,6 @@ export const OPENERS = [
 export function openers(): string[] {
   const day = Math.floor(Date.now() / 86_400_000);
   return [0, 3, 6].map((i) => OPENERS[(day + i) % OPENERS.length] ?? "");
-}
-
-// The last turn takes the event. Steps are keyed by call id: a call comes twice.
-export function applyEvent(turns: Turn[], event: AskEvent): Turn[] {
-  const last = turns[turns.length - 1];
-  if (!last || last.who !== "coach") return turns;
-  let next = last;
-  if (event.type === "delta") next = { ...last, text: last.text + event.text };
-  else if (event.type === "error") next = { ...last, error: event.text };
-  else if (event.type === "tool") {
-    const step: Step = {
-      callId: event.callId,
-      label: event.label,
-      running: event.running,
-      ok: event.ok,
-    };
-    const known = last.steps.some((s) => s.callId === step.callId);
-    next = {
-      ...last,
-      steps: known
-        ? last.steps.map((s) => (s.callId === step.callId ? step : s))
-        : [...last.steps, step],
-    };
-  }
-  return [...turns.slice(0, -1), next];
-}
-
-export function historyOf(turns: Turn[]) {
-  return turns
-    .filter((t) => t.text.trim())
-    .map((t) => ({ role: t.who === "you" ? "user" : "assistant", content: t.text }));
-}
-
-export function useAsk() {
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [busy, setBusy] = useState(false);
-  // One thread per mount for now. A later change lets the user pick a thread.
-  const sessionId = useRef(`s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
-  const turnsRef = useRef<Turn[]>([]);
-  turnsRef.current = turns;
-
-  useEffect(
-    () =>
-      subscribe((event) => {
-        if (event.kind !== "ask") return;
-        const e = event.payload as AskEvent;
-        setTurns((t) => applyEvent(t, e));
-        if (e.type === "done" || e.type === "error") setBusy(false);
-      }),
-    [],
-  );
-
-  const send = useCallback(async (text: string) => {
-    const question = text.trim();
-    if (!question) return;
-    const asked: Turn[] = [...turnsRef.current, { who: "you", text: question, steps: [] }];
-    setTurns([...asked, { who: "coach", text: "", steps: [] }]);
-    setBusy(true);
-    try {
-      await callJson("ask_send", { sessionId: sessionId.current, history: historyOf(asked) });
-    } catch (error) {
-      setTurns((t) => applyEvent(t, { type: "error", text: (error as Error).message }));
-      setBusy(false);
-    }
-  }, []);
-
-  const stop = useCallback(() => {
-    void callJson("ask_stop").catch(() => {});
-  }, []);
-
-  return { turns, busy, send, stop };
 }
 
 export type CoachConfig = {

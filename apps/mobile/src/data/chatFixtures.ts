@@ -44,9 +44,7 @@ function view(row: Row): Thread {
   const running = row.sessionId === runningId;
   const last = row.turns.length - 1;
   const turns = row.turns.map((t, i) =>
-    t.status === "running" && !(running && i === last)
-      ? { ...t, status: "stopped" as const }
-      : t,
+    t.status === "running" && !(running && i === last) ? { ...t, status: "stopped" as const } : t,
   );
   return { ...row, running, turns };
 }

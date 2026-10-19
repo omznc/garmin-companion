@@ -225,6 +225,7 @@ export function ListRow({
   action,
   disabled,
   onPress,
+  onLongPress,
 }: {
   icon?: IconName;
   tone?: Tone;
@@ -236,6 +237,7 @@ export function ListRow({
   action?: boolean;
   disabled?: boolean;
   onPress?: () => void;
+  onLongPress?: () => void;
 }) {
   const md = useMd();
   const ink = disabled
@@ -250,6 +252,7 @@ export function ListRow({
       accessibilityRole={onPress ? "button" : undefined}
       disabled={!onPress || disabled}
       onPress={onPress}
+      onLongPress={onLongPress}
       android_ripple={{ color: md.onSurfaceVariant + "22" }}
       style={{
         minHeight: icon ? 72 : 56,
