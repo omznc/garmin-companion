@@ -19,3 +19,8 @@ garmin-api = { path = "../../crates/garmin-api" }
 tao = "0.35"
 url = "2"
 wry = "0.55"
+
+# macOS only. wry adds no Edit menu, so Cmd+C, Cmd+V and Cmd+A do nothing in the
+# password field without one. The version is the one that Tauri already uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+muda = { version = "0.19", default-features = false }
