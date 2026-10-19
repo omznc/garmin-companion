@@ -125,8 +125,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VERSION: ${{ inputs.version }}
         run: |
+          # Windows: NSIS only, as in release.yml. WiX (MSI) refuses the
+          # "ć" of the publisher, because it is not in code page 1252.
+          BUNDLES=()
+          [[ "${{ matrix.target }}" == *windows* ]] && BUNDLES=(--bundles nsis)
           npx --yes @tauri-apps/cli@${TAURI_CLI} bundle \
-            --target "${{ matrix.target }}" \
+            --target "${{ matrix.target }}" "${BUNDLES[@]}" \
             --config "{\"version\":\"${VERSION}\"}" \
             --no-binary-patching --ci
 

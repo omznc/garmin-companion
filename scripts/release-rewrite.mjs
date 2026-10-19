@@ -16,7 +16,6 @@ import { join } from "node:path";
 const BUNDLES = {
   "x86_64-pc-windows-msvc": [
     { find: /-setup\.exe$/, name: (v) => `garmin-companion_${v}_x64-setup.exe`, keys: ["windows-x86_64", "windows-x86_64-nsis"] },
-    { find: /\.msi$/, name: (v) => `garmin-companion_${v}_x64.msi`, keys: ["windows-x86_64-msi"] },
   ],
   "aarch64-apple-darwin": [
     { find: /\.app\.tar\.gz$/, name: (v) => `garmin-companion_${v}_aarch64.app.tar.gz`, keys: ["darwin-aarch64", "darwin-aarch64-app"] },
