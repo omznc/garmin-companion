@@ -52,24 +52,19 @@ export function Row({
   last?: boolean;
   onPress?: () => void;
 }) {
-  return (
-    <Pressable
-      accessibilityRole={onPress ? "button" : "text"}
-      disabled={!onPress}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: 12,
-        minHeight: 44,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: last ? 0 : 0.5,
-        borderBottomColor: separator,
-        opacity: pressed ? 0.6 : 1,
-      })}
-    >
+  const style = {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: last ? 0 : 0.5,
+    borderBottomColor: separator,
+  } as const;
+  const content = (
+    <>
       <Text style={{ fontSize: 17, color: label, flexShrink: 1 }}>{left}</Text>
       {right ? (
         <Text style={{ fontSize: 17, color: secondary, flexShrink: 1, textAlign: "right" }}>
@@ -79,6 +74,17 @@ export function Row({
       {onPress ? (
         <SymbolView name="chevron.right" size={13} tintColor={PlatformColor("tertiaryLabel")} />
       ) : null}
+    </>
+  );
+  // A plain View, not a disabled Pressable: VoiceOver reads a disabled button as "dimmed".
+  if (!onPress) return <View style={style}>{content}</View>;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({ ...style, opacity: pressed ? 0.6 : 1 })}
+    >
+      {content}
     </Pressable>
   );
 }

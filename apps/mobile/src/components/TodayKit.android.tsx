@@ -14,7 +14,7 @@ import Animated, {
 import { metricRoute } from "../data/present";
 import type { Metric } from "../data/types";
 import { useMd } from "../theme/md";
-import { GAP, type IconName, IconTile, T, toneColors } from "./MdKit";
+import { GAP, type IconName, IconTile, type Md, T, toneColors } from "./MdKit";
 
 /** A figure that stays on one line. A long value shrinks, it does not wrap. */
 export function FitText({
@@ -30,7 +30,8 @@ export function FitText({
     <Text
       numberOfLines={1}
       adjustsFontSizeToFit
-      minimumFontScale={0.6}
+      // The types lack this Android prop; `minimumFontScale` works on iOS only.
+      {...({ minimumFontSize: Math.round(size * 0.6) } as object)}
       style={{
         color,
         fontSize: size,
@@ -169,18 +170,22 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
 }
 
 /** The icon of a sport family from the core. */
+/** The tones of heart rate zones 1 to 5. Z1 uses outline, so it shows on a tonal card. */
+export function zoneTones(md: Md) {
+  return [md.outline, md.secondary, md.tertiary, md.primary, md.error];
+}
+
 export const FAMILY_ICON: Record<string, IconName> = {
   endurance: "directions-run",
   gym: "fitness-center",
   golf: "golf-course",
   water: "pool",
-  mindbody: "self-improvement",
-  mind_body: "self-improvement",
+  mindBody: "self-improvement",
 };
 
 const SPORT_ICONS: [RegExp, IconName][] = [
   [/run/, "directions-run"],
-  [/cycl|bik/, "directions-bike"],
+  [/cycl|bik|ride/, "directions-bike"],
   [/hik/, "hiking"],
   [/walk/, "directions-walk"],
   [/swim/, "pool"],

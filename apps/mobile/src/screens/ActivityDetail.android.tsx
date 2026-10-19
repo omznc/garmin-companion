@@ -1,5 +1,6 @@
 // Activity detail on Android: a large app bar with a back button, then tonal cards.
 // The core decides which blocks exist. A block with no data is not drawn.
+// The screen computes the min and max of a trace from its samples.
 import { useLocalSearchParams } from "expo-router";
 import { type ColorValue, View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
@@ -16,22 +17,20 @@ import {
   T,
   TileGrid,
 } from "../components/MdKit";
-import { FAMILY_ICON, sportIcon } from "../components/TodayKit";
+import { FAMILY_ICON, sportIcon, zoneTones } from "../components/TodayKit";
 import { type ActivityDetail, barHeights, useActivityDetail } from "../data/activities";
 import { useMd } from "../theme/md";
 
 function Stats({ d }: { d: ActivityDetail }) {
   const md = useMd();
   const tiles = d.stats.map((s, i) => ({ ...s, accent: i < 2 }));
+  const bySport = sportIcon(d.sportLabel);
+  const icon = bySport === "sports" ? (FAMILY_ICON[d.family] ?? bySport) : bySport;
   return (
     <>
       <Card tone="primary" style={{ borderRadius: 32 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-          <IconTile
-            name={FAMILY_ICON[d.family] ?? sportIcon(d.sportLabel)}
-            tone="tertiary"
-            size={56}
-          />
+          <IconTile name={icon} tone="tertiary" size={56} />
           <View style={{ flex: 1 }}>
             <T v="title" color={md.onPrimaryContainer}>
               {d.sportLabel}
@@ -83,7 +82,7 @@ type ZoneRowProps = { zone: number; percent: number; time: string; color: ColorV
 
 function Zones({ z }: { z: NonNullable<ActivityDetail["zones"]> }) {
   const md = useMd();
-  const tones = [md.outline, md.secondary, md.tertiary, md.primary, md.error];
+  const tones = zoneTones(md);
   const color = (zone: number) => tones[zone - 1] ?? md.primary;
   return (
     <Card gap={12}>
@@ -216,8 +215,7 @@ const LAP_COLS: [string, (l: Lap) => string | null][] = [
 ];
 
 const SET_COLS: [string, (s: StrengthSet) => string | null][] = [
-  ["Set", (s) => s.label],
-  ["Exercise", (s) => s.exercise],
+  ["Set", (s) => (s.exercise ? `${s.label}\n${s.exercise}` : s.label)],
   ["Reps", (s) => s.reps],
   ["Work", (s) => s.work],
   ["Rest", (s) => s.rest],

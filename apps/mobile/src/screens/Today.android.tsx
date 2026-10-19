@@ -12,22 +12,17 @@ import {
   ErrorCard,
   IconTile,
   Loading,
-  type Md,
   SectionLabel,
   SplitBar,
   T,
 } from "../components/MdKit";
-import { Cookie, FitText, sportIcon, VitalGrid } from "../components/TodayKit";
+import { Cookie, FitText, sportIcon, VitalGrid, zoneTones } from "../components/TodayKit";
 import { metricRoute } from "../data/present";
 import { useGreeting } from "../data/useGreeting";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
 import { useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 import { useMd } from "../theme/md";
-
-function zoneTones(md: Md) {
-  return [md.outlineVariant, md.secondary, md.tertiary, md.primary, md.error];
-}
 
 // A fixed grid: equal columns, so a long value cannot push the next one away.
 function StatGrid({ stats }: { stats: LastSession["stats"] }) {

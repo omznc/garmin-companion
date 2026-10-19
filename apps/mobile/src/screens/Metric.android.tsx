@@ -1,5 +1,5 @@
 // One health metric on Android: the latest figure, a large chart of the window and the trend sentence.
-// It reads the `key` route param. The core sends every figure and sentence.
+// It reads the `key` route param. The core sends the figures and sentences. The screen computes the window dates.
 import { useLocalSearchParams } from "expo-router";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { BarLabels, Bars, Card, Content, ErrorCard, Loading, T } from "../components/MdKit";
@@ -40,7 +40,7 @@ function MetricContent() {
   if (!m) {
     return (
       <Content>
-        <T v="body">No data for this metric.</T>
+        <T v="body">{`No reading in the last ${data.days} days.`}</T>
       </Content>
     );
   }

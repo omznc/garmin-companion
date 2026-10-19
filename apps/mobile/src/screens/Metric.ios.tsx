@@ -1,5 +1,5 @@
 // One health metric on iOS: grouped sections, system colours. The stack gives the title.
-// It reads the `key` route param. The core sends every figure and sentence.
+// It reads the `key` route param. The core sends the figures and sentences. The screen computes the window dates.
 import { Stack, useLocalSearchParams } from "expo-router";
 import { PlatformColor, ScrollView, Text, View } from "react-native";
 import { ErrorGroup, Group, Loading, Note, Row, secondary } from "../components/Grouped";
@@ -44,7 +44,7 @@ function MetricContent() {
   if (!m) {
     return (
       <Group>
-        <Note>No data for this metric.</Note>
+        <Note>{`No reading in the last ${data.days} days.`}</Note>
       </Group>
     );
   }
