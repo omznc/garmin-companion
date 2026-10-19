@@ -8,7 +8,6 @@ import { buildManifest } from "./release-rewrite.mjs";
 const V = "1.0.0";
 const FILES = [
   `garmin-companion_${V}_x64-setup.exe`,
-  `garmin-companion_${V}_x64.msi`,
   `garmin-companion_${V}_aarch64.app.tar.gz`,
   `garmin-companion_${V}_x64.app.tar.gz`,
   `garmin-companion_${V}_amd64.AppImage`,
