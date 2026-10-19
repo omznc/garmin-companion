@@ -27,6 +27,7 @@ pub struct SseParser {
     buf: String,
     out: StreamResult,
     by_index: Vec<ToolCall>,
+    events: usize,
 }
 
 impl SseParser {
@@ -39,6 +40,7 @@ impl SseParser {
                 let Some(data) = line.strip_prefix("data:") else {
                     continue;
                 };
+                self.events += 1;
                 let data = data.trim();
                 if data.is_empty() || data == "[DONE]" {
                     continue;
@@ -49,6 +51,11 @@ impl SseParser {
             }
         }
         Ok(())
+    }
+
+    /// How many `data:` lines came so far. A comment line does not count.
+    pub fn data_events(&self) -> usize {
+        self.events
     }
 
     fn chunk(&mut self, v: &Value, sink: &dyn EventSink) -> Result<()> {

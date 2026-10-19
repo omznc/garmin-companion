@@ -2,9 +2,10 @@
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt};
 use garmin_core::db::Db;
 use serde_json::{json, Value};
 
@@ -145,14 +146,21 @@ impl Transport for HttpTransport {
                 body["tool_choice"] = json!(choice);
             }
         }
-        let resp = match &self.cloud {
-            // The worker sets the model: the body carries none. A smaller
-            // `max_tokens` makes the credit hold smaller.
-            Some(cloud) => {
-                body["max_tokens"] = json!(CLOUD_MAX_TOKENS);
-                cloud.chat(&body).await?
+        let request = async {
+            match &self.cloud {
+                // The worker sets the model: the body carries none. A smaller
+                // `max_tokens` makes the credit hold smaller.
+                Some(cloud) => {
+                    body["max_tokens"] = json!(CLOUD_MAX_TOKENS);
+                    cloud.chat(&body).await
+                }
+                None => self.send(body).await,
             }
-            None => self.send(body).await?,
+        };
+        // Stop must work while the provider is slow to answer.
+        let resp = tokio::select! {
+            r = request => r?,
+            () = stopped(stop) => return Ok(StreamResult::default()),
         };
         read_stream(resp, sink, stop).await
     }
@@ -162,21 +170,106 @@ impl Transport for HttpTransport {
     }
 }
 
+/// The longest wait for the next data event. A keepalive comment does not
+/// count: a queued model can send them for ever.
+const IDLE: Duration = Duration::from_secs(120);
+/// How often a silent wait looks at the stop flag.
+const TICK: Duration = Duration::from_millis(250);
+
 async fn read_stream(
     resp: reqwest::Response,
     sink: &dyn EventSink,
     stop: &AtomicBool,
 ) -> Result<StreamResult> {
+    read_events(resp.bytes_stream(), sink, stop, IDLE).await
+}
+
+async fn read_events<B, E>(
+    mut stream: impl Stream<Item = Result<B, E>> + Unpin,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+    idle: Duration,
+) -> Result<StreamResult>
+where
+    B: AsRef<[u8]>,
+    E: std::error::Error + Send + Sync + 'static,
+{
     let mut parser = SseParser::default();
-    let mut stream = resp.bytes_stream();
-    while let Some(chunk) = stream.next().await {
+    let mut last_data = Instant::now();
+    loop {
         if stop.load(Ordering::Relaxed) {
             // A half-built tool call is dropped: nobody waits for it.
             let mut out = parser.finish();
             out.tool_calls.clear();
             return Ok(out);
         }
-        parser.feed(&chunk.context("the model stream was cut short")?, sink)?;
+        let chunk = match tokio::time::timeout(TICK, stream.next()).await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => return Ok(parser.finish()),
+            Err(_) if last_data.elapsed() < idle => continue,
+            Err(_) => return Err(anyhow!(STALLED)),
+        };
+        let before = parser.data_events();
+        parser.feed(
+            chunk.context("the model stream was cut short")?.as_ref(),
+            sink,
+        )?;
+        if parser.data_events() != before {
+            last_data = Instant::now();
+        } else if last_data.elapsed() >= idle {
+            // Only keepalive comments arrive.
+            return Err(anyhow!(STALLED));
+        }
     }
-    Ok(parser.finish())
+}
+
+const STALLED: &str = "The model stopped answering. Try again, or choose a different model.";
+
+/// Wait until `stop` is set.
+async fn stopped(stop: &AtomicBool) {
+    while !stop.load(Ordering::Relaxed) {
+        tokio::time::sleep(TICK).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::turn::Event;
+    use std::io;
+
+    struct Quiet;
+    impl EventSink for Quiet {
+        fn emit(&self, _: Event) {}
+    }
+
+    /// A provider that keeps the connection open and sends only keepalive
+    /// comments, as OpenRouter does for a queued model.
+    fn keepalives() -> impl Stream<Item = Result<Vec<u8>, io::Error>> + Unpin {
+        Box::pin(futures_util::stream::unfold((), |()| async {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            Some((Ok(b": OPENROUTER PROCESSING\n\n".to_vec()), ()))
+        }))
+    }
+
+    #[tokio::test]
+    async fn a_stream_of_keepalives_ends_with_a_readable_error() {
+        let stop = AtomicBool::new(false);
+        let run = read_events(keepalives(), &Quiet, &stop, Duration::from_millis(300));
+        let out = tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .expect("the read must end, not wait for ever");
+        assert_eq!(out.unwrap_err().to_string(), STALLED);
+    }
+
+    #[tokio::test]
+    async fn a_silent_stream_ends_and_stop_ends_it_at_once() {
+        let silent = || futures_util::stream::pending::<Result<Vec<u8>, io::Error>>();
+        let idle = Duration::from_millis(300);
+        let err = read_events(silent(), &Quiet, &AtomicBool::new(false), idle).await;
+        assert_eq!(err.unwrap_err().to_string(), STALLED);
+        let stop = AtomicBool::new(true);
+        let out = read_events(silent(), &Quiet, &stop, Duration::from_secs(60)).await;
+        assert!(out.unwrap().content.is_empty());
+    }
 }
