@@ -134,6 +134,20 @@ impl CloudError {
     }
 }
 
+impl CloudError {
+    fn local(status: u16, kind: &str, message: &str) -> Self {
+        Self {
+            status,
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+}
+
+fn bad_code() -> CloudError {
+    CloudError::local(400, "bad_request", "Check the code. It has 6 digits.")
+}
+
 /// The kind of a cloud error inside an `anyhow` error, if it has one.
 pub fn error_kind(e: &anyhow::Error) -> Option<&str> {
     e.downcast_ref::<CloudError>().map(|c| c.kind.as_str())
@@ -160,7 +174,7 @@ const FIXED: &[(&str, &str)] = &[
     ),
     (
         "context_too_large",
-        "This chat is too long. Start a new chat.",
+        "This question needs more data than the cloud coach accepts. Ask about fewer days, or start a new chat.",
     ),
     (
         "duplicate_request",
@@ -202,9 +216,7 @@ fn explain(
 ) -> String {
     let back = resets.map_or_else(|| "at the next reset".to_string(), |r| until(r, now));
     match kind {
-        "out_of_credits" => format!(
-            "You are out of credits. They return {back}. Get premium, or use your own key or Ollama in the coach settings."
-        ),
+        "out_of_credits" => out_of_credits(&back, premium_for_sale()),
         "fair_use_ceiling" => format!(
             "You reached the premium limit, and the free credits are spent. Credits return {back}."
         ),
@@ -212,13 +224,7 @@ fn explain(
             Some(s) => format!("Too many requests. Wait {}, then try again.", wait(s)),
             None => "Too many requests. Wait a minute, then try again.".into(),
         },
-        "install_limit" => match retry_after {
-            Some(s) => format!(
-                "This network made too many new installs. Try again in {}.",
-                wait(s)
-            ),
-            None => "This network made too many new installs. Try again later.".into(),
-        },
+        "install_limit" => install_limit(server, retry_after),
         _ => FIXED.iter().find(|(k, _)| *k == kind).map_or_else(
             || match server {
                 Some(m) => format!("The cloud coach said: {m}"),
@@ -228,6 +234,42 @@ fn explain(
         ),
     }
 }
+
+/// The phone apps have no premium for sale yet, so their sentence leaves it out.
+fn premium_for_sale() -> bool {
+    !cfg!(any(target_os = "android", target_os = "ios"))
+}
+
+fn out_of_credits(back: &str, premium: bool) -> String {
+    let get = if premium {
+        "Get premium, or use"
+    } else {
+        "Use"
+    };
+    format!("You are out of credits. They return {back}. {get} your own key or Ollama in the coach settings.")
+}
+
+/// The worker says which cap was hit: the network, the day or new accounts.
+/// Its message is a lowercase clause, so the first letter is raised here.
+fn install_limit(server: Option<&str>, retry_after: Option<u64>) -> String {
+    let cause = match server {
+        Some(m) if !m.is_empty() => {
+            let mut chars = m.chars();
+            let first: String = chars
+                .next()
+                .into_iter()
+                .flat_map(char::to_uppercase)
+                .collect();
+            format!("{first}{}", chars.as_str().trim_end_matches('.'))
+        }
+        _ => "Too many new installs just now".into(),
+    };
+    let when = retry_after.map_or_else(|| "later".to_string(), |s| format!("in {}", wait(s)));
+    format!("{cause}. Try again {when}, or use your own key or Ollama.")
+}
+
+/// The sentence for a 402 when credits are left but fewer than the question needs.
+const NEEDS_MORE: &str = "This question needs more credits than are left today.";
 
 /// A wait in seconds, as the person reads it: "40 seconds", "12 min", "5 h 12 min".
 fn wait(seconds: u64) -> String {
@@ -361,6 +403,10 @@ impl CloudClient {
             http: reqwest::Client::builder()
                 // No total timeout: a long answer streams for minutes. A dead
                 // connection stops the read.
+                .default_headers(reqwest::header::HeaderMap::from_iter([(
+                    reqwest::header::HeaderName::from_static("x-client-version"),
+                    reqwest::header::HeaderValue::from_static(env!("CARGO_PKG_VERSION")),
+                )]))
                 .connect_timeout(Duration::from_secs(15))
                 .read_timeout(Duration::from_secs(90))
                 .build()
@@ -449,6 +495,16 @@ impl CloudClient {
         resp.json().await.context("the balance was not JSON")
     }
 
+    /// The balance of an install that already exists, or `None` before the
+    /// first enrol. A background read must not enrol: the worker caps new ids,
+    /// and an app that is only open would use them up.
+    pub async fn balance_if_enrolled(&self) -> Result<Option<Balance>> {
+        if self.vault.session()?.is_none() && self.vault.install_id()?.is_none() {
+            return Ok(None);
+        }
+        self.balance().await.map(Some)
+    }
+
     /// `POST /auth/email/send`. Answers 503 until the worker has a mail sender.
     pub async fn send_code(&self, email: &str) -> Result<()> {
         let req = self
@@ -460,11 +516,22 @@ impl CloudClient {
 
     /// `POST /auth/email/verify`. The session is stored. Returns the email.
     pub async fn verify_code(&self, email: &str, code: &str) -> Result<String> {
+        if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(bad_code().into());
+        }
         let req = self
             .http
             .post(self.url("/auth/email/verify"))
             .json(&json!({ "email": email, "code": code }));
-        let v: Value = self.plain(req).await?.json().await?;
+        let sent = self.plain(req).await.map_err(|e| {
+            // Only the code can be wrong here: the email was checked at send.
+            if error_kind(&e) == Some("bad_request") {
+                bad_code().into()
+            } else {
+                e
+            }
+        })?;
+        let v: Value = sent.json().await?;
         let token = v["token"].as_str().context("the answer had no session")?;
         self.vault.save_session(token)?;
         Ok(v["email"].as_str().unwrap_or(email).into())
@@ -524,8 +591,22 @@ impl CloudClient {
                 Err(e) if error_kind(&e) == Some("context_too_large") && limit == BODY_LIMIT => {
                     limit /= 2;
                 }
+                Err(e) if error_kind(&e) == Some("out_of_credits") => {
+                    return Err(self.explain_out_of_credits(e).await);
+                }
                 other => return other,
             }
+        }
+    }
+
+    /// A 402 with credits left means the hold for this question was larger
+    /// than the balance. Say that, and not "you are out".
+    async fn explain_out_of_credits(&self, e: anyhow::Error) -> anyhow::Error {
+        match self.balance().await {
+            Ok(b) if b.credits_remaining > 0 => {
+                CloudError::local(402, "out_of_credits", NEEDS_MORE).into()
+            }
+            _ => e,
         }
     }
 }

@@ -189,7 +189,7 @@ async fn a_chat_streams_and_each_request_has_its_own_id() {
     let msgs = [json!({"role":"user","content":"hi"})];
     for _ in 0..2 {
         let out = t
-            .complete(&msgs, None, &sink, &AtomicBool::new(false))
+            .complete(&msgs, None, None, &sink, &AtomicBool::new(false))
             .await;
         assert_eq!(out.unwrap().content, "Hello");
     }
@@ -222,7 +222,7 @@ async fn an_unknown_install_is_issued_again_once() {
     let t = HttpTransport::cloud(c);
     let msgs = [json!({"role":"user","content":"hi"})];
     let out = t
-        .complete(&msgs, None, &Sink::default(), &AtomicBool::new(false))
+        .complete(&msgs, None, None, &Sink::default(), &AtomicBool::new(false))
         .await
         .unwrap();
     assert_eq!(out.content, "ok");
@@ -281,7 +281,7 @@ async fn an_error_chunk_in_a_200_stream_fails_the_call() {
     vault.save_install_id(ID_A).unwrap();
     let msgs = [json!({"role":"user","content":"hi"})];
     let out = HttpTransport::cloud(c)
-        .complete(&msgs, None, &Sink::default(), &AtomicBool::new(false))
+        .complete(&msgs, None, None, &Sink::default(), &AtomicBool::new(false))
         .await;
     assert!(out.unwrap_err().to_string().contains("model down"));
 }
@@ -406,8 +406,100 @@ async fn an_install_limit_names_the_wait_in_hours() {
     .await;
     let (c, _vault) = client(&base);
     let e = c.balance().await.unwrap_err();
-    assert!(e.to_string().contains("Try again in 5 h 0 min."), "{e}");
+    assert!(e.to_string().contains("Try again in 5 h 0 min"), "{e}");
+    assert!(
+        e.to_string().ends_with("or use your own key or Ollama."),
+        "{e}"
+    );
     assert!(!e.to_string().contains("18000"));
+}
+
+#[test]
+fn an_install_limit_uses_the_server_message() {
+    let text = install_limit(Some("all new installs for today are taken"), None);
+    assert_eq!(
+        text,
+        "All new installs for today are taken. Try again later, or use your own key or Ollama."
+    );
+}
+
+#[test]
+fn the_out_of_credits_sentence_follows_the_platform() {
+    assert!(out_of_credits("soon", true).contains("Get premium"));
+    assert!(!out_of_credits("soon", false).contains("premium"));
+}
+
+#[tokio::test]
+async fn a_402_with_credits_left_says_the_question_is_too_big() {
+    let (base, _) = mock(|r| {
+        if r.path.ends_with("balance") {
+            resp(200, balance_json(12))
+        } else {
+            error(402, "out_of_credits")
+        }
+    })
+    .await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    let e = c.chat(&json!({"messages":[]})).await.unwrap_err();
+    assert_eq!(error_kind(&e), Some("out_of_credits"));
+    assert_eq!(e.to_string(), NEEDS_MORE);
+}
+
+#[tokio::test]
+async fn a_code_that_is_not_six_digits_is_not_sent() {
+    let (base, seen) = mock(|_| error(400, "bad_request")).await;
+    let (c, _) = client(&base);
+    let e = c.verify_code("a@b.com", "12345").await.unwrap_err();
+    assert_eq!(e.to_string(), "Check the code. It has 6 digits.");
+    assert!(seen.lock().unwrap().is_empty());
+    // A server 400 for six digits reads the same way.
+    let e = c.verify_code("a@b.com", "123456").await.unwrap_err();
+    assert_eq!(e.to_string(), "Check the code. It has 6 digits.");
+}
+
+#[tokio::test]
+async fn a_background_balance_does_not_enrol() {
+    let (base, seen) = mock(|_| resp(200, balance_json(27))).await;
+    let (c, vault) = client(&base);
+    assert!(c.balance_if_enrolled().await.unwrap().is_none());
+    assert!(seen.lock().unwrap().is_empty());
+    vault.save_install_id(ID_A).unwrap();
+    assert!(c.balance_if_enrolled().await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn every_request_names_the_client_version() {
+    let (base, seen) = mock(|_| resp(200, balance_json(27))).await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    c.balance().await.unwrap();
+    assert_eq!(
+        seen.lock().unwrap()[0].headers["x-client-version"],
+        env!("CARGO_PKG_VERSION")
+    );
+}
+
+#[tokio::test]
+async fn one_huge_tool_result_is_capped_and_the_request_goes_through() {
+    // The mock refuses a body over 100,000 bytes, like the worker.
+    let (base, seen) = mock(|r| {
+        if r.body.len() > BODY_LIMIT {
+            error(413, "context_too_large")
+        } else {
+            sse("ok")
+        }
+    })
+    .await;
+    let (c, vault) = client(&base);
+    vault.save_install_id(ID_A).unwrap();
+    let huge = crate::tools::capped(json!({ "rows": "x".repeat(120_000) }));
+    let msgs = vec![
+        json!({"role":"user","content":"q"}),
+        json!({"role":"tool","content": huge.to_string()}),
+    ];
+    c.chat(&json!({ "messages": msgs })).await.unwrap();
+    assert_eq!(seen.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]

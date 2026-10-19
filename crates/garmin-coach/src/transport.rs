@@ -13,17 +13,29 @@ use crate::config::{load_config, openrouter_key, Provider};
 use crate::sse::{SseParser, StreamResult};
 use crate::turn::EventSink;
 
+/// The answer ceiling that the hosted coach asks for. The worker holds credits
+/// for this many answer tokens, so a lower value leaves room for a later turn.
+const CLOUD_MAX_TOKENS: u32 = 1500;
+
 pub trait Transport: Send + Sync {
     /// Send the messages and read the answer. Text deltas go to the sink as
     /// they arrive. When `stop` is set, the call returns what it has and drops
-    /// the connection, so a stopped turn stops costing money.
+    /// the connection, so a stopped turn stops costing money. `tool_choice` is
+    /// sent with the tools: `"none"` keeps the schemas in the request, which
+    /// the API needs once the messages hold tool calls, and forces an answer.
     fn complete(
         &self,
         messages: &[Value],
         tools: Option<&Value>,
+        tool_choice: Option<&str>,
         sink: &dyn EventSink,
         stop: &AtomicBool,
     ) -> impl Future<Output = Result<StreamResult>> + Send;
+
+    /// Whether the system message carries a prompt cache marker.
+    fn caches_prompt(&self) -> bool {
+        false
+    }
 }
 
 /// An OpenAI-compatible chat API: OpenRouter with the user's own key, Ollama,
@@ -41,7 +53,8 @@ impl HttpTransport {
     /// Build the transport that the saved config asks for.
     pub fn from_config(db: &Db) -> Result<Self> {
         let (provider, model) = load_config(db)?;
-        let provider = provider.context("No model provider chosen yet.")?;
+        let provider =
+            provider.context("No model provider chosen yet. Choose one in the coach settings.")?;
         if provider == Provider::Cloud {
             return Ok(Self::cloud(CloudClient::default()));
         }
@@ -116,19 +129,31 @@ impl Transport for HttpTransport {
         &self,
         messages: &[Value],
         tools: Option<&Value>,
+        tool_choice: Option<&str>,
         sink: &dyn EventSink,
         stop: &AtomicBool,
     ) -> Result<StreamResult> {
         let mut body = json!({ "messages": messages, "stream": true });
         if let Some(tools) = tools {
             body["tools"] = tools.clone();
+            if let Some(choice) = tool_choice {
+                body["tool_choice"] = json!(choice);
+            }
         }
         let resp = match &self.cloud {
-            // The worker sets the model: the body carries none.
-            Some(cloud) => cloud.chat(&body).await?,
+            // The worker sets the model: the body carries none. A smaller
+            // `max_tokens` makes the credit hold smaller.
+            Some(cloud) => {
+                body["max_tokens"] = json!(CLOUD_MAX_TOKENS);
+                cloud.chat(&body).await?
+            }
             None => self.send(body).await?,
         };
         read_stream(resp, sink, stop).await
+    }
+
+    fn caches_prompt(&self) -> bool {
+        self.provider != Provider::Ollama
     }
 }
 

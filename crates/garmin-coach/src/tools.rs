@@ -11,8 +11,14 @@ use garmin_core::{db::Db, query};
 use serde_json::{json, Value};
 
 const MAX_ACTIVITIES: u64 = 50;
+/// For `sleep` and `findings`: their rows are small or are summaries.
 const MAX_DAYS: u64 = 365;
+/// For `recovery`, `nutrition` and `fitness`: one row a day, and a row is large.
+const MAX_ROW_DAYS: u64 = 120;
 const MAX_WEIGHT_DAYS: u64 = 730;
+/// The largest tool result that goes to the model. The hosted coach refuses a
+/// request body over 100,000 bytes, and the results of a turn share it.
+const MAX_RESULT_BYTES: usize = 25_000;
 
 /// A slice of a table, held between 1 and `max`. The model picks the number,
 /// and the result goes back on every later round, so a large guess is clamped
@@ -32,7 +38,7 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     })
 }
 
-fn days(default: u32, max: u32) -> Value {
+fn days(default: u64, max: u64) -> Value {
     json!({ "days": { "type": "integer", "description": format!("How many days back from today. Default {default}, capped at {max}.") } })
 }
 
@@ -73,7 +79,7 @@ pub(crate) fn schemas() -> Value {
         tool(
             "recovery",
             "Resting HR, HRV, training readiness, sleep, stress and body battery by day. The window is by date and ends today. A day without a watch is absent: an empty result means nothing was recorded, not that recovery was poor. Check restingHrSource before you trend resting HR.",
-            days(14, 365),
+            days(14, MAX_ROW_DAYS),
             &[],
         ),
         tool(
@@ -85,7 +91,7 @@ pub(crate) fn schemas() -> Value {
         tool(
             "nutrition",
             "Calories eaten against calories burned by day, plus hydration. A day with no food log has consumed_kcal null and logged:false. That is a missing log, not a day of eating nothing.",
-            days(30, 365),
+            days(30, MAX_ROW_DAYS),
             &[],
         ),
         tool(
@@ -121,7 +127,7 @@ pub(crate) fn schemas() -> Value {
         tool(
             "fitness",
             "Garmin's own view: training status, acute and chronic load, the load ratio, the load balance against Garmin's target ranges, VO2 max and race predictions. A null VO2 max means Garmin has no data for it, not poor fitness.",
-            days(30, 365),
+            days(30, MAX_ROW_DAYS),
             &[],
         ),
         tool(
@@ -164,11 +170,11 @@ pub(crate) fn describe(name: &str, args: &Value) -> String {
         },
         "recovery" => format!(
             "Reading {} days of recovery signals",
-            window(args, "days", 14, MAX_DAYS)
+            window(args, "days", 14, MAX_ROW_DAYS)
         ),
         "nutrition" => format!(
             "Reading {} days of food and hydration",
-            window(args, "days", 30, MAX_DAYS)
+            window(args, "days", 30, MAX_ROW_DAYS)
         ),
         "weight" => format!(
             "Reading {} days of weigh-ins",
@@ -197,7 +203,22 @@ pub(crate) fn run(name: &str, args: &Value, open_db: &dyn Fn() -> Result<Db>) ->
         Ok(db) => db,
         Err(e) => return json!({ "error": format!("could not open the cache: {e}") }),
     };
-    read(&db, name, args).unwrap_or_else(|e| json!({ "error": e.to_string() }))
+    let out = read(&db, name, args).unwrap_or_else(|e| json!({ "error": e.to_string() }));
+    capped(out)
+}
+
+/// A result over `MAX_RESULT_BYTES` becomes an error that tells the model to
+/// ask for less. The result goes back on every later round, so one large result
+/// would push the request over the body limit of the hosted coach.
+pub(crate) fn capped(out: Value) -> Value {
+    let size = out.to_string().len();
+    if size <= MAX_RESULT_BYTES {
+        return out;
+    }
+    json!({ "error": format!(
+        "The result is too large ({} KB) to read. Call this tool again with fewer days or a smaller limit.",
+        size / 1000
+    ) })
 }
 
 fn to<T: serde::Serialize>(v: T) -> Result<Value> {
@@ -237,10 +258,13 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
                 .collect::<Vec<_>>())?,
             None => json!({ "error": "tagged_activities needs a tag" }),
         },
-        "recovery" => to(query::recovery(db, window(args, "days", 14, MAX_DAYS))?)?,
+        "recovery" => to(query::recovery(db, window(args, "days", 14, MAX_ROW_DAYS))?)?,
         // `brief` drops the hypnogram and the heart-rate curve: they are for charts.
         "sleep" => to(query::sleep(db, window(args, "days", 30, MAX_DAYS))?.brief(30))?,
-        "nutrition" => to(query::nutrition(db, window(args, "days", 30, MAX_DAYS))?)?,
+        "nutrition" => to(query::nutrition(
+            db,
+            window(args, "days", 30, MAX_ROW_DAYS),
+        )?)?,
         "weight" => to(query::weight(
             db,
             window(args, "days", 180, MAX_WEIGHT_DAYS),
@@ -252,7 +276,7 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
         "routes" => to(query::route_summaries(db)?)?,
         "workouts" => to(db.workouts()?)?,
         "personal_records" => to(query::personal_records(db)?)?,
-        "fitness" => to(query::fitness(db, window(args, "days", 30, MAX_DAYS))?)?,
+        "fitness" => to(query::fitness(db, window(args, "days", 30, MAX_ROW_DAYS))?)?,
         "coach" => to(garmin_core::coach::for_today(
             db,
             chrono::Local::now().date_naive(),
@@ -293,6 +317,26 @@ mod tests {
         assert_eq!(window(&json!({ "days": 5000 }), "days", 14, MAX_DAYS), 365);
         assert_eq!(window(&json!({ "days": 0 }), "days", 14, MAX_DAYS), 1);
         assert_eq!(window(&json!({}), "days", 14, MAX_DAYS), 14);
+    }
+
+    #[test]
+    fn a_large_result_becomes_an_error_that_asks_for_less() {
+        let big = json!({ "rows": "x".repeat(MAX_RESULT_BYTES) });
+        let out = capped(big);
+        assert!(out["error"].as_str().unwrap().contains("fewer days"));
+        assert!(out.to_string().len() < 300);
+        let small = json!({ "rows": [1, 2, 3] });
+        assert_eq!(capped(small.clone()), small);
+    }
+
+    #[test]
+    fn the_row_tools_stop_at_120_days() {
+        let text = schemas().to_string();
+        assert_eq!(text.matches("capped at 120").count(), 3);
+        assert_eq!(
+            window(&json!({ "days": 365 }), "days", 14, MAX_ROW_DAYS),
+            120
+        );
     }
 
     #[test]

@@ -335,7 +335,7 @@ async fn real_turn(
             let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open).await;
         }
         Err(e) => sink.emit(Event::Error {
-            text: format!("{e:#}. Set a model with --coach, for example: --coach ollama:llama3.2"),
+            text: format!("{e:#}"),
         }),
     }
 }
@@ -355,6 +355,7 @@ impl Transport for Demo {
         &self,
         _messages: &[Value],
         _tools: Option<&Value>,
+        _tool_choice: Option<&str>,
         sink: &dyn EventSink,
         stop: &AtomicBool,
     ) -> Result<StreamResult> {
