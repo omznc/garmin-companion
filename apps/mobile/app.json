@@ -19,6 +19,7 @@
       "expo-router",
       "expo-system-ui",
       "./plugins/self-update",
+      "./plugins/data-extraction",
       [
         "expo-build-properties",
         {

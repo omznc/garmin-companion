@@ -11,7 +11,10 @@ module.exports = function withSelfUpdate(config) {
     const manifest = cfg.modResults.manifest;
     const perms = (manifest["uses-permission"] ??= []);
     const has = perms.some((p) => p.$["android:name"] === PERMISSION);
-    if (process.env.EXPO_PUBLIC_SELF_UPDATE !== "0" && !has) {
+    if (process.env.EXPO_PUBLIC_SELF_UPDATE === "0") {
+      // Remove the permission if a template or an old folder added it.
+      manifest["uses-permission"] = perms.filter((p) => p.$["android:name"] !== PERMISSION);
+    } else if (!has) {
       perms.push({ $: { "android:name": PERMISSION } });
     }
     if (process.env.GC_TEST_CLEARTEXT === "1") {
