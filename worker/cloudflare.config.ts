@@ -34,9 +34,10 @@ export default defineConfig({
       FREE_REQUIRES_LOGIN: bindings.text("false"),
       // A second guard on /v2 spend. The main limit is on the OpenRouter key.
       DAILY_BUDGET_V2_USD: bindings.text("5"),
-      // Sandbox for now. Production is https://api.polar.sh
-      POLAR_API_BASE: bindings.text("https://sandbox-api.polar.sh"),
-      POLAR_PRODUCT_ID: bindings.text("5bad678a-4124-4c12-901c-09e79ba19818"),
+      // Production. The sandbox is https://sandbox-api.polar.sh, product
+      // 5bad678a-4124-4c12-901c-09e79ba19818.
+      POLAR_API_BASE: bindings.text("https://api.polar.sh"),
+      POLAR_PRODUCT_ID: bindings.text("0f637cf7-4de6-4956-b90b-23b7e9e3b42a"),
       CHECKOUT_RETURN_URL: bindings.text("https://github.com/omznc/garmin-companion"),
       // Needs a domain with Resend set up. Until then login mail answers 503.
       MAIL_FROM: bindings.text(""),
