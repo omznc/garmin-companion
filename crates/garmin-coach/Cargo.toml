@@ -1,0 +1,20 @@
+[package]
+name = "garmin-coach"
+version = "0.1.0"
+edition = "2021"
+description = "The AI coach chat engine: providers, tools over the local cache, and a streamed turn"
+
+[dependencies]
+garmin-core = { workspace = true }
+
+anyhow = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+futures-util = { version = "0.3.33", default-features = false, features = ["std"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "io-util"] }

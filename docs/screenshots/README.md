@@ -46,3 +46,7 @@ resized straight through `XConfigureWindow`, which is what makes every shot the
 same size. Two consequences worth knowing: nothing composites the transparent
 corners, so the capture is square and the radius is added afterwards, and GTK
 draws its own resize grip into the bottom-right corner, which is painted out.
+
+The folder `desktop/` holds images of the gpui desktop app. They come from the synthetic fixture only. Never add a screenshot of real data.
+
+To take a desktop image, run `apps/desktop/scripts/shoot.sh <out.png> [app args]` on the real Wayland session (KDE). A nested Xwayland or Xvfb gives black frames, because the app draws with Vulkan. The script runs the app natively and captures the active window with spectacle. It fails if the image is not the shape of the app window, for example when another window took the focus. Run it again, and keep other windows still while it runs.

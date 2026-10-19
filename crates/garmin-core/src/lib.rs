@@ -16,6 +16,7 @@ pub mod records;
 pub mod secrets;
 pub mod signal;
 pub mod sleep;
+pub mod sport;
 pub mod stats;
 pub mod store;
 pub mod strength;
@@ -30,6 +31,7 @@ pub use coach::{Nudge, NudgeKind};
 pub use db::{CachedActivity, DailyMetrics, Db, WeighIn};
 pub use goals::{Goals, WeekProgress};
 pub use records::{PersonalRecord, RacePredictions, TrainingStatus};
+pub use sport::Family;
 pub use strength::{ExerciseSet, StrengthSession};
 pub use workout::WorkoutDraft;
 
@@ -52,7 +54,16 @@ pub fn today() -> chrono::NaiveDate {
 /// for a row limit, which is the bug this exists to make hard to write again.
 pub fn days_ago(days: u32) -> String {
     let span = chrono::Duration::days(days.saturating_sub(1) as i64);
-    (today() - span).format("%Y-%m-%d").to_string()
+    // A span past the calendar saturates at the earliest date.
+    let from = today()
+        .checked_sub_signed(span)
+        .unwrap_or(chrono::NaiveDate::MIN);
+    from.format("%Y-%m-%d").to_string()
+}
+
+/// `1 set`, `3 sets`.
+pub fn plural(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 /// Whole days between two `YYYY-MM-DD` dates, or `None` if `date` won't parse.
@@ -88,4 +99,25 @@ pub fn require_client() -> Result<GarminClient> {
         "No Garmin session stored. Connect an account in the desktop app, or \
          import an existing ~/.garminconnect token file.",
     )
+}
+
+#[cfg(test)]
+mod days_ago_tests {
+    use super::{days_ago, plural, today};
+
+    #[test]
+    fn plural_uses_the_singular_for_one() {
+        assert_eq!(plural(0, "day", "days"), "0 days");
+        assert_eq!(plural(1, "day", "days"), "1 day");
+        assert_eq!(plural(2, "day", "days"), "2 days");
+    }
+
+    #[test]
+    fn a_huge_window_saturates() {
+        assert_eq!(
+            days_ago(u32::MAX),
+            chrono::NaiveDate::MIN.format("%Y-%m-%d").to_string()
+        );
+        assert_eq!(days_ago(1), today().format("%Y-%m-%d").to_string());
+    }
 }

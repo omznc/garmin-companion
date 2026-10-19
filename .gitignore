@@ -6,3 +6,9 @@ dist
 # Personal coaching context: biometrics, baselines, where I live. Useful to
 # Claude Code locally, nobody else's business — keep it out of the repo.
 CLAUDE.md
+
+# Real-data fixture from garmin-api-fixture. The sample file is the one to commit.
+crates/garmin-api/fixtures/today.json
+
+# The release workflow copies the sign-in helper here.
+/apps/desktop/garmin-companion-login-*

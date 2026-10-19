@@ -46,14 +46,37 @@ below the truth.
 ```sh
 pnpm install
 
-# The KV namespace the counters live in. Put the id it prints into wrangler.jsonc.
-npx wrangler kv namespace create COUNTERS
+# The KV namespace the counters live in. Put the id it prints into cloudflare.config.ts.
+cf kv namespaces create --title COUNTERS
 
-# The key everything is billed to.
-npx wrangler secret put OPENROUTER_KEY
+# The key everything is billed to. See `cf workers secrets update --help`.
+cf workers secrets update OPENROUTER_KEY --worker coach --type secret_text --text "<key>"
 
-npx wrangler deploy
+cf deploy
 ```
+
+The config is `cloudflare.config.ts` (made with `cf migrate`). `cf deploy`
+needs the `wrangler` dev dependency at 4.136 or newer.
+
+## /v2, the paid coach
+
+`src/v2/` holds the paid coach. It runs in this same worker under `/v2`,
+because a new worker cannot read the existing `OPENROUTER_KEY` secret. `/v1` is
+unchanged. The contract for the app is in [V2.md](V2.md).
+
+- Credits live in one `Wallet` Durable Object per install or user. Users,
+  sessions, entitlements and webhook ids live in D1 (`migrations/`).
+- The model comes from `MODEL_PROFILE` (`haiku` or `deepseek`) in
+  `src/v2/models.ts`. The body cap, prices and reasoning setting come from there.
+- Billing is Polar (production). Set the secrets `POLAR_TOKEN` and
+  `POLAR_WEBHOOK_SECRET`. The Polar webhook URL is `<worker>/v2/webhooks/polar`.
+  Events: `subscription.created`, `.active`, `.updated`, `.canceled`,
+  `.uncanceled`, `.revoked`, and `order.refunded`.
+- Login mail uses Resend. Set `RESEND_KEY` and `MAIL_FROM` (a sender on a domain
+  with SPF and DKIM). Until both are set, `/v2/auth/email/send` answers 503.
+- Apply the schema with `cf d1 migrations apply <database id>`.
+- Attach the Anthropic key in the OpenRouter account (BYOK), and set a spend
+  limit on the OpenRouter key and in the Anthropic Console.
 
 Then point the app at it. `CLOUD_BASE` in `app/src-tauri/src/chat.rs` is the
 deployed URL with `/v1` on the end, and it is overridable at build time:
@@ -135,7 +158,7 @@ anywhere.
 
 The bodies are health data — heart rates, sleep, weight, and whatever the model
 asked the local cache for. They are checked for shape and size and forwarded.
-Nothing here writes one down, and `wrangler.jsonc` has no `observability` block
+Nothing here writes one down, and `cloudflare.config.ts` has no `observability` block
 on purpose, since that would persist request metadata for exactly these
 requests. If you deploy this for other people, that promise is now yours to
 keep, and it is worth saying somewhere they'll read it.

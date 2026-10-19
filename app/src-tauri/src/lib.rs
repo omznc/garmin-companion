@@ -1396,7 +1396,7 @@ fn garmin_login_error() -> CmdResult<Option<String>> {
 const ANDROID_MANIFEST: &str =
     "https://github.com/omznc/garmin-companion/releases/latest/download/latest-android.json";
 
-/// What `.github/workflows/release.yml` writes beside the APK.
+/// What `.github/workflows/release-rewrite.yml` writes beside the APK.
 #[derive(Serialize, serde::Deserialize)]
 pub struct ApkRelease {
     version: String,

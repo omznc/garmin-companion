@@ -1,0 +1,434 @@
+//! Garmin Companion for the desktop, on gpui-ce.
+//!
+//! Phase 1 of the rewrite: one live screen, Today, in the look of the current
+//! app. Run it with `cargo run -p garmin-companion-desktop`. Options:
+//! `--palette <name>` picks the start palette and `--size <W>x<H>` sets the
+//! window size. `--db <copy>` reads a copy of the cache through `garmin-api`.
+//! `--date YYYY-MM-DD` sets the day for that read, for a demo on an old cache.
+//! `--screen <name>` opens on a sidebar entry, for example `sleep`, `weight`, `ask` or `settings`.
+//! `--open <name>` is the same flag. `--activity <id>` opens the Activities entry on one
+//! session. `--sync` starts a sync at once.
+//! `--persona golfer` shows a made-up user from `garmin-api`. With neither `--db`
+//! nor `--persona`, the app reads the cache in the data folder and asks for a
+//! Garmin sign-in when there is none. `--persona` and `--db` run a demo: the
+//! sync is a fake and no setting is saved.
+//! `--ask "question"` sends a question at once. `--draft "text"` leaves text in the
+//! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
+//! Without `--db`, a persona runs the Ask screen as a canned demo.
+
+// No console window on Windows in a release build.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
+mod account;
+mod activities;
+mod ask;
+mod body;
+mod chrome;
+mod cloud;
+mod composer;
+mod controls;
+mod data;
+mod editor;
+mod field;
+mod icons;
+mod instance;
+mod map;
+mod markdown;
+mod motion;
+mod places;
+mod scroll;
+mod settings;
+mod setup;
+mod shell;
+mod sidebar;
+mod spring;
+mod theme;
+mod today;
+mod training;
+mod ui;
+mod update_ui;
+mod updater;
+mod wellness;
+
+use std::borrow::Cow;
+
+use anyhow::Context as _;
+
+use gpui::{
+    point, px, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds,
+    WindowDecorations, WindowOptions,
+};
+
+use data::Source;
+use theme::Palette;
+
+/// The fonts of the current app, in the binary. They are static TrueType
+/// instances of the upstream variable fonts, with the Latin Extended-A glyphs
+/// that Bosnian names need.
+const FONTS: [&[u8]; 7] = [
+    include_bytes!("../assets/fonts/InstrumentSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSans-Medium.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSans-SemiBold.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSerif-Regular.ttf"),
+    include_bytes!("../assets/fonts/InstrumentSerif-Italic.ttf"),
+    include_bytes!("../assets/fonts/GeistMono-Regular.ttf"),
+    include_bytes!("../assets/fonts/GeistMono-Medium.ttf"),
+];
+
+const DEFAULT_SIZE: (f32, f32) = (1100.0, 780.0);
+const MIN_SIZE: (f32, f32) = (720.0, 540.0);
+
+/// The value after `flag` in the arguments, if there is one. Another flag is not a value.
+fn option(args: &[String], flag: &str) -> Option<String> {
+    args.iter()
+        .position(|a| a == flag)
+        .and_then(|i| args.get(i + 1))
+        .filter(|v| !v.starts_with("--"))
+        .cloned()
+}
+
+/// The value of a flag that must have one. A flag with no value is an error,
+/// so a typo does not fall back to the sample without a word.
+fn required(args: &[String], flag: &str) -> anyhow::Result<Option<String>> {
+    match option(args, flag) {
+        Some(value) => Ok(Some(value)),
+        None if args.iter().any(|a| a == flag) => anyhow::bail!("{flag} needs a value"),
+        None => Ok(None),
+    }
+}
+
+fn parse_size(text: &str) -> Option<(f32, f32)> {
+    let (w, h) = text.split_once('x')?;
+    Some((w.parse().ok()?, h.parse().ok()?))
+}
+
+fn parse_palette(name: &str) -> Option<Palette> {
+    Palette::ALL
+        .into_iter()
+        .find(|p| p.name().eq_ignore_ascii_case(name))
+}
+
+/// The command line, read once at the start.
+struct Cli {
+    palette: Palette,
+    explicit_palette: bool,
+    size: (f32, f32),
+    source: Source,
+    screen: Option<String>,
+    start_activity: Option<i64>,
+    coach: Option<String>,
+    question: Option<String>,
+    draft: Option<String>,
+    start_sync: bool,
+    background: bool,
+}
+
+fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
+    let palette = option(args, "--palette")
+        .and_then(|n| parse_palette(&n))
+        .unwrap_or(Palette::Paper);
+    let size = option(args, "--size")
+        .and_then(|s| parse_size(&s))
+        .unwrap_or(DEFAULT_SIZE);
+    let db = required(args, "--db")?;
+    let date = required(args, "--date")?
+        .map(|d| {
+            d.parse::<chrono::NaiveDate>()
+                .with_context(|| format!("--date needs YYYY-MM-DD, got {d}"))
+        })
+        .transpose()?;
+    let persona = required(args, "--persona")?;
+    let screen = match required(args, "--screen")? {
+        Some(name) => Some(name),
+        None => required(args, "--open")?,
+    };
+    if let Some(name) = &screen {
+        anyhow::ensure!(
+            sidebar::NAV
+                .iter()
+                .any(|(l, _)| l.eq_ignore_ascii_case(name)),
+            "--screen {name} is not a screen"
+        );
+    }
+    let source = match (db, date, persona) {
+        (Some(_), _, Some(_)) => anyhow::bail!("--persona and --db cannot go together"),
+        (Some(path), date, None) => data::Source::Db {
+            path: path.into(),
+            date,
+        },
+        (None, Some(_), _) => anyhow::bail!("--date needs --db"),
+        (None, None, Some(persona)) => data::Source::Persona(persona),
+        (None, None, None) => data::Source::Default,
+    };
+    let start_activity = required(args, "--activity")?
+        .map(|v| {
+            v.parse::<i64>()
+                .with_context(|| format!("--activity needs a number, got {v}"))
+        })
+        .transpose()?;
+    Ok(Cli {
+        palette,
+        explicit_palette: option(args, "--palette").is_some(),
+        size,
+        source,
+        screen,
+        start_activity,
+        coach: required(args, "--coach")?,
+        question: required(args, "--ask")?,
+        draft: required(args, "--draft")?,
+        start_sync: args.iter().any(|a| a == "--sync"),
+        background: args.iter().any(|a| a == "--background"),
+    })
+}
+
+fn log_error<T>(what: &str, result: anyhow::Result<T>) -> anyhow::Result<T> {
+    if let Err(error) = &result {
+        eprintln!("could not load {what}: {error:#}");
+    }
+    result
+}
+
+/// The value, or the view of an empty cache when the default cache does not
+/// read. A wrong `--db` path must stop here: `open_db` creates a missing file.
+fn or_empty<T>(
+    source: &Source,
+    what: &str,
+    result: anyhow::Result<T>,
+    empty: fn() -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    if matches!(source, Source::Default) {
+        log_error(what, result).or_else(|_| empty())
+    } else {
+        result
+    }
+}
+
+fn empty_db() -> anyhow::Result<garmin_core::Db> {
+    Ok(garmin_api::open_db(std::path::Path::new(":memory:"))?)
+}
+
+fn empty_today() -> anyhow::Result<data::Today> {
+    let view = garmin_api::today_view(&empty_db()?, chrono::Local::now().date_naive())?;
+    Ok(map::today(&view, None))
+}
+
+fn empty_body() -> anyhow::Result<body::BodyData> {
+    let views = garmin_api::body::body_views(&empty_db()?, chrono::Local::now().date_naive())?;
+    Ok(body::BodyData(views))
+}
+
+fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    #[cfg(debug_assertions)]
+    if args.iter().any(|a| a == "--update-selftest") {
+        return updater::selftest();
+    }
+    let Cli {
+        palette,
+        explicit_palette,
+        size: (width, height),
+        source,
+        screen,
+        start_activity,
+        coach,
+        question,
+        draft,
+        start_sync,
+        background,
+    } = parse_args(&args)?;
+    if let Some(spec) = coach {
+        let Source::Db { path, .. } = &source else {
+            anyhow::bail!("--coach needs --db");
+        };
+        println!("{}", ask::setup(path, &spec)?);
+        return Ok(());
+    }
+    let ask_start = shell::AskStart {
+        source: match &source {
+            Source::Default => ask::Source::Db(
+                garmin_core::db::default_path().context("could not locate a data directory")?,
+            ),
+            Source::Db { path, .. } => ask::Source::Copy(path.clone()),
+            Source::Persona(_) => ask::Source::Demo,
+        },
+        question,
+        draft,
+    };
+    // One copy only. A second launch brings the window of the first one forward.
+    let second_launch = if matches!(source, Source::Default) {
+        instance::claim()
+    } else {
+        instance::Claim::Off
+    };
+    if matches!(second_launch, instance::Claim::Second) {
+        return Ok(());
+    }
+    // A bad cache must not close the app before a window opens. On Windows
+    // nobody sees stderr. Show the empty views, and log the reason.
+    let today = or_empty(&source, "Today", data::load_today(&source), empty_today)?;
+    let store = activities::Store::for_source(&source)?;
+    let wellness = log_error("Health and Sleep", wellness::load(&source)).ok();
+    let body = or_empty(
+        &source,
+        "the body screens",
+        body::load_body(&source),
+        empty_body,
+    )?;
+    let training = log_error("Insights, Fitness and Reports", training::load(&source, 0)).ok();
+
+    gpui_platform::application()
+        .with_assets(icons::Icons)
+        .run(move |cx: &mut App| {
+            if let Err(error) = cx
+                .text_system()
+                .add_fonts(FONTS.iter().map(|f| Cow::Borrowed(*f)).collect())
+            {
+                eprintln!("could not load the bundled fonts: {error:#}");
+            }
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
+
+            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
+            let options = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
+                // Ask for client side decorations. The window draws its own strip,
+                // as the current app does with `decorations: false`.
+                window_decorations: Some(WindowDecorations::Client),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Garmin Companion".into()),
+                    appears_transparent: true,
+                    traffic_light_position: Some(point(px(20.0), px(13.0))),
+                }),
+                // Matches StartupWMClass in the .desktop file, so the shell links the window to the launcher.
+                app_id: Some("garmin-companion".into()),
+                ..Default::default()
+            };
+            let demo = !matches!(source, data::Source::Default);
+            let account = account::Account::new(demo, cx);
+            // A palette from the command line wins. Otherwise the saved mode picks.
+            let palette = if explicit_palette {
+                palette
+            } else {
+                account::palette_for(account.mode, cx.window_appearance())
+            };
+            let opened = cx.open_window(options, |window, cx| {
+                cx.new(|cx| {
+                    // A returning window reads the balance while a checkout is watched.
+                    cx.observe_window_activation(window, |root: &mut shell::Root, window, cx| {
+                        if window.is_window_active() {
+                            root.on_activated(cx);
+                        }
+                    })
+                    .detach();
+                    let ask = shell::new_ask(ask_start, palette, cx);
+                    let mut root =
+                        shell::Root::new(today, palette, store, body, source, account, ask);
+                    if let Some(wellness) = wellness {
+                        root = root.with_wellness(wellness);
+                    }
+                    if let Some(training) = training {
+                        root = root.with_training(training);
+                    }
+                    if let Some(name) = &screen {
+                        root.open(name, cx);
+                    }
+                    if let Some(id) = start_activity {
+                        root.start_at_activity(id, cx);
+                    }
+                    if start_sync {
+                        root.start_sync(false, cx);
+                    }
+                    root.watch_for_updates(cx);
+                    root
+                })
+            });
+            let handle = match opened {
+                Ok(handle) => handle,
+                Err(error) => {
+                    eprintln!("could not open the window: {error:#}");
+                    cx.quit();
+                    return;
+                }
+            };
+            if background {
+                // The login item passes --background. The app has no tray icon,
+                // so the window starts minimised and stays in the task bar.
+                let _ = handle.update(cx, |_, window, _| window.minimize_window());
+            } else {
+                cx.activate(true);
+            }
+            if let instance::Claim::First(rx) = second_launch {
+                cx.spawn(async move |cx| {
+                    while rx.recv().await.is_ok() {
+                        cx.update(|cx| {
+                            cx.activate(true);
+                            let _ = handle.update(cx, |_, window, _| window.activate_window());
+                        });
+                    }
+                })
+                .detach();
+            }
+        });
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_options_parse_and_unknown_values_fall_back() {
+        let args: Vec<String> = ["app", "--palette", "INK", "--size", "1280x900"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            option(&args, "--palette").and_then(|n| parse_palette(&n)),
+            Some(Palette::Ink)
+        );
+        assert_eq!(
+            option(&args, "--size").and_then(|s| parse_size(&s)),
+            Some((1280.0, 900.0))
+        );
+        assert_eq!(parse_palette("nope"), None);
+        assert_eq!(parse_size("wide"), None);
+        assert_eq!(option(&args, "--missing"), None);
+    }
+
+    #[test]
+    fn a_bad_cache_degrades_to_the_empty_views() {
+        assert!(or_empty(
+            &Source::Default,
+            "Today",
+            Err(anyhow::anyhow!("bad row")),
+            empty_today
+        )
+        .is_ok());
+        assert!(or_empty(
+            &Source::Default,
+            "body",
+            Err(anyhow::anyhow!("bad row")),
+            empty_body
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn a_flag_with_no_value_is_an_error() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(required(&args(&["app", "--db"]), "--db").is_err());
+        assert!(required(&args(&["app", "--db", "--palette", "ink"]), "--db").is_err());
+        assert_eq!(required(&args(&["app"]), "--db").unwrap(), None);
+        assert_eq!(
+            required(&args(&["app", "--db", "x"]), "--db")
+                .unwrap()
+                .as_deref(),
+            Some("x")
+        );
+    }
+}

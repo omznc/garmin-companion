@@ -32,7 +32,11 @@ async fn main() -> Result<()> {
     let client = GarminClient::new(tokens, on_change)?;
     let db = Db::open_default()?;
 
-    println!("syncing {days} days{}…", if full { " (full)" } else { "" });
+    println!(
+        "syncing {}{}…",
+        garmin_core::plural(days as usize, "day", "days"),
+        if full { " (full)" } else { "" }
+    );
     // The same progress the app draws a bar from, one line per step — which is
     // also how a long sync gets watched from a terminal.
     let on = |p: sync::SyncProgress| {

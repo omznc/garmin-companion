@@ -1,0 +1,17 @@
+---
+rust:
+  # The repository root, from this package.
+  directory: ../../../..
+  manifestPath: crates/garmin-ffi/Cargo.toml
+android:
+  targets:
+    - arm64-v8a
+    - x86_64
+  apiLevel: 24
+  useSharedLibrary: false
+ios:
+  targets:
+    - aarch64-apple-ios-sim
+    - aarch64-apple-ios
+    # A Release build of the simulator app also builds x86_64.
+    - x86_64-apple-ios

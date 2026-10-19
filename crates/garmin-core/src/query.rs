@@ -499,8 +499,8 @@ pub struct EnergyCheck {
 #[serde(rename_all = "camelCase")]
 pub struct WeightGoal {
     pub target_kg: f64,
-    /// Signed: negative means there is weight to lose.
-    pub delta_kg: f64,
+    /// Signed: negative means there is weight to lose. `None` with no weight.
+    pub delta_kg: Option<f64>,
     /// Projected arrival, from the current rate. `None` when the rate is flat
     /// or pointing away from the target — an honest "not on this trajectory"
     /// rather than a date centuries out.
@@ -726,7 +726,7 @@ fn slope_kg_per_day(points: &[WeightPoint]) -> Option<f64> {
 
 /// Weight, its trend, and what the food log says should have happened.
 pub fn weight(db: &Db, days: u32) -> Result<WeightReport> {
-    let today = chrono::Utc::now().date_naive();
+    let today = crate::today();
     let from = today - chrono::Duration::days(days.saturating_sub(1) as i64);
     let rows = db.weigh_ins_since(&from.format("%Y-%m-%d").to_string())?;
 
@@ -853,7 +853,7 @@ fn goal_check(
     let Some(current) = current else {
         return Ok(Some(WeightGoal {
             target_kg: target,
-            delta_kg: 0.0,
+            delta_kg: None,
             eta_date: None,
             eta_days: None,
         }));
@@ -870,7 +870,7 @@ fn goal_check(
 
     Ok(Some(WeightGoal {
         target_kg: target,
-        delta_kg: delta,
+        delta_kg: Some(delta),
         eta_date: eta_days.map(|d| {
             (today + chrono::Duration::days(d))
                 .format("%Y-%m-%d")
@@ -928,7 +928,7 @@ const DISTANCE_TOLERANCE: f64 = 0.25;
 /// process down on the way in. Only the first this-many routes in the
 /// requested order get a trace; the rest still appear in the list and the
 /// counts, just without a drawn thumbnail.
-const TRACED_ROUTES: usize = 40;
+pub const TRACED_ROUTES: usize = 40;
 
 /// How the routes list is ordered.
 ///
@@ -968,7 +968,7 @@ fn route_groups(db: &Db, sort: RouteSort) -> Result<Vec<Route>> {
     let tracks: Vec<_> = db
         .track_headers()?
         .into_iter()
-        .filter(|t| t.point_count > 1)
+        .filter(|t| t.point_count > 1 && crate::sport::is_exercise(t.type_key.as_deref()))
         .collect();
 
     let mut groups: Vec<Vec<crate::db::ActivityTrack>> = Vec::new();
@@ -1231,6 +1231,12 @@ pub fn sleep(db: &Db, days: u32) -> Result<crate::sleep::SleepReport> {
 const STALE_DAYS: i64 = 3;
 
 pub fn cache_status(db: &Db) -> Result<CacheStatus> {
+    cache_status_with(db, crate::store::load_tokens()?.is_some())
+}
+
+/// Same as `cache_status`, with the sign-in state given. This lets a caller
+/// that must not read the OS keyring (a test) supply the answer.
+pub fn cache_status_with(db: &Db, connected_to_garmin: bool) -> Result<CacheStatus> {
     let today = crate::today();
     let newest_activity_date = db.newest_activity_date()?;
     let newest_daily_date = db.newest_daily_date()?;
@@ -1246,7 +1252,7 @@ pub fn cache_status(db: &Db) -> Result<CacheStatus> {
         activities_cached: db.activity_count()?,
         last_sync: db.sync_state("last_sync")?,
         database_path: crate::db::default_path().map(|p| p.display().to_string()),
-        connected_to_garmin: crate::store::load_tokens()?.is_some(),
+        connected_to_garmin,
         days_since_activity: age(&newest_activity_date),
         stale: days_since_daily.is_none_or(|n| n > STALE_DAYS),
         newest_activity_date,
@@ -1259,6 +1265,19 @@ pub fn cache_status(db: &Db) -> Result<CacheStatus> {
 mod tests {
     use super::*;
     use crate::db::WeighIn;
+
+    #[test]
+    fn a_goal_without_a_weight_has_no_delta() {
+        let path =
+            std::env::temp_dir().join(format!("garmin-query-goal-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        db.set_sync_state("weight_goal_kg", "75").unwrap();
+        let goal = weight(&db, 30).unwrap().goal.unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(goal.delta_kg, None);
+        assert!(serde_json::to_value(&goal).unwrap()["deltaKg"].is_null());
+    }
 
     fn w(pk: i64, date: &str, kg: f64) -> WeighIn {
         WeighIn {

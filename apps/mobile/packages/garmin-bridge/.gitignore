@@ -1,0 +1,5 @@
+# "pnpm bridge:android" and "pnpm bridge:ios" make everything here except these files.
+/*
+!/.gitignore
+!/package.json
+!/ubrn.config.yaml

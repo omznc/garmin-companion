@@ -3,19 +3,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "cf dev",
+    "deploy": "cf deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "format": "biome format --write .",
-    "format:check": "biome format .",
-    "types": "wrangler types"
+    "format:check": "biome format ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.7",
     "@cloudflare/workers-types": "^5.20260801.1",
+    "@types/node": "^24.19.2",
+    "cf": "1.0.0-beta.18",
     "typescript": "^5.9.2",
     "vitest": "^4.1.10",
-    "wrangler": "^4.120.0"
+    "wrangler": "^4.151.1"
   }
 }

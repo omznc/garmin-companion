@@ -24,11 +24,16 @@
  * What this deliberately does not do is look at the conversation. The body is
  * health data — resting heart rates, sleep, weight — and it is checked for shape
  * and size and then forwarded. Nothing here logs a message, and there is no
- * observability block in `wrangler.jsonc` that would do it from underneath.
+ * observability block in `cloudflare.config.ts` that would do it from underneath.
  */
 
-interface Env {
-  /** `wrangler secret put OPENROUTER_KEY` */
+import { handleV2 } from "./v2";
+import type { V2Env } from "./v2/env";
+
+export { Wallet } from "./v2";
+
+interface Env extends V2Env {
+  /** `cf workers secrets update OPENROUTER_KEY` */
   OPENROUTER_KEY: string;
   MODEL: string;
   DAILY_BUDGET_USD: string;
@@ -124,6 +129,9 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") return new Response("ok");
+
+    // The paid coach lives in ./v2 and shares nothing with the /v1 paths below.
+    if (url.pathname.startsWith("/v2/")) return handleV2(request, env, ctx);
 
     if (url.pathname === "/v1/install") {
       if (request.method !== "POST") return fail(405, "POST only");

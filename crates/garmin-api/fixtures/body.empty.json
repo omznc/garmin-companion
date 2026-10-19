@@ -1,0 +1,49 @@
+{
+  "weight": {
+    "empty": {
+      "title": "No weigh-ins on this account.",
+      "body": "This screen reads what Garmin holds. Weigh-ins reach Garmin from a connected scale, from the Connect app, or from an integration. A new weigh-in appears here after the next sync."
+    },
+    "count": 0,
+    "sentence": null,
+    "trendKg": null,
+    "latestKg": null,
+    "changeKg": null,
+    "bmi": null,
+    "windows": [],
+    "points": [],
+    "composition": null,
+    "goalSentence": null
+  },
+  "food": {
+    "empty": {
+      "title": "No food logged in the last 30 days.",
+      "body": "Garmin returns the eaten side only when something writes it, such as the Connect app log or an integration. Burn comes from your device. Log a day in Garmin Connect and it appears here after the next sync."
+    },
+    "daysLogged": 0,
+    "avgEatenKcal": null,
+    "avgBurnedKcal": null,
+    "avgBalanceKcal": null,
+    "goalKcal": null,
+    "sentence": "",
+    "water": null,
+    "days": []
+  },
+  "strength": {
+    "shown": false,
+    "empty": {
+      "title": "No strength sessions with set data yet.",
+      "body": "Sets arrive with a sync, and only for sessions that the watch recorded as strength training. If you lifted recently, the sync has not reached those sessions yet."
+    },
+    "sessionsExamined": 0,
+    "sessionsText": "0 sessions",
+    "avgSets": null,
+    "avgReps": null,
+    "medianRestS": null,
+    "identifiedPct": null,
+    "sentence": "",
+    "caveat": "The watch does not record the weight on the bar, so volume here means sets and reps. Exercise names are the watch's guess from wrist motion. The app shows a name only where the watch was confident.",
+    "sessions": [],
+    "exercises": []
+  }
+}

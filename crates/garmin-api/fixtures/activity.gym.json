@@ -1,0 +1,65 @@
+{
+  "activityId": 9300000,
+  "name": "Strength",
+  "sportLabel": "Strength training",
+  "family": "gym",
+  "when": "Wed 11 Mar, 18:00",
+  "stats": [
+    {
+      "label": "Time",
+      "value": "55 min"
+    },
+    {
+      "label": "Avg HR",
+      "value": "118 bpm"
+    },
+    {
+      "label": "Max HR",
+      "value": "162 bpm"
+    },
+    {
+      "label": "Aerobic TE",
+      "value": "2.2"
+    },
+    {
+      "label": "Anaerobic TE",
+      "value": "1.4"
+    }
+  ],
+  "zones": null,
+  "laps": [],
+  "strength": {
+    "sentence": "4 sets and 34 reps, 3 min of work. Median rest was 1:30.",
+    "sets": [
+      {
+        "label": "Set 1",
+        "reps": "10 reps",
+        "work": "0:38",
+        "rest": "1:15",
+        "exercise": "Bench press (guess)"
+      },
+      {
+        "label": "Set 2",
+        "reps": "9 reps",
+        "work": "0:39",
+        "rest": "1:25",
+        "exercise": null
+      },
+      {
+        "label": "Set 3",
+        "reps": "8 reps",
+        "work": "0:40",
+        "rest": "1:35",
+        "exercise": null
+      },
+      {
+        "label": "Set 4",
+        "reps": "7 reps",
+        "work": "0:41",
+        "rest": "1:45",
+        "exercise": null
+      }
+    ]
+  },
+  "chart": null
+}

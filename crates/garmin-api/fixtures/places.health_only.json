@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "empty": {
+      "title": "No workouts saved on your Garmin account.",
+      "body": "Garmin holds no training plan for you. A plan here comes from the structured workouts that you build in Garmin Connect, for any sport. You have none yet. Create one, and it appears here after the next sync."
+    },
+    "windowDays": 28,
+    "tiles": [],
+    "sentence": null,
+    "workouts": [],
+    "gapNote": "Garmin stores no goal event and no weekly plan for your account. This app does not invent them. This screen shows the workouts that Garmin holds."
+  },
+  "routes": {
+    "empty": {
+      "title": "No routes yet.",
+      "body": "A route comes from the GPS track of an outdoor activity, such as a walk, a ride, a hike or a round of golf. No activity in the cache has a track yet. Run a sync from Settings. Any outdoor activity that your watch recorded with GPS then appears here. An indoor session has no position, so it never appears."
+    },
+    "sort": "recent",
+    "tiles": [],
+    "notes": [],
+    "total": 0,
+    "routes": []
+  },
+  "gear": {
+    "empty": {
+      "title": "No gear registered.",
+      "body": "Garmin tracks the distance of shoes, bikes and other gear that you add in Garmin Connect and attach to your activities. Nothing is registered on this account yet, so there is no wear to report. This screen fills in when you add gear."
+    },
+    "items": [],
+    "note": ""
+  }
+}
