@@ -30,8 +30,6 @@ export function FitText({
     <Text
       numberOfLines={1}
       adjustsFontSizeToFit
-      // The types lack this Android prop; `minimumFontScale` works on iOS only.
-      {...({ minimumFontSize: Math.round(size * 0.6) } as object)}
       style={{
         color,
         fontSize: size,
