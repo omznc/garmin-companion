@@ -70,9 +70,8 @@ stdin verbatim, so a trailing `\n` lands inside the secret, and Gradle then
 fails to open a keystore whose password looks correct everywhere you'd check
 it.
 
-Losing the Android secrets is survivable in the short term: the `android` job
-still runs and still proves the target compiles, it just produces an unsigned
-APK and doesn't attach it to the release.
+Without the Android secrets, the `android` job of the release workflow cannot
+sign the APK. The release then fails. Set the secrets before you cut a release.
 
 **Code signing with an OS vendor certificate** is the one thing still not done,
 and the only one that's a decision rather than a task. See below.
@@ -140,24 +139,9 @@ Two things cut that, and both are load-bearing if you touch them:
   a release spent on something nobody installs. The list appears in three
   places: the two build steps, the `targets:` on the toolchain, and the RANLIB
   loop. All three have to agree.
-- **A cache the release can actually read.** GitHub scopes a cache to the ref
-  that wrote it, and a run may only restore from its own ref or from the default
-  branch. This workflow fires on tags and only on tags, so every release was
-  writing an 860 MB cache into a scope no later tag could ever see — the log
-  said `No cache found` on every single run, including for the four desktop
-  jobs. So `ci.yml` has an `android` job that runs the same build on master, and
-  the tag restores what that leaves behind.
 
-  The keys have to match for that to work. `rust-cache` composes
-  `v0-rust-{key}-{job}-{os}-{arch}-{rustc}-{lockfile}`, so the `key:` input
-  (`android`), the **job id** (`android` in both files), and the runner
-  (`ubuntu-24.04`) all have to agree — and so does the build command, since
-  different flags mean different fingerprints and a cache of artifacts nothing
-  asks for again is the same as no cache at all. That is why CI runs the real
-  `tauri android build` rather than a cheaper bare `cargo build`.
-
-The desktop jobs have the same cache problem and no equivalent fix; they are
-5–10 minutes cold and nobody has minded yet.
+The release jobs start with a cold cache, because a tag cannot read a cache
+from another ref. A cold desktop build takes 5-10 minutes.
 
 ### Why Android is its own job
 

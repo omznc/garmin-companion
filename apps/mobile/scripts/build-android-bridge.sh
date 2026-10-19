@@ -9,7 +9,7 @@ NDK="${ANDROID_NDK_ROOT:-$SDK/ndk/28.2.13676358}"
 export ANDROID_HOME="$SDK" ANDROID_NDK_ROOT="$NDK" ANDROID_NDK_HOME="$NDK" NDK_HOME="$NDK"
 
 # The vendored OpenSSL needs RANLIB. The NDK has only llvm-ranlib.
-# The same fix is in .github/workflows/release.yml.
+# The release workflow does not need this fix.
 LLVM_BIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
 export RANLIB_aarch64_linux_android="$LLVM_BIN/llvm-ranlib"
 export RANLIB_x86_64_linux_android="$LLVM_BIN/llvm-ranlib"

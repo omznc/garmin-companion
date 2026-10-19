@@ -58,9 +58,19 @@ test("collect copies the dmg of a macOS target without a signature", () => {
   assert.throws(() => buildManifest(V, "o/r", "n", out), /missing platform/);
 });
 
-test("collect fails when the dmg is missing", () => {
+test("collect warns and goes on when the dmg is missing", () => {
   const bundle = mkdtempSync(join(tmpdir(), "rb-"));
+  const out = join(bundle, "out");
   writeFileSync(join(bundle, "a.app.tar.gz"), "x");
   writeFileSync(join(bundle, "a.app.tar.gz.sig"), "sig");
-  assert.throws(() => collect(bundle, "aarch64-apple-darwin", V, join(bundle, "out")), /\.dmg/);
+  collect(bundle, "aarch64-apple-darwin", V, out);
+  assert.deepEqual(readdirSync(out).sort(), [
+    `garmin-companion_${V}_aarch64.app.tar.gz`,
+    `garmin-companion_${V}_aarch64.app.tar.gz.sig`,
+  ]);
+});
+
+test("collect still fails when the updater bundle is missing", () => {
+  const bundle = mkdtempSync(join(tmpdir(), "rb-"));
+  assert.throws(() => collect(bundle, "aarch64-apple-darwin", V, join(bundle, "out")), /expected one/);
 });
