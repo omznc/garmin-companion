@@ -1,7 +1,7 @@
 // One stack per tab. The screen draws its own top app bar, so the header is off.
 import { Stack } from "expo-router";
 import type { ReactNode } from "react";
-import { useReduceMotion } from "../ask/motion";
+import { useReduceMotion } from "../theme/motion";
 import { useMd } from "../theme/md";
 
 export function TabStack({ title, children }: { title: string; children?: ReactNode }) {

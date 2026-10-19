@@ -1,6 +1,6 @@
 // The Ask stack on iOS: a plain title for a chat, and the large title for the history.
 import { Stack } from "expo-router";
-import { useReduceMotion } from "./motion";
+import { useReduceMotion } from "../theme/motion";
 
 export function AskStack() {
   // With reduce motion on, a push fades in place of the slide, as in Farmer.

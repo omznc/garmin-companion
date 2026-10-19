@@ -98,7 +98,7 @@ export function reduceEvent(lives: Lives, event: AskEventPayload): Lives {
   return new Map(lives).set(event.sessionId, { ...live, turn: applyEvent(live.turn, event) });
 }
 
-// The core stops the old turn when a new one starts: show it as stopped at once.
+// The new run joins the live turns. canStart refuses a send while another session runs.
 export function startRun(
   lives: Lives,
   sessionId: string,
@@ -106,12 +106,7 @@ export function startRun(
   question: string,
   turnId: string,
 ): Lives {
-  const next = new Map<string, Live>();
-  for (const [id, live] of lives) {
-    const stop = id !== sessionId && live.turn.status === "running";
-    next.set(id, stop ? { ...live, turn: { ...live.turn, status: "stopped" } } : live);
-  }
-  return next.set(sessionId, startLive(sessionId, index, question, turnId));
+  return new Map(lives).set(sessionId, startLive(sessionId, index, question, turnId));
 }
 
 // The saved thread is read: drop the live copy of that run. A newer run that still runs stays.

@@ -63,6 +63,8 @@ export async function deleteThread(sessionId: string) {
   dropLive(sessionId);
   // removeQueries does not tell the screens. The null tells them the thread is gone.
   queryClient.setQueryData(threadKey(sessionId), null);
+  // A late "done" of a deleted running turn is dropped, so read the balance here.
+  void queryClient.invalidateQueries({ queryKey: ["cloudAccount"] });
   await queryClient.invalidateQueries({ queryKey: threadsKey });
 }
 

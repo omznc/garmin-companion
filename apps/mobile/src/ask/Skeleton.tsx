@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Animated } from "react-native";
-import { useReduceMotion } from "./motion";
+import { useReduceMotion } from "../theme/motion";
 import { useChatTheme } from "./theme";
 
 // A block that pulses while content loads. With less motion it stays still.

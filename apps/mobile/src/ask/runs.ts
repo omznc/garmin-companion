@@ -86,6 +86,24 @@ subscribeBridge((event) => {
   }
 });
 
+// Why the last ask_send failed. It clears on the next send, or after a few seconds.
+let sendError: string | null = null;
+let errorTimer: ReturnType<typeof setTimeout> | undefined;
+
+const setSendError = (message: string | null) => {
+  clearTimeout(errorTimer);
+  sendError = message;
+  if (message !== null) errorTimer = setTimeout(() => setSendError(null), 6000);
+  tell();
+};
+
+export const useSendError = (): string | null =>
+  useSyncExternalStore(
+    subscribe,
+    () => sendError,
+    () => null,
+  );
+
 export const hasLive = (sessionId: string) => lives.has(sessionId);
 
 export const useLive = (sessionId: string | null): Live | undefined =>
@@ -113,11 +131,13 @@ export async function startTurn(
 ): Promise<boolean> {
   if (!canStart(lives, sessionId)) return false;
   const turnId = newTurnId();
+  setSendError(null);
   setLives(startRun(lives, sessionId, index, question, turnId));
   try {
     await callJson("ask_send", { sessionId, turnId, history });
-  } catch {
+  } catch (error) {
     setLives(failRun(lives, sessionId, turnId));
+    setSendError(error instanceof Error ? error.message : String(error));
     return false;
   }
   void queryClient.invalidateQueries({ queryKey: threadsKey });

@@ -113,12 +113,12 @@ test("settle drops a finished run and keeps a newer running run", () => {
   assert.equal(settleRun(newer, "s", "run-2"), newer);
 });
 
-test("a new run stops the running turn of another session", () => {
+test("a new run replaces the live copy of its own session", () => {
   const first = startRun(new Map(), "a", 0, "q", "run-a");
   assert.equal(runningOf(first), "a");
-  const second = startRun(first, "b", 0, "q", "run-b");
-  assert.equal(second.get("a")?.turn.status, "stopped");
-  assert.equal(runningOf(second), "b");
+  const second = startRun(first, "a", 0, "q2", "run-b");
+  assert.equal(second.get("a")?.turnId, "run-b");
+  assert.equal(second.size, 1);
 });
 
 test("a send is refused while another session runs", () => {

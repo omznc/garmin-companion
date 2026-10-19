@@ -24,7 +24,7 @@ import { EmptyHero } from "./EmptyHero";
 import { Setup } from "./Setup";
 import { Skeleton } from "./Skeleton";
 import { TurnView } from "./TurnView";
-import { useRunningId, stopTurn } from "./runs";
+import { stopTurn, useRunningId, useSendError } from "./runs";
 import { useChatTheme } from "./theme";
 import { newSessionId } from "./turns";
 import { sendMessage, useThread } from "./useThreads";
@@ -60,6 +60,7 @@ function usePinnedScroll() {
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const pinned = useRef(true);
   const size = useRef({ content: 0, layout: 0 });
+  const lastY = useRef(0);
   // A short thread does not scroll. scrollToEnd then goes to offset 0, and on iOS
   // that hides the top inset under the header.
   const toEnd = () => {
@@ -74,11 +75,17 @@ function usePinnedScroll() {
     onScrollBeginDrag: () => {
       pinned.current = false;
     },
+    // A status-bar tap or a screen reader scroll moves the view with no drag: a move
+    // up, away from the end, lets go of the pin too.
+    onScrollToTop: () => {
+      pinned.current = false;
+    },
     onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-      if (contentSize.height - contentOffset.y - layoutMeasurement.height < PIN_DISTANCE) {
-        pinned.current = true;
-      }
+      const away = contentSize.height - contentOffset.y - layoutMeasurement.height;
+      if (away < PIN_DISTANCE) pinned.current = true;
+      else if (contentOffset.y < lastY.current) pinned.current = false;
+      lastY.current = contentOffset.y;
     },
     // The content grows, or the list gets shorter under the keyboard.
     onContentSizeChange: (_: number, height: number) => {
@@ -186,8 +193,18 @@ function Footer({
 }) {
   const runningId = useRunningId();
   const streaming = id !== null && runningId === id;
+  const theme = useChatTheme();
+  const sendError = useSendError();
   return (
     <>
+      {sendError ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: theme.error, fontSize: 14, lineHeight: 20, paddingHorizontal: 16 }}
+        >
+          {`The message was not sent. ${sendError}`}
+        </Text>
+      ) : null}
       <Credits />
       {/* iOS: the native tab bar floats over the screen, and only the view's own safe area
           includes it. Android: the tab bar sits below the screen and owns the system inset. */}
@@ -228,10 +245,12 @@ export function ChatScreen({
   const frame = useRef<ComponentRef<typeof View>>(null);
   const [offset, setOffset] = useState(0);
   const keyboardOpen = useKeyboardOpen();
-  // The iOS header is translucent and the content starts under it. The automatic
-  // inset does not reach this nested scroll view, so the content pads itself.
+  // The header is translucent only on iOS 26 and later, and the content starts under it.
+  // The scroll view has no automatic inset here, so the content pads itself.
+  // Before iOS 26 the header is opaque and the screen starts below it.
   const headerHeight = useHeaderHeight();
-  const top = Platform.OS === "ios" ? headerHeight + 16 : 16;
+  const glass = Platform.OS === "ios" && Number.parseInt(String(Platform.Version), 10) >= 26;
+  const top = glass ? headerHeight + 16 : 16;
   // The thread of this draft was deleted: the root goes back to an empty draft.
   useEffect(() => {
     if (routeId === null && thread.gone) setStartedId(null);
@@ -265,6 +284,7 @@ export function ChatScreen({
             scrollEventThrottle={64}
             onScrollBeginDrag={pinned.onScrollBeginDrag}
             onScroll={pinned.onScroll}
+            onScrollToTop={pinned.onScrollToTop}
             onContentSizeChange={pinned.onContentSizeChange}
             onLayout={pinned.onLayout}
           >
