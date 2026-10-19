@@ -93,7 +93,7 @@ workflow runs on a tag.
 3. Enter the version (`major.minor.patch`, higher than 0.9.1) and the release
    notes. The old app shows the notes in Settings.
 4. The `check` job refuses a bad version or a version that exists. The
-   `desktop` jobs and the `android` job build the files. The `draft` job writes
+   `desktop` jobs, the `android` job and the `ios` job build the files. The `draft` job writes
    `latest.json` and opens a **draft** release. The draft has no tag.
 5. Check the draft. Install the files on a test machine if possible.
 6. Publish the draft in the GitHub UI. This creates the tag `vX.Y.Z` and makes
@@ -120,10 +120,17 @@ Artifacts:
 | Windows | `-setup.exe` (NSIS) | the `-setup.exe` + `.sig` |
 | Linux | `.AppImage`, `.deb`, `.rpm` | the same files + `.sig` |
 | Android | `.apk` | the `.apk` itself |
+| iOS | `_unsigned.ipa` | none |
 
 `latest.json` is written by `scripts/release-rewrite.mjs manifest` from the
 `.sig` files. `latest-android.json` is written by the `android` job. Test the
 script with `node --test scripts/release-rewrite.test.mjs`.
+
+The `ios` job builds an unsigned device IPA, `garmin-companion_<version>_unsigned.ipa`.
+Testers sign it themselves with Sideloadly or AltStore. It is not in
+`latest.json`, and no updater reads it. When a tester signs the IPA, the
+new signature must keep an application identifier. The Keychain items of the
+app need one, and the app cannot read its tokens without it.
 
 > The sections below, up to "Building locally", describe the old Tauri
 > release. They stay as background for the APK format, the signing keys and
@@ -375,5 +382,5 @@ notarization is the one worth buying.
 - **iOS.** The Rust side is already platform-split for it — `secrets`, `paths`
   and the mobile sign-in flow are written against `cfg(mobile)` rather than
   against Android — and the frontend branches on `IS_MOBILE`, not on `android`.
-  What's missing is an Apple Developer account, `tauri ios init`, and iOS icons.
-  Nobody has tried it.
+  What's missing is an Apple Developer account, and a signed build. The `ios`
+  job makes only an unsigned IPA (see "Cutting a release").
