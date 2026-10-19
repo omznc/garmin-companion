@@ -94,6 +94,9 @@ struct Drag {
     to: usize,
 }
 
+/// How far the pointer must move from the press before a drag picks a new place.
+const DRAG_START_PX: f32 = 5.0;
+
 /// The context menu: the position of its entry and where the pointer was.
 #[derive(Clone, Copy)]
 struct Menu {
@@ -111,6 +114,8 @@ struct Shared {
     /// Where the first row is in the window, for the pointer.
     origin_y: f32,
     drag: Option<Drag>,
+    /// Where the left button went down, in window height.
+    press_y: f32,
     menu: Option<Menu>,
     /// A move to apply: the position it starts at, and where it ends.
     command: Option<(usize, usize)>,
@@ -134,10 +139,19 @@ impl Shared {
         !same
     }
 
-    /// The position that a pointer at this window height is over.
-    fn position_at(&self, y: f32) -> usize {
+    /// The position that the dragged row at `from` takes with the pointer at
+    /// this window height. The held row is not counted, as in the old app.
+    /// Until the pointer moves `DRAG_START_PX` from the press, the row stays.
+    fn position_at(&self, y: f32, from: usize) -> usize {
+        if (y - self.press_y).abs() < DRAG_START_PX {
+            return from;
+        }
         let y = y - self.origin_y;
-        let passed = self.tops.iter().filter(|top| **top + self.row_h / 2.0 < y);
+        let passed = self
+            .tops
+            .iter()
+            .enumerate()
+            .filter(|(i, top)| *i != from && **top + self.row_h / 2.0 < y);
         passed.count().min(NAV.len() - 1)
     }
 }
@@ -429,6 +443,10 @@ fn entry<V: 'static>(
                 })
             }
         })
+        .on_mouse_down(MouseButton::Left, {
+            let shared = shared.clone();
+            move |event, _, _| shared.borrow_mut().press_y = f32::from(event.position.y)
+        })
         .on_mouse_down(MouseButton::Right, move |event, window, _| {
             shared.borrow_mut().menu = Some(Menu {
                 position,
@@ -546,7 +564,8 @@ fn measure(shared: &RefCell<Shared>, kids: &[Bounds<Pixels>], window: &mut Windo
         .borrow_mut()
         .store_rows(tops, height, f32::from(base))
     {
-        window.refresh();
+        // `refresh` does nothing while the window draws.
+        window.request_animation_frame();
     }
 }
 
@@ -593,7 +612,10 @@ pub fn render<V: 'static>(
         // The listener runs wherever the pointer is, so a drag out of the sidebar goes on.
         .on_drag_move(move |event: &DragMoveEvent<NavDrag>, window, _| {
             let mut shared = dragged.borrow_mut();
-            let to = shared.position_at(f32::from(event.event.position.y));
+            let Some(from) = shared.drag.map(|d| d.from) else {
+                return;
+            };
+            let to = shared.position_at(f32::from(event.event.position.y), from);
             if let Some(d) = shared.drag.as_mut().filter(|d| d.to != to) {
                 d.to = to;
                 window.refresh();
@@ -713,6 +735,7 @@ pub fn render<V: 'static>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::IntoElement;
 
     fn keys(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
@@ -795,8 +818,84 @@ mod tests {
             33.0,
             50.0,
         );
-        assert_eq!(shared.position_at(0.0), 0);
-        assert_eq!(shared.position_at(50.0 + 35.0 * 2.0 + 5.0), 2);
-        assert_eq!(shared.position_at(5000.0), NAV.len() - 1);
+        // The centre of slot k is 50 + 35 k + 16.5.
+        let lower = |k: usize| 50.0 + 35.0 * k as f32 + 25.0;
+        let upper = |k: usize| 50.0 + 35.0 * k as f32 + 8.0;
+        // The lower half of the held row gives the held row, after a real move.
+        shared.press_y = lower(0);
+        assert_eq!(shared.position_at(lower(0) + 3.0, 0), 0);
+        shared.press_y = lower(1);
+        assert_eq!(shared.position_at(lower(1) + 3.0, 1), 1);
+        assert_eq!(shared.position_at(lower(1) + 6.0, 1), 1);
+        // A downward drag into the lower half of slot k gives k.
+        shared.press_y = lower(0);
+        assert_eq!(shared.position_at(lower(2), 0), 2);
+        assert_eq!(shared.position_at(lower(5), 0), 5);
+        // An upward drag: the upper half of slot k gives k.
+        shared.press_y = lower(4);
+        assert_eq!(shared.position_at(upper(1), 4), 1);
+        assert_eq!(shared.position_at(upper(0), 4), 0);
+        assert_eq!(shared.position_at(5000.0, 0), NAV.len() - 1);
+    }
+
+    /// The sidebar alone in a window, as the shell draws it.
+    struct Host(Sidebar);
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.0.tick(window, cx.has_active_drag());
+            let info = Info {
+                who: None,
+                synced_ago: None,
+                sync_line: None,
+                sync_failed: false,
+            };
+            let t = crate::theme::Palette::Paper.theme();
+            render(
+                &self.0,
+                &info,
+                t.dark,
+                &t,
+                cx,
+                Actions {
+                    select: |_, _, _, _| {},
+                    toggle_theme: |_, _, _| {},
+                    sync_now: |_, _, _| {},
+                },
+            )
+        }
+    }
+
+    fn frame(cx: &mut gpui::VisualTestContext) {
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+    }
+
+    #[gpui::test]
+    fn a_tiny_drag_from_the_lower_half_of_a_row_changes_nothing(cx: &mut gpui::TestAppContext) {
+        let (host, cx) = cx.add_window_view(|_, _| Host(Sidebar::new(true, &[])));
+        // The first frame measures the rows. The next one draws them.
+        for _ in 0..3 {
+            frame(cx);
+        }
+        let (y, x) = {
+            let shared = host.read_with(cx, |h, _| h.0.shared.clone());
+            let shared = shared.borrow();
+            assert!(!shared.tops.is_empty(), "rows were not measured");
+            (shared.origin_y + shared.tops[0] + shared.row_h * 0.75, 70.0)
+        };
+        let at = |dy: f32| point(px(x), px(y + dy));
+        let none = gpui::Modifiers::default();
+        cx.simulate_mouse_down(at(0.0), MouseButton::Left, none);
+        cx.simulate_mouse_move(at(1.5), MouseButton::Left, none);
+        cx.simulate_mouse_move(at(3.0), MouseButton::Left, none);
+        frame(cx);
+        let shared = host.read_with(cx, |h, _| h.0.shared.clone());
+        assert!(shared.borrow().drag.is_some(), "the drag did not start");
+        cx.simulate_mouse_up(at(3.0), MouseButton::Left, none);
+        for _ in 0..3 {
+            frame(cx);
+        }
+        let order = host.read_with(cx, |h, _| h.0.order.clone());
+        assert_eq!(order, (0..NAV.len()).collect::<Vec<_>>());
     }
 }

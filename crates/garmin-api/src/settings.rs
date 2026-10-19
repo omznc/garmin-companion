@@ -67,7 +67,12 @@ fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
     let json =
         serde_json::to_string_pretty(&prefs).map_err(|e| ApiError::Internal(e.to_string()))?;
     paths::ensure_base_dir()?;
-    std::fs::write(prefs_path()?, json).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let path = prefs_path()?;
+    // Write a temp file, then rename it, so a crash never leaves half a file.
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, json)
+        .and_then(|()| std::fs::rename(&temp, &path))
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(prefs)
 }
 

@@ -134,7 +134,7 @@ impl Root {
     }
 
     /// Show the screen with this nav label. For a start flag and the screenshots.
-    /// An unknown label keeps Today.
+    /// An unknown label keeps the default screen.
     pub fn open(&mut self, label: &str, cx: &mut Context<Self>) {
         if let Some(index) = NAV.iter().position(|(n, _)| n.eq_ignore_ascii_case(label)) {
             self.select_index(index, cx);
