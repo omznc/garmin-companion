@@ -8,6 +8,7 @@
  */
 import { normalizeEmail, isSessionToken, sendCode, sessionUser, signOut, verifyCode } from "./auth";
 import { createCheckout, createPortal, entitlementOf, handlePolarWebhook } from "./billing";
+import { checkoutDone } from "./checkout";
 import type { V2Env } from "./env";
 import { fail, json } from "./http";
 import {
@@ -85,6 +86,8 @@ export async function handleV2(request: Request, env: V2Env, ctx: ExecutionConte
       return withWho(request, env, (who) =>
         who.kind === "user" ? createPortal(env, who) : fail(401, "login_required"),
       );
+    case "GET /checkout/done":
+      return checkoutDone();
     case "POST /webhooks/polar":
       return handlePolarWebhook(request, env);
     default:
