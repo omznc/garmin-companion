@@ -12,6 +12,11 @@
 # publishes. Publish by hand after you check the draft. Until you publish, the
 # live latest.json does not change and no user gets the new app.
 #
+# desktop_only replaces the desktop files of a published release in place. It
+# keeps the mobile files, makes latest.json again and moves the tag to this
+# commit. An installed app of the same version does not update, because the
+# version did not change.
+#
 # Run it by hand: Actions -> Release (rewrite) -> Run workflow.
 name: Release (rewrite)
 
@@ -26,6 +31,10 @@ on:
         description: "Release notes. The old app shows them in Settings."
         required: false
         default: "First release of the rewritten app."
+      desktop_only:
+        description: "Rebuild only the desktop files of the published release of this version."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -42,6 +51,7 @@ jobs:
       - name: Check the version
         env:
           VERSION: ${{ inputs.version }}
+          DESKTOP_ONLY: ${{ inputs.desktop_only }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # The updater and the APK check install only a version that is
@@ -50,7 +60,9 @@ jobs:
           [[ "$(printf '%s\n0.9.1\n' "$VERSION" | sort -V | tail -n 1)" == "$VERSION" && "$VERSION" != "0.9.1" ]] \
             || { echo "version must be higher than 0.9.1"; exit 1; }
           if gh release view "v$VERSION" >/dev/null 2>&1; then
-            echo "release v$VERSION exists"; exit 1
+            [[ "$DESKTOP_ONLY" == "true" ]] || { echo "release v$VERSION exists"; exit 1; }
+          else
+            [[ "$DESKTOP_ONLY" != "true" ]] || { echo "release v$VERSION does not exist"; exit 1; }
           fi
       - name: Check the AppStream release entry
         run: node scripts/check-metainfo.mjs "$VERSION"
@@ -157,6 +169,7 @@ jobs:
 
   android:
     needs: check
+    if: ${{ !inputs.desktop_only }}
     runs-on: ubuntu-24.04
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -290,6 +303,7 @@ jobs:
   # upload can run again with the Play workflow.
   play:
     needs: check
+    if: ${{ !inputs.desktop_only }}
     permissions:
       contents: read
     uses: ./.github/workflows/play.yml
@@ -304,6 +318,7 @@ jobs:
   # AltStore). It is not in latest.json, and no updater reads it.
   ios:
     needs: check
+    if: ${{ !inputs.desktop_only }}
     runs-on: macos-latest
     # This job runs third-party install scripts. It needs no write access.
     permissions:
@@ -419,3 +434,36 @@ jobs:
         run: |
           gh release create "v$VERSION" --draft --target "$GITHUB_SHA" \
             --title "Garmin Companion v$VERSION" --notes-file notes.md release/*
+
+  # The mobile files stay as they are. Only the desktop files and latest.json change.
+  replace:
+    needs: desktop
+    if: ${{ inputs.desktop_only }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: parts
+
+      - name: Swap the desktop files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release download "v$VERSION" --dir release
+          cp parts/desktop-*/* release/
+          gh release view "v$VERSION" --json body -q .body > notes.md
+          node scripts/release-rewrite.mjs manifest "$VERSION" "$GITHUB_REPOSITORY" notes.md release release/latest.json
+          cat release/latest.json
+          ls -la release
+
+      - name: Upload the files and move the tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # The desktop files and latest.json only. The mobile files are already there.
+          gh release upload "v$VERSION" --clobber release/latest.json $(ls parts/desktop-*/* | xargs -n1 basename | sed 's|^|release/|')
+          git push --force origin "$GITHUB_SHA:refs/tags/v$VERSION"
