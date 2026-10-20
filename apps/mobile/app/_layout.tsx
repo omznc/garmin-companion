@@ -30,6 +30,7 @@ export default function RootLayout() {
       (s) => {
         if (s.connected) importHistory(false);
       },
+      // The marker stays, so the next start tries again.
       () => {},
     );
   }, []);

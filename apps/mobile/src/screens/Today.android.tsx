@@ -274,9 +274,9 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
 // The history import: the first 14 days, then the months. An error offers a retry.
 function ImportRow({ sync }: { sync: SyncState }) {
   const md = useMd();
-  const label = importLabel(sync);
+  const failed = sync.importError !== null;
+  const label = failed ? sync.importError : importLabel(sync);
   if (!label) return null;
-  const failed = sync.error !== null && !sync.busy;
   return (
     <View style={{ paddingHorizontal: 16 }}>
       <Card tone={failed ? "error" : "high"} gap={8}>
@@ -284,7 +284,7 @@ function ImportRow({ sync }: { sync: SyncState }) {
           {failed ? null : <ActivityIndicator size="small" color={md.primary} />}
           <View style={{ flex: 1 }}>
             <T v="label" color={failed ? md.onErrorContainer : md.onSurface}>
-              {failed ? (sync.error ?? "") : label}
+              {label}
             </T>
           </View>
           {failed ? (
@@ -327,12 +327,20 @@ export function TodayScreen() {
         onScrollOffset={fab.onScroll}
         bottomSpace={FAB_CLEARANCE}
       >
-        {sync.importing ? (
+        {sync.importing || sync.importError ? (
           <ImportRow sync={sync} />
         ) : (
           <SyncLine line={sync.line} error={sync.error} />
         )}
-        {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
+        {data ? (
+          <TodayBody
+            today={
+              sync.importing && !data.hero ? { ...data, lede: "Getting your Garmin data." } : data
+            }
+            busy={sync.busy}
+            onSync={() => sync.refresh()}
+          />
+        ) : null}
         {!data && !error ? <Loading /> : null}
         {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
       </LargeAppBarScreen>

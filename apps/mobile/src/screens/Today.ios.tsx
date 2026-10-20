@@ -246,15 +246,15 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
 
 // The history import: the first 14 days, then the months. An error offers a retry.
 function ImportRow({ sync }: { sync: SyncState }) {
-  const text = importLabel(sync);
+  const failed = sync.importError !== null;
+  const text = failed ? sync.importError : importLabel(sync);
   if (!text) return null;
-  const failed = sync.error !== null && !sync.busy;
   return (
     <Group>
       <View style={{ padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
         {failed ? null : <ActivityIndicator />}
         <Text style={{ flex: 1, fontSize: 15, color: failed ? PlatformColor("systemRed") : label }}>
-          {failed ? sync.error : text}
+          {text}
         </Text>
         {failed ? <Button title="Retry" onPress={() => importHistory()} /> : null}
       </View>
@@ -280,14 +280,22 @@ export function TodayScreen() {
           onPress={() => router.push("/ask")}
         />
       </Stack.Toolbar>
-      {sync.importing ? (
+      {sync.importing || sync.importError ? (
         <ImportRow sync={sync} />
       ) : sync.line || sync.error ? (
         <Text style={{ fontSize: 13, color: secondary, marginTop: 8, marginHorizontal: 32 }}>
           {sync.error ?? sync.line}
         </Text>
       ) : null}
-      {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
+      {data ? (
+        <TodayBody
+          today={
+            sync.importing && !data.hero ? { ...data, lede: "Getting your Garmin data." } : data
+          }
+          busy={sync.busy}
+          onSync={() => sync.refresh()}
+        />
+      ) : null}
       {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
       {error ? (
         <Group>

@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { clearHistoryPending, markHistoryPending, runSync } from "./account";
+import { QUICK_DAYS } from "./importLabel";
 import { queryClient } from "./queryClient";
 import { subscribe } from "./source";
 import type { SyncProgress, SyncSummary } from "./types";
@@ -13,10 +14,11 @@ export type SyncState = {
   phase: string | null;
   done: number;
   total: number | null;
-  // The history import is a chain of two passes. It stays true after an error, until a retry ends.
+  // The history import is a chain of two passes. Only importHistory sets these three fields,
+  // so a pull-to-refresh can not change the import row.
   importing: boolean;
-  // True while the full pass runs.
-  full: boolean;
+  importPass: "quick" | "full" | null;
+  importError: string | null;
 };
 
 // The state is outside React, so sign-in can start a sync and Today can show it.
@@ -28,7 +30,8 @@ let state: SyncState = {
   done: 0,
   total: null,
   importing: false,
-  full: false,
+  importPass: null,
+  importError: null,
 };
 const listeners = new Set<() => void>();
 const set = (patch: Partial<SyncState>) => {
@@ -52,7 +55,6 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
     phase: null,
     done: 0,
     total: null,
-    full: args.full === true,
   });
   const stop = subscribe((event) => {
     if (event.kind !== "sync-progress") return;
@@ -71,7 +73,7 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
     .finally(() => {
       stop();
       inflight = null;
-      set({ busy: false, full: false });
+      set({ busy: false });
       queryClient.invalidateQueries();
     });
   return inflight;
@@ -85,15 +87,22 @@ async function ownSync(args: Args): Promise<SyncSummary> {
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
 export async function importHistory(quick = true) {
-  set({ importing: true });
+  // The marker comes first, so a stop in the quick pass still resumes at the next start.
+  markHistoryPending();
+  set({ importing: true, importError: null, importPass: quick ? "quick" : "full" });
   try {
-    if (quick) await ownSync({ days: 14 });
-    markHistoryPending();
+    if (quick) await ownSync({ days: QUICK_DAYS });
+    set({ importPass: "full" });
     await ownSync({ full: true, days: 365 });
     clearHistoryPending();
-    set({ importing: false });
-  } catch {
-    // The store holds the error and Today offers a retry.
+    set({ importing: false, importPass: null });
+  } catch (e) {
+    // Today offers a retry.
+    set({
+      importing: false,
+      importPass: null,
+      importError: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
