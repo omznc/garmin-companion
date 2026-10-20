@@ -26,7 +26,7 @@ pub use crate::updater_pkg::{Outcome, PackageKind};
 /// The URL of the old app (`plugins.updater.endpoints` in its `tauri.conf.json`).
 pub const MANIFEST_URL: &str =
     "https://github.com/omznc/garmin-companion/releases/latest/download/latest.json";
-/// The release page: where a package install goes to get the new version.
+/// The release page: where a package install goes when the system does not allow the update.
 pub const RELEASE_PAGE: &str = "https://github.com/omznc/garmin-companion/releases/latest";
 /// `plugins.updater.pubkey` of the old app, as the Tauri config holds it.
 const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzRDgyNjA4RjUwNDlBMzcKUldRM21nVDFDQ2JZUSt1eDU2MHBOMEVLTG9zQXFkd0gzTy8xeW1tbnQ2RmFrdmtqc1pObU5JSnAK";
@@ -281,7 +281,7 @@ pub fn verify(data: &[u8], signature_b64: &str, pubkey_b64: &str) -> Result<()> 
 }
 
 /// Download the file of an offer, check it, install it, and start the new
-/// app where that is needed. On `Ok`, the caller must quit the app.
+/// app where that is needed. On `Ok(Outcome::Installed)`, the caller must quit the app.
 pub async fn install(offer: &Offer) -> Result<Outcome> {
     let (url, signature) = offer
         .download

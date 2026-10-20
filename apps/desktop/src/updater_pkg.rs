@@ -67,7 +67,10 @@ pub fn command(
     find: impl Fn(&str) -> Option<PathBuf>,
 ) -> Option<Vec<OsString>> {
     let tools: &[(&str, &[&str])] = match kind {
-        PackageKind::Deb => &[("apt-get", &["install", "-y"]), ("dpkg", &["--install"])],
+        PackageKind::Deb => &[
+            ("apt-get", &["install", "-y", "--no-remove"]),
+            ("dpkg", &["--install"]),
+        ],
         PackageKind::Rpm => &[("dnf", &["install", "-y"]), ("rpm", &["--upgrade"])],
     };
     let pkexec = find("pkexec")?;
@@ -129,16 +132,20 @@ fn run(kind: PackageKind, file: &Path) -> Result<Outcome> {
         .stdin(std::process::Stdio::null())
         .output()
         .context("could not run pkexec")?;
-    match output.status.code() {
+    outcome(output.status.code(), &output.stderr, &output.stdout)
+}
+
+fn outcome(code: Option<i32>, stderr: &[u8], stdout: &[u8]) -> Result<Outcome> {
+    match code {
         Some(0) => Ok(Outcome::Installed),
         Some(code) if NOT_ALLOWED.contains(&code) => Ok(Outcome::Declined(
             "the system did not allow the install".into(),
         )),
         _ => Err(anyhow!(
             "the package tool failed: {}",
-            last_line(&output.stderr)
-                .or_else(|| last_line(&output.stdout))
-                .unwrap_or_else(|| output.status.to_string())
+            last_line(stderr)
+                .or_else(|| last_line(stdout))
+                .unwrap_or_else(|| "no message".into())
         )),
     }
 }
@@ -220,6 +227,7 @@ mod tests {
                 "/usr/bin/apt-get",
                 "install",
                 "-y",
+                "--no-remove",
                 "/t/x.pkg"
             ]
         );
@@ -253,6 +261,21 @@ mod tests {
         let dir = private_dir("mode").unwrap();
         assert_eq!(fs::metadata(&dir).unwrap().permissions().mode() & 0o077, 0);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn exit_codes_map_to_outcomes() {
+        assert_eq!(outcome(Some(0), b"", b"").unwrap(), Outcome::Installed);
+        for code in NOT_ALLOWED {
+            assert!(matches!(
+                outcome(Some(code), b"", b"").unwrap(),
+                Outcome::Declined(_)
+            ));
+        }
+        let e = outcome(Some(100), b"E: first\nE: broken\n", b"out").unwrap_err();
+        assert!(e.to_string().ends_with("E: broken"), "{e}");
+        let e = outcome(None, b"", b"only out\n").unwrap_err();
+        assert!(e.to_string().ends_with("only out"), "{e}");
     }
 
     #[test]
