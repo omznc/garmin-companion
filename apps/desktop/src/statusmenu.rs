@@ -36,6 +36,7 @@ pub enum MenuKind {
 
 impl MenuKind {
     /// For the screenshot variable `GC_OPEN_STATUS_MENU`.
+    #[cfg(debug_assertions)]
     pub fn from_name(name: &str) -> Option<Self> {
         Some(match name {
             "sync" => Self::Sync,
