@@ -37,7 +37,9 @@
                   355.0,
                   237.0
                 ],
-                "muted": false
+                "muted": false,
+                "invert": false,
+                "format": null
               }
             ],
             "ends": [
@@ -45,7 +47,11 @@
               "09 Mar"
             ],
             "rows": [],
-            "firstSeen": "2026-03-11"
+            "firstSeen": "2026-03-11",
+            "labels": [],
+            "estimate": null,
+            "action": null,
+            "sessions": []
           }
         ]
       }
