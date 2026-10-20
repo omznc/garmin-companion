@@ -147,6 +147,17 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.6" date="2026-10-20">
+      <description>
+        <p>
+          On the computer, pick a light and a dark palette, or get a VS Code
+          theme from open-vsx. Press Ctrl K to open a command list. The deb
+          and rpm builds now update themselves. On the phone, a new switch
+          gives higher contrast, the back gesture shows a preview, and
+          dialogs and short messages follow Material 3.
+        </p>
+      </description>
+    </release>
     <release version="1.0.5" date="2026-10-20">
       <description>
         <p>
