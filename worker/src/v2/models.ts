@@ -43,6 +43,9 @@ export const PROFILES: Record<string, ModelProfile> = {
     cacheWrite: 0,
     maxBodyBytes: 256_000,
     maxTokens: 8192,
+    // MiniMax reasons by default. A tool-heavy turn spent the app's whole
+    // 3000-token round on reasoning and wrote no answer, or a cut-off one.
+    reasoning: { effort: "low" },
     // The cheapest endpoint, never one over the prices above, so the bill stays correct.
     provider: { sort: "price", max_price: { prompt: 0.05, completion: 0.1 } },
   },

@@ -403,6 +403,7 @@ describe("chat", () => {
       "deepseek/deepseek-v4.1-flash-1017",
     ]);
     expect(sent.provider).toMatchObject({ sort: "price" });
+    expect(sent.reasoning).toEqual({ effort: "low" });
   });
 
   it("charges nothing when the free model answered", () => {
