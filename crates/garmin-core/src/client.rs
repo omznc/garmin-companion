@@ -16,6 +16,79 @@ use tokio::sync::Mutex;
 
 use crate::auth::{self, Tokens, CONNECT_API};
 
+const MAX_ATTEMPTS: u32 = 3;
+
+/// A non-success reply from Garmin. The type lets the sync tell a busy
+/// server (429, 5xx) from a plain "no data" reply (404).
+#[derive(Debug)]
+pub struct HttpStatus {
+    pub path: String,
+    pub status: u16,
+    pub body: String,
+}
+
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = reqwest::StatusCode::from_u16(self.status)
+            .map_or_else(|_| self.status.to_string(), |s| s.to_string());
+        write!(f, "{} returned {code}: {}", self.path, self.body)
+    }
+}
+
+impl std::error::Error for HttpStatus {}
+
+/// Pause before the next attempt: 1 s, then 3 s. A `Retry-After` value wins,
+/// capped so one slow server cannot stall the import.
+fn backoff(attempt: u32, retry_after: Option<u64>) -> std::time::Duration {
+    let secs = retry_after.map_or(if attempt == 1 { 1 } else { 3 }, |s| s.min(30));
+    std::time::Duration::from_secs(secs)
+}
+
+fn is_busy(status: reqwest::StatusCode) -> bool {
+    status.as_u16() == 429 || status.is_server_error()
+}
+
+fn retry_after(resp: &reqwest::Response) -> Option<u64> {
+    let value = resp.headers().get(reqwest::header::RETRY_AFTER)?;
+    value.to_str().ok()?.parse().ok()
+}
+
+/// A whole reply, body read. A dropped connection mid-body is a transport error.
+struct Reply {
+    status: reqwest::StatusCode,
+    retry_after: Option<u64>,
+    body: String,
+}
+
+async fn fetch(req: reqwest::RequestBuilder) -> Result<Reply, reqwest::Error> {
+    let resp = req.send().await?;
+    let status = resp.status();
+    let retry_after = retry_after(&resp);
+    let body = resp.text().await?;
+    Ok(Reply {
+        status,
+        retry_after,
+        body,
+    })
+}
+
+fn parse_body<T: serde::de::DeserializeOwned>(path: &str, body: &str) -> Result<T> {
+    // A 200 with an empty body is how Garmin says "nothing recorded" —
+    // HRV does it for every night the watch wasn't worn. Parsing that
+    // as a failure filled the sync report with warnings about days that
+    // were simply uneventful.
+    if body.trim().is_empty() {
+        return serde_json::from_value(serde_json::Value::Null)
+            .with_context(|| format!("{path} returned an empty body where data was required"));
+    }
+    serde_json::from_str(body).with_context(|| {
+        format!(
+            "{path} returned unexpected shape: {}",
+            body.chars().take(300).collect::<String>()
+        )
+    })
+}
+
 pub struct GarminClient {
     http: reqwest::Client,
     tokens: Arc<Mutex<Tokens>>,
@@ -73,6 +146,27 @@ impl GarminClient {
             .await
     }
 
+    fn request(
+        &self,
+        method: &reqwest::Method,
+        url: &str,
+        token: &str,
+        query: &[(&str, String)],
+        body: Option<&serde_json::Value>,
+    ) -> reqwest::RequestBuilder {
+        let req = self
+            .http
+            .request(method.clone(), url)
+            .headers(auth::native_headers())
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Accept", "application/json")
+            .query(query);
+        match body {
+            Some(b) => req.json(b),
+            None => req,
+        }
+    }
+
     /// One request, with the token refreshed up front if it has expired and
     /// once more if Garmin rejects it anyway.
     ///
@@ -90,57 +184,50 @@ impl GarminClient {
 
         let mut token = self.access_token().await?;
         let mut attempted_refresh = false;
+        let mut attempts = 0;
+
+        // A write is never repeated: a lost reply could hide a created workout.
+        let max_attempts = if method == reqwest::Method::GET {
+            MAX_ATTEMPTS
+        } else {
+            1
+        };
 
         loop {
-            let mut req = self
-                .http
-                .request(method.clone(), &url)
-                .headers(auth::native_headers())
-                .header("Authorization", format!("Bearer {token}"))
-                .header("Accept", "application/json")
-                .query(query);
-            if let Some(b) = body {
-                req = req.json(b);
-            }
+            attempts += 1;
+            let may_retry = attempts < max_attempts;
 
-            let resp = req
-                .send()
-                .await
-                .with_context(|| format!("request to {path} failed"))?;
+            let req = self.request(&method, &url, &token, query, body);
+            let reply = match fetch(req).await {
+                Ok(reply) => reply,
+                Err(_) if may_retry => {
+                    tokio::time::sleep(backoff(attempts, None)).await;
+                    continue;
+                }
+                Err(e) => return Err(e).with_context(|| format!("request to {path} failed")),
+            };
 
-            let status = resp.status();
-
-            if status == reqwest::StatusCode::UNAUTHORIZED && !attempted_refresh {
+            if reply.status == reqwest::StatusCode::UNAUTHORIZED && !attempted_refresh {
                 attempted_refresh = true;
                 token = self.force_refresh().await?;
                 continue;
             }
 
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(anyhow!(
-                    "{path} returned {}: {}",
-                    status,
-                    body.chars().take(300).collect::<String>()
-                ));
+            if may_retry && is_busy(reply.status) {
+                tokio::time::sleep(backoff(attempts, reply.retry_after)).await;
+                continue;
             }
 
-            let body = resp.text().await.context("failed to read response body")?;
-            // A 200 with an empty body is how Garmin says "nothing recorded" —
-            // HRV does it for every night the watch wasn't worn. Parsing that
-            // as a failure filled the sync report with warnings about days that
-            // were simply uneventful.
-            if body.trim().is_empty() {
-                return serde_json::from_value(serde_json::Value::Null).with_context(|| {
-                    format!("{path} returned an empty body where data was required")
-                });
+            if !reply.status.is_success() {
+                return Err(HttpStatus {
+                    path: path.to_string(),
+                    status: reply.status.as_u16(),
+                    body: reply.body.chars().take(300).collect(),
+                }
+                .into());
             }
-            return serde_json::from_str(&body).with_context(|| {
-                format!(
-                    "{path} returned unexpected shape: {}",
-                    body.chars().take(300).collect::<String>()
-                )
-            });
+
+            return parse_body(path, &reply.body);
         }
     }
 

@@ -273,7 +273,10 @@ pub async fn sync_daily(
 /// a dropped network would count every day as empty, end the walk early and
 /// report success. So the walk stops with the error instead.
 fn warn_or_abort(report: &mut SyncReport, what: &str, date: &str, e: anyhow::Error) -> Result<()> {
-    if e.downcast_ref::<reqwest::Error>().is_some() {
+    let busy = e
+        .downcast_ref::<crate::client::HttpStatus>()
+        .is_some_and(|h| h.status == 429 || h.status >= 500);
+    if busy || e.downcast_ref::<reqwest::Error>().is_some() {
         return Err(e.context(format!("{what} {date}")));
     }
     report.warnings.push(format!("{what} {date}: {e}"));
@@ -610,6 +613,8 @@ pub async fn sync_all_with(
             sync_daily(client, db, &p.display_name, &dates, full, &mut report, on).await?;
             sync_fitness(client, db, &p.display_name, &mut report, on).await?;
         }
+        // A full pass that skips the wellness walk must not look like success.
+        Err(e) if full => return Err(e.context("could not resolve profile")),
         Err(e) => report.warnings.push(format!(
             "could not resolve profile, skipped wellness and fitness data: {e}"
         )),
@@ -722,12 +727,22 @@ mod tests {
     #[test]
     fn a_failed_request_aborts_but_a_status_error_only_warns() {
         let mut report = SyncReport::default();
-        let status = anyhow::anyhow!("/x returned 404 Not Found: ");
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status).is_ok());
+        let status = |code| {
+            anyhow::Error::new(crate::client::HttpStatus {
+                path: "/x".into(),
+                status: code,
+                body: String::new(),
+            })
+        };
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(404)).is_ok());
+        assert_eq!(report.warnings.len(), 1);
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(503)).is_err());
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(429)).is_err());
         assert_eq!(report.warnings.len(), 1);
 
         let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", transport.into()).is_err());
+        let wrapped = anyhow::Error::new(transport).context("request to /x failed");
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", wrapped).is_err());
         assert_eq!(report.warnings.len(), 1);
     }
 }
