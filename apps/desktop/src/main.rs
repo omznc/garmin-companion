@@ -33,6 +33,7 @@ mod body;
 mod calendar;
 mod charts;
 mod chrome;
+mod claude_code;
 mod cloud;
 mod command_palette;
 mod commands;
@@ -49,6 +50,7 @@ mod instance;
 mod kit;
 mod map;
 mod markdown;
+mod mcp;
 mod motion;
 mod openvsx;
 mod panel;
@@ -264,6 +266,10 @@ fn empty_body() -> anyhow::Result<body::BodyData> {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    // The MCP server first: stdout is its transport, and it is not an app start.
+    if args.get(1).is_some_and(|a| a == "mcp") {
+        return mcp::run(&args[2..]);
+    }
     #[cfg(debug_assertions)]
     if args.iter().any(|a| a == "--update-selftest") {
         return updater::selftest();

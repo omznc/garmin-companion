@@ -36,6 +36,7 @@ use gpui::{
 };
 use serde_json::Value;
 
+use crate::claude_code;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
@@ -243,6 +244,7 @@ impl Ask {
             Provider::Cloud => "Cloud",
             Provider::Openrouter => "Own key",
             Provider::Ollama => "Ollama",
+            Provider::ClaudeCode => "Claude Code",
         })
     }
 
@@ -517,6 +519,14 @@ async fn real_turn(
     period: Option<garmin_coach::Period>,
 ) {
     let open = || Db::open(path);
+    // Claude Code is a program on this computer, not an HTTP transport.
+    if let Ok((Some(Provider::ClaudeCode), model)) =
+        open().and_then(|db| garmin_coach::load_config(&db))
+    {
+        let model = model.unwrap_or_default();
+        let copy = demo.then_some(path);
+        return claude_code::run_turn(copy, &model, history, period, sink, stop);
+    }
     let transport = open().and_then(|db| {
         if demo && matches!(garmin_coach::load_config(&db)?.0, Some(Provider::Cloud)) {
             anyhow::bail!("{CLOUD_OFF}");
@@ -580,11 +590,12 @@ impl Transport for Demo {
 pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
     let (name, model) = spec.split_once(':').unwrap_or((spec, ""));
     let provider = Provider::parse(name).ok_or_else(|| {
-        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter or ollama")
+        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter, ollama or claude_code")
     })?;
     let model = match (model, provider) {
         ("", Provider::Cloud) => "",
         ("", Provider::Openrouter) => garmin_coach::DEFAULT_OPENROUTER_MODEL,
+        ("", Provider::ClaudeCode) => garmin_coach::DEFAULT_CLAUDE_MODEL,
         ("", _) => anyhow::bail!("name a model, for example {name}:llama3.2"),
         (m, _) => m,
     };
