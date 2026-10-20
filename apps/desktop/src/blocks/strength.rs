@@ -259,6 +259,8 @@ fn numbers(ctx: &Ctx) -> Option<Block> {
         padded(v.caveat.clone())
             .text_size(gpui::px(12.0))
             .text_color(ctx.t.faint)
+            .border_t_1()
+            .border_color(ctx.t.line2)
     });
     block(
         Some("average".into()),

@@ -189,9 +189,12 @@ fn predictions(ctx: &Ctx) -> Option<Block> {
 }
 
 fn note(words: &str, t: &Theme) -> Div {
+    // The top line closes the stat grid above it.
     padded(words.to_string())
         .text_size(px(12.0))
         .text_color(t.faint)
+        .border_t_1()
+        .border_color(t.line2)
 }
 
 /* ----------------------------------------------------------------- status --- */

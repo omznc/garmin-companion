@@ -222,6 +222,8 @@ pub fn card(
                 .child(text)
         }))
         .children(link);
+    // The body fills a card that a lane stretches, so a stat grid can reach
+    // the bottom edge.
     div()
         .min_w_0()
         .overflow_hidden()
@@ -229,8 +231,10 @@ pub fn card(
         .border_1()
         .border_color(t.line)
         .bg(t.bg)
+        .flex()
+        .flex_col()
         .child(header)
-        .child(body)
+        .child(div().flex_1().flex().flex_col().child(body))
 }
 
 /* -------------------------------------------------------------- stat grid --- */
@@ -309,7 +313,13 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
                 })),
         );
     }
-    div().overflow_hidden().child(grid)
+    // In a stretched card the rows grow, so the dividers reach the bottom edge.
+    div()
+        .flex_1()
+        .flex()
+        .flex_col()
+        .overflow_hidden()
+        .child(grid.flex_1())
 }
 
 /* ------------------------------------------------------------------- list --- */
@@ -396,9 +406,25 @@ pub fn table_rows(
     t: &Theme,
 ) -> Div {
     let hover = t.hover;
-    let cell = |text: SharedString, column: &Column, head: bool, first: bool| {
+    // A column takes a share of the row that follows its longest text, so
+    // a date or a number is narrow and a name is wide.
+    let weights: Vec<f32> = (0..columns.len())
+        .map(|n| {
+            let longest = rows
+                .iter()
+                .filter_map(|(cells, _)| cells.get(n))
+                .map(|c| c.chars().count())
+                .chain([columns[n].title.chars().count()])
+                .max()
+                .unwrap_or(4);
+            longest.clamp(5, 36) as f32
+        })
+        .collect();
+    let cell = |text: SharedString, column: &Column, head: bool, first: bool, weight: f32| {
         div()
-            .flex_1()
+            .flex_basis(px(0.0))
+            .flex_grow(weight)
+            .flex_shrink(1.0)
             .min_w_0()
             .px(px(12.0))
             .py(px(if head { 7.0 } else { 8.0 }))
@@ -418,13 +444,13 @@ pub fn table_rows(
             })
             .child(text)
     };
-    let mut out = div().flex().flex_col().child(
-        columns
-            .iter()
-            .fold(div().flex().border_b_1().border_color(t.line), |row, c| {
-                row.child(cell(c.title.clone(), c, true, false))
-            }),
-    );
+    let mut out = div()
+        .flex()
+        .flex_col()
+        .child(columns.iter().zip(&weights).fold(
+            div().flex().border_b_1().border_color(t.line),
+            |row, (c, w)| row.child(cell(c.title.clone(), c, true, false, *w)),
+        ));
     let last = rows.len().saturating_sub(1);
     for (i, (cells, click)) in rows.into_iter().enumerate() {
         let line = cells.into_iter().zip(columns).enumerate().fold(
@@ -432,7 +458,7 @@ pub fn table_rows(
                 .flex()
                 .when(i < last, |d| d.border_b_1().border_color(t.line2))
                 .hover(move |s| s.bg(hover)),
-            |line, (n, (text, c))| line.child(cell(text, c, false, n == 0)),
+            |line, (n, (text, c))| line.child(cell(text, c, false, n == 0, weights[n])),
         );
         out = out.child(match click {
             Some(click) => line
