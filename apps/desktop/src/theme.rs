@@ -17,7 +17,6 @@ pub const FS_CAPTION: f32 = 12.0;
 pub const FS_SMALL: f32 = 12.5;
 pub const FS_BASE: f32 = 13.0;
 pub const FS_MD: f32 = 13.5;
-pub const FS_LG: f32 = 15.0;
 /// The page title.
 pub const FS_H1: f32 = 20.0;
 

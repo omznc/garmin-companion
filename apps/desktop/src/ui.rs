@@ -4,12 +4,10 @@
 //! classes in `styles.css`. The sizes and the spacing are the same numbers.
 
 use gpui::{
-    canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px, relative, Bounds,
-    ColorExt as _, Div, ElementId, FontWeight, Hsla, PathBuilder, Pixels, Point, SharedString,
-    TextTransform,
+    div, point, prelude::*, px, relative, Bounds, Div, ElementId, FontWeight, Hsla, PathBuilder,
+    Pixels, Point, SharedString, TextTransform,
 };
 
-use crate::data::Metric;
 use crate::theme::{Theme, FS_CAPTION, FS_H1, FS_MICRO};
 
 pub const SANS: &str = "IBM Plex Sans";
@@ -89,68 +87,6 @@ pub fn underlined(
         .child(text.into())
 }
 
-/// The smaller unit that trails a figure, such as the "h" in "7h 02m".
-fn unit_size(text: &str) -> f32 {
-    if text.trim().chars().count() == 1 {
-        26.0
-    } else {
-        21.0
-    }
-}
-
-/// A large mono figure over a small uppercase caption.
-pub fn metric(m: &Metric, t: &Theme) -> Div {
-    let colour = if m.accent { t.acc } else { t.fg };
-    let value = m.value.iter().fold(
-        div()
-            .flex()
-            .items_baseline()
-            .font_family(MONO)
-            .line_height(relative(1.0))
-            .letter_spacing(px(-0.04 * 38.0))
-            .text_color(colour),
-        |row, part| {
-            let size = if part.unit {
-                unit_size(&part.text)
-            } else {
-                38.0
-            };
-            row.child(
-                div()
-                    .text_size(px(size))
-                    .child(part.text.clone())
-                    .whitespace_nowrap(),
-            )
-        },
-    );
-    let label = div()
-        .mt(px(9.0))
-        .font_family(SANS)
-        .text_size(px(FS_MICRO))
-        .line_height(relative(1.35))
-        .letter_spacing(px(FS_MICRO * 0.11))
-        .text_transform(TextTransform::Uppercase)
-        .text_color(t.mutd)
-        .child(m.label.clone());
-    div().flex_none().child(value).child(label)
-}
-
-/// A figure from the strip under the last session: 20px mono over a caption.
-pub fn small_stat(label: &str, value: &str, t: &Theme) -> Div {
-    div()
-        .flex_none()
-        .child(
-            div()
-                .font_family(MONO)
-                .text_size(px(20.0))
-                .line_height(relative(LH_NORMAL))
-                .letter_spacing(px(-0.03 * 20.0))
-                .text_color(t.fg)
-                .child(value.to_string()),
-        )
-        .child(caps(label.to_string(), FS_MICRO, 0.11, t.faint).mt(px(8.0)))
-}
-
 /// Map values to points inside a box, as `scaleFor` in `chart.ts` does. A
 /// missing or non-finite value has no point, but it keeps its place: the points
 /// sit by index, so a gap stays a gap.
@@ -206,62 +142,4 @@ pub(crate) fn stroke(
             window.paint_path(path, colour);
         }
     }
-}
-
-fn spark_canvas(values: &[Option<f32>], t: &Theme) -> gpui::Canvas<()> {
-    let (values, acc) = (values.to_vec(), t.acc);
-    canvas(
-        |_, _, _| (),
-        move |bounds, (), window, _| stroke(&scale(&values, bounds, 3.0), 1.25, acc, window),
-    )
-}
-
-/// An inline sparkline: 90 by 20, accent stroke.
-pub fn spark(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
-    spark_canvas(values, t).w(px(90.0)).h(px(20.0)).flex_none()
-}
-
-/// The page's one chart: a baseline, a wash under the line, and the line.
-pub fn line_chart(values: &[f32], height: f32, pad: f32, t: &Theme) -> impl IntoElement {
-    let (values, acc, line2) = (
-        values.iter().map(|v| Some(*v)).collect::<Vec<_>>(),
-        t.acc,
-        t.line2,
-    );
-    canvas(
-        |_, _, _| (),
-        move |bounds, (), window, _| {
-            let base = bounds.origin.y + bounds.size.height - px(1.0);
-            let rule = Bounds::new(
-                point(bounds.origin.x, base),
-                gpui::size(bounds.size.width, px(1.0)),
-            );
-            window.paint_quad(gpui::fill(rule, line2));
-
-            let points = scale(&values, bounds, pad);
-            // This series has no gaps, so the area under it is one shape.
-            let solid: Vec<_> = points.iter().flatten().copied().collect();
-            let (Some(first), Some(last)) = (solid.first(), solid.last()) else {
-                return;
-            };
-            let mut area = PathBuilder::fill();
-            area.move_to(point(first.x, bounds.origin.y + bounds.size.height));
-            for p in &solid {
-                area.line_to(*p);
-            }
-            area.line_to(point(last.x, bounds.origin.y + bounds.size.height));
-            area.close();
-            if let Ok(area) = area.build() {
-                let wash = linear_gradient(
-                    180.0,
-                    linear_color_stop(acc.opacity(0.2), 0.0),
-                    linear_color_stop(acc.opacity(0.0), 1.0),
-                );
-                window.paint_path(area, wash);
-            }
-            stroke(&points, 1.3, acc, window);
-        },
-    )
-    .w_full()
-    .h(px(height))
 }

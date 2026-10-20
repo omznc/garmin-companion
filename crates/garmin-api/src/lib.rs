@@ -35,7 +35,10 @@ pub mod today;
 pub mod training_fixtures;
 pub mod workouts;
 
-pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
+pub use activities::{
+    activities_view, activities_view_rows, activity_detail_view, ActivitiesView,
+    ActivityDetailView, ActivityRow,
+};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;

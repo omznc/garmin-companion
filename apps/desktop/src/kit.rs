@@ -382,6 +382,19 @@ pub struct Column {
 /// aligned. The first column is dim.
 #[allow(dead_code)]
 pub fn table(columns: &[Column], rows: Vec<Vec<SharedString>>, t: &Theme) -> Div {
+    let rows = rows.into_iter().map(|cells| (cells, None)).collect();
+    table_rows(columns, rows, t)
+}
+
+/// What a click on a row does. It runs with the window and the app.
+pub type RowClick = Box<dyn Fn(&mut gpui::Window, &mut gpui::App)>;
+
+/// As `table`, and a row with a `RowClick` opens something when clicked.
+pub fn table_rows(
+    columns: &[Column],
+    rows: Vec<(Vec<SharedString>, Option<RowClick>)>,
+    t: &Theme,
+) -> Div {
     let hover = t.hover;
     let cell = |text: SharedString, column: &Column, head: bool, first: bool| {
         div()
@@ -413,15 +426,22 @@ pub fn table(columns: &[Column], rows: Vec<Vec<SharedString>>, t: &Theme) -> Div
             }),
     );
     let last = rows.len().saturating_sub(1);
-    for (i, row) in rows.into_iter().enumerate() {
-        let line = row.into_iter().zip(columns).enumerate().fold(
+    for (i, (cells, click)) in rows.into_iter().enumerate() {
+        let line = cells.into_iter().zip(columns).enumerate().fold(
             div()
                 .flex()
                 .when(i < last, |d| d.border_b_1().border_color(t.line2))
                 .hover(move |s| s.bg(hover)),
             |line, (n, (text, c))| line.child(cell(text, c, false, n == 0)),
         );
-        out = out.child(line);
+        out = out.child(match click {
+            Some(click) => line
+                .id(("table-row", i))
+                .cursor_pointer()
+                .on_click(move |_, window, cx| click(window, cx))
+                .into_any_element(),
+            None => line.into_any_element(),
+        });
     }
     out
 }
