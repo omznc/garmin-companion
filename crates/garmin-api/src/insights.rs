@@ -14,6 +14,7 @@ use crate::{activity_profile, ApiError};
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_core::findings::{self, edwards_trimp, Finding, Section, Tone};
 use garmin_core::sport::is_exercise;
+use garmin_core::stats::Estimate;
 use garmin_core::{CachedActivity, Db, Family};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -46,6 +47,12 @@ pub struct InsightSeries {
     pub values: Vec<Option<f64>>,
     /// Drawn as the comparison line.
     pub muted: bool,
+    /// Low values at the top. Pace is the case.
+    #[serde(default)]
+    pub invert: bool,
+    /// How the figures read. `None` for a series that the view builds.
+    #[serde(default)]
+    pub format: Option<findings::Unit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +83,18 @@ pub struct InsightItem {
     /// sets it. A UI turns it into an age such as "new this week".
     #[serde(default)]
     pub first_seen: Option<String>,
+    /// One label for each point of the series. Empty for no labels.
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// The estimate that the claim rests on, with its interval.
+    #[serde(default)]
+    pub estimate: Option<Estimate>,
+    /// What to do about the finding, in one sentence.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// The ids of the sessions that the finding counted.
+    #[serde(default)]
+    pub sessions: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,9 +151,15 @@ fn finding_item(f: &Finding) -> InsightItem {
                 name: s.name.clone(),
                 values: s.values.clone(),
                 muted: s.muted,
+                invert: s.invert,
+                format: Some(s.format),
             })
             .collect(),
         ends: ends(&f.labels),
+        labels: f.labels.clone(),
+        estimate: f.estimate,
+        action: findings::action(&f.kind).map(String::from),
+        sessions: f.sessions.clone(),
         rows: f
             .rows
             .iter()
@@ -347,6 +372,8 @@ fn load_item(l: &Load, shape: Option<&[WeekLoad]>) -> InsightItem {
                 name: "Weekly load".into(),
                 values: s.iter().map(|w| Some(w.trimp.round())).collect(),
                 muted: false,
+                invert: false,
+                format: None,
             }]
         }),
         ends: shape.map_or_else(Vec::new, |s| {
@@ -355,6 +382,10 @@ fn load_item(l: &Load, shape: Option<&[WeekLoad]>) -> InsightItem {
         }),
         rows: Vec::new(),
         first_seen: None,
+        labels: Vec::new(),
+        estimate: None,
+        action: None,
+        sessions: Vec::new(),
     }
 }
 
@@ -372,6 +403,10 @@ fn flag(id: &str, accent: bool, claim: &str, detail: String) -> InsightItem {
         ends: Vec::new(),
         rows: Vec::new(),
         first_seen: None,
+        labels: Vec::new(),
+        estimate: None,
+        action: None,
+        sessions: Vec::new(),
     }
 }
 

@@ -247,6 +247,10 @@ impl Root {
 
     /// Show one session. The page starts at the top, like a new screen.
     pub fn open_activity(&mut self, id: i64, cx: &mut Context<Self>) {
+        // A row on another screen, such as an insight, opens the session too.
+        if self.active != Screen::Activities {
+            self.select_screen(Screen::Activities, cx);
+        }
         let store = self.store.clone();
         crate::account::load_async(
             self,
@@ -261,6 +265,21 @@ impl Root {
                 root.restart_page(cx);
             },
         );
+    }
+
+    /// Show the detail page of one Insights item.
+    pub fn open_insight(&mut self, id: String, cx: &mut Context<Self>) {
+        self.select_screen(Screen::Insights, cx);
+        self.page = Page::Insight(id);
+        self.restart_page(cx);
+    }
+
+    /// Open the coach panel and send it a question.
+    pub fn ask_coach(&mut self, question: String, cx: &mut Context<Self>) {
+        if !self.coach_open {
+            self.toggle_coach(cx);
+        }
+        self.ask.update(cx, |ask, cx| ask.send(question, cx));
     }
 
     /// Open on the Activities entry, with one session shown.
@@ -427,6 +446,9 @@ impl Root {
         match (&self.page, self.active) {
             (Page::Detail(view), Screen::Activities) => activities::crumb(view),
             (Page::All(_), Screen::Activities) => "All sessions".into(),
+            (Page::Insight(id), Screen::Insights) => {
+                crate::insight::crumb(self.training.as_ref(), id)
+            }
             _ => blocks::crumb(self.active, &self.ctx(t))
                 .unwrap_or_else(|| self.active.crumb(self.focus.end)),
         }
@@ -482,6 +504,7 @@ impl Root {
         if screen == Screen::Activities {
             self.close_activity(cx);
         } else {
+            self.page = Page::List;
             self.restart_page(cx);
         }
     }
@@ -540,6 +563,10 @@ impl Root {
         // A session and the table of all sessions are not in the block layout.
         if self.active == Screen::Activities && !matches!(self.page, Page::List) {
             return self.activity_page(t, window, cx);
+        }
+        if let (Screen::Insights, Page::Insight(id)) = (self.active, &self.page) {
+            let (available, id) = (self.grid_width(window), id.clone());
+            return crate::insight::page(self, &id, available, available < NARROW_GRID, t, cx);
         }
         if let Some(page) = self.block_page(t, window, cx) {
             return page;
@@ -646,7 +673,7 @@ impl Root {
         match &self.page {
             Page::Detail(view) => activities::detail(view, available, narrow, t, cx),
             Page::All(at) => activities::all(&self.list, *at, available, t, cx),
-            Page::Missing | Page::List => activities::missing(t, cx),
+            Page::Missing | Page::List | Page::Insight(_) => activities::missing(t, cx),
         }
     }
 }

@@ -116,6 +116,39 @@ pub struct Finding {
     pub labels: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<FindingRow>,
+    /// The activity ids that the finding counted, oldest first. Empty when the
+    /// finding rests on days, not on sessions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<i64>,
+}
+
+/// One plain sentence of what to do about a finding. It makes no promise and
+/// it names no sport or device, so it fits each user. `None` for an unknown kind.
+pub fn action(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "fitness-at-fixed-hr" => {
+            "Compare runs at a similar effort, not at a similar pace. Keep the easy runs easy so the comparison stays fair."
+        }
+        "cadence-lever" => {
+            "Try a slightly quicker step rate on an easy run. Change it a little at a time and watch how the effort feels."
+        }
+        "recovery-drivers" => {
+            "Treat the table as a list of things to watch, not as a plan. Change one habit at a time and give it a few weeks."
+        }
+        "week-shape" => {
+            "Look at the day that you skip most often. Move one planned session to the day that you keep most often."
+        }
+        "rest-day-contrast" => {
+            "Plan your rest days on purpose. A rest day that you choose helps more than a rest day that happens to you."
+        }
+        "easy-share-trend" => {
+            "Make the easy sessions easier. Keep most of your time in the low heart-rate zones and keep the hard days few."
+        }
+        "block-ended" => {
+            "If the break was a choice, restart with an easy week. If it was not, start again below the old level and build slowly."
+        }
+        _ => return None,
+    })
 }
 
 /* ---------------------------------------------------------------- helpers --- */
@@ -406,6 +439,7 @@ pub fn fitness_at_fixed_hr(activities: &[CachedActivity]) -> Option<Finding> {
         }],
         labels: band.iter().filter_map(|a| a.local_date.clone()).collect(),
         rows: vec![],
+        sessions: band.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -521,6 +555,7 @@ pub fn cadence_lever(activities: &[CachedActivity]) -> Option<Finding> {
         ],
         labels: runs.iter().filter_map(|a| a.local_date.clone()).collect(),
         rows: vec![],
+        sessions: runs.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -716,6 +751,7 @@ pub fn recovery_drivers(daily: &[DailyMetrics], activities: &[CachedActivity]) -
                 accent: r.excludes_zero(),
             })
             .collect(),
+        sessions: vec![],
     })
 }
 
@@ -843,6 +879,7 @@ pub fn week_shape(daily: &[DailyMetrics], activities: &[CachedActivity]) -> Opti
                 accent: i == worst,
             })
             .collect(),
+        sessions: vec![],
     })
 }
 
@@ -963,6 +1000,7 @@ pub fn rest_day_contrast(daily: &[DailyMetrics], activities: &[CachedActivity]) 
         series: vec![],
         labels: vec![],
         rows: out_rows,
+        sessions: vec![],
     })
 }
 
@@ -1084,6 +1122,7 @@ pub fn easy_share_trend(activities: &[CachedActivity]) -> Option<Finding> {
         }],
         labels: ordered.iter().map(|(m, _)| month_short(m)).collect(),
         rows: vec![],
+        sessions: vec![],
     })
 }
 
@@ -1187,6 +1226,7 @@ pub fn block_ended(activities: &[CachedActivity], today: chrono::NaiveDate) -> O
                 accent: true,
             },
         ],
+        sessions: block.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -1303,6 +1343,25 @@ mod tests {
         let f = block_ended(&runs, today).expect("a stopped block is worth saying");
         assert_eq!(f.tone, Tone::Watch);
         assert!(f.claim.contains("stopped"));
+        // The finding names the sessions of the block.
+        assert_eq!(f.sessions.len(), 8);
+        assert!(f.sessions.contains(&1000));
+    }
+
+    #[test]
+    fn each_kind_of_finding_has_one_action_and_an_unknown_kind_has_none() {
+        for kind in [
+            "fitness-at-fixed-hr",
+            "cadence-lever",
+            "recovery-drivers",
+            "week-shape",
+            "rest-day-contrast",
+            "easy-share-trend",
+            "block-ended",
+        ] {
+            assert!(action(kind).is_some_and(|a| !a.is_empty()), "{kind}");
+        }
+        assert!(action("nothing").is_none());
     }
 
     #[test]

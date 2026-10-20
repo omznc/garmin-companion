@@ -13,7 +13,7 @@ mod fitness;
 mod food;
 mod gear;
 mod health;
-mod insights;
+pub mod insights;
 pub mod layout;
 mod plan;
 mod reports;

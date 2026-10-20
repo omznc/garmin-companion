@@ -100,6 +100,8 @@ pub struct Attention {
     /// A missing day is `None`, and the chart leaves a gap there.
     pub spark: Vec<Option<f32>>,
     pub link: Option<Link>,
+    /// The id of the Insights item that tells more about this note.
+    pub insight: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

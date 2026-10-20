@@ -295,13 +295,25 @@ fn attention(ctx: &Ctx) -> Option<Block> {
     let warnings = items.iter().filter(|a| a.accent).count();
     let rows = items
         .iter()
-        .map(|a| ListRow {
-            glyph: if a.accent { Icon::Warning } else { Icon::Info },
-            tone: if a.accent { Tone::Warn } else { Tone::Accent },
-            title: a.text.clone().into(),
-            sub: a.link.as_ref().map(|l| l.label.clone().into()),
-            right: None,
-            right_sub: None,
+        .map(|a| {
+            // A note opens its Insights item, when the item is in the data.
+            let id = a
+                .insight
+                .as_ref()
+                .filter(|id| crate::insight::find(ctx.training, id).is_some());
+            let sub = match id {
+                Some(_) => Some("See the detail".into()),
+                None => a.link.as_ref().map(|l| l.label.clone().into()),
+            };
+            let row = ListRow {
+                glyph: if a.accent { Icon::Warning } else { Icon::Info },
+                tone: if a.accent { Tone::Warn } else { Tone::Accent },
+                title: a.text.clone().into(),
+                sub,
+                right: None,
+                right_sub: None,
+            };
+            (row, id.map(|id| crate::insight::open_insight(id.clone())))
         })
         .collect();
     let meta = match warnings {
@@ -309,7 +321,7 @@ fn attention(ctx: &Ctx) -> Option<Block> {
         1 => Some("1 warning".to_string()),
         n => Some(format!("{n} warnings")),
     };
-    block(meta, None, kit::list_rows(rows, ctx.t))
+    block(meta, None, crate::insight::clickable_rows(rows, ctx.t))
 }
 
 /* ------------------------------------------------------------------- week --- */

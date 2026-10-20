@@ -94,7 +94,8 @@
       "link": {
         "label": "Ask about this",
         "to": "/ask"
-      }
+      },
+      "insight": "recovery-drivers"
     },
     {
       "accent": true,
@@ -115,7 +116,8 @@
         41.0,
         41.0
       ],
-      "sparkUnit": "ms"
+      "sparkUnit": "ms",
+      "insight": "recovery-drivers"
     }
   ],
   "lastSession": {

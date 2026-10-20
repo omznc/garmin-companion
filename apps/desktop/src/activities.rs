@@ -109,6 +109,8 @@ pub enum Page {
     Detail(Box<ActivityDetailView>),
     /// The table of every session. The number is the page, from 0.
     All(usize),
+    /// The detail of one Insights item, by id. Insights uses it, not Activities.
+    Insight(String),
     /// The id has no row in the cache.
     Missing,
 }
