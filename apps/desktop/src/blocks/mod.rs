@@ -7,6 +7,7 @@
 //! a width for each. The grid has 12 columns with a gap of 14 px.
 
 mod activities;
+mod daily;
 mod fitness;
 mod food;
 mod gear;

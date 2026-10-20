@@ -221,11 +221,6 @@ pub fn spark(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
     spark_canvas(values, t).w(px(90.0)).h(px(20.0)).flex_none()
 }
 
-/// A sparkline that fills the width of its row.
-pub fn spark_wide(values: &[Option<f32>], t: &Theme) -> impl IntoElement {
-    spark_canvas(values, t).w_full().h(px(30.0))
-}
-
 /// The page's one chart: a baseline, a wash under the line, and the line.
 pub fn line_chart(values: &[f32], height: f32, pad: f32, t: &Theme) -> impl IntoElement {
     let (values, acc, line2) = (

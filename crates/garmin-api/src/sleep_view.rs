@@ -62,6 +62,20 @@ pub struct NightView {
     /// The stages in time order. Empty when the cache holds no timeline.
     #[serde(default)]
     pub timeline: Vec<StageSpan>,
+    /// Figures of the night from the watch. Each is `None` when it has none.
+    #[serde(default)]
+    pub awake_count: Option<f64>,
+    #[serde(default)]
+    pub restless_count: Option<f64>,
+    #[serde(default)]
+    pub avg_respiration: Option<f64>,
+    #[serde(default)]
+    pub avg_spo2: Option<f64>,
+    #[serde(default)]
+    pub lowest_spo2: Option<f64>,
+    /// Seconds of nap in the day.
+    #[serde(default)]
+    pub nap_secs: Option<f64>,
     pub sentence: String,
 }
 
@@ -209,6 +223,12 @@ fn night_view(b: &Basic, today: NaiveDate) -> NightView {
         duration_text: duration,
         stages: b.night.map(stages).unwrap_or_default(),
         timeline: b.night.map(timeline).unwrap_or_default(),
+        awake_count: b.night.and_then(|n| n.awake_count),
+        restless_count: b.night.and_then(|n| n.restless_count),
+        avg_respiration: b.night.and_then(|n| n.avg_respiration),
+        avg_spo2: b.night.and_then(|n| n.avg_spo2),
+        lowest_spo2: b.night.and_then(|n| n.lowest_spo2),
+        nap_secs: b.night.and_then(|n| n.nap_secs).filter(|s| *s > 0.0),
         start,
         end,
     }

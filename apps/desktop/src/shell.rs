@@ -24,7 +24,7 @@ use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::views::Views;
-use crate::wellness::{self, Wellness};
+use crate::wellness::Wellness;
 use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
 /// At or below this window width the coach panel hides.
@@ -472,16 +472,6 @@ impl Root {
         self.set_theme_mode(mode, window, cx);
     }
 
-    /// Health and Sleep, once their data has loaded.
-    fn wellness_screen(&self, t: &Theme) -> Option<gpui::AnyElement> {
-        let w = self.wellness.as_ref()?;
-        match self.active {
-            Screen::Health => Some(wellness::render_health(&w.health, t).into_any_element()),
-            Screen::Sleep => Some(wellness::render_sleep(&w.sleep, t).into_any_element()),
-            _ => None,
-        }
-    }
-
     fn screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.tabs.is_empty() {
             return div()
@@ -499,9 +489,6 @@ impl Root {
         }
         if self.active == Screen::Activities {
             return self.activities_screen(t, cx);
-        }
-        if let Some(screen) = self.wellness_screen(t) {
-            return screen;
         }
         if self.active == Screen::Settings {
             return settings::render(self, t, window, cx);

@@ -43,6 +43,12 @@
       }
     ],
     "timeline": [],
+    "awakeCount": null,
+    "restlessCount": null,
+    "avgRespiration": 14.0,
+    "avgSpo2": 95.0,
+    "lowestSpo2": null,
+    "napSecs": null,
     "sentence": "Slept 7h 00m, from 22:15 to 05:45. Garmin scored it 70, fair."
   },
   "week": {

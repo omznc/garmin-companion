@@ -520,7 +520,11 @@ mod tests {
         ];
         let b = bed_wake(&nights, "2026-03-01", "2026-03-11").unwrap();
         assert_eq!(b.nights, 2);
-        assert!(b.bed_minute < 1.0 || b.bed_minute > 1439.0, "{}", b.bed_minute);
+        assert!(
+            b.bed_minute < 1.0 || b.bed_minute > 1439.0,
+            "{}",
+            b.bed_minute
+        );
         assert_eq!(b.wake_minute, 450.0);
         assert!((b.consistency_mins - 30.0).abs() < 1e-9);
         assert_eq!(bed_wake(&[], "a", "b"), None);
