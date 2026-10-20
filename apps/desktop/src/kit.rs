@@ -2,9 +2,8 @@
 //! hints and the charts. The sizes come from the CSS of the design (`.ib`,
 //! `.btn`, `.chip`, `.kbd`).
 
-use gpui::{
-    div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
-};
+use crate::scale::px;
+use gpui::{div, prelude::*, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful};
 
 use crate::charts::{spark, Tone};
 use crate::icons::{icon, icon_hover, Icon};

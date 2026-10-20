@@ -11,10 +11,11 @@
 use std::future::Future;
 use std::time::Duration;
 
+use crate::scale::px;
 use chrono::Utc;
 use garmin_coach::{AccountView, Balance, CloudClient, Provider};
 use garmin_core::{db::Db, store};
-use gpui::{div, prelude::*, px, App, ClickEvent, Context, Div, FontWeight, Window};
+use gpui::{div, prelude::*, App, ClickEvent, Context, Div, FontWeight, Window};
 
 use crate::data::Source;
 use crate::field::Field;

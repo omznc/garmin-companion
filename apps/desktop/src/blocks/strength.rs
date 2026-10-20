@@ -257,7 +257,7 @@ fn numbers(ctx: &Ctx) -> Option<Block> {
     let grid = kit::stat_grid(cells, 2, ctx.t);
     let caveat = (!v.caveat.is_empty()).then(|| {
         padded(v.caveat.clone())
-            .text_size(gpui::px(12.0))
+            .text_size(crate::scale::px(12.0))
             .text_color(ctx.t.faint)
     });
     block(

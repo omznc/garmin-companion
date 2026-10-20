@@ -1,8 +1,9 @@
 //! The blocks of the Gear screen: the shoes and the devices.
 
+use crate::scale::px;
 use chrono::Local;
 use garmin_api::gear::GearRow;
-use gpui::{div, prelude::*, px};
+use gpui::{div, prelude::*};
 
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::{self, MeterRow, Tone};

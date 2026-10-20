@@ -21,7 +21,8 @@ mod strength;
 mod today;
 mod weight;
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, SharedString};
+use crate::scale::px;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Div, SharedString};
 
 use garmin_api::charts::ChartsView;
 use garmin_api::extras::ExtrasView;

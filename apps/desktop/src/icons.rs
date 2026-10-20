@@ -11,8 +11,9 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
+use crate::scale::px;
 use gpui::{
-    div, percentage, prelude::*, px, svg, Animation, AnimationExt, AssetSource, Hsla, SharedString,
+    div, percentage, prelude::*, svg, Animation, AnimationExt, AssetSource, Hsla, SharedString,
     Transformation,
 };
 

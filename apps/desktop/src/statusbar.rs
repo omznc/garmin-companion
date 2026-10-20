@@ -1,6 +1,7 @@
 //! The status bar at the bottom of the window. From the `footer` of the design.
 
-use gpui::{div, prelude::*, px, ClickEvent, Context, Div, SharedString};
+use crate::scale::px;
+use gpui::{div, prelude::*, ClickEvent, Context, Div, SharedString};
 
 use crate::focus::Focus;
 use crate::icons::{icon, Icon};

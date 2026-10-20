@@ -7,8 +7,9 @@
 
 use std::ops::Range;
 
+use crate::scale::px;
 use gpui::{
-    div, prelude::*, px, relative, AnyElement, FontWeight, HighlightStyle, SharedString, StyledText,
+    div, prelude::*, relative, AnyElement, FontWeight, HighlightStyle, SharedString, StyledText,
 };
 
 use crate::theme::{Theme, FS_MD, FS_SMALL};

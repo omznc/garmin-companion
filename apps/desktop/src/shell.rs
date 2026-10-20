@@ -2,10 +2,10 @@
 //! coach panel and the status bar. From `DesktopShell` in `app/src/router.tsx`
 //! and the shell of the design.
 
+use crate::scale::px;
 use garmin_api::settings::ThemeMode;
 use gpui::{
-    div, prelude::*, px, relative, AnyElement, Context, ElementId, Entity, IntoElement, Render,
-    Window,
+    div, prelude::*, relative, AnyElement, Context, ElementId, Entity, IntoElement, Render, Window,
 };
 
 use crate::account::Account;
@@ -349,10 +349,29 @@ impl Root {
         cx.notify();
     }
 
+    /// Set the interface scale at once and save it.
+    pub(crate) fn set_scale(&mut self, factor: f32, cx: &mut Context<Self>) {
+        crate::scale::set(factor);
+        self.save_window_state();
+        cx.notify();
+    }
+
+    /// Go one step up or down the scale. `None` resets it to 100 percent.
+    pub(crate) fn zoom(&mut self, up: Option<bool>, cx: &mut Context<Self>) {
+        let next = match up {
+            Some(up) => crate::scale::step(up),
+            None => Some(1.0),
+        };
+        if let Some(factor) = next {
+            self.set_scale(factor, cx);
+        }
+    }
+
     pub(crate) fn save_window_state(&mut self) {
         if self.account.demo {
             return;
         }
+        self.window_state.scale = crate::scale::get();
         self.window_state.calendar_closed = self.calendar.collapsed;
         self.window_state.sidebar_w = Some(self.sidebar_w);
         self.window_state.coach_w = Some(self.coach_w);
@@ -554,7 +573,7 @@ fn not_built(label: &str, t: &Theme) -> AnyElement {
 impl Root {
     /// The width that the page gives to a grid of blocks.
     fn grid_width(&self, window: &Window) -> f32 {
-        let width = f32::from(window.viewport_size().width);
+        let width = crate::scale::viewport_w(window);
         let layout = self.layout(width);
         (width - layout.sidebar - layout.coach - 40.0).min(PAGE_MAX)
     }
@@ -649,11 +668,13 @@ impl Render for Root {
             self.save_nav_order();
         }
 
+        // The `rem` units of the toolkit follow the interface scale.
+        window.set_rem_size(gpui::px(16.0 * crate::scale::get()));
         let t = self.palette.theme();
         if !self.account.connected {
             return self.framed(setup::render(self, &t, window, cx), &t, window);
         }
-        let width = f32::from(window.viewport_size().width);
+        let width = crate::scale::viewport_w(window);
         let layout = self.layout(width);
         let narrow = layout.sidebar == 0.0;
         let on_ask = self.active == Screen::Ask && !self.tabs.is_empty();
@@ -740,7 +761,7 @@ impl Render for Root {
             .when(self.pane_drag.is_some(), |d| d.cursor_ew_resize())
             .on_mouse_move(cx.listener(|root, event: &gpui::MouseMoveEvent, _, cx| {
                 let pressed = event.pressed_button == Some(gpui::MouseButton::Left);
-                root.pane_move(f32::from(event.position.x), pressed, cx)
+                root.pane_move(crate::scale::dp(event.position.x), pressed, cx)
             }))
             .on_mouse_up(
                 gpui::MouseButton::Left,

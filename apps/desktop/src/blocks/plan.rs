@@ -1,10 +1,11 @@
 //! The blocks of the Plan screen: the week, the goal and the next workout.
 
+use crate::scale::px;
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_api::activities::ActivityCard;
 use garmin_api::extras::PlannedItem;
 use garmin_core::calendar::PlanStep;
-use gpui::{div, prelude::*, px, Div};
+use gpui::{div, prelude::*, Div};
 
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::Tone;

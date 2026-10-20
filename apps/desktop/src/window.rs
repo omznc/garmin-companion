@@ -25,6 +25,8 @@ pub struct State {
     /// The widths that the user dragged. `None` is the default width.
     pub sidebar_w: Option<f32>,
     pub coach_w: Option<f32>,
+    /// The interface scale as a factor: 1.0 is 100 percent.
+    pub scale: f32,
 }
 
 impl Default for State {
@@ -39,6 +41,7 @@ impl Default for State {
             calendar_closed: false,
             sidebar_w: None,
             coach_w: None,
+            scale: 1.0,
         }
     }
 }

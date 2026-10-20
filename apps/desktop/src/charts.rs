@@ -2,8 +2,9 @@
 //! and the area chart. The sizes and the colours come from the CSS of the
 //! design (`.spark`, `.mrow`, `bars`, `line`).
 
+use crate::scale::px;
 use gpui::{
-    canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, px, relative, size,
+    canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, relative, size,
     Bounds, BoxShadow, ColorExt as _, Corners, Div, Hsla, PathBuilder, Pixels, Point, SharedString,
 };
 
@@ -92,8 +93,8 @@ pub fn spark(values: &[f32], t: &Theme) -> impl IntoElement {
                 3.0,
             )[0];
             if let Some(base) = base {
-                let mut x = f32::from(bounds.origin.x);
-                let end = x + f32::from(bounds.size.width);
+                let mut x = crate::scale::dp(bounds.origin.x);
+                let end = x + crate::scale::dp(bounds.size.width);
                 while x < end {
                     let dash = Bounds::new(point(px(x), base.y), size(px(2.0), px(1.0)));
                     window.paint_quad(fill(dash, faint));

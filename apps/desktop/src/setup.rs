@@ -4,7 +4,8 @@
 //! The old app had three steps (Garmin, a model, preferences). The model step
 //! belongs to the Ask screen, which comes later. So this is one step.
 
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Window};
+use crate::scale::px;
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Window};
 
 use crate::account::SignIn;
 use crate::controls::cta;

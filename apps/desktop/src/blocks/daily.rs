@@ -1,10 +1,9 @@
 //! The parts that the Health, Sleep, Food and Weight blocks share: the block
 //! wrapper, the line chart with a band, and the helpers for a daily series.
 
+use crate::scale::px;
 use chrono::{Datelike, Duration, NaiveDate};
-use gpui::{
-    canvas, div, point, prelude::*, px, relative, ColorExt as _, Div, Pixels, SharedString,
-};
+use gpui::{canvas, div, point, prelude::*, relative, ColorExt as _, Div, Pixels, SharedString};
 
 use super::{Block, Go};
 use crate::charts::{area_wash, end_dot};
@@ -269,8 +268,8 @@ pub fn line_chart(c: Line, t: &Theme) -> Div {
     let plot = canvas(
         |_, _, _| (),
         move |bounds, (), window, _| {
-            let h = f32::from(bounds.size.height);
-            let w = f32::from(bounds.size.width);
+            let h = crate::scale::dp(bounds.size.height);
+            let w = crate::scale::dp(bounds.size.width);
             let at = |p: &(f32, f32)| -> gpui::Point<Pixels> {
                 point(
                     bounds.origin.x + px(p.0 * w),

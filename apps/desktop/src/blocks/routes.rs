@@ -1,10 +1,9 @@
 //! The blocks of the Routes screen: the saved routes, the most run ones and
 //! a few figures.
 
+use crate::scale::px;
 use garmin_api::routes::RoutesView;
-use gpui::{
-    canvas, div, fill, point, prelude::*, px, size, Bounds, Hsla, PathBuilder, Pixels, Window,
-};
+use gpui::{canvas, div, fill, point, prelude::*, size, Bounds, Hsla, PathBuilder, Pixels, Window};
 
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::Tone;
@@ -122,7 +121,10 @@ fn paint_trace(
     (line, glow, acc): (Hsla, Hsla, Hsla),
     window: &mut Window,
 ) {
-    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let (w, h) = (
+        crate::scale::dp(bounds.size.width),
+        crate::scale::dp(bounds.size.height),
+    );
     let mut x = 0.0;
     while x < w {
         let bar = Bounds::new(bounds.origin + point(px(x), px(0.0)), size(px(1.0), px(h)));

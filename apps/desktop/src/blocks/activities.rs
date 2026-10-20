@@ -2,9 +2,10 @@
 //! and the page of all sessions share. The detail page of one session is in
 //! `crate::activities`.
 
+use crate::scale::px;
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_api::ActivityRow;
-use gpui::{div, prelude::*, px, Div, SharedString};
+use gpui::{div, prelude::*, Div, SharedString};
 
 use super::{Block, BlockDef, Ctx, Go, Width};
 use crate::charts::{self, Bar, MeterRow, Tone};

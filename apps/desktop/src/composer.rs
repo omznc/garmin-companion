@@ -12,8 +12,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::scale::px;
 use gpui::{
-    div, font, prelude::*, px, relative, App, BoxShadow, ClickEvent, ClipboardItem, ColorExt as _,
+    div, font, prelude::*, relative, App, BoxShadow, ClickEvent, ClipboardItem, ColorExt as _,
     Context, EventEmitter, FocusHandle, Focusable, Font, FontId, Hsla, IntoElement, KeyDownEvent,
     MouseDownEvent, Render, SharedString, TextRun, TextSystem, Window,
 };
@@ -77,7 +78,7 @@ impl Advance for Measure {
         *self.cache.borrow_mut().entry(c).or_insert_with(|| {
             self.system
                 .advance(self.font_id, px(size), c)
-                .map_or(size * 0.5, |s| f32::from(s.width))
+                .map_or(size * 0.5, |s| crate::scale::dp(s.width))
         })
     }
 }
@@ -103,7 +104,7 @@ fn x_of(window: &Window, row: &str, upto: usize, font: &Font, size: f32, colour:
         &[run],
         None,
     );
-    f32::from(line.width)
+    crate::scale::dp(line.width)
 }
 
 impl Composer {

@@ -5,8 +5,9 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::scale::px;
 use gpui::{
-    div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
+    div, prelude::*, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
     TextTransform,
 };
 

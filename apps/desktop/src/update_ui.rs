@@ -5,7 +5,8 @@
 
 use std::time::{Duration, SystemTime};
 
-use gpui::{div, prelude::*, px, ClickEvent, Context, Div};
+use crate::scale::px;
+use gpui::{div, prelude::*, ClickEvent, Context, Div};
 
 use crate::cloud::on_thread;
 use crate::controls::quiet;

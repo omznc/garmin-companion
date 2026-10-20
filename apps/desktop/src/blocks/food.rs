@@ -1,9 +1,10 @@
 //! The blocks of the Food screen. Each one hides when its data is missing.
 
+use crate::scale::px;
 use chrono::NaiveDate;
 use garmin_api::body::FoodDay;
 use garmin_core::nutrition::Meal;
-use gpui::{div, prelude::*, px, SharedString};
+use gpui::{div, prelude::*, SharedString};
 
 use super::daily::{block, head_row, padded, thousands, weekday_initial, window_meta};
 use super::{Block, BlockDef, Ctx, Go, Width};
