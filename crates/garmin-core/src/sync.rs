@@ -186,9 +186,7 @@ pub async fn sync_daily(
                 metrics.bmr_kcal = num(&v, &["bmrKilocalories"]);
                 metrics.net_calorie_goal = num(&v, &["netCalorieGoal"]);
             }
-            Err(e) => report
-                .warnings
-                .push(format!("user summary {date_str}: {e}")),
+            Err(e) => warn_or_abort(report, "user summary", &date_str, e)?,
         }
 
         match client.hrv(&date_str).await {
@@ -197,7 +195,7 @@ pub async fn sync_daily(
                 metrics.hrv_weekly_avg = num(&v, &["hrvSummary", "weeklyAvg"]);
                 metrics.hrv_status = text(&v, &["hrvSummary", "status"]);
             }
-            Err(e) => report.warnings.push(format!("hrv {date_str}: {e}")),
+            Err(e) => warn_or_abort(report, "hrv", &date_str, e)?,
         }
 
         match client.training_readiness(&date_str).await {
@@ -206,9 +204,7 @@ pub async fn sync_daily(
                 let first = v.as_array().and_then(|a| a.first()).unwrap_or(&v);
                 metrics.training_readiness = num(first, &["score"]);
             }
-            Err(e) => report
-                .warnings
-                .push(format!("training readiness {date_str}: {e}")),
+            Err(e) => warn_or_abort(report, "training readiness", &date_str, e)?,
         }
 
         match client.hydration(&date_str).await {
@@ -217,7 +213,7 @@ pub async fn sync_daily(
                 metrics.hydration_goal_ml = num(&v, &["goalInML"]);
                 metrics.sweat_loss_ml = num(&v, &["sweatLossInML"]);
             }
-            Err(e) => report.warnings.push(format!("hydration {date_str}: {e}")),
+            Err(e) => warn_or_abort(report, "hydration", &date_str, e)?,
         }
 
         match client.sleep(display_name, &date_str).await {
@@ -246,7 +242,7 @@ pub async fn sync_daily(
                     }
                 }
             }
-            Err(e) => report.warnings.push(format!("sleep {date_str}: {e}")),
+            Err(e) => warn_or_abort(report, "sleep", &date_str, e)?,
         }
 
         // The day counts as real if any figure came back with a value in it —
@@ -271,6 +267,34 @@ pub async fn sync_daily(
     }
 
     Ok(())
+}
+
+/// A reply that says "no data" is a warning. A failed request is not a reply:
+/// a dropped network would count every day as empty, end the walk early and
+/// report success. So the walk stops with the error instead.
+fn warn_or_abort(report: &mut SyncReport, what: &str, date: &str, e: anyhow::Error) -> Result<()> {
+    if e.downcast_ref::<reqwest::Error>().is_some() {
+        return Err(e.context(format!("{what} {date}")));
+    }
+    report.warnings.push(format!("{what} {date}: {e}"));
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_request_aborts_but_a_status_error_only_warns() {
+        let mut report = SyncReport::default();
+        let status = anyhow::anyhow!("/x returned 404 Not Found: ");
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status).is_ok());
+        assert_eq!(report.warnings.len(), 1);
+
+        let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", transport.into()).is_err());
+        assert_eq!(report.warnings.len(), 1);
+    }
 }
 
 /// How many consecutive days with nothing at all end a full wellness walk.
