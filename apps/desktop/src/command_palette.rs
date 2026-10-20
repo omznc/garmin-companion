@@ -248,6 +248,7 @@ impl Root {
                 self.select_screen(crate::screen::Screen::Ask, cx);
             }
             Action::ToggleTheme => self.toggle_theme(window, cx),
+            Action::Focus(preset) => self.set_focus(preset.focus(crate::focus::real_today()), cx),
         }
     }
 }

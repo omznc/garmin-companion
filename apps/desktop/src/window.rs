@@ -20,6 +20,8 @@ pub struct State {
     pub coach_open: bool,
     /// The keys of the sidebar groups that the user closed.
     pub collapsed: Vec<String>,
+    /// The calendar block of the sidebar is closed.
+    pub calendar_closed: bool,
 }
 
 impl Default for State {
@@ -31,6 +33,7 @@ impl Default for State {
             y: None,
             coach_open: true,
             collapsed: Vec::new(),
+            calendar_closed: false,
         }
     }
 }

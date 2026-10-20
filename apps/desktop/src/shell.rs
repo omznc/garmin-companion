@@ -74,6 +74,8 @@ pub struct Root {
     pub(crate) views: Views,
     /// The day or the range that every page looks at.
     pub(crate) focus: Focus,
+    /// The month on show and the drag of the calendar.
+    pub(crate) calendar: crate::calendar::Calendar,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// The screen on show.
@@ -145,6 +147,7 @@ impl Root {
             body,
             places,
             views: Views::default(),
+            calendar: crate::calendar::Calendar::new(focus, window_state.calendar_closed),
             focus,
             palette,
             active: sidebar.active,
@@ -351,10 +354,11 @@ impl Root {
         cx.notify();
     }
 
-    fn save_window_state(&mut self) {
+    pub(crate) fn save_window_state(&mut self) {
         if self.account.demo {
             return;
         }
+        self.window_state.calendar_closed = self.calendar.collapsed;
         self.window_state.coach_open = self.coach_open;
         self.window_state.collapsed = self.sidebar.closed_keys();
         self.window_state.save();
@@ -398,6 +402,7 @@ impl Root {
     /// Load what the screen of the lit entry needs. Call it once at start, for
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
+        self.tell_ask_focus(cx);
         self.enter(self.active, cx);
         let (path, day) = self.places.cache();
         crate::account::load_async(
@@ -419,14 +424,31 @@ impl Root {
 
     /// Look at another day or range. Every view that takes a day reads again
     /// with `focus.end`. The pages keep the old data until the new data comes.
-    #[allow(dead_code)] // The calendar calls it.
     pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
         if focus == self.focus {
             return;
         }
         self.focus = focus;
+        self.calendar.month = crate::calendar::first_of_month(focus.end);
+        self.tell_ask_focus(cx);
         self.reload(cx);
         cx.notify();
+    }
+
+    /// The coach hears the focus with each question.
+    fn tell_ask_focus(&mut self, cx: &mut Context<Self>) {
+        let focus = self.focus;
+        self.ask.update(cx, |ask, cx| ask.set_focus(focus, cx));
+    }
+
+    /// The first crumb: go back to the main page of the screen. On
+    /// Activities this leaves the detail of a session.
+    pub(crate) fn screen_home(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        if screen == Screen::Activities {
+            self.close_activity(cx);
+        } else {
+            self.restart_page(cx);
+        }
     }
 
     fn enter(&mut self, screen: Screen, cx: &mut Context<Self>) {
@@ -674,6 +696,7 @@ impl Render for Root {
 
         let nav = (!narrow).then(|| {
             let counts = self.nav_counts();
+            let calendar = crate::calendar::sidebar_block(self, &t, cx).into_any_element();
             sidebar::render(
                 &self.sidebar,
                 &counts,
@@ -683,6 +706,7 @@ impl Render for Root {
                     select: |this, screen, window, cx| this.select(screen, window, cx),
                     toggle_group: |this, group, _, cx| this.toggle_group(group, cx),
                 },
+                calendar,
             )
         });
 
@@ -715,7 +739,7 @@ impl Render for Root {
             .flex_col()
             .bg(t.bg)
             .child(tabs::tab_bar(self, &t, cx))
-            .child(tabs::crumb_bar(self, narrow, &t))
+            .child(tabs::crumb_bar(self, narrow, &t, cx))
             .child(div().flex_1().min_h_0().flex().child(content));
         let coach = (self.coach_open && width > COACH_HIDES_AT && !on_ask).then(|| {
             div()
@@ -748,7 +772,7 @@ impl Render for Root {
                     .child(center)
                     .children(coach),
             )
-            .child(statusbar::render(self, provider, narrow, &t))
+            .child(statusbar::render(self, provider, narrow, &t, cx))
             .children(crate::update_ui::banner(self, &t, cx))
             .children(self.command_palette.clone())
             .children(crate::theme_dialog::render(self, &t, window, cx))
