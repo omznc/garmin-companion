@@ -48,7 +48,8 @@ export default function SignIn() {
       setStep("redeeming");
       const status = await redeemTicket(ticket);
       // Sample mode data must not outlive the sign-in.
-      await queryClient.resetQueries();
+      // Not the sign-in URL: a reset would flicker the screen. No await: the refetch can be slow.
+      queryClient.resetQueries({ predicate: (q) => q.queryKey[0] !== "sign-in-url" });
       queryClient.setQueryData(["status"], status);
     } catch (e) {
       return fail(`Sign-in did not work. ${e instanceof Error ? e.message : String(e)}`);
@@ -64,9 +65,9 @@ export default function SignIn() {
     used.current = false;
   };
 
+  if (step === "redeeming") return <Message>Signing in. This takes a few seconds.</Message>;
   if (url.error) return <Message>{`The sign-in page is not available. ${url.error}`}</Message>;
   if (!url.data) return <Message>Loading the sign-in page.</Message>;
-  if (step === "redeeming") return <Message>Signing in. This takes a few seconds.</Message>;
   if (step === "failed") {
     return (
       <Message action={<Button title="Try again" onPress={() => setStep("page")} />}>

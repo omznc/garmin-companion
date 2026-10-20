@@ -59,6 +59,8 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
   const stop = subscribe((event) => {
     if (event.kind !== "sync-progress") return;
     const p = event.payload as SyncProgress;
+    // A finished stage shows on Today now, not after the whole pass.
+    if (state.phase !== null && p.phase !== state.phase) queryClient.invalidateQueries();
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
   inflight = runSync(args)

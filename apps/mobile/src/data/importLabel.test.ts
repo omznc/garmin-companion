@@ -22,8 +22,10 @@ test("the quick pass names the last days", () => {
   );
 });
 
-test("the label follows the import pass, not a sync flag", () => {
-  assert.equal(importLabel({ ...base, importPass: null }), `Getting your last ${QUICK_DAYS} days`);
+test("the label follows the import pass, not the sync phase", () => {
+  const quick = { ...base, importing: true, importPass: "quick" as const, phase: "wellness" };
+  assert.equal(importLabel(quick), `Getting your last ${QUICK_DAYS} days`);
+  assert.equal(importLabel({ ...quick, importPass: "full" }), "Your history · 3 of 12 months");
 });
 
 test("the wellness phase counts months from the total", () => {
