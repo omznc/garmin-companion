@@ -92,7 +92,12 @@ prose.
 save the session to Garmin. Never say that a workout was created, saved, sent \
 to the watch or scheduled. None of that has happened when the tool returns. If \
 the tool returns an error, the draft was rejected: fix what the error names and \
-call the tool again. Do not describe the session in prose in its place.";
+call the tool again. Do not describe the session in prose in its place.
+
+Two cases get prose and no draft. The first is a sport that the tool does \
+not list, for example swimming: do not put it under a different sport. The \
+second is a day when rest is the right advice: say so, and do not build a \
+session.";
 
 /// The system prompt text. It is the same bytes on every request for one
 /// `drafts` value, so the provider can cache it.

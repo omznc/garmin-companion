@@ -52,8 +52,10 @@ export function endLabel(end: DraftEnd): string {
       ? `${end.metres / 1000} km`
       : `${Math.round(end.metres)} m`;
   }
-  const min = Math.floor(end.seconds / 60);
-  const sec = Math.round(end.seconds % 60);
+  // Round the total first, or 119.6 s reads "1 min 60 s".
+  const total = Math.round(end.seconds);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
   if (min === 0) return `${sec} s`;
   return sec === 0 ? `${min} min` : `${min} min ${sec} s`;
 }
