@@ -51,6 +51,7 @@ mod markdown;
 mod motion;
 mod openvsx;
 mod panel;
+mod panes;
 mod places;
 mod screen;
 mod scroll;

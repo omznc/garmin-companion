@@ -153,6 +153,8 @@ pub struct Ask {
     provider: Option<Provider>,
     /// The entity sits in the side panel and not in the Ask screen.
     panel: bool,
+    /// The width of the side panel.
+    panel_w: f32,
     /// The name of the screen behind the panel. The coach hears it with a question.
     context: Option<&'static str>,
     /// The focus period, when it is not the live day.
@@ -185,6 +187,7 @@ impl Ask {
             cloud_on: false,
             provider: None,
             panel: false,
+            panel_w: PANEL_W,
             context: None,
             focus: None,
             palette,
@@ -213,6 +216,11 @@ impl Ask {
     /// Draw the entity in the side panel, or in the Ask screen.
     pub fn set_panel(&mut self, panel: bool) {
         self.panel = panel;
+    }
+
+    /// The width of the side panel, which the user can drag.
+    pub fn set_panel_width(&mut self, width: f32) {
+        self.panel_w = width;
     }
 
     /// The screen behind the panel, or `None` on the Ask screen.
@@ -994,8 +1002,9 @@ impl Ask {
     /// The coach panel: the header, the thread and the composer.
     fn panel_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let t = self.palette.theme();
+        let panel_w = self.panel_w;
         self.composer.update(cx, |c, _| {
-            c.set_column_width(PANEL_W - 1.0 - 20.0);
+            c.set_column_width(panel_w - 1.0 - 20.0);
             c.set_panel(true);
         });
         self.scroll.tick(window);

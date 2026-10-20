@@ -614,6 +614,7 @@ pub fn render<V: 'static>(
     cx: &mut Context<V>,
     actions: Actions<V>,
     calendar: AnyElement,
+    width: f32,
 ) -> impl IntoElement {
     let dragged = state.shared.clone();
     let mut list = div()
@@ -640,7 +641,7 @@ pub fn render<V: 'static>(
 
     div()
         .flex_none()
-        .w(px(SIDEBAR_W))
+        .w(px(width))
         .h_full()
         .flex()
         .flex_col()
@@ -768,6 +769,7 @@ mod tests {
                     toggle_group: |_, _, _, _| {},
                 },
                 div().into_any_element(),
+                SIDEBAR_W,
             )
         }
     }

@@ -22,6 +22,9 @@ pub struct State {
     pub collapsed: Vec<String>,
     /// The calendar block of the sidebar is closed.
     pub calendar_closed: bool,
+    /// The widths that the user dragged. `None` is the default width.
+    pub sidebar_w: Option<f32>,
+    pub coach_w: Option<f32>,
 }
 
 impl Default for State {
@@ -34,6 +37,8 @@ impl Default for State {
             coach_open: true,
             collapsed: Vec::new(),
             calendar_closed: false,
+            sidebar_w: None,
+            coach_w: None,
         }
     }
 }
