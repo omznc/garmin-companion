@@ -147,6 +147,16 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.5" date="2026-10-20">
+      <description>
+        <p>
+          On the phone, the coach can draft a workout. Save it to your Garmin
+          workouts with one tap. After sign-in, Today opens at
+          once and your history imports in the background. A new welcome
+          screen lets you look around with sample data first.
+        </p>
+      </description>
+    </release>
     <release version="1.0.4" date="2026-10-20">
       <description>
         <p>
