@@ -7,6 +7,7 @@ pub mod analysis;
 pub mod auth;
 pub mod client;
 pub mod coach;
+pub mod courses;
 pub mod db;
 pub mod findings;
 pub mod goals;

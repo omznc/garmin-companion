@@ -43,6 +43,55 @@ pub(crate) async fn sync_extras(
     on: Progress<'_>,
 ) -> Result<()> {
     sync_body_battery(client, db, report, on).await?;
+    sync_courses(client, db, report, on).await?;
+    Ok(())
+}
+
+/// How many course tracks one sync fetches. A new account with many courses
+/// gets its thumbnails over a few syncs.
+const COURSE_TRACKS_PER_SYNC: usize = 10;
+
+/// The course list, then the track of each new or changed course.
+async fn sync_courses(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "courses");
+    let Some(list) = optional(report, "courses", client.courses().await)? else {
+        return Ok(());
+    };
+    let courses = crate::courses::parse_course_list(&list);
+    let mut ids = Vec::new();
+    for c in &courses {
+        ids.push(c.course_id);
+        if let Err(e) = db.upsert_course(c) {
+            report.warnings.push(format!("course {}: {e}", c.course_id));
+        }
+    }
+    // A reply that is a list is the whole list, so a course that is gone from
+    // it is gone from Garmin. Any other reply says nothing about it.
+    // A list of items that all failed to parse is a changed shape, not an
+    // empty account, so it removes nothing.
+    let whole = list
+        .as_array()
+        .is_some_and(|l| l.is_empty() || !ids.is_empty());
+    if whole {
+        if let Err(e) = db.retain_courses(&ids) {
+            report.warnings.push(format!("courses: {e}"));
+        }
+    }
+    for id in db.courses_missing_track(COURSE_TRACKS_PER_SYNC)? {
+        let what = format!("course {id}");
+        let Some(detail) = optional(report, &what, client.course(id).await)? else {
+            continue;
+        };
+        let track = crate::courses::parse_course_track(&detail);
+        if let Err(e) = db.save_course_track(id, &track) {
+            report.warnings.push(format!("{what}: {e}"));
+        }
+    }
     Ok(())
 }
 

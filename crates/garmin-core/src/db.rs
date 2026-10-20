@@ -489,7 +489,7 @@ impl Db {
             }
         }
         // Tables of the newer data. Each module owns its SQL.
-        for schema in [crate::intraday::SCHEMA] {
+        for schema in [crate::intraday::SCHEMA, crate::courses::SCHEMA] {
             self.conn.execute_batch(schema)?;
         }
         Ok(())

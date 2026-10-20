@@ -485,6 +485,17 @@ impl GarminClient {
             .await
     }
 
+    /// The courses that the athlete saved, with their figures and no track.
+    pub async fn courses(&self) -> Result<serde_json::Value> {
+        self.get_json("/course-service/course", &[]).await
+    }
+
+    /// One course with its track (`geoPoints`).
+    pub async fn course(&self, id: i64) -> Result<serde_json::Value> {
+        self.get_json(&format!("/course-service/course/{id}"), &[])
+            .await
+    }
+
     /// The account's `displayName`, which several wellness endpoints need in
     /// their path.
     pub async fn profile(&self) -> Result<Profile> {
