@@ -30,6 +30,9 @@ minisign-verify = "0.2"
 semver = "1"
 tar = "0.4"
 
+# The VS Code themes (openvsx.rs): a .vsix is a zip. Deflate only. Already in the tree.
+zip = { version = "4", default-features = false, features = ["deflate-flate2"] }
+
 # The same pin as mbrd-rs. gpui-ce follows Zed's tree and cuts releases.
 # `gpui` is the core only. The backends live in `gpui_platform`, and the three
 # features below choose them: fontconfig for Linux fonts, and both display

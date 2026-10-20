@@ -1,6 +1,6 @@
 //! Buttons for the account screens. From `.cta` and `.quiet` in `styles.css`.
 
-use gpui::{div, prelude::*, px, relative, Div, SharedString, Stateful};
+use gpui::{div, prelude::*, px, relative, Div, ElementId, SharedString, Stateful};
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Theme, FS_SMALL};
@@ -37,7 +37,7 @@ pub fn cta(
 /// `.quiet`: a small text action. It darkens under the pointer, or takes the
 /// accent when it is the one action that cannot be undone.
 pub fn quiet(
-    id: &'static str,
+    id: impl Into<ElementId>,
     label: impl Into<SharedString>,
     enabled: bool,
     danger: bool,
