@@ -73,6 +73,11 @@ impl Store {
         garmin_api::open_db(&self.path).ok()?.activity_count().ok()
     }
 
+    /// Open the cache, for a read that no view has.
+    pub fn open(&self) -> Result<garmin_core::Db> {
+        Ok(garmin_api::open_db(&self.path)?)
+    }
+
     pub fn list(&self) -> Result<ActivitiesView> {
         let db = garmin_api::open_db(&self.path)?;
         Ok(garmin_api::activities_view(&db, self.today, 60)?)

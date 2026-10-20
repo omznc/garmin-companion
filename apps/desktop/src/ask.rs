@@ -40,13 +40,13 @@ use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
 use crate::focus::Focus;
 use crate::icons::Icon;
-use crate::kit::{chip, icon_button};
+use crate::kit::{button, chip, icon_button, Look};
 use crate::markdown;
 use crate::motion;
 use crate::scroll::SmoothScroll;
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Palette, Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
+use crate::ui::{body, ch, eyebrow, SANS};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
@@ -54,7 +54,7 @@ const STICK_SLOP: f32 = 90.0;
 const COMPOSER_ROOM: f32 = 176.0;
 /// The reading column of the Ask screen, and the air above and beside it.
 const COLUMN_MAX: f32 = 720.0;
-const COLUMN_TOP: f32 = 78.0;
+const COLUMN_TOP: f32 = 28.0;
 const COLUMN_SIDE: f32 = 56.0;
 /// The width of the coach panel, with its left border.
 pub const PANEL_W: f32 = 340.0;
@@ -567,35 +567,23 @@ pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
 
 /* ----------------------------------------------------------------- drawing --- */
 
-fn step_row(step: &Step, t: &Theme) -> impl IntoElement {
-    let dot = if step.running {
-        t.acc
-    } else if step.ok {
-        t.faint
-    } else {
-        t.warn
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(10.0))
-        .font_family(SANS)
-        .text_size(px(FS_SMALL))
-        .text_color(if step.running { t.mutd } else { t.faint })
-        .child(div().flex_none().size(px(5.0)).rounded_full().bg(dot))
-        .child(SharedString::from(step.label.clone()))
+/// A tool step as a chip. A call that still runs has the accent and a dot.
+fn step_chip(step: &Step, t: &Theme) -> Div {
+    chip(step.label.clone(), step.running, step.running, t)
 }
 
 fn user_bubble(text: &str, t: &Theme) -> impl IntoElement {
     div().flex().justify_end().child(
         div()
-            .max_w(ch(48.0, FS_MD))
-            .px(px(15.0))
-            .py(px(11.0))
-            .rounded(px(10.0))
-            .bg(t.sel)
-            .text_size(px(FS_MD))
-            .line_height(relative(1.6))
+            .max_w(relative(0.85))
+            .px(px(12.0))
+            .py(px(8.0))
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(t.line)
+            .bg(t.bg2)
+            .text_size(px(13.5))
+            .line_height(relative(1.5))
             .child(SharedString::from(text.to_string())),
     )
 }
@@ -702,14 +690,14 @@ fn draft_card(
 }
 
 fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> Div {
-    let mut col = div().flex().flex_col().gap(px(16.0));
+    let mut col = div().flex().flex_col().gap(px(12.0));
     if !turn.steps.is_empty() {
         col = col.child(
             div()
                 .flex()
-                .flex_col()
-                .gap(px(7.0))
-                .children(turn.steps.iter().map(|s| step_row(s, t))),
+                .flex_wrap()
+                .gap(px(6.0))
+                .children(turn.steps.iter().map(|s| step_chip(s, t))),
         );
     }
     if !turn.text.is_empty() {
@@ -760,38 +748,78 @@ fn credit_row(view: &AccountView, cx: &mut Context<Ask>, t: &Theme) -> impl Into
 impl Ask {
     fn empty(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
         let day = chrono::Datelike::ordinal(&chrono::Local::now().date_naive()) as usize;
+        let (line, hover) = (t.line, t.hover);
         let chips = (0..3).map(|i| {
             let text = OPENERS[(day + i * 3) % OPENERS.len()];
-            underlined(("opener", i), text, FS_MD, t)
+            div()
+                .id(("opener", i))
+                .px(px(10.0))
+                .py(px(7.0))
+                .rounded(px(5.0))
+                .border_1()
+                .border_color(line)
+                .bg(t.bg2)
+                .text_size(px(12.5))
                 .cursor_pointer()
+                .hover(move |s| s.bg(hover))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.fill(text, cx)))
+                .child(text)
         });
-        let lede = "Ask about your sleep, recovery, activity or weight. The coach reads \
-                    your own Garmin data before it answers.";
         div()
-            .child(eyebrow_lg("Ask", t))
-            .child(h1("What would you like to know?").mt(px(18.0)),
-            )
-            .child(body(lede, 16.0, t.mutd).mt(px(22.0)).max_w(ch(58.0, 16.0)),
-            )
-            .child(div()
-                    .mt(px(36.0))
-                    .flex()
-                    .flex_col()
-                    .items_start()
-                    .gap(px(14.0))
-                    .children(chips),
-            )
+            .flex()
+            .flex_col()
+            .items_start()
+            .gap(px(8.0))
+            .children(chips)
             .when(matches!(self.source, Source::Demo), |d| {
                 d.child(body(
-                        "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
-                        FS_CAPTION,
-                        t.faint,
-                    )
-                    .mt(px(48.0)),
-                )
+                    "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
+                    FS_CAPTION,
+                    t.faint,
+                ))
             })
             .into_any_element()
+    }
+
+    /// The head of the Ask screen: the title, the line about local data and
+    /// the chip with the credits.
+    fn screen_head(&self, t: &Theme) -> Div {
+        let credits = self.credits.as_ref().filter(|_| self.cloud_on).map(|v| {
+            chip(
+                format!("Cloud · {} left", v.credits_remaining),
+                false,
+                true,
+                t,
+            )
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
+            .mb(px(14.0))
+            .child(
+                div()
+                    .text_size(px(20.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("Ask the coach"),
+            )
+            .child(div().text_size(px(13.5)).text_color(t.mutd).child(
+                "Questions use your local data. Only the rows that a question \
+                         needs leave this computer.",
+            ))
+            .children(credits.map(|c| div().mt(px(6.0)).flex().child(c)))
+    }
+
+    /// The buttons under an answer that has ended. Copy puts the text on the clipboard.
+    fn answer_actions(index: usize, text: &str, t: &Theme, cx: &mut Context<Self>) -> Div {
+        let text = text.to_string();
+        div().flex().gap(px(6.0)).child(
+            button(("ask-copy", index), "Copy", Look::Default, true, t).on_click(cx.listener(
+                move |_, _: &ClickEvent, _, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+                },
+            )),
+        )
     }
 }
 
@@ -812,7 +840,8 @@ impl Ask {
         let width = column_width(f32::from(window.viewport_size().width));
         self.composer.update(cx, |c, _| {
             c.set_column_width(width);
-            c.set_panel(false);
+            c.set_panel(true);
+            c.set_hint("Ask about your training...");
         });
 
         self.scroll.tick(window);
@@ -826,17 +855,21 @@ impl Ask {
         } else {
             let last = self.turns.len() - 1;
             let live = self.busy;
-            let mut col = div().flex().flex_col().gap(px(34.0));
+            let mut col = div().flex().flex_col().gap(px(22.0));
             for (i, turn) in self.turns.iter().enumerate() {
                 col = col.child(match turn.who {
                     Who::You => user_bubble(&turn.text, &t).into_any_element(),
-                    Who::Coach => coach_turn(turn, live && i == last, &t)
-                        .children(
-                            turn.draft
-                                .as_ref()
-                                .map(|(d, save)| draft_card(i, d, save, cx, &t)),
-                        )
-                        .into_any_element(),
+                    Who::Coach => {
+                        let ended = !(live && i == last) && !turn.text.is_empty();
+                        coach_turn(turn, live && i == last, &t)
+                            .children(
+                                turn.draft
+                                    .as_ref()
+                                    .map(|(d, save)| draft_card(i, d, save, cx, &t)),
+                            )
+                            .children(ended.then(|| Self::answer_actions(i, &turn.text, &t, cx)))
+                            .into_any_element()
+                    }
                 });
             }
             col.into_any_element()
@@ -853,6 +886,7 @@ impl Ask {
                     .mx_auto()
                     .pt(px(COLUMN_TOP))
                     .pb(px(COMPOSER_ROOM))
+                    .child(self.screen_head(&t))
                     .child(content),
             );
         let dock = div()
@@ -1006,6 +1040,7 @@ impl Ask {
         self.composer.update(cx, |c, _| {
             c.set_column_width(panel_w - 1.0 - 20.0);
             c.set_panel(true);
+            c.set_hint("Ask about this screen...");
         });
         self.scroll.tick(window);
         if self.busy && self.scroll.distance_below() <= STICK_SLOP {

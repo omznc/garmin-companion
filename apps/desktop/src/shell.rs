@@ -285,25 +285,6 @@ impl Root {
         self
     }
 
-    /// Show another week of the report. The page keeps its scroll position.
-    pub fn show_report(&mut self, offset: usize, cx: &mut Context<Self>) {
-        let source = self.source.clone();
-        crate::account::load_async(
-            self,
-            "report",
-            cx,
-            move || training::load_report(&source, offset),
-            |root, report, cx| {
-                match (report, &mut root.training) {
-                    (Ok(report), Some(training)) => training.report = report,
-                    (Err(e), _) => eprintln!("could not load the week: {e:#}"),
-                    _ => {}
-                }
-                cx.notify();
-            },
-        );
-    }
-
     fn select(&mut self, screen: Screen, _: &mut Window, cx: &mut Context<Self>) {
         self.select_screen(screen, cx);
     }

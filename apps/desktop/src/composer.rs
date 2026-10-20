@@ -53,6 +53,7 @@ pub struct Composer {
     panel: bool,
     /// The label of the focus period, for the hint of the panel.
     focus_label: Option<String>,
+    hint: &'static str,
 }
 
 impl EventEmitter<ComposerEvent> for Composer {}
@@ -117,7 +118,13 @@ impl Composer {
             column_w: 720.0,
             panel: false,
             focus_label: None,
+            hint: "Ask about this screen...",
         }
+    }
+
+    /// The line that shows in an empty box.
+    pub fn set_hint(&mut self, hint: &'static str) {
+        self.hint = hint;
     }
 
     pub fn set_panel(&mut self, panel: bool) {
@@ -304,8 +311,7 @@ impl Render for Composer {
         if text.is_empty() {
             let hint = match (&self.focus_label, panel) {
                 (Some(label), true) => format!("Ask about {label}..."),
-                (None, true) => "Ask about this screen...".to_string(),
-                (_, false) => "Ask about your sleep, training or recovery".to_string(),
+                _ => self.hint.to_string(),
             };
             area = area.child(
                 div()
