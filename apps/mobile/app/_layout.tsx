@@ -34,6 +34,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="ask" />
           <Stack.Screen name="setup" options={{ gestureEnabled: false }} />
           <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
         </Stack>

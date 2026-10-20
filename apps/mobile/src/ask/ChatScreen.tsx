@@ -1,7 +1,7 @@
 // One chat, for the draft and for a saved thread. The draft has the opening and no
 // session. The first message makes the session, and this same screen goes on with it.
 import { useRouter } from "expo-router";
-import { useHeaderHeight } from "expo-router/react-navigation";
+import { useHeaderHeight, useNavigationState } from "expo-router/react-navigation";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
@@ -206,9 +206,9 @@ function Footer({
         </Text>
       ) : null}
       <Credits />
-      {/* iOS: the native tab bar floats over the screen, and only the view's own safe area
-          includes it. Android: the tab bar sits below the screen and owns the system inset. */}
-      <SafeAreaView edges={Platform.OS === "ios" && !keyboardOpen ? ["bottom"] : []}>
+      {/* No tab bar sits under the Ask screens, so the composer clears the bottom inset
+          itself. The keyboard covers that inset. */}
+      <SafeAreaView edges={keyboardOpen ? [] : ["bottom"]}>
         <Composer
           onSend={onSend}
           onStop={stopTurn}
@@ -230,11 +230,13 @@ export function ChatScreen({
 }: {
   /** The saved thread of the route, or null for a draft. */
   routeId: string | null;
-  /** The draft that is the root of the Ask tab. */
+  /** The draft at the route /ask. */
   root?: boolean;
 }) {
   const theme = useChatTheme();
   const router = useRouter();
+  // The first screen of the Ask stack has no screen below it in the stack: Back leaves Ask.
+  const first = useNavigationState((state) => state.index === 0);
   // A draft whose first message went out. The same screen goes on with that thread, so no
   // screen slides in and Back goes where it went before.
   const [startedId, setStartedId] = useState<string | null>(null);
@@ -260,8 +262,10 @@ export function ChatScreen({
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ChatHeader
         title={id === null ? "Ask" : (thread.title ?? "New chat")}
-        back={!root}
-        onHistory={() => (root ? router.push("/ask/history") : router.dismissTo("/ask/history"))}
+        first={first}
+        onHistory={() =>
+          root || first ? router.push("/ask/history") : router.dismissTo("/ask/history")
+        }
       />
       <View
         ref={frame}

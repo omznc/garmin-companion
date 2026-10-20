@@ -183,10 +183,11 @@ function SleepBody({ view }: { view: SleepView }) {
   );
 }
 
-export function SleepScreen() {
+/** `root` is the Sleep tab: nothing below it, so no back button. */
+export function SleepScreen({ root = false }: { root?: boolean }) {
   const { data, error, refetch } = useSleep();
   return (
-    <LargeAppBarScreen title="Sleep" back>
+    <LargeAppBarScreen title="Sleep" back={!root}>
       {data ? <SleepBody view={data} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}

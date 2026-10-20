@@ -60,7 +60,7 @@ export function AppBar({
         <BarButton
           icon="arrow-back"
           label="Back"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/ask"))}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/today"))}
         />
       ) : null}
       <Text
