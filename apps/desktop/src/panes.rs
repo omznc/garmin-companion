@@ -79,15 +79,48 @@ pub struct Layout {
     pub coach: f32,
 }
 
-/// The widths that fit. The coach panel hides first, when the main column
-/// would be narrower than `MIN_MAIN`.
-pub fn layout(window: f32, sidebar_w: f32, coach_w: f32, coach_open: bool) -> Layout {
-    let sidebar = if window <= SIDEBAR_HIDES_AT || window - sidebar_w < MIN_MAIN {
-        0.0
-    } else {
-        sidebar_w
+/// What the last frame showed. A part that is hidden needs `HYSTERESIS`
+/// more room to come back, so a window edge that jitters at a threshold
+/// does not flip the layout each frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shown {
+    pub sidebar: bool,
+    pub coach: bool,
+    /// The block grid has more than one lane.
+    pub wide: bool,
+}
+
+impl Shown {
+    /// The state before the first frame: the plain thresholds apply.
+    pub const ALL: Shown = Shown {
+        sidebar: true,
+        coach: true,
+        wide: true,
     };
-    let coach = if coach_open && window - sidebar - coach_w >= MIN_MAIN {
+}
+
+/// The extra room, in design pixels, that a hidden part needs to come back.
+pub const HYSTERESIS: f32 = 24.0;
+
+/// True when `value` reaches `limit`. A part that was hidden needs
+/// `HYSTERESIS` more.
+fn reaches(value: f32, limit: f32, was: bool) -> bool {
+    value >= limit + if was { 0.0 } else { HYSTERESIS }
+}
+
+/// The widths that fit. The coach panel hides first, when the main column
+/// would be narrower than `MIN_MAIN`. Each choice reads only the window
+/// width, the pane widths that the user chose, and the choice of the last frame.
+pub fn layout(window: f32, sidebar_w: f32, coach_w: f32, coach_open: bool, was: Shown) -> Layout {
+    // "Over 900" is "at least 900.5" for a whole number of pixels.
+    let sidebar = if reaches(window, SIDEBAR_HIDES_AT + 0.5, was.sidebar)
+        && reaches(window - sidebar_w, MIN_MAIN, was.sidebar)
+    {
+        sidebar_w
+    } else {
+        0.0
+    };
+    let coach = if coach_open && reaches(window - sidebar - coach_w, MIN_MAIN, was.coach) {
         coach_w
     } else {
         0.0
@@ -95,18 +128,36 @@ pub fn layout(window: f32, sidebar_w: f32, coach_w: f32, coach_open: bool) -> La
     Layout { sidebar, coach }
 }
 
+/// True when the block grid has room for more than one lane.
+pub fn grid_is_wide(available: f32, narrow_below: f32, was: bool) -> bool {
+    reaches(available, narrow_below, was)
+}
+
 impl Root {
     pub(crate) fn layout(&self, window_width: f32) -> Layout {
+        let was = self.shown.get();
         // The Add blocks panel has a fixed width and shows at once.
-        if self.editing() {
-            return layout(
-                window_width,
-                self.sidebar_w,
-                crate::blocks::edit::PANEL_W,
-                true,
-            );
-        }
-        layout(window_width, self.sidebar_w, self.coach_w, self.coach_open)
+        let (coach_w, open) = if self.editing() {
+            (crate::blocks::edit::PANEL_W, true)
+        } else {
+            (self.coach_w, self.coach_open)
+        };
+        let now = layout(window_width, self.sidebar_w, coach_w, open, was);
+        // Asking again in the same frame gives the same answer.
+        self.shown.set(Shown {
+            sidebar: now.sidebar > 0.0,
+            coach: now.coach > 0.0,
+            ..was
+        });
+        now
+    }
+
+    /// True when the grid of `available` pixels has more than one lane.
+    pub(crate) fn grid_is_wide(&self, available: f32) -> bool {
+        let was = self.shown.get();
+        let wide = grid_is_wide(available, crate::shell::NARROW_GRID, was.wide);
+        self.shown.set(Shown { wide, ..was });
+        wide
     }
 
     fn set_pane_width(&mut self, side: Side, width: f32) {
@@ -231,20 +282,96 @@ mod tests {
 
     #[test]
     fn the_coach_panel_hides_before_the_main_column_gets_narrow() {
-        let wide = layout(1440.0, 224.0, 340.0, true);
+        let all = Shown::ALL;
+        let wide = layout(1440.0, 224.0, 340.0, true, all);
         assert_eq!((wide.sidebar, wide.coach), (224.0, 340.0));
         // 1100 - 224 - 340 = 536: under the minimum, so the panel hides.
-        let tight = layout(1100.0, 224.0, 340.0, true);
+        let tight = layout(1100.0, 224.0, 340.0, true, all);
         assert_eq!((tight.sidebar, tight.coach), (224.0, 0.0));
         // A wider sidebar takes room from the coach panel first.
-        assert_eq!(layout(1200.0, 360.0, 340.0, true).coach, 0.0);
-        assert_eq!(layout(1200.0, 224.0, 340.0, false).coach, 0.0);
+        assert_eq!(layout(1200.0, 360.0, 340.0, true, all).coach, 0.0);
+        assert_eq!(layout(1200.0, 224.0, 340.0, false, all).coach, 0.0);
     }
 
     #[test]
     fn the_sidebar_hides_in_a_small_window() {
-        assert_eq!(layout(900.0, 224.0, 340.0, true).sidebar, 0.0);
-        assert_eq!(layout(901.0, 224.0, 340.0, true).sidebar, 224.0);
-        assert_eq!(layout(901.0, 360.0, 340.0, true).sidebar, 0.0);
+        let all = Shown::ALL;
+        assert_eq!(layout(900.0, 224.0, 340.0, true, all).sidebar, 0.0);
+        assert_eq!(layout(901.0, 224.0, 340.0, true, all).sidebar, 224.0);
+        assert_eq!(layout(901.0, 360.0, 340.0, true, all).sidebar, 0.0);
+    }
+
+    /// Walk the widths up and down, like a live resize, and count how often
+    /// the shown parts change.
+    fn flips(from: f32, to: f32, step: f32) -> (usize, Vec<Layout>) {
+        let mut was = Shown::ALL;
+        let mut seen = Vec::new();
+        let mut w = from;
+        while (step > 0.0 && w <= to) || (step < 0.0 && w >= to) {
+            let l = layout(w, 224.0, 340.0, true, was);
+            was = Shown {
+                sidebar: l.sidebar > 0.0,
+                coach: l.coach > 0.0,
+                ..was
+            };
+            seen.push(l);
+            w += step;
+        }
+        let changes = seen.windows(2).filter(|p| p[0] != p[1]).count();
+        (changes, seen)
+    }
+
+    #[test]
+    fn a_sweep_changes_each_pane_once_and_never_leaves_the_main_column_short() {
+        let (up, seen) = flips(700.0, 1600.0, 1.0);
+        // Coach in at 924 (no sidebar yet), sidebar in at 925 (coach out),
+        // coach in at 1148: three changes in a rising sweep, none repeated.
+        assert_eq!(up, 3);
+        let (down, _) = flips(1600.0, 700.0, -1.0);
+        // Coach out at 1123, sidebar out at 900.
+        assert_eq!(down, 2);
+        for (i, l) in seen.iter().enumerate() {
+            let w = 700.0 + i as f32;
+            assert!(w - l.sidebar - l.coach >= MIN_MAIN.min(w), "{w}");
+        }
+    }
+
+    #[test]
+    fn a_jitter_at_a_threshold_does_not_flip_the_panes() {
+        // The coach panel fits at 1124. Jitter around it for many frames.
+        let mut was = Shown::ALL;
+        let mut shown = Vec::new();
+        for i in 0..40 {
+            let w = 1124.0 + if i % 2 == 0 { -1.0 } else { 1.0 };
+            let l = layout(w, 224.0, 340.0, true, was);
+            was = Shown {
+                sidebar: l.sidebar > 0.0,
+                coach: l.coach > 0.0,
+                ..was
+            };
+            shown.push(l.coach > 0.0);
+        }
+        assert!(shown.iter().all(|s| *s == shown[0]), "{shown:?}");
+        // The panel that hid needs 24 px more to return.
+        let hidden = Shown {
+            coach: false,
+            ..Shown::ALL
+        };
+        assert_eq!(layout(1140.0, 224.0, 340.0, true, hidden).coach, 0.0);
+        assert_eq!(layout(1148.0, 224.0, 340.0, true, hidden).coach, 340.0);
+        // The same answer when asked again.
+        let again = Shown {
+            coach: true,
+            ..hidden
+        };
+        assert_eq!(layout(1148.0, 224.0, 340.0, true, again).coach, 340.0);
+    }
+
+    #[test]
+    fn the_grid_narrows_with_hysteresis() {
+        assert!(grid_is_wide(640.0, 640.0, true));
+        assert!(!grid_is_wide(639.0, 640.0, true));
+        assert!(!grid_is_wide(650.0, 640.0, false));
+        assert!(grid_is_wide(664.0, 640.0, false));
     }
 }
