@@ -204,7 +204,11 @@ pub fn bullet(index: usize, item: &Attention, t: &Theme) -> Div {
 /// Map values to points inside a box, as `scaleFor` in `chart.ts` does. A
 /// missing or non-finite value has no point, but it keeps its place: the points
 /// sit by index, so a gap stays a gap.
-fn scale(values: &[Option<f32>], bounds: Bounds<Pixels>, pad: f32) -> Vec<Option<Point<Pixels>>> {
+pub(crate) fn scale(
+    values: &[Option<f32>],
+    bounds: Bounds<Pixels>,
+    pad: f32,
+) -> Vec<Option<Point<Pixels>>> {
     let present = || values.iter().flatten().filter(|v| v.is_finite());
     let (lo, hi) = present().fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
     let range = if hi > lo { hi - lo } else { 1.0 };
@@ -231,7 +235,12 @@ fn runs(points: &[Option<Point<Pixels>>]) -> Vec<Vec<Point<Pixels>>> {
         .collect()
 }
 
-fn stroke(points: &[Option<Point<Pixels>>], width: f32, colour: Hsla, window: &mut gpui::Window) {
+pub(crate) fn stroke(
+    points: &[Option<Point<Pixels>>],
+    width: f32,
+    colour: Hsla,
+    window: &mut gpui::Window,
+) {
     for run in runs(points) {
         let mut path = PathBuilder::stroke(px(width));
         let first = run[0];

@@ -2,9 +2,15 @@
 //! hints and the charts. The sizes come from the CSS of the design (`.ib`,
 //! `.btn`, `.chip`, `.kbd`).
 
-use gpui::{div, prelude::*, px, relative, Div, ElementId, Hsla, SharedString, Stateful};
+// The cards, the grids, the lists and the table are used from the next commit on.
+#![allow(dead_code)]
 
-use crate::icons::{icon_hover, Icon};
+use gpui::{
+    div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
+};
+
+use crate::charts::{spark, Tone};
+use crate::icons::{icon, icon_hover, Icon};
 use crate::theme::Theme;
 use crate::ui::{MONO, SANS};
 
@@ -154,4 +160,322 @@ pub fn button(
         })
         .when(!enabled, |d| d.opacity(0.45))
         .child(label.into())
+}
+
+/* ------------------------------------------------------------------- card --- */
+
+/// `.lnk`: the accent link in a card header.
+pub fn link(id: impl Into<ElementId>, label: impl Into<SharedString>, t: &Theme) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .pr(px(6.0))
+        .cursor_pointer()
+        .font_family(SANS)
+        .text_size(px(12.0))
+        .text_color(t.acc)
+        .whitespace_nowrap()
+        .hover(|s| s.underline())
+        .child(label.into())
+}
+
+/// `.card`: a hairline box with a 34 px header. The header holds the title,
+/// the meta text in mono, and a link. `body` is the content.
+pub fn card(
+    title: impl Into<SharedString>,
+    meta: Option<SharedString>,
+    link: Option<Stateful<Div>>,
+    body: impl IntoElement,
+    t: &Theme,
+) -> Div {
+    let header = div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .h(px(34.0))
+        .pl(px(12.0))
+        .pr(px(6.0))
+        .bg(t.bg2)
+        .border_b_1()
+        .border_color(t.line)
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_family(SANS)
+                .text_size(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .letter_spacing(px(12.0 * 0.02))
+                .text_color(t.mutd)
+                .child(title.into()),
+        )
+        .children(meta.map(|text| {
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .font_family(MONO)
+                .text_size(px(11.0))
+                .text_color(t.faint)
+                .child(text)
+        }))
+        .children(link);
+    div()
+        .min_w_0()
+        .overflow_hidden()
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(t.line)
+        .bg(t.bg)
+        .child(header)
+        .child(body)
+}
+
+/* -------------------------------------------------------------- stat grid --- */
+
+/// One cell of a stat grid.
+pub struct Cell {
+    pub label: SharedString,
+    pub value: SharedString,
+    pub unit: Option<SharedString>,
+    /// A line under the value, in mono, and the tone of its colour.
+    pub sub: Option<(SharedString, Tone)>,
+    /// A sparkline under the value. A cell with no series has none.
+    pub spark: Option<Vec<f32>>,
+    /// The value is 21 px (a metric) and not 15 px (a key figure).
+    pub big: bool,
+}
+
+/// `.metrics` and `.kv`: cells in `columns` columns, with a hairline between
+/// them. The hairlines of the last column and the last row fall outside the card.
+pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
+    let columns = columns.max(1);
+    let mut grid = div().flex().flex_wrap().mr(px(-1.0)).mb(px(-1.0));
+    for cell in cells {
+        let size = if cell.big { 21.0 } else { 15.0 };
+        let value = div()
+            .flex()
+            .items_baseline()
+            .font_family(MONO)
+            .text_size(px(size))
+            .text_color(t.fg)
+            .whitespace_nowrap()
+            .child(cell.value)
+            .children(cell.unit.map(|u| {
+                div()
+                    .ml(px(3.0))
+                    .text_size(px(11.5))
+                    .text_color(t.mutd)
+                    .child(u)
+            }));
+        let padding = if cell.big { (14.0, 12.0) } else { (12.0, 10.0) };
+        grid = grid.child(
+            div()
+                .w(relative(1.0 / columns as f32))
+                .min_w_0()
+                .px(px(padding.0))
+                .py(px(padding.1))
+                .flex()
+                .flex_col()
+                .gap(px(2.0))
+                .border_r_1()
+                .border_b_1()
+                .border_color(t.line2)
+                .child(
+                    div()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_size(px(11.5))
+                        .text_color(t.faint)
+                        .child(cell.label),
+                )
+                .child(value)
+                .children(
+                    cell.spark
+                        .map(|values| div().mt(px(6.0)).mb(px(4.0)).child(spark(&values, t))),
+                )
+                .children(cell.sub.map(|(text, tone)| {
+                    div()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .font_family(MONO)
+                        .text_size(px(11.5))
+                        .text_color(tone.colour(t))
+                        .child(text)
+                })),
+        );
+    }
+    div().overflow_hidden().child(grid)
+}
+
+/* ------------------------------------------------------------------- list --- */
+
+/// One row of a list: an icon, a title with a line under it, and a figure at the right.
+pub struct ListRow {
+    pub glyph: Icon,
+    pub tone: Tone,
+    pub title: SharedString,
+    pub sub: Option<SharedString>,
+    pub right: Option<SharedString>,
+    pub right_sub: Option<SharedString>,
+}
+
+/// `.row`: the rows of a list, each under a hairline but the first.
+pub fn list_rows(rows: Vec<ListRow>, t: &Theme) -> Div {
+    let hover = t.hover;
+    let mut col = div().flex().flex_col();
+    for (i, row) in rows.into_iter().enumerate() {
+        let colour = match row.tone {
+            Tone::Muted => t.mutd,
+            tone => tone.colour(t),
+        };
+        let mut line = div()
+            .flex()
+            .items_start()
+            .gap(px(10.0))
+            .px(px(12.0))
+            .py(px(9.0))
+            .text_size(px(13.0))
+            .when(i > 0, |d| d.border_t_1().border_color(t.line2))
+            .hover(move |s| s.bg(hover))
+            .child(div().mt(px(2.0)).child(icon(row.glyph, 14.0, t, colour)))
+            .child(
+                div().flex_1().min_w_0().child(row.title).children(
+                    row.sub
+                        .map(|sub| div().text_size(px(12.0)).text_color(t.faint).child(sub)),
+                ),
+            );
+        if row.right.is_some() || row.right_sub.is_some() {
+            line = line.child(
+                div()
+                    .flex_none()
+                    .text_right()
+                    .font_family(MONO)
+                    .text_size(px(12.0))
+                    .whitespace_nowrap()
+                    .children(row.right)
+                    .children(
+                        row.right_sub
+                            .map(|sub| div().text_size(px(11.0)).text_color(t.faint).child(sub)),
+                    ),
+            );
+        }
+        col = col.child(line);
+    }
+    col
+}
+
+/* ------------------------------------------------------------------ table --- */
+
+/// A column of a table: its title, and whether it holds numbers.
+pub struct Column {
+    pub title: SharedString,
+    pub numeric: bool,
+}
+
+/// `.tbl`: a header row, then rows. A numeric column is mono and right
+/// aligned. The first column is dim.
+pub fn table(columns: &[Column], rows: Vec<Vec<SharedString>>, t: &Theme) -> Div {
+    let hover = t.hover;
+    let cell = |text: SharedString, column: &Column, head: bool, first: bool| {
+        div()
+            .flex_1()
+            .min_w_0()
+            .px(px(12.0))
+            .py(px(if head { 7.0 } else { 8.0 }))
+            .whitespace_nowrap()
+            .overflow_hidden()
+            .text_ellipsis()
+            .when(column.numeric, |d| d.text_right())
+            .when(column.numeric && !head, |d| d.font_family(MONO))
+            .when(head, |d| {
+                d.text_size(px(11.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(t.faint)
+            })
+            .when(!head, |d| {
+                d.text_size(px(12.5))
+                    .text_color(if first { t.faint } else { t.fg })
+            })
+            .child(text)
+    };
+    let mut out = div().flex().flex_col().child(
+        columns
+            .iter()
+            .fold(div().flex().border_b_1().border_color(t.line), |row, c| {
+                row.child(cell(c.title.clone(), c, true, false))
+            }),
+    );
+    let last = rows.len().saturating_sub(1);
+    for (i, row) in rows.into_iter().enumerate() {
+        let line = row.into_iter().zip(columns).enumerate().fold(
+            div()
+                .flex()
+                .when(i < last, |d| d.border_b_1().border_color(t.line2))
+                .hover(move |s| s.bg(hover)),
+            |line, (n, (text, c))| line.child(cell(text, c, false, n == 0)),
+        );
+        out = out.child(line);
+    }
+    out
+}
+
+/* --------------------------------------------------------- segmented, switch --- */
+
+/// `.seg`: a choice of one among a few. The chosen one has the `active` ground.
+pub fn segmented(id: &'static str, options: &[&'static str], chosen: usize, t: &Theme) -> Div {
+    let mut row = div()
+        .flex()
+        .gap(px(2.0))
+        .p(px(2.0))
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(t.line)
+        .bg(t.bg);
+    for (i, label) in options.iter().enumerate() {
+        let on = i == chosen;
+        let (hover, fg) = (t.hover, t.fg);
+        row = row.child(
+            div()
+                .id((id, i))
+                .flex()
+                .items_center()
+                .h(px(22.0))
+                .px(px(9.0))
+                .rounded(px(4.0))
+                .cursor_pointer()
+                .font_family(SANS)
+                .text_size(px(12.0))
+                .whitespace_nowrap()
+                .text_color(if on { t.fg } else { t.mutd })
+                .when(on, |d| d.bg(t.active))
+                .when(!on, |d| d.hover(move |s| s.bg(hover).text_color(fg)))
+                .child(*label),
+        );
+    }
+    row
+}
+
+/// `.switch`: 30 by 17, with a round thumb.
+pub fn switch(on: bool, t: &Theme) -> Div {
+    let (ground, thumb) = if on { (t.acc, t.bg) } else { (t.line, t.faint) };
+    let thumb = div().size(px(13.0)).rounded_full().bg(thumb);
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .w(px(30.0))
+        .h(px(17.0))
+        .px(px(2.0))
+        .rounded_full()
+        .bg(ground)
+        .when(on, |d| d.justify_end())
+        .child(thumb)
 }

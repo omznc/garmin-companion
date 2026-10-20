@@ -297,6 +297,17 @@ impl Root {
         cx.notify();
     }
 
+    /// Follow the link in the header of a block.
+    pub(crate) fn go(&mut self, to: crate::blocks::Go, cx: &mut Context<Self>) {
+        match to {
+            crate::blocks::Go::Screen(screen) => self.select_screen(screen, cx),
+            crate::blocks::Go::Activity(id) => {
+                self.select_screen(Screen::Activities, cx);
+                self.open_activity(id, cx);
+            }
+        }
+    }
+
     /// Close a tab. If it was in view, the tab on its left comes into view.
     pub(crate) fn close_tab(&mut self, screen: Screen, cx: &mut Context<Self>) {
         if let Some(next) = tabs::close(&mut self.tabs, screen, self.active) {
