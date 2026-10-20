@@ -335,6 +335,12 @@ jobs:
           npx expo prebuild -p ios --no-install
           cd ios && pod install
 
+      - name: Check the privacy manifest
+        run: |
+          manifest="$(find apps/mobile/ios -name PrivacyInfo.xcprivacy -not -path '*/Pods/*' | head -n 1)"
+          [[ -n "$manifest" ]] || { echo "Prebuild made no PrivacyInfo.xcprivacy."; exit 1; }
+          node scripts/check-privacy-manifest.mjs "$manifest"
+
       - name: Build the app without a signature
         working-directory: apps/mobile
         run: |

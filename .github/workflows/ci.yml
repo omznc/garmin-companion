@@ -146,5 +146,10 @@ jobs:
         working-directory: apps/mobile
         run: pnpm typecheck
 
+      # The App Store refuses a build that uses a required-reason API with no
+      # declared reason.
+      - name: Check the iOS privacy manifest
+        run: node scripts/check-privacy-manifest.mjs
+
       - name: Test the release scripts
         run: node --test scripts/release-rewrite.test.mjs
