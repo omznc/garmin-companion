@@ -16,6 +16,8 @@
 //! `--install-theme <query>` (debug builds) installs the top open-vsx result and exits.
 //! `--ask "question"` sends a question at once. `--draft "text"` leaves text in the
 //! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
+//! Ctrl+K or Ctrl+Shift+P opens the command palette (Cmd on macOS). A debug build
+//! opens it at start when `GC_OPEN_PALETTE` is set, with its value as the query.
 //! Without `--db`, a persona runs the Ask screen as a canned demo.
 
 // No console window on Windows in a release build.
@@ -27,11 +29,14 @@ mod ask;
 mod body;
 mod chrome;
 mod cloud;
+mod command_palette;
+mod commands;
 mod composer;
 mod controls;
 mod data;
 mod editor;
 mod field;
+mod fuzzy;
 mod icons;
 mod instance;
 mod map;
@@ -52,6 +57,7 @@ mod training;
 mod ui;
 mod update_ui;
 mod updater;
+mod updater_pkg;
 mod vscode;
 mod wellness;
 
@@ -364,6 +370,11 @@ fn main() -> anyhow::Result<()> {
                         root.start_sync(false, cx);
                     }
                     root.watch_for_updates(cx);
+                    // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
+                    #[cfg(debug_assertions)]
+                    if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {
+                        root.toggle_palette(&query, window, cx);
+                    }
                     root
                 })
             });
@@ -375,6 +386,10 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
             };
+            command_palette::bind_keys(cx);
+            cx.on_action(move |_: &command_palette::OpenPalette, cx| {
+                let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));
+            });
             if background {
                 // The login item passes --background. The app has no tray icon,
                 // so the window starts minimised and stays in the task bar.

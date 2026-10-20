@@ -1,0 +1,229 @@
+# Build a signed iOS app and upload it to TestFlight.
+#
+# The setup steps copy the "ios" job of release-rewrite.yml. A change to
+# that job must also go here.
+#
+# Run it by hand after the release, with the tag of the release:
+# Actions -> TestFlight -> Run workflow.
+#
+# The signing and upload steps need six secrets. Without them the run
+# skips the build and passes. RELEASING.md lists the secrets.
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the release, for example v1.1.0. The tag must include scripts/check-privacy-manifest.mjs."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      TAG: ${{ inputs.tag }}
+      BUNDLE_ID: com.omznc.garmincompanion
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::The tag must look like v1.2.3."; exit 1; }
+          echo "APP_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      # A secret is not readable in an "if". This step reads the secrets into
+      # an output. When one is missing, each later step is skipped.
+      - name: Check the signing secrets
+        id: check
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROFILE: ${{ secrets.IOS_PROFILE }}
+        run: |
+          missing=""
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 IOS_DIST_CERT_P12 IOS_DIST_CERT_PASSWORD IOS_PROFILE; do
+            [[ -n "${!name}" ]] || missing="$missing $name"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "::notice title=TestFlight::These secrets are not set, so the build and the upload are skipped:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Build the published release, not the current master.
+      - uses: actions/checkout@v7
+        if: steps.check.outputs.ready == 'true'
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Check that the tag has the privacy manifest check
+        if: steps.check.outputs.ready == 'true'
+        run: '[[ -f scripts/check-privacy-manifest.mjs ]] || { echo "::error::This tag is older than the privacy manifest check. Use a newer tag."; exit 1; }'
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.ready == 'true'
+        with:
+          targets: aarch64-apple-ios
+
+      # The same key as the "ios" job of release-rewrite.yml.
+      - uses: swatinem/rust-cache@v2
+        if: steps.check.outputs.ready == 'true'
+        with:
+          key: rewrite-ios
+
+      - uses: pnpm/action-setup@v6
+        if: steps.check.outputs.ready == 'true'
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v7
+        if: steps.check.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/mobile/pnpm-lock.yaml
+
+      - name: Install JavaScript dependencies
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the Rust bridge
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile
+        # The C code (sqlite, zstd) must target the iOS version of the app.
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "16.4"
+        run: pnpm bridge:ios --targets aarch64-apple-ios
+
+      - name: Make the iOS project
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile
+        run: |
+          rm -rf ios
+          npx expo prebuild -p ios --no-install
+          cd ios && pod install
+
+      - name: Check the privacy manifest
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          manifest="$(find apps/mobile/ios -name PrivacyInfo.xcprivacy -not -path '*/Pods/*' | head -n 1)"
+          [[ -n "$manifest" ]] || { echo "::error::Prebuild made no PrivacyInfo.xcprivacy."; exit 1; }
+          node scripts/check-privacy-manifest.mjs "$manifest"
+
+      # Install the certificate and the profile in a temporary keychain.
+      - name: Install the signing files
+        if: steps.check.outputs.ready == 'true'
+        id: signing
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROFILE: ${{ secrets.IOS_PROFILE }}
+        run: |
+          keychain="$RUNNER_TEMP/build.keychain-db"
+          keychain_password="$(uuidgen)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          echo "$IOS_DIST_CERT_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -P "$IOS_DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          rm -f "$RUNNER_TEMP/dist.p12"
+
+          echo "$IOS_PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")"
+          name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
+          team="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$RUNNER_TEMP/profile.plist")"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+          echo "profile_name=$name" >> "$GITHUB_OUTPUT"
+          echo "team=$team" >> "$GITHUB_OUTPUT"
+
+      # The build number must grow with each upload of the same version.
+      # The run number always grows.
+      - name: Archive for the store
+        if: steps.check.outputs.ready == 'true'
+        working-directory: apps/mobile/ios
+        env:
+          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
+          TEAM: ${{ steps.signing.outputs.team }}
+        run: |
+          set -o pipefail
+          WORKSPACE="$(ls -d *.xcworkspace)"
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.run_number }}" "$SCHEME/Info.plist"
+          xcodebuild archive -workspace "$WORKSPACE" -scheme "$SCHEME" \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/app.xcarchive" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" DEVELOPMENT_TEAM="$TEAM" \
+            | tail -n 25
+
+      - name: Export the IPA
+        if: steps.check.outputs.ready == 'true'
+        env:
+          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
+          TEAM: ${{ steps.signing.outputs.team }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>teamID</key>
+            <string>$TEAM</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/app.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            | tail -n 25
+
+      - name: Check the IPA
+        if: steps.check.outputs.ready == 'true'
+        id: ipa
+        run: |
+          ipa="$(find "$RUNNER_TEMP/export" -maxdepth 1 -name '*.ipa' | head -n 1)"
+          [[ -n "$ipa" ]] || { echo "::error::The export made no IPA."; exit 1; }
+          unzip -l "$ipa" | grep -q "Payload/.*\.app/main.jsbundle" \
+            || { echo "::error::The IPA has no main.jsbundle."; exit 1; }
+          echo "path=$ipa" >> "$GITHUB_OUTPUT"
+
+      # The export compliance answer is a decision of the owner. This step does
+      # not set it. Until the owner sets it, App Store Connect holds the build
+      # at "Missing Compliance".
+      - name: Upload to TestFlight
+        if: steps.check.outputs.ready == 'true'
+        uses: apple-actions/upload-testflight-build@155ea93be9ee6d5186c71f660a612f5eddb14510 # v5
+        with:
+          app-path: ${{ steps.ipa.outputs.path }}
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.ASC_KEY_ID }}
+          api-private-key: ${{ secrets.ASC_KEY_P8 }}
+
+      - name: Delete the signing files
+        if: always() && steps.signing.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -rf "$HOME/Library/MobileDevice/Provisioning Profiles" "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP/profile.plist"

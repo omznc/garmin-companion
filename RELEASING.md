@@ -322,29 +322,27 @@ Check `git diff` after re-running it.
 ## Why updating asks for a password on Linux, and only sometimes
 
 Because a `.deb` or `.rpm` install is a system package, and replacing one needs
-root the same way installing it did. `tauri-plugin-updater` runs `dpkg -i` or
-`rpm -U` under `pkexec`, so what appears is polkit's dialog, not ours. There is
-no version of "replace a package under `/usr`" that doesn't ask.
+root the same way installing it did. The desktop app
+(`apps/desktop/src/updater_pkg.rs`) checks the signature, then runs `apt-get`
+or `dpkg` (deb), or `dnf` or `rpm` (rpm), under `pkexec`. The dialog is
+polkit's, not ours. No way to replace a package under `/usr` avoids the prompt.
 
-The AppImage is the exception, and it's the reason this looks inconsistent: it's
-a single file the user owns, so the plugin swaps it in place and nobody is asked
-anything. Same for macOS and Windows. **If you want silent updates on Linux, run
-the AppImage** — that is the whole of the fix.
+The AppImage is the exception. It is a single file that the user owns, so the
+app replaces it in place and nobody sees a prompt. The same is true for macOS
+and Windows. **For silent updates on Linux, run the AppImage.**
 
-`latest.json` carries a `linux-x86_64-deb` and a `linux-x86_64-rpm` entry beside
-the AppImage, and the plugin picks between them by reading the bundle type the
-bundler stamped into the binary. Deleting those two entries would not remove the
-prompt, it would break updates outright: the plugin would still know it is an
-rpm, still refuse to install an AppImage over it, and fail with
-`InvalidUpdaterFormat`.
+The install starts only when the user presses the button in Settings. The
+background check does not show the dialog.
 
-What *was* worth fixing is when the prompt appears. `downloadAndInstall()` does
-both halves in one call, so a background check four seconds after launch put a
-password dialog on screen unasked. `app/src/lib/updater.ts` now splits the two
-on deb and rpm — `download()` in the background, `install()` behind the button
-in Settings — and says what the button is about to do before you press it.
-Dismissing the dialog puts the offer back rather than reporting a failure; the
-download is still there.
+`pkexec` exit codes:
+
+- 0: the package is installed. The app restarts.
+- 126: the user closed the dialog. The app keeps the update offer and shows no
+  error. The user can try again.
+- 127: no polkit agent. The app opens the release page.
+
+A missing `pkexec` or a missing package tool also opens the release page. Any
+other exit code shows the last line of the tool's message as an error.
 
 ## Code signing — what "unsigned" actually costs
 
@@ -384,6 +382,49 @@ notarization is the one worth buying.
   against Android — and the frontend branches on `IS_MOBILE`, not on `android`.
   What's missing is an Apple Developer account, and a signed build. The `ios`
   job makes only an unsigned IPA (see "Cutting a release").
+
+## TestFlight
+
+The workflow `.github/workflows/testflight.yml` builds a signed iOS app and
+uploads it to TestFlight. Run it by hand after you publish the release:
+Actions, then "TestFlight", then "Run workflow". Enter the tag, for example
+`v1.1.0`. The tag must exist. The tag must include `scripts/check-privacy-manifest.mjs`,
+so v1.0.5 and the earlier tags do not work.
+
+Without the six secrets below, the run prints a notice, skips the build and
+passes. The workflow is not tested on a real account yet. Expect to fix the
+first run.
+
+Secrets:
+
+- `ASC_KEY_ID`: key ID of the App Store Connect API key.
+- `ASC_ISSUER_ID`: issuer ID of the same page.
+- `ASC_KEY_P8`: the text of the `AuthKey_<id>.p8` file.
+- `IOS_DIST_CERT_P12`: the Apple Distribution certificate, as base64 of a `.p12` file.
+- `IOS_DIST_CERT_PASSWORD`: the password of that `.p12` file.
+- `IOS_PROFILE`: base64 of an App Store provisioning profile for `com.omznc.garmincompanion`.
+
+Setup:
+
+1. Join the Apple Developer Program.
+2. Make the App ID `com.omznc.garmincompanion` in the developer portal.
+3. Make the app record in App Store Connect.
+4. In Users and Access, then Integrations, make an API key with the role
+   App Manager. Download the `.p8` file one time only.
+5. Make an Apple Distribution certificate. Export it from Keychain Access as `.p12`.
+6. Make an App Store provisioning profile for the App ID and the certificate.
+7. Set the secrets: `base64 -w0 file.p12 | gh secret set IOS_DIST_CERT_P12`.
+   Use the same method for `IOS_PROFILE`. Use `gh secret set ASC_KEY_P8 < AuthKey.p8`.
+
+The build number is the run number of the workflow. The version comes from the
+tag. The workflow does not set the export compliance answer. Set it in App Store
+Connect, or the build stays at "Missing Compliance".
+
+The script `scripts/check-privacy-manifest.mjs` checks that the app declares the
+required-reason APIs (`ios.privacyManifests` in `apps/mobile/app.json`). CI runs
+it on each pull request. The iOS jobs run it on the manifest that prebuild
+makes. If a new module uses another such API, add its category to the script and
+to `app.json`.
 
 ## Google Play
 

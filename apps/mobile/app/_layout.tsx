@@ -6,6 +6,7 @@ import { AppState, useColorScheme } from "react-native";
 import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
 import { importHistory } from "../src/data/useSync";
+import { useSystemBack } from "../src/nav/useSystemBack";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
 import { useRootColor } from "../src/theme/useRootColor";
@@ -15,6 +16,7 @@ export default function RootLayout() {
   const root = useRootColor();
   const dark = useColorScheme() === "dark";
   const reduceMotion = useReduceMotion();
+  useSystemBack();
   // Refetch Today when the app returns to the foreground.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (status) =>
