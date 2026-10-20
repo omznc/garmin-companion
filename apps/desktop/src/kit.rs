@@ -255,7 +255,11 @@ pub struct Cell {
 /// them. The hairlines of the last column and the last row fall outside the card.
 pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
     let columns = columns.max(1);
-    let mut grid = div().flex().flex_wrap().mr(px(-1.0)).mb(px(-1.0));
+    // Fixed rows, not flex_wrap: at a fractional display scale the 1/n widths
+    // can round above the row width, and the last cell wraps on every other frame.
+    let mut grid = div().flex().flex_col().mr(px(-1.0)).mb(px(-1.0));
+    let mut row = div().flex_1().flex();
+    let mut in_row = 0;
     for cell in cells {
         let size = if cell.big { 21.0 } else { 15.0 };
         let value = div()
@@ -274,9 +278,9 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
                     .child(u)
             }));
         let padding = if cell.big { (14.0, 12.0) } else { (12.0, 10.0) };
-        grid = grid.child(
+        row = row.child(
             div()
-                .w(relative(1.0 / columns as f32))
+                .flex_1()
                 .min_w_0()
                 .px(px(padding.0))
                 .py(px(padding.1))
@@ -311,6 +315,16 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
                         .child(text)
                 })),
         );
+        in_row += 1;
+        if in_row == columns {
+            grid = grid.child(row);
+            row = div().flex_1().flex();
+            in_row = 0;
+        }
+    }
+    if in_row > 0 {
+        // Empty cells keep the 1/n width of the cells in the last row.
+        grid = grid.child(row.children((in_row..columns).map(|_| div().flex_1())));
     }
     // In a stretched card the rows grow, so the dividers reach the bottom edge.
     div()
