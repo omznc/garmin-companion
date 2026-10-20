@@ -1,4 +1,4 @@
-//! Curves inside one day: the overnight HRV readings and, later, Body Battery.
+//! Curves inside one day: the overnight HRV readings and the Body Battery.
 //!
 //! A curve is large next to the daily figure, so it has its own table and the
 //! sync keeps it for the recent days only. The daily rows stay the long record.
