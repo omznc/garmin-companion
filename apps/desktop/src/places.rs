@@ -96,6 +96,19 @@ impl Places {
         places
     }
 
+    /// The number of saved routes, for the sidebar.
+    pub fn route_count(&self) -> Option<i64> {
+        self.routes.as_ref().ok().map(|r| r.total as i64)
+    }
+
+    /// The number of gear items, once Garmin has answered.
+    pub fn gear_count(&self) -> Option<i64> {
+        match &self.gear {
+            Gear::Ready(view) => Some(view.items.len() as i64),
+            _ => None,
+        }
+    }
+
     /// Drop the gear of the old account, so the next visit asks Garmin again.
     pub fn forget_gear(&mut self) {
         self.gear = Gear::Idle;

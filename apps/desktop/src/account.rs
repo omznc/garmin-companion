@@ -314,6 +314,7 @@ impl Root {
                 wellness: wellness::load(&source),
                 body: body::load_body(&source),
                 training: training::load(&source, offset),
+                activities: store.count(),
                 list: store.list(),
                 synced_ago: live.then(settings::synced_ago),
             },
@@ -344,6 +345,7 @@ impl Root {
             Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
         self.list = read.list;
+        self.set_activity_count(read.activities);
         if let Some(synced_ago) = read.synced_ago {
             self.account.synced_ago = synced_ago;
         }
@@ -378,6 +380,7 @@ struct Reloaded {
     body: anyhow::Result<body::BodyData>,
     training: anyhow::Result<training::Training>,
     list: anyhow::Result<garmin_api::ActivitiesView>,
+    activities: Option<i64>,
     synced_ago: Option<Option<String>>,
 }
 

@@ -30,7 +30,7 @@ fn unit(value: impl Into<String>) -> Part {
 }
 
 /// `1,980`, with a comma between thousands.
-fn num(value: f64) -> String {
+pub(crate) fn num(value: f64) -> String {
     let digits = format!("{:.0}", value.abs());
     let mut out = String::new();
     for (i, c) in digits.chars().enumerate() {

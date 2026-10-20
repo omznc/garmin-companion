@@ -12,7 +12,7 @@ use crate::shell::Root;
 use crate::theme::{Palette, FS_SMALL};
 use crate::ui::SANS;
 
-actions!(garmin_companion, [OpenPalette]);
+actions!(garmin_companion, [OpenPalette, OpenSettings]);
 
 /// How many rows show at once. The list scrolls by moving this window.
 const ROWS: usize = 8;
@@ -22,6 +22,7 @@ pub fn bind_keys(cx: &mut gpui::App) {
     cx.bind_keys([
         KeyBinding::new("secondary-k", OpenPalette, None),
         KeyBinding::new("secondary-shift-p", OpenPalette, None),
+        KeyBinding::new("secondary-,", OpenSettings, None),
     ]);
 }
 

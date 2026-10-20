@@ -1,5 +1,7 @@
 //! The screens of the app and the groups that the sidebar sorts them into.
 
+use chrono::{Datelike, Duration, NaiveDate};
+
 use crate::icons::Icon;
 
 /// A screen. The variants are in the default sidebar order, group by group.
@@ -34,6 +36,20 @@ pub enum Group {
 
 impl Group {
     pub const ALL: [Group; 4] = [Group::Daily, Group::Training, Group::Coach, Group::Settings];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Group::Daily => "Daily",
+            Group::Training => "Training",
+            Group::Coach => "Coach",
+            Group::Settings => "Settings",
+        }
+    }
+
+    /// The saved name of the group: the lowercase label.
+    pub fn key(self) -> String {
+        self.label().to_lowercase()
+    }
 }
 
 impl Screen {
@@ -127,6 +143,30 @@ impl Screen {
             .find(|s| s.label().eq_ignore_ascii_case(label))
     }
 
+    /// The page under the screen name in the breadcrumb bar. `day` is the
+    /// date of the screen, so a sentence with a date names a real day.
+    pub fn crumb(self, day: NaiveDate) -> String {
+        let long = |d: NaiveDate| d.format("%-d %B").to_string();
+        match self {
+            Screen::Today | Screen::Food => day.format("%A, %-d %B").to_string(),
+            Screen::Sleep => format!("Night of {}", long(day - Duration::days(1))),
+            Screen::Plan => {
+                let monday = day - Duration::days(i64::from(day.weekday().num_days_from_monday()));
+                format!("Week of {}", long(monday))
+            }
+            Screen::Activities => "All sports".into(),
+            Screen::Health | Screen::Strength => "Last 30 days".into(),
+            Screen::Weight => "Last 90 days".into(),
+            Screen::Fitness => "Today".into(),
+            Screen::Routes => "Saved routes".into(),
+            Screen::Gear => "Shoes and devices".into(),
+            Screen::Ask => "Conversation".into(),
+            Screen::Insights => "New this week".into(),
+            Screen::Reports => "All reports".into(),
+            Screen::Settings => "All settings".into(),
+        }
+    }
+
     /// The place of the screen in `ALL`.
     pub fn index(self) -> usize {
         self as usize
@@ -148,5 +188,13 @@ mod tests {
         let mut runs = groups.clone();
         runs.dedup();
         assert_eq!(runs, Group::ALL);
+    }
+
+    #[test]
+    fn a_crumb_names_a_real_day() {
+        let day = NaiveDate::from_ymd_opt(2026, 10, 20).unwrap();
+        assert_eq!(Screen::Today.crumb(day), "Tuesday, 20 October");
+        assert_eq!(Screen::Sleep.crumb(day), "Night of 19 October");
+        assert_eq!(Screen::Plan.crumb(day), "Week of 19 October");
     }
 }

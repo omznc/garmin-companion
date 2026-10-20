@@ -20,14 +20,18 @@ use gpui::{
 
 use crate::editor::{Advance, Editor, Mods, Reply};
 use crate::icons::{icon, Icon};
-use crate::theme::{Palette, Theme, FS_MD};
+use crate::kit::{button, kbd, Look};
+use crate::theme::{Palette, Theme, FS_BASE, FS_MD};
 use crate::ui::SANS;
 
 /// Rows of text that show before the box scrolls.
 const MAX_ROWS: usize = 7;
-const LINE_H: f32 = FS_MD * 1.55;
 /// Padding and the button, as in `.composer-box`: 14 left, 8 right, 34 button, 8 gap, 2 border.
 const CHROME_W: f32 = 14.0 + 8.0 + 34.0 + 8.0 + 2.0;
+/// The panel box has a border and 10 px of padding on each side of the text.
+const PANEL_CHROME_W: f32 = 2.0 + 20.0;
+/// Rows that the panel box shows even when it is empty.
+const PANEL_MIN_ROWS: usize = 2;
 
 pub enum ComposerEvent {
     Send(String),
@@ -43,8 +47,10 @@ pub struct Composer {
     top: usize,
     want_focus: bool,
     palette: Palette,
-    /// The width of the reading column, from the last render of the screen.
+    /// The width of the box, from the last render of the screen.
     column_w: f32,
+    /// The box sits in the side panel: smaller text and a row of buttons under it.
+    panel: bool,
 }
 
 impl EventEmitter<ComposerEvent> for Composer {}
@@ -74,7 +80,7 @@ impl Advance for Measure {
 }
 
 /// The x of a byte offset inside a row, with the kerning that the text has.
-fn x_of(window: &Window, row: &str, upto: usize, font: &Font, colour: Hsla) -> f32 {
+fn x_of(window: &Window, row: &str, upto: usize, font: &Font, size: f32, colour: Hsla) -> f32 {
     if upto == 0 {
         return 0.0;
     }
@@ -90,7 +96,7 @@ fn x_of(window: &Window, row: &str, upto: usize, font: &Font, colour: Hsla) -> f
     };
     let line = window.text_system().shape_line(
         SharedString::from(prefix.to_string()),
-        px(FS_MD),
+        px(size),
         &[run],
         None,
     );
@@ -107,7 +113,18 @@ impl Composer {
             want_focus: true,
             palette,
             column_w: 720.0,
+            panel: false,
         }
+    }
+
+    pub fn set_panel(&mut self, panel: bool) {
+        self.panel = panel;
+    }
+
+    /// Put an at sign in the box, to start a mention.
+    fn mention(&mut self, cx: &mut Context<Self>) {
+        self.editor.insert("@");
+        cx.notify();
     }
 
     pub fn set_busy(&mut self, busy: bool, cx: &mut Context<Self>) {
@@ -180,6 +197,63 @@ impl Composer {
     }
 }
 
+/// The first row on screen that keeps the caret inside the `shown` rows.
+fn scrolled_to(top: usize, caret_row: usize, shown: usize, total: usize) -> usize {
+    let top = top.min(total - shown);
+    if caret_row < top {
+        caret_row
+    } else if caret_row >= top + shown {
+        caret_row + 1 - shown
+    } else {
+        top
+    }
+}
+
+/// One row of text on screen, with its selection spans and its caret.
+struct Row<'a> {
+    text: &'a str,
+    /// Byte spans of the selection inside the row.
+    marks: Vec<(usize, usize)>,
+    /// The byte offset of the caret, when it sits in this row.
+    caret: Option<usize>,
+}
+
+impl Row<'_> {
+    fn draw(&self, window: &Window, face: &Font, size: f32, line_h: f32, t: &Theme) -> gpui::Div {
+        let row = self.text;
+        let mut line = div().relative().h(px(line_h)).whitespace_nowrap();
+        for &(a, b) in &self.marks {
+            let (x0, x1) = (
+                x_of(window, row, a, face, size, t.fg),
+                x_of(window, row, b.min(row.len()), face, size, t.fg),
+            );
+            line = line.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left(px(x0))
+                    .w(px(x1 - x0))
+                    .h(px(line_h))
+                    .bg(t.sel),
+            );
+        }
+        line = line.child(row.to_string());
+        if let Some(at) = self.caret {
+            let x = x_of(window, row, at, face, size, t.fg);
+            line = line.child(
+                div()
+                    .absolute()
+                    .top(px(2.0))
+                    .left(px(x))
+                    .w(px(1.5))
+                    .h(px(line_h - 4.0))
+                    .bg(t.acc),
+            );
+        }
+        line
+    }
+}
+
 impl Render for Composer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if std::mem::take(&mut self.want_focus) {
@@ -193,18 +267,21 @@ impl Render for Composer {
             font_id: cx.text_system().resolve_font(&face),
             cache: RefCell::default(),
         };
-        let rows = self
-            .editor
-            .wrapped(self.column_w - CHROME_W, FS_MD, &measure);
+        let panel = self.panel;
+        let (size, pad) = if panel { (FS_BASE, 9.0) } else { (FS_MD, 5.0) };
+        let line_h = size * 1.55;
+        let chrome = if panel { PANEL_CHROME_W } else { CHROME_W };
+        let rows = self.editor.wrapped(self.column_w - chrome, size, &measure);
         let (caret_row, caret_at) = self.editor.caret_in(&rows);
         let shown = rows.len().min(MAX_ROWS);
+        // The panel box keeps two rows, like a text area of two rows.
+        let height_rows = if panel {
+            shown.max(PANEL_MIN_ROWS)
+        } else {
+            shown
+        };
         // Keep the caret inside the window of rows that shows.
-        self.top = self.top.min(rows.len() - shown);
-        if caret_row < self.top {
-            self.top = caret_row;
-        } else if caret_row >= self.top + shown {
-            self.top = caret_row + 1 - shown;
-        }
+        self.top = scrolled_to(self.top, caret_row, shown, rows.len());
 
         let text = self.editor.text();
         let highlight = self.editor.highlight_in(&rows);
@@ -212,65 +289,45 @@ impl Render for Composer {
             .relative()
             .flex_1()
             .min_w_0()
-            .py(px(5.0))
-            .h(px(shown as f32 * LINE_H + 10.0))
+            .py(px(pad))
+            .h(px(height_rows as f32 * line_h + 2.0 * pad))
             .overflow_hidden();
         if text.is_empty() {
+            let hint = if panel {
+                "Ask about this screen..."
+            } else {
+                "Ask about your sleep, training or recovery"
+            };
             area = area.child(
                 div()
                     .absolute()
-                    .top(px(5.0))
+                    .top(px(pad))
                     .left_0()
-                    .h(px(LINE_H))
+                    .h(px(line_h))
                     .text_color(t.faint)
-                    .child("Ask about your sleep, training or recovery"),
+                    .child(hint),
             );
         }
         for (i, &(from, to)) in rows.iter().enumerate().skip(self.top).take(shown) {
-            let row = &text[from..to];
-            let mut line = div().relative().h(px(LINE_H)).whitespace_nowrap();
-            for &(r, a, b) in highlight.iter().filter(|h| h.0 == i) {
-                debug_assert_eq!(r, i);
-                let (x0, x1) = (
-                    x_of(window, row, a, &face, t.fg),
-                    x_of(window, row, b.min(row.len()), &face, t.fg),
-                );
-                line = line.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left(px(x0))
-                        .w(px(x1 - x0))
-                        .h(px(LINE_H))
-                        .bg(t.sel),
-                );
-            }
-            line = line.child(row.to_string());
-            if focused && i == caret_row {
-                let x = x_of(window, row, caret_at, &face, t.fg);
-                line = line.child(
-                    div()
-                        .absolute()
-                        .top(px(2.0))
-                        .left(px(x))
-                        .w(px(1.5))
-                        .h(px(LINE_H - 4.0))
-                        .bg(t.acc),
-                );
-            }
-            area = area.child(line);
+            let row = Row {
+                text: &text[from..to],
+                marks: highlight
+                    .iter()
+                    .filter(|h| h.0 == i)
+                    .map(|h| (h.1, h.2))
+                    .collect(),
+                caret: (focused && i == caret_row).then_some(caret_at),
+            };
+            area = area.child(row.draw(window, &face, size, line_h, &t));
         }
 
         let sendable = self.busy || !self.editor.is_blank();
-        let button = send_button(self.busy, sendable, &t).on_click(cx.listener(
-            |this, _: &ClickEvent, window, cx| {
-                window.focus(&this.focus, cx);
-                this.submit(cx);
-            },
-        ));
-
+        let on_send = cx.listener(|this, _: &ClickEvent, window, cx| {
+            window.focus(&this.focus, cx);
+            this.submit(cx);
+        });
         let ring = t.acc;
-        div()
+        let frame = div()
             .id("composer-box")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| this.on_key(event, cx)))
@@ -279,15 +336,9 @@ impl Render for Composer {
                 cx.listener(|this, _: &MouseDownEvent, window, cx| window.focus(&this.focus, cx)),
             )
             .flex()
-            .items_end()
-            .gap(px(8.0))
-            .pl(px(14.0))
-            .pr(px(8.0))
-            .py(px(8.0))
             .bg(t.bg)
             .border_1()
             .border_color(if focused { ring } else { t.line })
-            .rounded(px(6.0))
             .when(focused, |d| {
                 d.shadow(vec![BoxShadow {
                     color: ring.opacity(0.16),
@@ -298,11 +349,59 @@ impl Render for Composer {
                 }])
             })
             .font_family(SANS)
-            .text_size(px(FS_MD))
+            .text_size(px(size))
             .line_height(relative(1.55))
-            .text_color(t.fg)
+            .text_color(t.fg);
+        if panel {
+            return frame
+                .flex_col()
+                .rounded(px(7.0))
+                .child(div().px(px(10.0)).flex().child(area))
+                .child(self.panel_footer(sendable, &t, on_send, cx));
+        }
+        frame
+            .items_end()
+            .gap(px(8.0))
+            .pl(px(14.0))
+            .pr(px(8.0))
+            .py(px(8.0))
+            .rounded(px(6.0))
             .child(area)
-            .child(button)
+            .child(send_button(self.busy, sendable, &t).on_click(on_send))
+    }
+}
+
+impl Composer {
+    /// The row under the text in the side panel: the mention, the key hint and Send.
+    fn panel_footer(
+        &self,
+        sendable: bool,
+        t: &Theme,
+        on_send: impl Fn(&ClickEvent, &mut Window, &mut gpui::App) + 'static,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let (label, look) = if self.busy {
+            ("Stop", Look::Default)
+        } else {
+            ("Send", Look::Primary)
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .px(px(6.0))
+            .pb(px(6.0))
+            .child(
+                button("composer-mention", "@ Context", Look::Ghost, true, t).on_click(
+                    cx.listener(|this, _: &ClickEvent, window, cx| {
+                        window.focus(&this.focus, cx);
+                        this.mention(cx);
+                    }),
+                ),
+            )
+            .child(div().flex_1())
+            .child(kbd("Enter", t))
+            .child(button("composer-send", label, look, sendable, t).on_click(on_send))
     }
 }
 

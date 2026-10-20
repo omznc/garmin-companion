@@ -41,6 +41,7 @@ mod field;
 mod fuzzy;
 mod icons;
 mod instance;
+mod kit;
 mod map;
 mod markdown;
 mod motion;
@@ -54,9 +55,12 @@ mod setup;
 mod shell;
 mod sidebar;
 mod spring;
+mod statusbar;
+mod tabs;
 mod theme;
 mod theme_dialog;
 mod themes;
+mod titlebar;
 mod today;
 mod training;
 mod ui;
@@ -403,6 +407,9 @@ fn main() -> anyhow::Result<()> {
             command_palette::bind_keys(cx);
             cx.on_action(move |_: &command_palette::OpenPalette, cx| {
                 let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));
+            });
+            cx.on_action(move |_: &command_palette::OpenSettings, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.show_settings(cx));
             });
             if background {
                 // The login item passes --background. The app has no tray icon,

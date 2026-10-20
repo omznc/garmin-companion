@@ -6,14 +6,14 @@
 //! compositor leaves them to the app. macOS keeps its own traffic lights.
 
 use gpui::{
-    div, prelude::*, px, AnyElement, CursorStyle, Decorations, MouseButton, ResizeEdge, Window,
-    WindowControlArea,
+    div, prelude::*, px, AnyElement, CursorStyle, Decorations, Div, MouseButton, ResizeEdge,
+    Stateful, Window, WindowControlArea,
 };
 
 use crate::icons::{icon_hover, Icon};
 use crate::theme::Theme;
 
-/// The strip height. It matches the sidebar's top padding.
+/// The height of the title bar and of the strip that drags the window.
 pub const STRIP: f32 = 38.0;
 /// The width of the grab strip along each window edge.
 const GRAB: f32 = 5.0;
@@ -29,16 +29,10 @@ fn buttons_are_ours(window: &Window) -> bool {
     true
 }
 
-/// The strip that drags the window. A double click zooms it.
-pub fn drag_strip() -> impl IntoElement {
-    div()
-        .id("drag-strip")
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .h(px(STRIP))
-        .window_control_area(WindowControlArea::Drag)
+/// Make an element drag the window. A double click zooms it. A child that
+/// handles the mouse down itself, such as a button, keeps its click.
+pub fn draggable(bar: Stateful<Div>) -> Stateful<Div> {
+    bar.window_control_area(WindowControlArea::Drag)
         .on_mouse_down(MouseButton::Left, |event, window, _| {
             if event.click_count == 2 {
                 window.zoom_window();
@@ -46,6 +40,36 @@ pub fn drag_strip() -> impl IntoElement {
                 window.start_window_move();
             }
         })
+}
+
+/// The strip that drags the window, over a screen that has no title bar.
+pub fn drag_strip() -> impl IntoElement {
+    draggable(
+        div()
+            .id("drag-strip")
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(px(STRIP)),
+    )
+}
+
+/// The window buttons in the top right corner of a screen with no title bar.
+pub fn corner_controls(window: &Window, t: &Theme) -> Option<AnyElement> {
+    let row = controls(window, t)?;
+    Some(
+        div()
+            .absolute()
+            .top_0()
+            .right_0()
+            .h(px(STRIP))
+            .pr(px(6.0))
+            .flex()
+            .items_center()
+            .child(row)
+            .into_any_element(),
+    )
 }
 
 fn button(
@@ -57,28 +81,28 @@ fn button(
     t: &Theme,
     action: fn(&mut Window),
 ) -> impl IntoElement {
-    let (faint, sel) = (t.faint, t.sel);
+    let (mutd, hover) = (t.mutd, t.hover);
     div()
         .id(id)
         .group(id)
         .flex()
         .items_center()
         .justify_center()
-        .size(px(26.0))
-        .rounded(px(3.0))
+        .size(px(28.0))
+        .rounded(px(6.0))
         .cursor_pointer()
         .window_control_area(area)
-        .hover(move |s| s.bg(sel))
+        .hover(move |s| s.bg(hover))
         // Mouse down, and claimed: the strip under the button starts a window
         // move on the same event.
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             cx.stop_propagation();
             action(window);
         })
-        .child(icon_hover(glyph, size, t, faint, Some((id, hover_colour))))
+        .child(icon_hover(glyph, size, t, mutd, Some((id, hover_colour))))
 }
 
-/// The three buttons at the top right, or nothing where the system draws them.
+/// The three buttons in a row, or nothing where the system draws them.
 pub fn controls(window: &Window, t: &Theme) -> Option<AnyElement> {
     if !buttons_are_ours(window) {
         return None;
@@ -91,11 +115,7 @@ pub fn controls(window: &Window, t: &Theme) -> Option<AnyElement> {
     };
     Some(
         div()
-            .absolute()
-            .top_0()
-            .right_0()
-            .h(px(STRIP))
-            .pr(px(10.0))
+            .flex_none()
             .flex()
             .items_center()
             .gap(px(2.0))

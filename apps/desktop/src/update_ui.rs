@@ -220,8 +220,8 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     Some(
         div()
             .absolute()
-            // Under the title strip, clear of the Ask composer at the bottom.
-            .top(px(56.0))
+            // Under the title bar, over the page.
+            .top(px(46.0))
             .right(px(24.0))
             .max_w(px(340.0))
             .px(px(18.0))

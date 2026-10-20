@@ -62,6 +62,16 @@ impl Store {
         })
     }
 
+    /// The day the store reads for.
+    pub fn today(&self) -> NaiveDate {
+        self.today
+    }
+
+    /// The number of cached activities. `None` when the cache does not open.
+    pub fn count(&self) -> Option<i64> {
+        garmin_api::open_db(&self.path).ok()?.activity_count().ok()
+    }
+
     pub fn list(&self) -> Result<ActivitiesView> {
         let db = garmin_api::open_db(&self.path)?;
         Ok(garmin_api::activities_view(&db, self.today, 60)?)

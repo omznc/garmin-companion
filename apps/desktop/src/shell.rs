@@ -1,44 +1,38 @@
-//! The window's root view: sidebar, reading column, and the window chrome.
-//! From `DesktopShell` in `app/src/router.tsx`.
+//! The window's root view: the title bar, the sidebar, the tabs, the page, the
+//! coach panel and the status bar. From `DesktopShell` in `app/src/router.tsx`
+//! and the shell of the design.
 
 use garmin_api::settings::ThemeMode;
 use gpui::{
-    div, linear_color_stop, linear_gradient, prelude::*, px, relative, ColorExt as _, Context,
-    ElementId, Entity, IntoElement, Render, Window,
+    div, prelude::*, px, relative, AnyElement, Context, ElementId, Entity, IntoElement, Render,
+    Window,
 };
 
-use crate::account::{Account, Sync};
+use crate::account::Account;
 use crate::activities::{self, Page, Store};
-use crate::ask::{Ask, AskEvent, Source as AskSource};
+use crate::ask::{Ask, AskEvent, Source as AskSource, PANEL_W};
 use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::{Source, Today};
 use crate::motion;
 use crate::places::{self, Places};
-use crate::screen::Screen;
+use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
-use crate::sidebar::{self, Info, Sidebar, SIDEBAR_W};
+use crate::sidebar::{self, Sidebar};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
-use crate::{settings, setup, today, window};
+use crate::{settings, setup, statusbar, tabs, titlebar, today, window};
 
-/// The sidebar and the column, as a pair, are never wider than this.
-/// On an ultrawide the pair stays together in the middle.
-pub(crate) const SHELL_MAX: f32 = 1240.0;
-/// The reading column's width, and the air above and beside it.
-pub const COLUMN_MAX: f32 = 720.0;
-pub const COLUMN_TOP: f32 = 78.0;
-pub const COLUMN_SIDE: f32 = 56.0;
-const COLUMN_BOTTOM: f32 = 160.0;
-/// How tall the fade under the title strip is.
-const FADE_H: f32 = 44.0;
-
-/// The width of the text column for a window `viewport` pixels wide.
-pub fn column_width(viewport: f32) -> f32 {
-    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * COLUMN_SIDE).clamp(200.0, COLUMN_MAX)
-}
+/// At or below this window width the coach panel hides.
+const COACH_HIDES_AT: f32 = 1180.0;
+/// At or below this window width the sidebar hides.
+const SIDEBAR_HIDES_AT: f32 = 900.0;
+/// The widest the page gets.
+const PAGE_MAX: f32 = 1120.0;
+/// The width of the reading column of a screen that is not built from blocks.
+const COLUMN_MAX: f32 = 720.0;
 
 /// What the Ask screen starts with. Only the command line sets it.
 pub struct AskStart {
@@ -78,6 +72,12 @@ pub struct Root {
     sidebar: Sidebar,
     /// The screen on show.
     pub(crate) active: Screen,
+    /// The open tabs, oldest first. Today is first.
+    tabs: Vec<Screen>,
+    /// The user wants the coach panel. A narrow window hides it all the same.
+    pub(crate) coach_open: bool,
+    /// The number of cached activities, for the sidebar and the status bar.
+    activity_count: Option<i64>,
     /// Counts the screens shown, so each one animates in again.
     pub(crate) visits: usize,
     scroll: SmoothScroll,
@@ -120,7 +120,9 @@ impl Root {
         } else {
             garmin_api::settings::prefs().nav_order
         };
-        let sidebar = Sidebar::new(motion::reduced(), &saved_order);
+        let sidebar = Sidebar::new(motion::reduced(), &saved_order, &window_state.collapsed);
+        let mut tabs = vec![Screen::Today];
+        tabs::open(&mut tabs, sidebar.active);
         Self {
             ask,
             list,
@@ -132,6 +134,9 @@ impl Root {
             palette,
             active: sidebar.active,
             sidebar,
+            tabs,
+            coach_open: window_state.coach_open,
+            activity_count: store.count(),
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
             store,
@@ -232,8 +237,7 @@ impl Root {
 
     /// Open on the Activities entry, with one session shown.
     pub fn start_at_activity(&mut self, id: i64, cx: &mut Context<Self>) {
-        self.active = Screen::Activities;
-        self.sidebar.select(Screen::Activities);
+        self.select_screen(Screen::Activities, cx);
         self.open_activity(id, cx);
     }
 
@@ -282,11 +286,83 @@ impl Root {
         self.select_screen(screen, cx);
     }
 
+    /// Show a screen: open its tab, or find it, and light its entry.
     pub(crate) fn select_screen(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        tabs::open(&mut self.tabs, screen);
         if screen != self.active {
             self.active = screen;
             self.sidebar.select(screen);
             self.enter(screen, cx);
+        }
+        cx.notify();
+    }
+
+    /// Close a tab. If it was in view, the tab on its left comes into view.
+    pub(crate) fn close_tab(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        if let Some(next) = tabs::close(&mut self.tabs, screen, self.active) {
+            self.select_screen(next, cx);
+        }
+        cx.notify();
+    }
+
+    pub(crate) fn tabs(&self) -> &[Screen] {
+        &self.tabs
+    }
+
+    /// Show the coach panel, or hide it. The choice is saved.
+    pub(crate) fn toggle_coach(&mut self, cx: &mut Context<Self>) {
+        self.coach_open = !self.coach_open;
+        self.save_window_state();
+        cx.notify();
+    }
+
+    /// Close an open sidebar group, or open a closed one. The choice is saved.
+    fn toggle_group(&mut self, group: Group, cx: &mut Context<Self>) {
+        self.sidebar.toggle(group);
+        self.save_window_state();
+        cx.notify();
+    }
+
+    fn save_window_state(&mut self) {
+        if self.account.demo {
+            return;
+        }
+        self.window_state.coach_open = self.coach_open;
+        self.window_state.collapsed = self.sidebar.closed_keys();
+        self.window_state.save();
+    }
+
+    /// The count at the right of an entry. `None` when it is unknown or zero.
+    fn nav_count(&self, screen: Screen) -> Option<i64> {
+        let count = match screen {
+            Screen::Activities => self.activity_count,
+            Screen::Routes => self.places.route_count(),
+            Screen::Gear => self.places.gear_count(),
+            Screen::Insights => self.training.as_ref().map(|t| {
+                t.insights
+                    .sections
+                    .iter()
+                    .map(|s| s.items.len())
+                    .sum::<usize>() as i64
+            }),
+            _ => None,
+        };
+        count.filter(|n| *n > 0)
+    }
+
+    pub(crate) fn activity_count(&self) -> Option<i64> {
+        self.activity_count.filter(|n| *n > 0)
+    }
+
+    pub(crate) fn set_activity_count(&mut self, count: Option<i64>) {
+        self.activity_count = count;
+    }
+
+    /// The page under the screen name in the breadcrumb bar.
+    pub(crate) fn crumb(&self) -> String {
+        match (&self.page, self.active) {
+            (Page::Detail(view), Screen::Activities) => view.name.clone(),
+            _ => self.active.crumb(self.store.today()),
         }
     }
 
@@ -297,6 +373,9 @@ impl Root {
     }
 
     fn enter(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        // The coach hears which screen the question comes from. On Ask it is the screen.
+        let context = (screen != Screen::Ask).then(|| screen.label());
+        self.ask.update(cx, |ask, _| ask.set_context(context));
         self.loads.remove("detail");
         self.page = Page::List;
         self.visits += 1;
@@ -405,9 +484,9 @@ impl Root {
 }
 
 impl Root {
-    /// One screen in the whole window, with no sidebar: the window chrome only.
-    fn framed(&self, body: gpui::AnyElement, t: &Theme, window: &Window) -> gpui::Div {
-        let mut root = div()
+    /// One screen in the whole window, with no title bar: the window buttons only.
+    fn framed(&self, body: AnyElement, t: &Theme, window: &Window) -> gpui::Div {
+        div()
             .relative()
             .size_full()
             .flex()
@@ -416,11 +495,42 @@ impl Root {
             .font_family(SANS)
             .line_height(relative(LH_NORMAL))
             .child(body)
-            .child(chrome::drag_strip());
-        if let Some(controls) = chrome::controls(window, t) {
-            root = root.child(controls);
-        }
-        root.children(chrome::resize_handles(window))
+            .child(chrome::drag_strip())
+            .children(chrome::corner_controls(window, t))
+            .children(chrome::resize_handles(window))
+    }
+
+    /// The text at the right of each entry, by `Screen::index`.
+    fn nav_counts(&self) -> Vec<Option<String>> {
+        Screen::ALL
+            .iter()
+            .map(|s| self.nav_count(*s).map(|n| crate::map::num(n as f64)))
+            .collect()
+    }
+
+    /// The screen in the scrolling page. A screen that is not built from blocks
+    /// keeps its own reading column.
+    fn page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let screen = self.screen(t, window, cx);
+        let cap = if self.active == Screen::Settings {
+            settings::CONTENT_MAX
+        } else {
+            COLUMN_MAX
+        };
+        let column = match self.active {
+            Screen::Today => div().max_w(px(PAGE_MAX)).mx_auto(),
+            _ => div().max_w(px(cap)).px(px(16.0)).pt(px(8.0)),
+        };
+        self.scroll
+            .area(ElementId::NamedInteger("page".into(), self.visits as u64))
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .px(px(20.0))
+            .pt(px(18.0))
+            .pb(px(28.0))
+            .child(column.child(screen))
+            .into_any_element()
     }
 }
 
@@ -434,95 +544,76 @@ impl Render for Root {
         if !self.account.connected {
             return self.framed(setup::render(self, &t, window, cx), &t, window);
         }
-        let viewport = f32::from(window.viewport_size().width);
-        // What lies left of the capped pair carries the nav's ground too.
-        let margin = ((viewport - SHELL_MAX) / 2.0).max(0.0);
+        let width = f32::from(window.viewport_size().width);
+        let narrow = width <= SIDEBAR_HIDES_AT;
+        let on_ask = self.active == Screen::Ask;
+        // One Ask entity, in one place: the Ask screen, or the panel at the side.
+        self.ask.update(cx, |ask, _| ask.set_panel(!on_ask));
 
-        let sync_line = match &self.account.sync {
-            Sync::Running(line) => Some(line.clone()),
-            Sync::Failed(_) => Some("Sync failed. Settings has the reason.".to_string()),
-            _ => None,
-        };
-        let info = Info {
-            who: self.today.who.as_deref(),
-            synced_ago: self.account.synced_ago.as_deref(),
-            sync_line: sync_line.as_deref(),
-            sync_failed: matches!(self.account.sync, Sync::Failed(_)),
-        };
-        let nav = sidebar::render(
-            &self.sidebar,
-            &info,
-            t.dark,
-            &t,
-            cx,
-            sidebar::Actions {
-                select: |this, screen, window, cx| this.select(screen, window, cx),
-                toggle_theme: |this, window, cx| this.toggle_theme(window, cx),
-                sync_now: |this, _, cx| this.start_sync(false, cx),
-            },
-        );
+        let nav = (!narrow).then(|| {
+            let counts = self.nav_counts();
+            sidebar::render(
+                &self.sidebar,
+                &counts,
+                &t,
+                cx,
+                sidebar::Actions {
+                    select: |this, screen, window, cx| this.select(screen, window, cx),
+                    toggle_group: |this, group, _, cx| this.toggle_group(group, cx),
+                },
+            )
+        });
 
-        // Each screen gets a new `SmoothScroll` in `select`, so it starts at
-        // the top, as the current app does on a route change.
+        // Each screen gets a new `SmoothScroll` in `enter`, so it starts at the top.
         self.scroll.tick(window);
-        let column = if self.active == Screen::Ask {
+        let content = if on_ask {
             self.ask.clone().into_any_element()
         } else {
-            let screen = self.screen(&t, window, cx);
-            let cap = if self.active == Screen::Settings {
-                settings::CONTENT_MAX
-            } else {
-                COLUMN_MAX
-            };
-            self.scroll
-                .area(ElementId::NamedInteger("page".into(), self.visits as u64))
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .px(px(COLUMN_SIDE))
-                .pb(px(COLUMN_BOTTOM))
-                .child(div().max_w(px(cap)).pt(px(COLUMN_TOP)).child(screen))
-                .into_any_element()
+            self.page(&t, window, cx)
         };
+        let center = div()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(t.bg)
+            .child(tabs::tab_bar(self, &t, cx))
+            .child(tabs::crumb_bar(self, narrow, &t))
+            .child(div().flex_1().min_h_0().flex().child(content));
+        let coach = (self.coach_open && width > COACH_HIDES_AT && !on_ask).then(|| {
+            div()
+                .flex_none()
+                .w(px(PANEL_W))
+                .h_full()
+                .bg(t.bg2)
+                .border_l_1()
+                .border_color(t.line)
+                .child(self.ask.clone())
+        });
+        let provider = self.ask.read(cx).provider_label();
 
-        // Text under the title strip fades out as it scrolls up.
-        let fade = div()
-            .absolute()
-            .top_0()
-            .left(px(margin + SIDEBAR_W))
-            .right_0()
-            .h(px(FADE_H))
-            .bg(linear_gradient(
-                180.0,
-                linear_color_stop(t.bg, 0.0),
-                linear_color_stop(t.bg.opacity(0.0), 1.0),
-            ));
-
-        let mut root = div()
+        div()
             .relative()
             .size_full()
             .flex()
+            .flex_col()
             .bg(t.bg)
             .text_color(t.fg)
             .font_family(SANS)
             .line_height(relative(LH_NORMAL))
+            .child(titlebar::render(self, window, &t, cx))
             .child(
                 div()
-                    .flex_none()
-                    .w(px(margin + SIDEBAR_W))
-                    .h_full()
-                    .bg(t.bg2)
+                    .flex_1()
+                    .min_h_0()
                     .flex()
-                    .justify_end()
-                    .child(nav),
+                    .children(nav)
+                    .child(center)
+                    .children(coach),
             )
-            .child(column)
-            .child(fade)
-            .child(chrome::drag_strip());
-        if let Some(controls) = chrome::controls(window, &t) {
-            root = root.child(controls);
-        }
-        root.children(crate::update_ui::banner(self, &t, cx))
+            .child(statusbar::render(self, provider, narrow, &t))
+            .children(crate::update_ui::banner(self, &t, cx))
             .children(self.command_palette.clone())
             .children(crate::theme_dialog::render(self, &t, window, cx))
             .children(chrome::resize_handles(window))

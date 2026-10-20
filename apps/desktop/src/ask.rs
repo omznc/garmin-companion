@@ -38,17 +38,30 @@ use serde_json::Value;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
+use crate::icons::Icon;
+use crate::kit::{chip, icon_button};
 use crate::markdown;
 use crate::motion;
 use crate::scroll::SmoothScroll;
-use crate::shell::{column_width, COLUMN_MAX, COLUMN_SIDE, COLUMN_TOP};
-use crate::theme::{Palette, Theme, FS_CAPTION, FS_MD, FS_SMALL};
+use crate::sidebar::SIDEBAR_W;
+use crate::theme::{Palette, Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
 use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
 /// Room under the thread for the docked composer.
 const COMPOSER_ROOM: f32 = 176.0;
+/// The reading column of the Ask screen, and the air above and beside it.
+const COLUMN_MAX: f32 = 720.0;
+const COLUMN_TOP: f32 = 78.0;
+const COLUMN_SIDE: f32 = 56.0;
+/// The width of the coach panel, with its left border.
+pub const PANEL_W: f32 = 340.0;
+
+/// The width of the text column of the Ask screen for a window `viewport` pixels wide.
+fn column_width(viewport: f32) -> f32 {
+    (viewport - SIDEBAR_W - 2.0 * COLUMN_SIDE).clamp(200.0, COLUMN_MAX)
+}
 
 /// What a demo says in place of a call to the hosted coach.
 pub const CLOUD_OFF: &str = "The cloud coach is off in a demo. Start the app with --coach ollama:<model> to use another model.";
@@ -135,6 +148,12 @@ pub struct Ask {
     credits: Option<AccountView>,
     /// The hosted coach is the chosen provider, so credits matter.
     cloud_on: bool,
+    /// The chosen provider. `None` in a copy, which asks no model.
+    provider: Option<Provider>,
+    /// The entity sits in the side panel and not in the Ask screen.
+    panel: bool,
+    /// The name of the screen behind the panel. The coach hears it with a question.
+    context: Option<&'static str>,
     palette: Palette,
     composer: Entity<Composer>,
     turns: Vec<Turn>,
@@ -161,6 +180,9 @@ impl Ask {
             source,
             credits: None,
             cloud_on: false,
+            provider: None,
+            panel: false,
+            context: None,
             palette,
             composer,
             turns: Vec::new(),
@@ -184,17 +206,38 @@ impl Ask {
         self.refresh_credits(cx);
     }
 
+    /// Draw the entity in the side panel, or in the Ask screen.
+    pub fn set_panel(&mut self, panel: bool) {
+        self.panel = panel;
+    }
+
+    /// The screen behind the panel, or `None` on the Ask screen.
+    pub fn set_context(&mut self, screen: Option<&'static str>) {
+        self.context = screen;
+    }
+
+    /// The name of the provider for the status bar.
+    pub fn provider_label(&self) -> Option<&'static str> {
+        Some(match self.provider? {
+            Provider::Cloud => "Cloud",
+            Provider::Openrouter => "Own key",
+            Provider::Ollama => "Ollama",
+        })
+    }
+
     /// Read the provider, and the balance if the hosted coach is the provider.
     pub fn refresh_credits(&mut self, cx: &mut Context<Self>) {
         let path = match &self.source {
             Source::Demo => {
                 self.cloud_on = true;
+                self.provider = Some(Provider::Cloud);
                 self.credits = Some(cloud::sample_account());
                 return;
             }
             Source::Copy(_) => {
                 // A demo makes no cloud call, so there are no credits to show.
                 self.cloud_on = false;
+                self.provider = None;
                 self.credits = None;
                 return;
             }
@@ -203,6 +246,7 @@ impl Ask {
         let saved = Db::open(&path)
             .and_then(|db| garmin_coach::load_config(&db))
             .map(|(provider, _)| provider);
+        self.provider = saved.as_ref().ok().copied().flatten();
         self.cloud_on = matches!(saved, Ok(Some(Provider::Cloud)));
         if !self.cloud_on {
             return;
@@ -239,7 +283,7 @@ impl Ask {
             return;
         }
         self.turns.push(Turn::new(Who::You, text));
-        let history = history(&self.turns);
+        let history = with_context(history(&self.turns), self.context);
         self.turns.push(Turn::new(Who::Coach, String::new()));
         self.busy = true;
         self.stop = Arc::default();
@@ -345,6 +389,15 @@ fn history(turns: &[Turn]) -> Vec<HistoryMessage> {
             content: t.text.clone(),
         })
         .collect()
+}
+
+/// The question gets one more line: the screen that the user is on. The
+/// thread on screen does not show the line.
+fn with_context(mut messages: Vec<HistoryMessage>, screen: Option<&str>) -> Vec<HistoryMessage> {
+    if let (Some(screen), Some(last)) = (screen, messages.last_mut()) {
+        last.content = format!("{}\n\nThe user is on the {screen} screen.", last.content);
+    }
+    messages
 }
 
 /// A call starts and then comes back, as two events with one id.
@@ -721,9 +774,23 @@ impl Ask {
 
 impl Render for Ask {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.panel {
+            self.panel_view(window, cx).into_any_element()
+        } else {
+            self.screen_view(window, cx).into_any_element()
+        }
+    }
+}
+
+impl Ask {
+    /// The Ask screen: a reading column with the composer docked under it.
+    fn screen_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let t = self.palette.theme();
         let width = column_width(f32::from(window.viewport_size().width));
-        self.composer.update(cx, |c, _| c.set_column_width(width));
+        self.composer.update(cx, |c, _| {
+            c.set_column_width(width);
+            c.set_panel(false);
+        });
 
         self.scroll.tick(window);
         // Follow new text while the reader is at the bottom.
@@ -796,6 +863,160 @@ impl Render for Ask {
             .child(thread)
             .child(dock)
     }
+
+    /// The header of the panel: the name, the credits and the button for a new thread.
+    fn panel_header(&self, cx: &mut Context<Self>, t: &Theme) -> Div {
+        let credits = self.credits.as_ref().filter(|_| self.cloud_on).map(|v| {
+            chip(
+                format!("Cloud · {} left", v.credits_remaining),
+                false,
+                true,
+                t,
+            )
+        });
+        let new_thread = icon_button("coach-new", Icon::Plus, 14.0, false, false, t)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.new_chat(cx)));
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .h(px(34.0))
+            .pl(px(12.0))
+            .pr(px(6.0))
+            .border_b_1()
+            .border_color(t.line)
+            .child(
+                div()
+                    .flex_1()
+                    .font_family(SANS)
+                    .text_size(px(13.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child("Coach"),
+            )
+            .children(credits)
+            .child(new_thread)
+    }
+
+    /// The empty thread of the panel: one line and three questions to start with.
+    fn panel_empty(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
+        let day = chrono::Datelike::ordinal(&chrono::Local::now().date_naive()) as usize;
+        let (line, hover) = (t.line, t.hover);
+        let openers = (0..3).map(|i| {
+            let text = OPENERS[(day + i * 3) % OPENERS.len()];
+            div()
+                .id(("opener", i))
+                .px(px(10.0))
+                .py(px(7.0))
+                .rounded(px(5.0))
+                .border_1()
+                .border_color(line)
+                .bg(t.bg)
+                .text_size(px(12.5))
+                .cursor_pointer()
+                .hover(move |s| s.bg(hover))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.fill(text, cx)))
+                .child(text)
+        });
+        let demo = matches!(self.source, Source::Demo).then(|| {
+            body(
+                "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
+                11.5,
+                t.faint,
+            )
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                body(
+                    "Ask about your sleep, recovery, activity or weight. The coach reads \
+                     your own Garmin data before it answers.",
+                    FS_BASE,
+                    t.mutd,
+                )
+                .line_height(relative(1.6))
+                .mb(px(6.0)),
+            )
+            .children(openers)
+            .children(demo)
+            .into_any_element()
+    }
+
+    /// The thread of the panel: your questions in a box, the answers as text.
+    fn panel_thread(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
+        if self.turns.is_empty() {
+            return self.panel_empty(cx, t);
+        }
+        let last = self.turns.len() - 1;
+        let mut col = div().flex().flex_col().gap(px(14.0));
+        for (i, turn) in self.turns.iter().enumerate() {
+            col = col.child(match turn.who {
+                Who::You => div()
+                    .px(px(11.0))
+                    .py(px(9.0))
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(t.line)
+                    .bg(t.bg)
+                    .child(SharedString::from(turn.text.clone()))
+                    .into_any_element(),
+                Who::Coach => coach_turn(turn, self.busy && i == last, t)
+                    .children(
+                        turn.draft
+                            .as_ref()
+                            .map(|(d, save)| draft_card(i, d, save, cx, t)),
+                    )
+                    .into_any_element(),
+            });
+        }
+        col.into_any_element()
+    }
+
+    /// The coach panel: the header, the thread and the composer.
+    fn panel_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let t = self.palette.theme();
+        self.composer.update(cx, |c, _| {
+            c.set_column_width(PANEL_W - 1.0 - 20.0);
+            c.set_panel(true);
+        });
+        self.scroll.tick(window);
+        if self.busy && self.scroll.distance_below() <= STICK_SLOP {
+            self.scroll.pin_bottom();
+        }
+        let thread = self
+            .scroll
+            .area(ElementId::NamedInteger("coach".into(), self.visits as u64))
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .child(
+                div()
+                    .px(px(12.0))
+                    .py(px(14.0))
+                    .child(self.panel_thread(cx, &t)),
+            );
+        let out = self
+            .credits
+            .as_ref()
+            .filter(|v| self.cloud_on && v.out)
+            .map(|v| credit_row(v, cx, &t));
+        let dock = div()
+            .flex_none()
+            .p(px(10.0))
+            .border_t_1()
+            .border_color(t.line)
+            .child(self.composer.clone())
+            .children(out);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(self.panel_header(cx, &t))
+            .child(thread)
+            .child(dock)
+    }
 }
 
 #[cfg(test)]
@@ -829,6 +1050,15 @@ mod tests {
         ];
         let roles: Vec<_> = history(&turns).into_iter().map(|m| m.role).collect();
         assert_eq!(roles, ["user", "assistant", "user"]);
+    }
+
+    #[test]
+    fn the_question_carries_the_screen_but_the_thread_does_not() {
+        let turns = vec![Turn::new(Who::You, "hi".into())];
+        let sent = with_context(history(&turns), Some("Sleep"));
+        assert_eq!(sent[0].content, "hi\n\nThe user is on the Sleep screen.");
+        assert_eq!(turns[0].text, "hi");
+        assert_eq!(with_context(history(&turns), None)[0].content, "hi");
     }
 
     #[test]

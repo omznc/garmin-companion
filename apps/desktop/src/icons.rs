@@ -9,8 +9,12 @@
 //! two as two stacked `svg()` elements with two colours.
 
 use std::borrow::Cow;
+use std::time::Duration;
 
-use gpui::{div, prelude::*, px, svg, AssetSource, Hsla, SharedString};
+use gpui::{
+    div, percentage, prelude::*, px, svg, Animation, AnimationExt, AssetSource, Hsla, SharedString,
+    Transformation,
+};
 
 use crate::theme::Theme;
 
@@ -138,6 +142,26 @@ pub fn icon_hover(
         Some((group, on)) => front.group_hover(group, move |s| s.text_color(on)),
         None => front,
     })
+}
+
+/// A stroke icon that turns once a second, for a job that runs. Reduced
+/// motion keeps it still.
+pub fn icon_spin(which: Icon, size: f32, colour: Hsla, id: &'static str) -> impl IntoElement {
+    let still = svg()
+        .path(which.path("front"))
+        .size(px(size))
+        .flex_none()
+        .text_color(colour);
+    if crate::motion::reduced() {
+        return still.into_any_element();
+    }
+    still
+        .with_animation(
+            id,
+            Animation::new(Duration::from_secs(1)).repeat(),
+            |s, delta| s.with_transformation(Transformation::rotate(percentage(delta))),
+        )
+        .into_any_element()
 }
 
 /// Split one Phosphor file into its back and front layers.

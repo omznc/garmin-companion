@@ -9,7 +9,7 @@ use gpui::{div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, 
 use crate::account::Sync;
 use crate::icons::Icon;
 use crate::panel::{self, Kind, Tone};
-use crate::shell::{Root, COLUMN_SIDE, SHELL_MAX};
+use crate::shell::Root;
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Theme, FS_MD};
 use crate::ui::{block_in, body, eyebrow_lg, MONO, SANS};
@@ -24,7 +24,8 @@ const NARROW_AT: f32 = 748.0;
 
 /// The width of the content for a window `viewport` pixels wide.
 fn content_width(viewport: f32) -> f32 {
-    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * COLUMN_SIDE).min(CONTENT_MAX)
+    // The page pads 20 px and the column 16 px on each side.
+    (viewport - SIDEBAR_W - 2.0 * 36.0).min(CONTENT_MAX)
 }
 
 fn sync_note(root: &Root, t: &Theme) -> Option<Div> {
