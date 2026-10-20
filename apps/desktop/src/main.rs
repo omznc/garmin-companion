@@ -47,6 +47,7 @@ mod motion;
 mod openvsx;
 mod panel;
 mod places;
+mod screen;
 mod scroll;
 mod settings;
 mod setup;
@@ -164,9 +165,7 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
     };
     if let Some(name) = &screen {
         anyhow::ensure!(
-            sidebar::NAV
-                .iter()
-                .any(|(l, _)| l.eq_ignore_ascii_case(name)),
+            screen::Screen::from_label(name).is_some(),
             "--screen {name} is not a screen"
         );
     }

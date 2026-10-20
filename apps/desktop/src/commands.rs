@@ -1,13 +1,13 @@
 //! The actions that the command palette lists, and the filter over them.
 
 use crate::fuzzy;
-use crate::sidebar::NAV;
+use crate::screen::Screen;
 
 /// What the shell does when the user picks a command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
-    /// Show the screen at this index of `NAV`.
-    Go(usize),
+    /// Show this screen.
+    Go(Screen),
     SyncNow,
     CheckUpdates,
     /// Show the Ask screen with an empty conversation.
@@ -29,16 +29,19 @@ fn command(label: impl Into<String>, action: Action) -> Command {
 
 /// Every command, in the order that the empty query shows.
 pub fn all() -> Vec<Command> {
-    let last = NAV.len() - 1;
     let mut list = vec![
         command("Sync now", Action::SyncNow),
         command("New chat", Action::NewChat),
         command("Check for updates", Action::CheckUpdates),
         command("Toggle light and dark", Action::ToggleTheme),
     ];
-    list.extend((0..NAV.len()).map(|i| {
-        let verb = if i == last { "Open" } else { "Go to" };
-        command(format!("{verb} {}", NAV[i].0), Action::Go(i))
+    list.extend(Screen::ALL.into_iter().map(|screen| {
+        let verb = if screen == Screen::Settings {
+            "Open"
+        } else {
+            "Go to"
+        };
+        command(format!("{verb} {}", screen.label()), Action::Go(screen))
     }));
     list
 }
@@ -78,8 +81,9 @@ mod tests {
     #[test]
     fn a_screen_has_one_command() {
         let list = all();
-        for i in 0..NAV.len() {
-            assert_eq!(list.iter().filter(|c| c.action == Action::Go(i)).count(), 1);
+        for screen in Screen::ALL {
+            let hits = list.iter().filter(|c| c.action == Action::Go(screen));
+            assert_eq!(hits.count(), 1);
         }
     }
 

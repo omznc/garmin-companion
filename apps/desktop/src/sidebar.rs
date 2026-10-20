@@ -16,6 +16,7 @@ use gpui::{
 };
 
 use crate::icons::{icon, icon_hover, Icon};
+use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
 use crate::spring::{Spring, SETTLE};
 use crate::theme::{Theme, FS_MD, FS_SMALL};
@@ -31,25 +32,6 @@ const DIVIDE_H: f32 = 16.0;
 /// The width of the list, and so of an entry.
 const LIST_W: f32 = 188.0;
 
-/// The entries in the shipped order.
-pub const NAV: [(&str, Icon); 15] = [
-    ("Today", Icon::NavToday),
-    ("Activities", Icon::NavActivities),
-    ("Health", Icon::NavHealth),
-    ("Sleep", Icon::NavSleep),
-    ("Food", Icon::NavFood),
-    ("Weight", Icon::NavWeight),
-    ("Ask", Icon::NavAsk),
-    ("Insights", Icon::NavInsights),
-    ("Strength", Icon::NavStrength),
-    ("Fitness", Icon::NavFitness),
-    ("Plan", Icon::NavPlan),
-    ("Routes", Icon::NavRoutes),
-    ("Gear", Icon::NavGear),
-    ("Reports", Icon::NavReports),
-    ("Settings", Icon::NavSettings),
-];
-
 /// Where a row rests by the stylesheet's numbers, from the list's top edge. The
 /// sidebar uses this only until it has measured the real rows.
 fn row_top(position: usize) -> f32 {
@@ -58,29 +40,32 @@ fn row_top(position: usize) -> f32 {
     position as f32 * pitch + if position > 0 { DIVIDE_H + GAP } else { 0.0 }
 }
 
-/// The saved key of an entry. It stays the same when the order changes.
-fn key_of(nav: usize) -> String {
-    NAV[nav].0.to_lowercase()
-}
-
-/// The entries in the order of the saved keys. An unknown or repeated key is
-/// dropped. An entry that the keys miss goes last, so a new screen never takes
+/// The screens in the order of the saved keys. Each group keeps the relative
+/// order of its saved keys. An unknown or repeated key is dropped. A screen
+/// that the keys miss goes last in its group, so a new screen never takes
 /// over as the default.
-fn order_from_keys(keys: &[String]) -> Vec<usize> {
-    let mut order = Vec::with_capacity(NAV.len());
-    for key in keys {
-        let found = (0..NAV.len()).find(|&i| key_of(i) == *key);
-        if let Some(i) = found.filter(|i| !order.contains(i)) {
-            order.push(i);
+fn order_from_keys(keys: &[String]) -> Vec<Screen> {
+    let saved: Vec<Screen> = keys.iter().filter_map(|k| Screen::from_key(k)).collect();
+    let mut order = Vec::with_capacity(Screen::ALL.len());
+    for group in Group::ALL {
+        let start = order.len();
+        let in_group = |s: &Screen| s.group() == group;
+        for screen in saved.iter().copied().filter(in_group) {
+            if !order[start..].contains(&screen) {
+                order.push(screen);
+            }
+        }
+        for screen in Screen::ALL.into_iter().filter(in_group) {
+            if !order[start..].contains(&screen) {
+                order.push(screen);
+            }
         }
     }
-    let missing: Vec<usize> = (0..NAV.len()).filter(|i| !order.contains(i)).collect();
-    order.extend(missing);
     order
 }
 
 /// The order with the entry at `from` put at `to`.
-fn moved(order: &[usize], from: usize, to: usize) -> Vec<usize> {
+fn moved(order: &[Screen], from: usize, to: usize) -> Vec<Screen> {
     let mut next = order.to_vec();
     let entry = next.remove(from);
     next.insert(to, entry);
@@ -92,6 +77,8 @@ fn moved(order: &[usize], from: usize, to: usize) -> Vec<usize> {
 struct Drag {
     from: usize,
     to: usize,
+    /// The first and the last position of the group of the held row.
+    span: (usize, usize),
 }
 
 /// The context menu: the position of its entry and where the pointer was.
@@ -147,17 +134,17 @@ impl Shared {
             .iter()
             .enumerate()
             .filter(|(i, top)| *i != from && **top + self.row_h / 2.0 < held);
-        passed.count().min(NAV.len() - 1)
+        passed.count().min(self.tops.len() - 1)
     }
 }
 
 pub struct Sidebar {
-    /// The lit entry, as an index into `NAV`.
-    pub active: usize,
-    /// The entries in the user's order, as indices into `NAV`.
-    order: Vec<usize>,
+    /// The lit entry.
+    pub active: Screen,
+    /// The entries in the user's order. A group stays whole.
+    order: Vec<Screen>,
     shared: Rc<RefCell<Shared>>,
-    /// How far each entry is drawn from its row, by index into `NAV`. A
+    /// How far each entry is drawn from its row, by `Screen::index`. A
     /// moved entry springs to zero.
     shift: Vec<Spring>,
     /// How far the lit entry's ground is from its row. It springs to zero.
@@ -176,7 +163,7 @@ impl Sidebar {
             active: order[0],
             order,
             shared: Rc::default(),
-            shift: vec![Spring::new(SETTLE); NAV.len()],
+            shift: vec![Spring::new(SETTLE); Screen::ALL.len()],
             pill: Spring::new(SETTLE),
             last_tick: None,
             scroll: SmoothScroll::new(reduced_motion),
@@ -186,11 +173,19 @@ impl Sidebar {
 
     /// The keys to save, in the order of the list.
     pub fn keys(&self) -> Vec<String> {
-        self.order.iter().map(|&i| key_of(i)).collect()
+        self.order.iter().map(|s| s.key()).collect()
     }
 
-    fn position(&self, nav: usize) -> usize {
-        self.order.iter().position(|&i| i == nav).unwrap_or(0)
+    fn position(&self, screen: Screen) -> usize {
+        self.order.iter().position(|&s| s == screen).unwrap_or(0)
+    }
+
+    /// The first and the last position of the group of the row at `position`.
+    fn span(&self, position: usize) -> (usize, usize) {
+        let group = self.order[position].group();
+        let first = self.order.iter().position(|s| s.group() == group);
+        let last = self.order.iter().rposition(|s| s.group() == group);
+        (first.unwrap_or(position), last.unwrap_or(position))
     }
 
     /// Where a row rests: as measured, or by the stylesheet before the first paint.
@@ -213,7 +208,7 @@ impl Sidebar {
     }
 
     /// The entry that opens when the app starts. A drag shows where it would end.
-    fn default_nav(&self) -> usize {
+    fn default_nav(&self) -> Screen {
         match self.shared.borrow().drag {
             Some(d) => moved(&self.order, d.from, d.to)[0],
             None => self.order[0],
@@ -221,14 +216,14 @@ impl Sidebar {
     }
 
     /// Light another entry. The ground slides from the old row to the new one.
-    pub fn select(&mut self, index: usize) {
-        if index == self.active {
+    pub fn select(&mut self, screen: Screen) {
+        if screen == self.active {
             return;
         }
         // Start from where the ground is drawn now, so a second click mid-slide
         // continues from the current position.
         let drawn_top = self.pill_top();
-        self.active = index;
+        self.active = screen;
         let rest = self.pill_top() - self.pill.x;
         self.pill.set(drawn_top - rest);
         if self.reduced_motion {
@@ -245,10 +240,14 @@ impl Sidebar {
         if from == to || from >= self.order.len() || to >= self.order.len() {
             return false;
         }
+        // A row never leaves its group.
+        if self.order[from].group() != self.order[to].group() {
+            return false;
+        }
         let next = moved(&self.order, from, to);
-        for (new, &nav) in next.iter().enumerate() {
-            let shift = self.top_of(self.position(nav)) - self.top_of(new);
-            let spring = &mut self.shift[nav];
+        for (new, &screen) in next.iter().enumerate() {
+            let shift = self.top_of(self.position(screen)) - self.top_of(new);
+            let spring = &mut self.shift[screen.index()];
             spring.x += shift;
             spring.target = 0.0;
             if self.reduced_motion {
@@ -280,12 +279,13 @@ impl Sidebar {
         let Some(d) = self.shared.borrow().drag else {
             return;
         };
-        for (new, &nav) in moved(&self.order, d.from, d.to).iter().enumerate() {
-            let target = self.top_of(new) - self.top_of(self.position(nav));
+        for (new, &screen) in moved(&self.order, d.from, d.to).iter().enumerate() {
+            let target = self.top_of(new) - self.top_of(self.position(screen));
+            let spring = &mut self.shift[screen.index()];
             if self.reduced_motion {
-                self.shift[nav].set(target);
+                spring.set(target);
             } else {
-                self.shift[nav].to(target);
+                spring.to(target);
             }
         }
     }
@@ -315,7 +315,7 @@ impl Sidebar {
     }
 
     fn pill_top(&self) -> f32 {
-        self.top_of(self.position(self.active)) + self.shift[self.active].x + self.pill.x
+        self.top_of(self.position(self.active)) + self.shift[self.active.index()].x + self.pill.x
     }
 }
 
@@ -358,13 +358,13 @@ struct NavDrag {
 
 /// The view that follows the pointer during a drag: a copy of the row.
 struct Ghost {
-    nav: usize,
+    screen: Screen,
     t: Theme,
 }
 
 impl Render for Ghost {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let (label, glyph) = NAV[self.nav];
+        let (label, glyph) = (self.screen.label(), self.screen.icon());
         div()
             .w(px(LIST_W))
             .h(px(ROW_H))
@@ -389,11 +389,11 @@ fn entry<V: 'static>(
     state: &Sidebar,
     t: &Theme,
     cx: &mut Context<V>,
-    select: fn(&mut V, usize, &mut Window, &mut Context<V>),
+    select: fn(&mut V, Screen, &mut Window, &mut Context<V>),
 ) -> impl IntoElement {
-    let index = state.order[position];
-    let (label, glyph) = NAV[index];
-    let active = index == state.active;
+    let screen = state.order[position];
+    let (label, glyph) = (screen.label(), screen.icon());
+    let active = screen == state.active;
     let held = state
         .shared
         .borrow()
@@ -402,12 +402,13 @@ fn entry<V: 'static>(
     let fg = t.fg;
     let colour = if active { t.fg } else { t.mutd };
     let shared = state.shared.clone();
+    let span = state.span(position);
     let ghost_theme = *t;
     let mut row = div()
-        .id(("nav", index))
+        .id(("nav", screen.index()))
         .group("nav-row")
         .relative()
-        .top(px(state.shift[index].x))
+        .top(px(state.shift[screen.index()].x))
         .flex_none()
         .flex()
         .items_center()
@@ -423,7 +424,7 @@ fn entry<V: 'static>(
         .when(held, |d| d.opacity(0.35))
         .hover(move |s| s.text_color(fg))
         .on_click(
-            cx.listener(move |view, _: &ClickEvent, window, cx| select(view, index, window, cx)),
+            cx.listener(move |view, _: &ClickEvent, window, cx| select(view, screen, window, cx)),
         )
         .on_drag(NavDrag { position }, {
             let shared = shared.clone();
@@ -431,9 +432,10 @@ fn entry<V: 'static>(
                 shared.borrow_mut().drag = Some(Drag {
                     from: drag.position,
                     to: drag.position,
+                    span,
                 });
                 cx.new(|_| Ghost {
-                    nav: index,
+                    screen,
                     t: ghost_theme,
                 })
             }
@@ -457,7 +459,7 @@ fn entry<V: 'static>(
                 .when(active, |d| d.font_weight(FontWeight::MEDIUM))
                 .child(SharedString::from(label)),
         );
-    if index == state.default_nav() {
+    if screen == state.default_nav() {
         // The word shows under the pointer only: the state it names never
         // changes on its own.
         row = row.child(
@@ -483,10 +485,10 @@ fn entry<V: 'static>(
 fn context_menu(state: &Sidebar, t: &Theme) -> Option<AnyElement> {
     let menu = state.shared.borrow().menu?;
     let at = menu.position;
-    let last = state.order.len() - 1;
+    let (first, last) = state.span(at);
     let items = [
-        ("Set as default screen", at > 0, 0),
-        ("Move up", at > 0, at.saturating_sub(1)),
+        ("Set as default screen", at > 0 && first == 0, 0),
+        ("Move up", at > first, at.saturating_sub(1)),
         ("Move down", at < last, (at + 1).min(last)),
     ];
     let close = {
@@ -548,7 +550,7 @@ fn context_menu(state: &Sidebar, t: &Theme) -> Option<AnyElement> {
 /// Keep the real row tops. Asks for a new frame only when they changed.
 fn measure(shared: &RefCell<Shared>, kids: &[Bounds<Pixels>], window: &mut Window) {
     // The children are the ground, then each row, with the divider after the first.
-    if kids.len() != NAV.len() + 2 {
+    if kids.len() != Screen::ALL.len() + 2 {
         return;
     }
     let rows: Vec<&Bounds<Pixels>> = std::iter::once(&kids[1]).chain(&kids[3..]).collect();
@@ -566,7 +568,7 @@ fn measure(shared: &RefCell<Shared>, kids: &[Bounds<Pixels>], window: &mut Windo
 
 /// What the sidebar does when the user clicks. Each one is a function of the view.
 pub struct Actions<V> {
-    pub select: fn(&mut V, usize, &mut Window, &mut Context<V>),
+    pub select: fn(&mut V, Screen, &mut Window, &mut Context<V>),
     pub toggle_theme: fn(&mut V, &mut Window, &mut Context<V>),
     pub sync_now: fn(&mut V, &mut Window, &mut Context<V>),
 }
@@ -610,14 +612,17 @@ pub fn render<V: 'static>(
             let Some(from) = shared.drag.map(|d| d.from) else {
                 return;
             };
-            let to = shared.position_at(f32::from(event.event.position.y), from);
+            let (first, last) = shared.drag.map_or((0, 0), |d| d.span);
+            let to = shared
+                .position_at(f32::from(event.event.position.y), from)
+                .clamp(first, last);
             if let Some(d) = shared.drag.as_mut().filter(|d| d.to != to) {
                 d.to = to;
                 window.refresh();
             }
         })
         .child(pill);
-    for position in 0..NAV.len() {
+    for position in 0..Screen::ALL.len() {
         list = list.child(entry(position, state, t, cx, select));
         if position == 0 {
             list = list.child(
@@ -747,13 +752,13 @@ mod tests {
     #[test]
     fn selecting_a_row_starts_the_ground_where_it_was_drawn() {
         let mut bar = Sidebar::new(false, &[]);
-        bar.select(3);
+        bar.select(Screen::Sleep);
         assert!((bar.pill_top() - row_top(0)).abs() < 1e-3);
         assert!(bar.pill.is_moving());
         bar.pill.step(0.016);
         let mid = bar.pill_top();
         // A second click mid-slide continues from the drawn position.
-        bar.select(1);
+        bar.select(Screen::Health);
         assert!((bar.pill_top() - mid).abs() < 1e-3);
         for _ in 0..120 {
             bar.pill.step(1.0 / 60.0);
@@ -764,7 +769,7 @@ mod tests {
     #[test]
     fn selecting_the_lit_row_changes_nothing() {
         let mut bar = Sidebar::new(false, &[]);
-        bar.select(0);
+        bar.select(Screen::Today);
         assert!(!bar.pill.is_moving());
     }
 
@@ -772,13 +777,13 @@ mod tests {
     fn the_ground_sits_on_the_measured_row() {
         let mut bar = Sidebar::new(true, &[]);
         // A pitch of 37.1 and not the 35.2 of the stylesheet.
-        let tops: Vec<f32> = (0..NAV.len()).map(|i| i as f32 * 37.1).collect();
+        let tops: Vec<f32> = (0..Screen::ALL.len()).map(|i| i as f32 * 37.1).collect();
         assert!(bar.shared.borrow_mut().store_rows(tops, 33.4, 100.0));
-        bar.select(14);
+        bar.select(Screen::Settings);
         assert!((bar.pill_top() - 14.0 * 37.1).abs() < 1e-3);
         assert!((bar.row_height() - 33.4).abs() < 1e-3);
         // The same rows again need no new frame.
-        let same: Vec<f32> = (0..NAV.len()).map(|i| i as f32 * 37.1).collect();
+        let same: Vec<f32> = (0..Screen::ALL.len()).map(|i| i as f32 * 37.1).collect();
         assert!(!bar.shared.borrow_mut().store_rows(same, 33.4, 100.0));
     }
 
@@ -786,30 +791,36 @@ mod tests {
     fn a_saved_order_is_reconciled_with_the_entries() {
         // An unknown and a repeated key drop out. The missing entries go last.
         let order = order_from_keys(&keys(&["sleep", "gone", "sleep", "today"]));
-        assert_eq!(&order[..2], &[3, 0]);
-        assert_eq!(order.len(), NAV.len());
-        assert_eq!(order_from_keys(&[]), (0..NAV.len()).collect::<Vec<_>>());
-        let bar = Sidebar::new(false, &keys(&["settings"]));
-        assert_eq!(bar.active, NAV.len() - 1);
-        assert_eq!(bar.keys()[..2], ["settings", "today"]);
+        assert_eq!(&order[..2], &[Screen::Sleep, Screen::Today]);
+        assert_eq!(order.len(), Screen::ALL.len());
+        assert_eq!(order_from_keys(&[]), Screen::ALL.to_vec());
+        // The keys of one group never move a screen into another group.
+        let bar = Sidebar::new(false, &keys(&["settings", "gear", "sleep", "reports"]));
+        assert_eq!(bar.active, Screen::Sleep);
+        assert_eq!(bar.keys()[..3], ["sleep", "today", "health"]);
+        assert_eq!(bar.order[5], Screen::Gear);
+        assert_eq!(bar.order[11], Screen::Reports);
+        assert_eq!(bar.order[14], Screen::Settings);
     }
 
     #[test]
     fn a_move_keeps_the_rows_where_they_are_drawn() {
         let mut bar = Sidebar::new(false, &[]);
         assert!(bar.apply_move(3, 0));
-        assert_eq!(bar.order[..2], [3, 0]);
+        assert_eq!(bar.order[..2], [Screen::Food, Screen::Today]);
         // The entry that was at row 3 is drawn there until it glides to row 0.
-        assert!((bar.shift[3].x - (row_top(3) - row_top(0))).abs() < 1e-3);
-        assert!((bar.shift[0].x - (row_top(0) - row_top(1))).abs() < 1e-3);
+        assert!((bar.shift[Screen::Food.index()].x - (row_top(3) - row_top(0))).abs() < 1e-3);
+        assert!((bar.shift[Screen::Today.index()].x - (row_top(0) - row_top(1))).abs() < 1e-3);
         assert!(!bar.apply_move(2, 2));
+        // A move across a group does nothing.
+        assert!(!bar.apply_move(0, 5));
     }
 
     #[test]
     fn the_pointer_picks_the_position_under_it() {
         let mut shared = Shared::default();
         shared.store_rows(
-            (0..NAV.len()).map(|i| i as f32 * 35.0).collect(),
+            (0..Screen::ALL.len()).map(|i| i as f32 * 35.0).collect(),
             33.0,
             50.0,
         );
@@ -829,7 +840,7 @@ mod tests {
         assert_eq!(shared.position_at(200.0 - 36.0, 4), 3);
         assert_eq!(shared.position_at(200.0 - 106.0, 4), 1);
         assert_eq!(shared.position_at(200.0 - 141.0, 4), 0);
-        assert_eq!(shared.position_at(5000.0, 0), NAV.len() - 1);
+        assert_eq!(shared.position_at(5000.0, 0), Screen::ALL.len() - 1);
     }
 
     /// The sidebar alone in a window, as the shell draws it.
@@ -892,7 +903,7 @@ mod tests {
             frame(cx);
         }
         let order = host.read_with(cx, |h, _| h.0.order.clone());
-        assert_eq!(order, (0..NAV.len()).collect::<Vec<_>>());
+        assert_eq!(order, Screen::ALL.to_vec());
     }
 
     #[gpui::test]

@@ -15,8 +15,9 @@ use crate::chrome;
 use crate::data::{Source, Today};
 use crate::motion;
 use crate::places::{self, Places};
+use crate::screen::Screen;
 use crate::scroll::SmoothScroll;
-use crate::sidebar::{self, Info, Sidebar, NAV, SIDEBAR_W};
+use crate::sidebar::{self, Info, Sidebar, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
@@ -33,11 +34,6 @@ pub const COLUMN_SIDE: f32 = 56.0;
 const COLUMN_BOTTOM: f32 = 160.0;
 /// How tall the fade under the title strip is.
 const FADE_H: f32 = 44.0;
-
-/// The entry of the Settings screen: the last one in the nav.
-const SETTINGS: usize = NAV.len() - 1;
-/// The sidebar entry of the Ask screen.
-pub(crate) const ASK: usize = 6;
 
 /// The width of the text column for a window `viewport` pixels wide.
 pub fn column_width(viewport: f32) -> f32 {
@@ -80,6 +76,8 @@ pub struct Root {
     pub(crate) training: Option<Training>,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
+    /// The screen on show.
+    pub(crate) active: Screen,
     /// Counts the screens shown, so each one animates in again.
     pub(crate) visits: usize,
     scroll: SmoothScroll,
@@ -115,6 +113,7 @@ impl Root {
         } else {
             garmin_api::settings::prefs().nav_order
         };
+        let sidebar = Sidebar::new(motion::reduced(), &saved_order);
         Self {
             ask,
             list,
@@ -124,7 +123,8 @@ impl Root {
             body,
             places,
             palette,
-            sidebar: Sidebar::new(motion::reduced(), &saved_order),
+            active: sidebar.active,
+            sidebar,
             visits: 0,
             scroll: SmoothScroll::new(motion::reduced()),
             store,
@@ -139,8 +139,8 @@ impl Root {
     /// Show the screen with this nav label. For a start flag and the screenshots.
     /// An unknown label keeps the default screen.
     pub fn open(&mut self, label: &str, cx: &mut Context<Self>) {
-        if let Some(index) = NAV.iter().position(|(n, _)| n.eq_ignore_ascii_case(label)) {
-            self.select_index(index, cx);
+        if let Some(screen) = Screen::from_label(label) {
+            self.select_screen(screen, cx);
         }
     }
 
@@ -168,7 +168,7 @@ impl Root {
 
     /// Show the Settings screen, where the coach notes are drawn.
     pub(crate) fn show_settings(&mut self, cx: &mut Context<Self>) {
-        self.select_index(SETTINGS, cx);
+        self.select_screen(Screen::Settings, cx);
     }
 
     /// Show one session. The page starts at the top, like a new screen.
@@ -191,7 +191,8 @@ impl Root {
 
     /// Open on the Activities entry, with one session shown.
     pub fn start_at_activity(&mut self, id: i64, cx: &mut Context<Self>) {
-        self.sidebar.select(1);
+        self.active = Screen::Activities;
+        self.sidebar.select(Screen::Activities);
         self.open_activity(id, cx);
     }
 
@@ -236,35 +237,36 @@ impl Root {
         );
     }
 
-    fn select(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) {
-        self.select_index(index, cx);
+    fn select(&mut self, screen: Screen, _: &mut Window, cx: &mut Context<Self>) {
+        self.select_screen(screen, cx);
     }
 
-    pub(crate) fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
-        if index != self.sidebar.active {
-            self.sidebar.select(index);
-            self.enter(index, cx);
+    pub(crate) fn select_screen(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        if screen != self.active {
+            self.active = screen;
+            self.sidebar.select(screen);
+            self.enter(screen, cx);
         }
     }
 
     /// Load what the screen of the lit entry needs. Call it once at start, for
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
-        self.enter(self.sidebar.active, cx);
+        self.enter(self.active, cx);
     }
 
-    fn enter(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn enter(&mut self, screen: Screen, cx: &mut Context<Self>) {
         self.loads.remove("detail");
         self.page = Page::List;
         self.visits += 1;
-        if index == SETTINGS {
+        if screen == Screen::Settings {
             self.reload_settings(cx);
             self.cloud_open(cx);
         }
-        if NAV[index].0 == "Gear" {
+        if screen == Screen::Gear {
             self.load_gear(cx);
         }
-        if index == ASK {
+        if screen == Screen::Ask {
             self.ask.update(cx, |ask, cx| ask.visit(cx));
         }
         // A new screen starts at the top.
@@ -293,24 +295,34 @@ impl Root {
         self.set_theme_mode(mode, window, cx);
     }
 
+    /// Health and Sleep, once their data has loaded.
+    fn wellness_screen(&self, t: &Theme) -> Option<gpui::AnyElement> {
+        let w = self.wellness.as_ref()?;
+        match self.active {
+            Screen::Health => {
+                Some(wellness::render_health(&w.health, self.visits, t).into_any_element())
+            }
+            Screen::Sleep => {
+                Some(wellness::render_sleep(&w.sleep, self.visits, t).into_any_element())
+            }
+            _ => None,
+        }
+    }
+
     fn screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        if self.sidebar.active == 0 {
+        if self.active == Screen::Today {
             return today::render(&self.today, self.visits, t).into_any_element();
         }
-        if self.sidebar.active == 1 {
+        if self.active == Screen::Activities {
             return self.activities_screen(t, cx);
         }
-        if let Some(w) = &self.wellness {
-            match self.sidebar.active {
-                2 => return wellness::render_health(&w.health, self.visits, t).into_any_element(),
-                3 => return wellness::render_sleep(&w.sleep, self.visits, t).into_any_element(),
-                _ => {}
-            }
+        if let Some(screen) = self.wellness_screen(t) {
+            return screen;
         }
-        if self.sidebar.active == SETTINGS {
+        if self.active == Screen::Settings {
             return settings::render(self, t, window, cx);
         }
-        let label = NAV[self.sidebar.active].0;
+        let label = self.active.label();
         if let Some(screen) = places::screen(label, self, t, cx) {
             return screen;
         }
@@ -403,7 +415,7 @@ impl Render for Root {
             &t,
             cx,
             sidebar::Actions {
-                select: |this, index, window, cx| this.select(index, window, cx),
+                select: |this, screen, window, cx| this.select(screen, window, cx),
                 toggle_theme: |this, window, cx| this.toggle_theme(window, cx),
                 sync_now: |this, _, cx| this.start_sync(false, cx),
             },
@@ -412,11 +424,11 @@ impl Render for Root {
         // Each screen gets a new `SmoothScroll` in `select`, so it starts at
         // the top, as the current app does on a route change.
         self.scroll.tick(window);
-        let column = if self.sidebar.active == ASK {
+        let column = if self.active == Screen::Ask {
             self.ask.clone().into_any_element()
         } else {
             let screen = self.screen(&t, window, cx);
-            let cap = if self.sidebar.active == SETTINGS {
+            let cap = if self.active == Screen::Settings {
                 settings::CONTENT_MAX
             } else {
                 COLUMN_MAX

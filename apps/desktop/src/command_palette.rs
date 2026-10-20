@@ -239,12 +239,12 @@ impl Root {
 
     fn run_command(&mut self, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         match action {
-            Action::Go(index) => self.select_index(index, cx),
+            Action::Go(screen) => self.select_screen(screen, cx),
             Action::SyncNow => self.start_sync(false, cx),
             Action::CheckUpdates => self.check_for_updates(cx),
             Action::NewChat => {
                 self.ask.update(cx, |ask, cx| ask.new_chat(cx));
-                self.select_index(crate::shell::ASK, cx);
+                self.select_screen(crate::screen::Screen::Ask, cx);
             }
             Action::ToggleTheme => self.toggle_theme(window, cx),
         }
