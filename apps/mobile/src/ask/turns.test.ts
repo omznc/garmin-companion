@@ -154,3 +154,17 @@ test("a blank note clears the answer and adds no row", () => {
   t = applyEvent(t, { sessionId: "s", turnId: "", type: "note", text: "" });
   assert.deepEqual([t.answer, t.steps.length], ["", 0]);
 });
+
+test("a draft event adds a card to the live turn, in order", () => {
+  const draft = { name: "Easy", sport: "running" as const, steps: [] };
+  const ids = { sessionId: "s", turnId: "t" };
+  const first = applyEvent(turn("a", "running"), { ...ids, type: "draft", callId: "c1", draft });
+  const next = applyEvent(first, { ...ids, type: "draft", callId: "c2", draft });
+  assert.deepEqual(
+    next.drafts?.map((d) => [d.callId, d.savedWorkoutId]),
+    [
+      ["c1", null],
+      ["c2", null],
+    ],
+  );
+});

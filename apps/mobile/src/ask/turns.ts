@@ -57,6 +57,15 @@ export function applyEvent(turn: Turn, event: AskEventPayload): Turn {
         : [...turn.steps, step];
       return { ...turn, steps };
     }
+    case "draft":
+      // A revised draft has a new call id, so each one adds a card, in order.
+      return {
+        ...turn,
+        drafts: [
+          ...(turn.drafts ?? []),
+          { callId: event.callId, draft: event.draft, savedWorkoutId: null },
+        ],
+      };
     case "done":
       return turn.status === "running" ? { ...turn, status: "done" } : turn;
     case "error":
