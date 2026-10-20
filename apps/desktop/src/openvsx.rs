@@ -158,7 +158,7 @@ pub async fn install(found: &Found) -> Result<Vec<String>> {
 /// Save themes. Answers with the saved names. A theme with the name of a saved
 /// theme replaces it, and its name ends with "(replaced)".
 pub fn save(themes: Vec<Theme>) -> Result<Vec<String>> {
-    let taken: Vec<String> = theme::list()
+    let mut taken: Vec<String> = theme::list()
         .unwrap_or_default()
         .into_iter()
         .map(|t| t.slug)
@@ -166,7 +166,10 @@ pub fn save(themes: Vec<Theme>) -> Result<Vec<String>> {
     let mut names = Vec::new();
     for t in themes {
         let replaced = taken.contains(&theme::slugify(&t.name));
-        let name = theme::save(t)?.name;
+        let saved = theme::save(t)?;
+        // Two themes of one extension with one slug: the second replaces the first.
+        taken.push(saved.slug);
+        let name = saved.name;
         names.push(if replaced {
             format!("{name} (replaced)")
         } else {

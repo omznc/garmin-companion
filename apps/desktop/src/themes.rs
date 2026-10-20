@@ -57,6 +57,18 @@ pub struct Store {
     pub scroll: ScrollHandle,
 }
 
+/// How many rows from the top get a background fetch. A download can be 24 MB.
+const PREFETCH_ROWS: usize = 8;
+
+impl Store {
+    /// Drop the answers still in flight, and keep the fetched themes.
+    fn drop_pending(&mut self) {
+        self.generation += 1;
+        self.prefetching = false;
+        self.fetched.retain(|_, f| matches!(f, Fetch::Ready(_)));
+    }
+}
+
 /// The saved palettes, the themes folder and the state of the store.
 pub struct Themes {
     pub light: Palette,
@@ -164,11 +176,16 @@ pub fn downloads(count: u64) -> String {
 
 impl Root {
     /// Take the palette that the mode and the window pick.
-    pub(crate) fn apply_palette(&mut self, window: &Window, cx: &mut Context<Self>) {
+    pub(crate) fn apply_palette(&mut self, _window: &Window, cx: &mut Context<Self>) {
+        self.refresh_palette(cx);
+    }
+
+    /// Like `apply_palette`, for code that has no window at hand.
+    fn refresh_palette(&mut self, cx: &mut Context<Self>) {
         let themes = &self.account.themes;
         self.palette = crate::account::palette_for(
             self.account.mode,
-            window.appearance(),
+            cx.window_appearance(),
             themes.light,
             themes.dark,
         );
@@ -211,6 +228,12 @@ impl Root {
             eprintln!("could not delete the theme: {e:#}");
             return cx.notify();
         }
+        // An extension with a deleted theme is no longer installed.
+        themes.store.installed.retain(|_, names| {
+            names
+                .iter()
+                .all(|n| folder::slugify(n.trim_end_matches(" (replaced)")) != slug)
+        });
         themes.custom = folder::list().unwrap_or_default();
         let (light, dark) = (themes.light.id(), themes.dark.id());
         themes.light = saved(&light, &themes.custom, false);
@@ -236,7 +259,9 @@ impl Root {
     }
 
     pub(crate) fn close_themes(&mut self, cx: &mut Context<Self>) {
-        self.account.themes.store.open = false;
+        let store = &mut self.account.themes.store;
+        store.open = false;
+        store.drop_pending();
         cx.notify();
     }
 
@@ -248,12 +273,11 @@ impl Root {
         }
         let store = &mut themes.store;
         // The old results and the fetches in flight belong to the old generation.
-        store.generation += 1;
+        // A fetched extension stays in the cache for the next search.
+        store.drop_pending();
         store.phase = Phase::Searching(query.clone());
         store.found.clear();
         store.selected = 0;
-        store.fetched.clear();
-        store.prefetching = false;
         store.failure = None;
         let job = async move { openvsx::search(&query).await.map_err(|e| format!("{e:#}")) };
         let generation = store.generation;
@@ -348,6 +372,7 @@ impl Root {
         let next = store
             .found
             .iter()
+            .take(PREFETCH_ROWS)
             .position(|f| !store.fetched.contains_key(&key_of(f)));
         if let Some(index) = next {
             self.fetch_themes(index, true, cx);
@@ -372,13 +397,22 @@ impl Root {
         store.failure = None;
         let job = async move { openvsx::save(themes).map_err(|e| format!("{e:#}")) };
         // A new search must not lose the answer: the key still says what it was.
-        self.store_call(cx, None, job, move |root, out, _| {
+        self.store_call(cx, None, job, move |root, out, cx| {
             let themes = &mut root.account.themes;
             themes.store.installing = None;
             match out {
                 Ok(names) => {
                     themes.store.installed.insert(key, names);
                     themes.custom = folder::list().unwrap_or_default();
+                    // The install may have replaced the active custom palette.
+                    let (light, dark) = (themes.light.id(), themes.dark.id());
+                    let light = saved(&light, &themes.custom, false);
+                    let dark = saved(&dark, &themes.custom, true);
+                    if (light, dark) != (themes.light, themes.dark) {
+                        themes.light = light;
+                        themes.dark = dark;
+                        root.refresh_palette(cx);
+                    }
                 }
                 Err(e) => themes.store.failure = Some(e),
             }

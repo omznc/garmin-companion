@@ -339,12 +339,14 @@ impl Keys {
             .or_else(|| self.solid(keys, on))
     }
 
-    /// The first key in the chain with a grey colour that is not `not`. Some
+    /// The first key in the chain with a grey colour that is none of `not`. Some
     /// themes put the text colour or an accent under a quiet key.
-    fn neutral(&self, keys: &[&str], on: Rgba, not: Rgba) -> Option<Rgba> {
+    fn neutral(&self, keys: &[&str], on: Rgba, not: &[Rgba]) -> Option<Rgba> {
         keys.iter()
             .filter_map(|key| self.0.get(*key).map(|c| over(*c, on)))
-            .find(|c| saturation(*c) < NEUTRAL_SATURATION && c.to_hex() != not.to_hex())
+            .find(|c| {
+                saturation(*c) < NEUTRAL_SATURATION && not.iter().all(|n| n.to_hex() != c.to_hex())
+            })
     }
 }
 
@@ -466,13 +468,15 @@ pub fn to_colors(file: &File, appearance: Appearance) -> Colors {
         .filter(|c| contrast(*c, bg) >= 1.02)
         .unwrap_or_else(|| toward(bg, fg, if light { 0.05 } else { 0.07 }));
 
+    // A quiet key may equal the text colour as the theme wrote it or as shown.
+    let raw = fg;
     let fg = readable(readable(fg, bg, TEXT_FLOOR), bg2, TEXT_FLOOR);
     let muted = keys
-        .neutral(&MUTED, bg2, fg)
+        .neutral(&MUTED, bg2, &[raw, fg])
         .unwrap_or_else(|| toward(fg, bg, 0.32));
     let muted = readable(readable(muted, bg, TEXT_FLOOR), bg2, TEXT_FLOOR);
     let faint = keys
-        .neutral(&FAINT, bg2, fg)
+        .neutral(&FAINT, bg2, &[raw, fg])
         .unwrap_or_else(|| toward(fg, bg, 0.48));
     let faint = readable(faint, bg, FAINT_FLOOR);
     let acc = keys.vivid(&ACCENT, bg).unwrap_or(base.acc);
@@ -673,6 +677,18 @@ mod tests {
             Appearance::Light,
         );
         assert!(contrast(rgba(&c.acc), rgba(&c.bg)) >= TEXT_FLOOR);
+    }
+
+    #[test]
+    fn a_quiet_key_equal_to_the_raw_text_is_not_the_muted_colour() {
+        // The text is too dim, so it moves. The quiet key still equals the raw text.
+        let c = colors(
+            r##"{"colors":{"editor.background":"#101010","editor.foreground":"#202020",
+                "descriptionForeground":"#202020"}}"##,
+            Appearance::Dark,
+        );
+        assert_ne!(c.muted, c.fg);
+        assert_ne!(c.muted, "#202020");
     }
 
     #[test]
