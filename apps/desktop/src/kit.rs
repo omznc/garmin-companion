@@ -380,6 +380,13 @@ pub fn list_rows(rows: Vec<ListRow>, t: &Theme) -> Div {
 
 /* ------------------------------------------------------------------ table --- */
 
+/// The width of one character of a numeric cell, in design pixels.
+const NUMBER_CHAR: f32 = 7.5;
+/// The same for a text cell. A text column starts at this width and grows.
+const TEXT_CHAR: f32 = 7.0;
+/// A text column with this many characters or fewer, such as a date, never shrinks.
+const SHORT_TEXT: f32 = 12.0;
+
 /// A column of a table: its title, and whether it holds numbers.
 #[allow(dead_code)] // The table, the segmented control and the switch wait for later screens.
 pub struct Column {
@@ -405,8 +412,8 @@ pub fn table_rows(
     t: &Theme,
 ) -> Div {
     let hover = t.hover;
-    // A column takes a share of the row that follows its longest text, so
-    // a date or a number is narrow and a name is wide.
+    // A numeric column is as wide as its longest text. A text column takes
+    // the rest of the row, in shares that follow its longest text.
     let weights: Vec<f32> = (0..columns.len())
         .map(|n| {
             let longest = rows
@@ -416,16 +423,19 @@ pub fn table_rows(
                 .chain([columns[n].title.chars().count()])
                 .max()
                 .unwrap_or(4);
-            longest.clamp(5, 36) as f32
+            longest.clamp(3, 36) as f32
         })
         .collect();
     let cell = |text: SharedString, column: &Column, head: bool, first: bool, weight: f32| {
-        div()
-            .flex_basis(px(0.0))
-            .flex_grow(weight)
-            .flex_shrink(1.0)
-            .min_w_0()
-            .px(px(12.0))
+        let base = div().min_w_0();
+        let base = if column.numeric {
+            base.flex_none().w(px(weight * NUMBER_CHAR + 24.0))
+        } else {
+            base.flex_basis(px(weight * TEXT_CHAR + 24.0))
+                .flex_grow(weight)
+                .flex_shrink(if weight <= SHORT_TEXT { 0.0 } else { 1.0 })
+        };
+        base.px(px(12.0))
             .py(px(if head { 7.0 } else { 8.0 }))
             .whitespace_nowrap()
             .overflow_hidden()

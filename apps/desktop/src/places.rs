@@ -10,7 +10,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use chrono::NaiveDate;
-use garmin_api::gear::{fetch_gear, gear_view, GearView};
+use garmin_api::gear::{cached_gear, fetch_gear, gear_view, store_gear, GearView};
 use garmin_api::personas::{sample_day, seed, Persona};
 use garmin_api::places::{persona_gear, seed_places};
 use garmin_api::plan::{plan_view, PlanView};
@@ -25,7 +25,7 @@ use crate::shell::Root;
 enum Origin {
     /// The real cache. Gear comes live from Garmin.
     Live,
-    /// A copy of the cache. It has no gear.
+    /// A copy of the cache. It shows the gear that was kept in it.
     Copy,
     Persona(Persona),
 }
@@ -61,6 +61,30 @@ fn persona_cache(name: &str) -> Result<(PathBuf, Persona), String> {
     seed(&db, persona, sample_day()).map_err(|e| e.to_string())?;
     seed_places(&db, persona).map_err(|e| e.to_string())?;
     Ok((path, persona))
+}
+
+/// The gear that was kept in the cache. `Failed` when none was kept.
+fn kept_gear(path: &std::path::Path) -> Gear {
+    garmin_api::open_db(path)
+        .ok()
+        .and_then(|db| cached_gear(&db))
+        .map_or(Gear::Failed, |entries| Gear::Ready(gear_view(&entries)))
+}
+
+/// Ask Garmin and keep the answer. When Garmin cannot answer, use the kept gear.
+fn live_or_kept_gear(path: &std::path::Path) -> Result<GearView, String> {
+    match fetch_gear() {
+        Ok(entries) => {
+            if let Err(e) = garmin_api::open_db(path).and_then(|db| store_gear(&db, &entries)) {
+                eprintln!("could not keep the gear: {e}");
+            }
+            Ok(gear_view(&entries))
+        }
+        Err(e) => match kept_gear(path) {
+            Gear::Ready(view) => Ok(view),
+            _ => Err(e.to_string()),
+        },
+    }
 }
 
 impl Places {
@@ -120,6 +144,11 @@ impl Places {
         }
     }
 
+    /// True when the gear could not be read and none was kept.
+    pub fn gear_failed(&self) -> bool {
+        matches!(self.gear, Gear::Failed)
+    }
+
     /// The number of saved routes, for the sidebar.
     pub fn route_count(&self) -> Option<i64> {
         self.routes.as_ref().ok().map(|r| r.total as i64)
@@ -174,9 +203,10 @@ impl Root {
             Origin::Persona(p) => {
                 self.places.gear = Gear::Ready(gear_view(&persona_gear(p)));
             }
-            // A copy of the cache holds no gear, and a signed out account cannot ask.
-            Origin::Copy => self.places.gear = Gear::Failed,
-            Origin::Live if !self.account.connected => self.places.gear = Gear::Failed,
+            Origin::Copy => self.places.gear = kept_gear(&self.places.path),
+            Origin::Live if !self.account.connected => {
+                self.places.gear = kept_gear(&self.places.path);
+            }
             Origin::Live => self.ask_garmin_for_gear(cx),
         }
         cx.notify();
@@ -185,12 +215,9 @@ impl Root {
     fn ask_garmin_for_gear(&mut self, cx: &mut Context<Self>) {
         self.places.gear = Gear::Loading;
         let (tx, rx) = mpsc::channel();
+        let path = self.places.path.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(
-                fetch_gear()
-                    .map(|entries| gear_view(&entries))
-                    .map_err(|e| e.to_string()),
-            );
+            let _ = tx.send(live_or_kept_gear(&path));
         });
         cx.spawn(async move |this, cx| loop {
             cx.background_executor()

@@ -26,6 +26,7 @@ mod weight;
 use crate::scale::px;
 use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Div, SharedString};
 
+use garmin_api::body::EmptyNote;
 use garmin_api::charts::ChartsView;
 use garmin_api::extras::ExtrasView;
 use garmin_api::tiles::TilesView;
@@ -171,6 +172,8 @@ pub struct Ctx<'a> {
     /// are built for `focus.end`. A block that shows a series must clip it to
     /// the range when the range is longer than one day.
     pub focus: Focus,
+    /// The screen that the page shows.
+    pub screen: Screen,
     /// `None` until the first read has ended, and when the read fails.
     pub charts_view: Option<&'a ChartsView>,
     pub tiles_view: Option<&'a TilesView>,
@@ -195,6 +198,7 @@ impl Root {
             today: &self.today,
             wellness: self.wellness.as_ref(),
             focus: self.focus,
+            screen: self.active,
             charts_view: self.views.charts.as_ref(),
             tiles_view: self.views.tiles.as_ref(),
             extras_view: self.views.extras.as_ref(),
@@ -352,7 +356,51 @@ pub fn grid(
         let card = kit::card(def.title, block.meta, link, block.body, ctx.t);
         cards.push((width.columns(), card));
     }
+    if cards.is_empty() {
+        return nothing_to_show(ctx);
+    }
     lay_out(cards, available, narrow)
+}
+
+/// True when the data of the screen has loaded, so an empty page is a real state.
+fn loaded(ctx: &Ctx) -> bool {
+    match ctx.screen {
+        Screen::Sleep | Screen::Health => ctx.wellness.is_some(),
+        Screen::Fitness | Screen::Insights | Screen::Reports => ctx.training.is_some(),
+        Screen::Plan => ctx.places.plan().is_some(),
+        Screen::Routes => ctx.places.routes().is_some(),
+        Screen::Gear => ctx.places.gear().is_some() || ctx.places.gear_failed(),
+        Screen::Activities => ctx.activities.is_ok(),
+        _ => true,
+    }
+}
+
+/// The note of the core for a screen, or its short note for no data.
+fn screen_note(ctx: &Ctx) -> EmptyNote {
+    let training = ctx.training;
+    let own = match ctx.screen {
+        Screen::Strength => ctx.body.0.strength.empty.clone(),
+        Screen::Fitness => training.and_then(|t| t.fitness.empty.clone()),
+        Screen::Insights => training.and_then(|t| t.insights.empty.clone()),
+        Screen::Reports => training.and_then(|t| t.report.empty.clone()),
+        Screen::Plan => ctx.places.plan().and_then(|p| p.empty.clone()),
+        Screen::Routes => ctx.places.routes().and_then(|r| r.empty.clone()),
+        Screen::Gear => ctx.places.gear().and_then(|g| g.empty.clone()),
+        _ => None,
+    };
+    own.unwrap_or_else(|| garmin_api::body::no_data(&ctx.screen.label().to_lowercase()))
+}
+
+/// The page when no block has data: the note, so the page is never blank.
+fn nothing_to_show(ctx: &Ctx) -> Div {
+    if !loaded(ctx) {
+        return div();
+    }
+    let note = screen_note(ctx);
+    let Some(block) = daily::empty_note(&note, ctx.t) else {
+        return div();
+    };
+    div().child(kit::card("Nothing to show", None, None, block.body, ctx.t))
 }
 
 /// The grid for cards that are built already, each with its width in columns.

@@ -56,6 +56,9 @@ pub struct ActivityRow {
     pub duration_s: Option<f64>,
     /// `5:23` for a session on foot. `None` for other sports.
     pub pace: Option<String>,
+    /// Average speed in km/h for a session on wheels. `None` for other sports.
+    #[serde(default)]
+    pub speed_kmh: Option<f64>,
     pub avg_hr: Option<f64>,
     /// Garmin's training load for the session.
     pub load: Option<f64>,
@@ -333,6 +336,10 @@ fn activity_row(a: &CachedActivity) -> ActivityRow {
         distance_m: a.distance_m.filter(|d| *d >= 100.0),
         duration_s: a.duration_s.filter(|d| *d > 0.0),
         pace: a.pace_min_per_km().filter(|_| on_foot(key)).map(pace_text),
+        speed_kmh: a
+            .pace_min_per_km()
+            .filter(|p| *p > 0.0 && is_wheeled(key))
+            .map(|p| 60.0 / p),
         avg_hr: a.avg_hr.filter(|h| *h > 0.0),
         load: a.training_load.filter(|l| *l > 0.0),
     }
@@ -772,6 +779,14 @@ mod tests {
         assert_eq!(cadence_unit(Some("indoor_rowing")), None);
         assert_eq!(cadence_unit(Some("motorcycling_v2")), None);
         assert_eq!(rate_text(Some("indoor_rowing"), 2.0), None);
+    }
+
+    #[test]
+    fn a_row_has_a_speed_only_on_wheels() {
+        let ride = activity_row(&session("cycling"));
+        assert!(ride.speed_kmh.is_some_and(|s| s > 0.0));
+        assert_eq!(activity_row(&session("running")).speed_kmh, None);
+        assert_eq!(activity_row(&session("strength_training")).speed_kmh, None);
     }
 
     #[test]

@@ -67,6 +67,18 @@ pub fn fetch_gear() -> Result<Vec<GearEntry>, ApiError> {
     })
 }
 
+/// Keep a gear list in the cache, for the next time that Garmin cannot answer.
+pub fn store_gear(db: &garmin_core::Db, entries: &[GearEntry]) -> Result<(), ApiError> {
+    let json = serde_json::to_string(entries).map_err(|e| ApiError::Internal(e.to_string()))?;
+    db.save_gear_json(&chrono::Utc::now().to_rfc3339(), &json)?;
+    Ok(())
+}
+
+/// The gear list that was last kept. `None` when none was kept.
+pub fn cached_gear(db: &garmin_core::Db) -> Option<Vec<GearEntry>> {
+    serde_json::from_str(&db.gear_json().ok()??).ok()
+}
+
 /// `SHOES` and `road_bike` become `Shoes` and `Road bike`.
 fn kind_label(raw: &str) -> String {
     let text = raw.replace('_', " ").to_lowercase();
@@ -164,6 +176,18 @@ mod tests {
             distance_m: distance,
             activities: Some(1),
         }
+    }
+
+    #[test]
+    fn a_kept_gear_list_comes_back_and_an_empty_cache_has_none() {
+        let dir = std::env::temp_dir().join(format!("gc-gear-{}", std::process::id()));
+        let db = crate::open_db(&dir.join("cache.sqlite3")).unwrap();
+        assert!(cached_gear(&db).is_none());
+        store_gear(&db, &[entry(Some(800_000.0), Some(1000.0), "active")]).unwrap();
+        let back = cached_gear(&db).unwrap();
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].distance_m, Some(1000.0));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

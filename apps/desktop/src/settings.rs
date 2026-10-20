@@ -7,7 +7,7 @@
 
 use crate::scale::px;
 use garmin_api::settings::SettingsView;
-use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Div, Stateful, Window};
+use gpui::{canvas, div, prelude::*, AnyElement, ClickEvent, Context, Div, Stateful, Window};
 
 use crate::account::Sync;
 use crate::icons::Icon;
@@ -204,16 +204,26 @@ fn nav_item(at: usize, on: bool, t: &Theme, cx: &mut Context<Root>) -> Stateful<
         .child(SECTIONS[at])
         .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| {
             root.account.settings_page = at;
+            let tops = root.account.settings_tops.borrow();
+            if let (Some(first), Some(top)) = (tops.first(), tops.get(at)) {
+                root.scroll.scroll_to(top - first);
+            }
             cx.notify();
         }))
 }
 
 fn nav(root: &Root, narrow: bool, searching: bool, t: &Theme, cx: &mut Context<Root>) -> Div {
     let mut list = div().flex().gap(px(2.0));
+    // The page scrolls, so a wide list follows the offset and stays in view.
+    // This is a measured offset in window pixels, not a design size.
     list = if narrow {
         list.flex_wrap()
     } else {
-        list.flex_col().w(px(NAV_W)).flex_none()
+        list.flex_col()
+            .w(px(NAV_W))
+            .flex_none()
+            .relative()
+            .top(gpui::px(-root.scroll.offset_y()))
     };
     for at in 0..SECTIONS.len() {
         let on = !searching && root.account.settings_page == at;
@@ -229,6 +239,24 @@ fn section(title: &str, rows: Vec<Div>, t: &Theme) -> Div {
         .pb(px(14.0))
 }
 
+/// A section with a marker that records the window y of its top.
+fn marked(at: usize, body: Div, root: &Root) -> Div {
+    let tops = root.account.settings_tops.clone();
+    let marker = canvas(
+        |_, _, _| (),
+        move |bounds, (), _, _| {
+            if let Some(top) = tops.borrow_mut().get_mut(at) {
+                *top = f32::from(bounds.origin.y);
+            }
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_0();
+    div().relative().child(marker).child(body)
+}
+
 /// The right side: the chosen section, or the rows that match the search.
 fn content(
     root: &Root,
@@ -240,13 +268,16 @@ fn content(
 ) -> Div {
     let mut col = div().flex().flex_col().flex_1().min_w_0();
     if query.is_empty() {
-        let at = root.account.settings_page.min(SECTIONS.len() - 1);
-        let rows = rows_of(at, root, view, t, window, cx);
-        return col.child(section(
-            SECTIONS[at],
-            rows.into_iter().map(|(_, r)| r).collect(),
-            t,
-        ));
+        root.account
+            .settings_tops
+            .borrow_mut()
+            .resize(SECTIONS.len(), 0.0);
+        for (at, title) in SECTIONS.iter().enumerate() {
+            let rows = rows_of(at, root, view, t, window, cx);
+            let body = section(title, rows.into_iter().map(|(_, r)| r).collect(), t);
+            col = col.child(marked(at, body, root));
+        }
+        return col;
     }
     let mut found = false;
     for (at, title) in SECTIONS.iter().enumerate() {

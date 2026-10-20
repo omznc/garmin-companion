@@ -91,7 +91,7 @@ pub struct Root {
     activity_count: Option<i64>,
     /// Counts the screens shown, so each one starts with a fresh scroll area.
     pub(crate) visits: usize,
-    scroll: SmoothScroll,
+    pub(crate) scroll: SmoothScroll,
     /// The Activities screen reads its view models from this store.
     pub(crate) store: Store,
     /// The list, read once at start and after a sync, not on every frame.
@@ -442,7 +442,7 @@ impl Root {
     /// Whether the breadcrumb page is a button for the focus picker. The
     /// detail page of a session shows its own name and date as plain text.
     pub(crate) fn crumb_picks(&self) -> bool {
-        self.active.follows_focus() && !matches!(self.page, Page::Detail(_))
+        self.active.follows_focus() && matches!(self.page, Page::List)
     }
 
     pub(crate) fn crumb(&self, t: &Theme) -> String {

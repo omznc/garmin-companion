@@ -221,13 +221,34 @@ fn in_focus<'a>(rows: &'a [ActivityRow], focus: &Focus) -> Vec<&'a ActivityRow> 
         .collect()
 }
 
+/// The title of the rate column: pace on foot, speed on wheels, both, or none.
+fn rate_title(rows: &[&ActivityRow]) -> Option<&'static str> {
+    let pace = rows.iter().any(|r| r.pace.is_some());
+    let speed = rows.iter().any(|r| r.speed_kmh.is_some());
+    match (pace, speed) {
+        (true, true) => Some("Pace / speed"),
+        (true, false) => Some("Pace"),
+        (false, true) => Some("Speed"),
+        (false, false) => None,
+    }
+}
+
+/// The pace of a session on foot, the speed of a session on wheels.
+fn rate_text(r: &ActivityRow) -> Option<String> {
+    r.pace
+        .clone()
+        .or_else(|| r.speed_kmh.map(|s| format!("{s:.1} km/h")))
+}
+
 /// The table of sessions. A click on a row opens the session.
 pub fn table(rows: &[&ActivityRow], t: &Theme) -> Div {
     let numeric = |title: &str| Column {
         title: title.to_string().into(),
         numeric: true,
     };
-    let columns = [
+    let rate = rate_title(rows);
+    let has_distance = rows.iter().any(|r| r.distance_m.is_some());
+    let mut columns = vec![
         Column {
             title: "Date".into(),
             numeric: false,
@@ -236,27 +257,31 @@ pub fn table(rows: &[&ActivityRow], t: &Theme) -> Div {
             title: "Activity".into(),
             numeric: false,
         },
-        numeric("Distance"),
-        numeric("Time"),
-        numeric("Pace"),
-        numeric("Avg HR"),
-        numeric("Load"),
     ];
+    if has_distance {
+        columns.push(numeric("Distance"));
+    }
+    columns.push(numeric("Time"));
+    columns.extend(rate.map(numeric));
+    columns.extend([numeric("Avg HR"), numeric("Load")]);
     let dash =
         |text: Option<String>| -> SharedString { text.unwrap_or_else(|| DASH.into()).into() };
     let lines = rows
         .iter()
         .map(|r| {
             let date = parse_day(&r.date).map(|d| d.format("%a %-d %b").to_string());
-            let cells = vec![
-                dash(date),
-                r.name.clone().into(),
-                dash(r.distance_m.map(|m| format!("{:.2} km", m / 1000.0))),
-                dash(r.duration_s.map(clock)),
-                dash(r.pace.clone()),
+            let mut cells = vec![dash(date), r.name.clone().into()];
+            if has_distance {
+                cells.push(dash(r.distance_m.map(|m| format!("{:.2} km", m / 1000.0))));
+            }
+            cells.push(dash(r.duration_s.map(clock)));
+            if rate.is_some() {
+                cells.push(dash(rate_text(r)));
+            }
+            cells.extend([
                 dash(r.avg_hr.map(|h| format!("{h:.0}"))),
                 dash(r.load.map(|l| format!("{l:.0}"))),
-            ];
+            ]);
             (cells, Some(super::open_activity(r.activity_id)))
         })
         .collect();
@@ -550,15 +575,19 @@ fn month(ctx: &Ctx) -> Option<Block> {
         big: false,
     };
     let (a, b) = (&c.this_month, &c.last_month);
-    let mut cells = vec![
-        cell("Sessions", a.sessions.to_string(), b.sessions.to_string()),
-        cell(
+    let mut cells = vec![cell(
+        "Sessions",
+        a.sessions.to_string(),
+        b.sessions.to_string(),
+    )];
+    if a.distance_km.abs() >= 0.05 || b.distance_km.abs() >= 0.05 {
+        cells.push(cell(
             "Distance",
             format!("{:.1} km", a.distance_km.abs()),
             format!("{:.1} km", b.distance_km.abs()),
-        ),
-        cell("Time", hours_minutes(a.secs), hours_minutes(b.secs)),
-    ];
+        ));
+    }
+    cells.push(cell("Time", hours_minutes(a.secs), hours_minutes(b.secs)));
     if let (Some(x), Some(y)) = (a.easy_avg_hr, b.easy_avg_hr) {
         cells.push(cell(
             "Easy heart rate",
@@ -610,6 +639,35 @@ fn pace_secs(r: &ActivityRow) -> Option<f64> {
         .filter(|_| r.distance_m.is_some_and(|d| d >= 1000.0))
 }
 
+/// The fastest session of the sport that the rows hold most: pace on foot, speed on wheels.
+/// Other sports have neither, so a gym or golf month shows no such cell.
+fn fastest_cell(rows: &[&ActivityRow]) -> Option<Cell> {
+    let foot = rows.iter().filter(|r| pace_secs(r).is_some()).count();
+    let wheels = rows
+        .iter()
+        .filter(|r| r.speed_kmh.is_some() && r.distance_m.is_some_and(|d| d >= 1000.0))
+        .count();
+    if foot == 0 && wheels == 0 {
+        return None;
+    }
+    if foot >= wheels {
+        let r = best(rows, |r| pace_secs(r).map(|p| -p))?;
+        return Some(best_cell(
+            "Fastest pace",
+            r,
+            format!("{} /km", r.pace.clone()?),
+        ));
+    }
+    let r = best(rows, |r| {
+        r.distance_m.filter(|d| *d >= 1000.0).and(r.speed_kmh)
+    })?;
+    Some(best_cell(
+        "Fastest speed",
+        r,
+        format!("{:.1} km/h", r.speed_kmh?),
+    ))
+}
+
 fn bests(ctx: &Ctx) -> Option<Block> {
     let view = ctx.activities.as_ref().ok()?;
     let (from, to) = if ctx.focus.days() > 1 {
@@ -633,13 +691,7 @@ fn bests(ctx: &Ctx) -> Option<Block> {
     if let Some(r) = best(&rows, |r| r.duration_s) {
         cells.push(best_cell("Most time", r, clock(r.duration_s?)));
     }
-    if let Some(r) = best(&rows, |r| pace_secs(r).map(|p| -p)) {
-        cells.push(best_cell(
-            "Fastest pace",
-            r,
-            format!("{} /km", r.pace.clone()?),
-        ));
-    }
+    cells.extend(fastest_cell(&rows));
     if let Some(r) = best(&rows, |r| r.load) {
         cells.push(best_cell("Highest load", r, format!("{:.0}", r.load?)));
     }
@@ -657,6 +709,34 @@ fn bests(ctx: &Ctx) -> Option<Block> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(pace: Option<&str>, speed: Option<f64>) -> ActivityRow {
+        ActivityRow {
+            activity_id: 1,
+            date: "2026-03-10".into(),
+            name: "Session".into(),
+            sport_label: "Sport".into(),
+            distance_m: Some(10_000.0),
+            duration_s: Some(3_600.0),
+            pace: pace.map(Into::into),
+            speed_kmh: speed,
+            avg_hr: None,
+            load: None,
+        }
+    }
+
+    #[test]
+    fn the_fastest_cell_follows_the_sport_of_the_rows() {
+        let run = row(Some("5:00"), None);
+        let ride = row(None, Some(30.0));
+        let gym = row(None, None);
+        let label = |rows: &[&ActivityRow]| fastest_cell(rows).map(|c| c.label.to_string());
+        assert_eq!(label(&[&run, &gym]).as_deref(), Some("Fastest pace"));
+        assert_eq!(label(&[&ride, &gym]).as_deref(), Some("Fastest speed"));
+        assert_eq!(label(&[&gym]), None);
+        assert_eq!(rate_title(&[&gym]), None);
+        assert_eq!(rate_title(&[&run, &ride]), Some("Pace / speed"));
+    }
 
     #[test]
     fn a_number_gets_a_comma_between_thousands() {

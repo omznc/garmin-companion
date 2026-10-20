@@ -23,6 +23,8 @@ const CRUMB_MAX: usize = 60;
 /// A chart of one series with this many points or fewer is a bar chart.
 const BAR_MAX: usize = 7;
 const CHART_H: f32 = 150.0;
+/// The space at the right of a line chart for the value labels.
+const GUTTER: f32 = 40.0;
 
 /// The item with this id and the section that holds it.
 pub fn find<'a>(
@@ -99,10 +101,11 @@ fn format_value(unit: Option<Unit>, v: f64) -> String {
     }
 }
 
-/// A date label as "4 Mar". Other labels stay as they are.
-fn short_label(label: &str) -> String {
+/// A date label as "4 Mar", or "4 Mar 2026" with the year. Other labels stay as they are.
+fn short_label(label: &str, with_year: bool) -> String {
+    let format = if with_year { "%-d %b %Y" } else { "%-d %b" };
     NaiveDate::parse_from_str(label, "%Y-%m-%d")
-        .map(|d| d.format("%-d %b").to_string())
+        .map(|d| d.format(format).to_string())
         .unwrap_or_else(|_| label.to_string())
 }
 
@@ -208,17 +211,16 @@ fn grid_lines(subject: &InsightSeries, t: &Theme) -> Vec<Div> {
             div()
                 .absolute()
                 .left_0()
-                .right_0()
+                .right(px(GUTTER))
                 .top(relative(at))
                 .border_t_1()
                 .border_color(t.line2)
                 .child(
                     div()
                         .absolute()
-                        .right_0()
+                        .left(relative(1.0))
                         .top(px(-8.0))
-                        .pl(px(4.0))
-                        .bg(t.bg)
+                        .pl(px(6.0))
                         .font_family(MONO)
                         .text_size(px(10.0))
                         .text_color(t.faint)
@@ -249,17 +251,25 @@ fn legend(series: &[InsightSeries], t: &Theme) -> Div {
     row
 }
 
-/// The first and the last label under the chart.
+/// The first and the last label under the chart. They show the year when it differs.
 fn x_labels(labels: &[String], t: &Theme) -> Div {
     let (first, last) = (labels.first(), labels.last());
+    let label = |l: Option<&String>, with_year: bool| {
+        l.map(|l| short_label(l, with_year)).unwrap_or_default()
+    };
+    let with_year = match (first, last) {
+        (Some(a), Some(b)) => a.get(..4) != b.get(..4) && a.len() == 10 && b.len() == 10,
+        _ => false,
+    };
     div()
         .flex()
+        .pr(px(GUTTER))
         .justify_between()
         .font_family(MONO)
         .text_size(px(10.5))
         .text_color(t.faint)
-        .child(first.map(|l| short_label(l)).unwrap_or_default())
-        .child(last.map(|l| short_label(l)).unwrap_or_default())
+        .child(label(first, with_year))
+        .child(label(last, with_year))
 }
 
 /// A bar chart of one short series, such as the days of a week.
@@ -277,7 +287,7 @@ fn bars(item: &InsightItem, series: &InsightSeries, t: &Theme) -> Div {
             day: item
                 .labels
                 .get(i)
-                .map(|l| short_label(l))
+                .map(|l| short_label(l, false))
                 .unwrap_or_default()
                 .into(),
         })
@@ -306,7 +316,10 @@ fn line_chart(item: &InsightItem, t: &Theme) -> Option<Div> {
         },
     )
     .absolute()
-    .inset_0();
+    .top_0()
+    .bottom_0()
+    .left_0()
+    .right(px(GUTTER));
     let area = div()
         .relative()
         .my(px(4.0))
@@ -485,7 +498,8 @@ mod tests {
 
     #[test]
     fn a_date_label_is_short_and_other_labels_stay() {
-        assert_eq!(short_label("2026-03-04"), "4 Mar");
-        assert_eq!(short_label("Mon"), "Mon");
+        assert_eq!(short_label("2026-03-04", false), "4 Mar");
+        assert_eq!(short_label("2026-03-04", true), "4 Mar 2026");
+        assert_eq!(short_label("Mon", true), "Mon");
     }
 }

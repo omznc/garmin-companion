@@ -446,6 +446,14 @@ impl Db {
                 generated_at TEXT NOT NULL,
                 text         TEXT NOT NULL
             );
+
+            -- The last gear list that Garmin returned, as JSON. The Gear screen
+            -- reads it when Garmin cannot answer and in a copy of the cache.
+            CREATE TABLE IF NOT EXISTS gear_cache (
+                id       INTEGER PRIMARY KEY CHECK (id = 1),
+                saved_at TEXT NOT NULL,
+                json     TEXT NOT NULL
+            );
             "#,
         )?;
 
@@ -1694,6 +1702,25 @@ impl Db {
                  computed_at = excluded.computed_at,
                  json = excluded.json",
             params![activity_id, key, computed_at, json],
+        )?;
+        Ok(())
+    }
+
+    /// The last gear list that was saved, as JSON.
+    pub fn gear_json(&self) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT json FROM gear_cache WHERE id = 1", [], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn save_gear_json(&self, saved_at: &str, json: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO gear_cache (id, saved_at, json) VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                 saved_at = excluded.saved_at,
+                 json = excluded.json",
+            params![saved_at, json],
         )?;
         Ok(())
     }
