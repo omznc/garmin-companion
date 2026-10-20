@@ -16,7 +16,7 @@ use crate::chrome;
 use crate::data::{Source, Today};
 use crate::focus::Focus;
 use crate::motion;
-use crate::places::{self, Places};
+use crate::places::Places;
 use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Sidebar, SIDEBAR_W};
@@ -514,12 +514,10 @@ impl Root {
     /// The old bodies of Plan, Routes, Gear, Food, Weight, Strength, Insights,
     /// Fitness and Reports. A screen leaves this path when its file has a layout.
     fn old_body(&self, label: &str, t: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
-        places::screen(label, self, t, cx)
-            .or_else(|| body::screen(label, &self.body, t))
-            .or_else(|| {
-                let data = self.training.as_ref()?;
-                training::screen(label, data, t, cx)
-            })
+        body::screen(label, &self.body, t).or_else(|| {
+            let data = self.training.as_ref()?;
+            training::screen(label, data, t, cx)
+        })
     }
 }
 
