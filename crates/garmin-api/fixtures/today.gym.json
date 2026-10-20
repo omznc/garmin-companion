@@ -53,7 +53,10 @@
       "netCalorieGoal": null,
       "hydrationMl": null,
       "hydrationGoalMl": null,
-      "sweatLossMl": null
+      "sweatLossMl": null,
+      "hrvLowUpper": null,
+      "hrvBalancedLow": null,
+      "hrvBalancedUpper": null
     },
     "age": 1,
     "window": 7,

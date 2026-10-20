@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use crate::client::ActivitySummary;
 
 pub struct Db {
-    conn: Connection,
+    /// Visible to the crate so the storage modules for the newer tables can
+    /// keep their own SQL beside their own types.
+    pub(crate) conn: Connection,
 }
 
 /// Column list shared by every `CachedActivity` query, so the indices in
@@ -104,6 +106,17 @@ fn map_weigh_in(r: &rusqlite::Row) -> rusqlite::Result<WeighIn> {
         muscle_mass: r.get(7)?,
         source_type: r.get(8)?,
     })
+}
+
+/// A cache of its own for one test, empty at the start.
+#[cfg(test)]
+pub(crate) fn scratch_db(name: &str) -> Db {
+    let path = std::env::temp_dir().join(format!(
+        "garmin-companion-test-{}-{name}.sqlite",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    Db::open(&path).expect("scratch cache")
 }
 
 /// Default on-disk location, alongside the other app data for this user.
@@ -463,12 +476,21 @@ impl Db {
             // Garmin's load for the session. It stays null on an old row
             // until a full sync writes the row again.
             "ALTER TABLE activities ADD COLUMN training_load REAL",
+            // The HRV bands of the day, from the same response as the HRV
+            // figures. The status chart draws them as a shaded band.
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_low_upper REAL",
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_balanced_low REAL",
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_balanced_upper REAL",
         ] {
             match self.conn.execute(ddl, []) {
                 Ok(_) => {}
                 Err(e) if e.to_string().contains("duplicate column name") => {}
                 Err(e) => return Err(e).context("could not migrate the cache schema"),
             }
+        }
+        // Tables of the newer data. Each module owns its SQL.
+        for schema in [crate::intraday::SCHEMA] {
+            self.conn.execute_batch(schema)?;
         }
         Ok(())
     }
@@ -680,9 +702,10 @@ impl Db {
                 training_readiness, sleep_secs, sleep_score, steps, stress_avg,
                 body_battery_high, body_battery_low, raw,
                 consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
-                net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml
+                net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml,
+                hrv_low_upper, hrv_balanced_low, hrv_balanced_upper
             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,
-                      ?14,?15,?16,?17,?18,?19,?20,?21)
+                      ?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
             ON CONFLICT(date) DO UPDATE SET
                 resting_hr=COALESCE(excluded.resting_hr, resting_hr),
                 hrv_last_night=COALESCE(excluded.hrv_last_night, hrv_last_night),
@@ -703,7 +726,10 @@ impl Db {
                 net_calorie_goal=COALESCE(excluded.net_calorie_goal, net_calorie_goal),
                 hydration_ml=COALESCE(excluded.hydration_ml, hydration_ml),
                 hydration_goal_ml=COALESCE(excluded.hydration_goal_ml, hydration_goal_ml),
-                sweat_loss_ml=COALESCE(excluded.sweat_loss_ml, sweat_loss_ml)
+                sweat_loss_ml=COALESCE(excluded.sweat_loss_ml, sweat_loss_ml),
+                hrv_low_upper=COALESCE(excluded.hrv_low_upper, hrv_low_upper),
+                hrv_balanced_low=COALESCE(excluded.hrv_balanced_low, hrv_balanced_low),
+                hrv_balanced_upper=COALESCE(excluded.hrv_balanced_upper, hrv_balanced_upper)
             "#,
             params![
                 d.date,
@@ -727,6 +753,9 @@ impl Db {
                 d.hydration_ml,
                 d.hydration_goal_ml,
                 d.sweat_loss_ml,
+                d.hrv_low_upper,
+                d.hrv_balanced_low,
+                d.hrv_balanced_upper,
             ],
         )?;
         Ok(())
@@ -747,7 +776,8 @@ impl Db {
                     training_readiness, sleep_secs, sleep_score, steps,
                     stress_avg, body_battery_high, body_battery_low,
                     consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
-                    net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml
+                    net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml,
+                    hrv_low_upper, hrv_balanced_low, hrv_balanced_upper
              FROM daily_metrics WHERE date >= ?1 ORDER BY date DESC",
         )?;
         let rows = stmt
@@ -773,6 +803,9 @@ impl Db {
                     hydration_ml: r.get(17)?,
                     hydration_goal_ml: r.get(18)?,
                     sweat_loss_ml: r.get(19)?,
+                    hrv_low_upper: r.get(20)?,
+                    hrv_balanced_low: r.get(21)?,
+                    hrv_balanced_upper: r.get(22)?,
                     raw: None,
                 })
             })?
@@ -1967,6 +2000,11 @@ pub struct DailyMetrics {
     pub hydration_ml: Option<f64>,
     pub hydration_goal_ml: Option<f64>,
     pub sweat_loss_ml: Option<f64>,
+    /// The HRV bands of the day: the top of the "low" band and the two ends of
+    /// the "balanced" band, in ms. The first night of a new user has none.
+    pub hrv_low_upper: Option<f64>,
+    pub hrv_balanced_low: Option<f64>,
+    pub hrv_balanced_upper: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw: Option<String>,
 }
@@ -2164,6 +2202,36 @@ mod tests {
         db.upsert_activity(&row(2, None)).unwrap();
         assert_eq!(db.activity(1).unwrap().unwrap().training_load, Some(87.5));
         assert_eq!(db.activity(2).unwrap().unwrap().training_load, None);
+    }
+
+    #[test]
+    fn the_hrv_bands_of_a_day_are_kept_and_a_later_empty_reply_keeps_them() {
+        let db = scratch("hrv-bands");
+        db.upsert_daily(&DailyMetrics {
+            date: "2026-03-10".into(),
+            hrv_last_night: Some(50.0),
+            hrv_low_upper: Some(40.0),
+            hrv_balanced_low: Some(45.0),
+            hrv_balanced_upper: Some(60.0),
+            ..Default::default()
+        })
+        .unwrap();
+        db.upsert_daily(&DailyMetrics {
+            date: "2026-03-10".into(),
+            hrv_last_night: Some(52.0),
+            ..Default::default()
+        })
+        .unwrap();
+        let row = &db.daily_since("2026-03-10").unwrap()[0];
+        assert_eq!(row.hrv_last_night, Some(52.0));
+        assert_eq!(
+            (
+                row.hrv_low_upper,
+                row.hrv_balanced_low,
+                row.hrv_balanced_upper
+            ),
+            (Some(40.0), Some(45.0), Some(60.0))
+        );
     }
 
     fn hours_since(db: &Db, from: &str) -> f64 {

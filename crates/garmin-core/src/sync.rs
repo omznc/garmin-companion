@@ -196,6 +196,19 @@ pub async fn sync_daily(
                 metrics.hrv_last_night = num(&v, &["hrvSummary", "lastNightAvg"]);
                 metrics.hrv_weekly_avg = num(&v, &["hrvSummary", "weeklyAvg"]);
                 metrics.hrv_status = text(&v, &["hrvSummary", "status"]);
+                metrics.hrv_low_upper = num(&v, &["hrvSummary", "baseline", "lowUpper"]);
+                metrics.hrv_balanced_low = num(&v, &["hrvSummary", "baseline", "balancedLow"]);
+                metrics.hrv_balanced_upper = num(&v, &["hrvSummary", "baseline", "balancedUpper"]);
+                // The same response holds the night's readings. Only the recent
+                // days keep them, so the full history import stays as it was.
+                if is_recent(*date) {
+                    let readings = crate::intraday::parse_hrv_readings(&v);
+                    if let Err(e) = db.save_hrv_readings(&date_str, &readings) {
+                        report
+                            .warnings
+                            .push(format!("hrv readings {date_str}: {e}"));
+                    }
+                }
             }
             Err(e) => warn_or_abort(report, "hrv", &date_str, e, &mut had_5xx)?,
         }
@@ -275,6 +288,15 @@ pub async fn sync_daily(
     }
 
     Ok(())
+}
+
+/// How many days back (today counts) the per-day curves are kept. The history
+/// import never reaches further than this for them.
+const CURVE_DAYS: i64 = 3;
+
+/// Whether `date` is inside the window of the per-day curves.
+fn is_recent(date: NaiveDate) -> bool {
+    (Utc::now().date_naive() - date).num_days() < CURVE_DAYS
 }
 
 /// A reply that says "no data" is a warning. A failed request is not a reply:

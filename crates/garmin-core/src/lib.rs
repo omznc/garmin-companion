@@ -10,6 +10,7 @@ pub mod coach;
 pub mod db;
 pub mod findings;
 pub mod goals;
+pub mod intraday;
 pub mod paths;
 pub mod query;
 pub mod records;
