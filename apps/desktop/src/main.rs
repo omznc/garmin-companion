@@ -65,6 +65,7 @@ mod updater;
 mod updater_pkg;
 mod vscode;
 mod wellness;
+mod window;
 
 use std::borrow::Cow;
 
@@ -88,7 +89,6 @@ const FONTS: [&[u8]; 5] = [
     include_bytes!("../assets/fonts/IBMPlexMono-Medium.ttf"),
 ];
 
-const DEFAULT_SIZE: (f32, f32) = (1100.0, 780.0);
 const MIN_SIZE: (f32, f32) = (720.0, 540.0);
 
 /// The value after `flag` in the arguments, if there is one. Another flag is not a value.
@@ -130,7 +130,8 @@ fn parse_palette(name: &str) -> Option<Palette> {
 struct Cli {
     palette: Palette,
     explicit_palette: bool,
-    size: (f32, f32),
+    /// The size from `--size`. Without it the saved or the default size applies.
+    size: Option<(f32, f32)>,
     source: Source,
     screen: Option<String>,
     start_activity: Option<i64>,
@@ -145,9 +146,7 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
     let palette = option(args, "--palette")
         .and_then(|n| parse_palette(&n))
         .unwrap_or(Palette::Paper);
-    let size = option(args, "--size")
-        .and_then(|s| parse_size(&s))
-        .unwrap_or(DEFAULT_SIZE);
+    let size = option(args, "--size").and_then(|s| parse_size(&s));
     let db = required(args, "--db")?;
     let date = required(args, "--date")?
         .map(|d| {
@@ -246,7 +245,7 @@ fn main() -> anyhow::Result<()> {
     let Cli {
         palette,
         explicit_palette,
-        size: (width, height),
+        size: wanted_size,
         source,
         screen,
         start_activity,
@@ -312,7 +311,17 @@ fn main() -> anyhow::Result<()> {
             })
             .detach();
 
-            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
+            // A demo reads and writes no saved state.
+            let demo = !matches!(source, data::Source::Default);
+            let saved = if demo {
+                window::State::default()
+            } else {
+                window::State::load()
+            };
+            let visible = cx
+                .primary_display()
+                .map_or(Bounds::default(), |d| d.visible_bounds());
+            let bounds = window::start_bounds(&saved, wanted_size, visible, MIN_SIZE);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
@@ -328,7 +337,6 @@ fn main() -> anyhow::Result<()> {
                 app_id: Some("garmin-companion".into()),
                 ..Default::default()
             };
-            let demo = !matches!(source, data::Source::Default);
             let account = account::Account::new(demo, cx);
             // A palette from the command line wins. Otherwise the saved mode picks.
             let palette = if explicit_palette {
@@ -352,7 +360,7 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                     let ask = shell::new_ask(ask_start, palette, cx);
                     let mut root =
-                        shell::Root::new(today, palette, store, body, source, account, ask);
+                        shell::Root::new(today, palette, store, body, source, account, ask, saved);
                     if let Some(wellness) = wellness {
                         root = root.with_wellness(wellness);
                     }
@@ -370,6 +378,7 @@ fn main() -> anyhow::Result<()> {
                         root.start_sync(false, cx);
                     }
                     root.watch_for_updates(cx);
+                    root.watch_window(window, cx);
                     // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
                     #[cfg(debug_assertions)]
                     if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {

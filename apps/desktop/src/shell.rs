@@ -22,7 +22,7 @@ use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
-use crate::{settings, setup, today};
+use crate::{settings, setup, today, window};
 
 /// The sidebar and the column, as a pair, are never wider than this.
 /// On an ultrawide the pair stays together in the middle.
@@ -93,9 +93,15 @@ pub struct Root {
     pub(crate) loads: std::collections::HashMap<&'static str, gpui::Task<()>>,
     /// The command palette, while it is open.
     pub(crate) command_palette: Option<Entity<crate::command_palette::CommandPalette>>,
+    /// The saved window size and position. A demo never writes it.
+    window_state: window::State,
 }
 
+/// How long the window rests before its new size is saved.
+const SAVE_AFTER: std::time::Duration = std::time::Duration::from_millis(400);
+
 impl Root {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         today: Today,
         palette: Palette,
@@ -104,6 +110,7 @@ impl Root {
         source: Source,
         account: Account,
         ask: Entity<Ask>,
+        window_state: window::State,
     ) -> Self {
         let list = store.list();
         let places = Places::load(&source);
@@ -133,6 +140,40 @@ impl Root {
             account,
             loads: Default::default(),
             command_palette: None,
+            window_state,
+        }
+    }
+
+    /// Save the window size and position when they change, and when it closes.
+    pub fn watch_window(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.account.demo {
+            return;
+        }
+        cx.observe_window_bounds(window, |root, window, cx| {
+            root.remember_window(window);
+            root.loads.insert(
+                "window",
+                cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(SAVE_AFTER).await;
+                    let _ = this.update(cx, |root, _| root.window_state.save());
+                }),
+            );
+        })
+        .detach();
+        let root = cx.entity();
+        window.on_window_should_close(cx, move |window, cx| {
+            root.update(cx, |root, _| {
+                root.remember_window(window);
+                root.window_state.save();
+            });
+            true
+        });
+    }
+
+    /// Keep the bounds of a window that is neither zoomed nor full screen.
+    fn remember_window(&mut self, window: &Window) {
+        if let gpui::WindowBounds::Windowed(bounds) = window.window_bounds() {
+            self.window_state.remember(bounds);
         }
     }
 
