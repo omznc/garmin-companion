@@ -404,6 +404,9 @@ describe("chat", () => {
     ]);
     expect(sent.provider).toMatchObject({ sort: "price" });
     expect(sent.reasoning).toEqual({ effort: "low" });
+    // The bill uses the profile prices, so the cap must be the same prices.
+    const p = profileOf("deepseek");
+    expect(sent.provider.max_price).toEqual({ prompt: p.input, completion: p.output });
   });
 
   it("charges nothing when the free model answered", () => {

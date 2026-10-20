@@ -34,20 +34,23 @@ export const PROFILES: Record<string, ModelProfile> = {
     reasoning: { effort: "low" },
   },
   deepseek: {
-    // Relace prices, the cheapest endpoint on 2026-10-19.
+    // A cap above the cheapest endpoints on 2026-10-20 (DeepInfra 0.078/0.235,
+    // Decart 0.09/0.18). The old 0.05/0.1 matched no endpoint, so the fallback
+    // had nowhere to go when the free model failed.
     slug: "deepseek/deepseek-v4.1-flash-1017",
     free: "minimax/minimax-m3.1-flash:free",
-    input: 0.05,
-    output: 0.1,
+    input: 0.1,
+    output: 0.25,
     cacheRead: 0.01,
     cacheWrite: 0,
     maxBodyBytes: 256_000,
     maxTokens: 8192,
-    // MiniMax reasons by default. A tool-heavy turn spent the app's whole
-    // 3000-token round on reasoning and wrote no answer, or a cut-off one.
+    // Both models reason by default (MiniMax at max, DeepSeek at high). A
+    // tool-heavy turn spent the app's whole 3000-token round on reasoning and
+    // wrote no answer, or a cut-off one.
     reasoning: { effort: "low" },
     // The cheapest endpoint, never one over the prices above, so the bill stays correct.
-    provider: { sort: "price", max_price: { prompt: 0.05, completion: 0.1 } },
+    provider: { sort: "price", max_price: { prompt: 0.1, completion: 0.25 } },
   },
 };
 
