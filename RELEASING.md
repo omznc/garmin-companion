@@ -384,3 +384,19 @@ notarization is the one worth buying.
   against Android — and the frontend branches on `IS_MOBILE`, not on `android`.
   What's missing is an Apple Developer account, and a signed build. The `ios`
   job makes only an unsigned IPA (see "Cutting a release").
+
+## Google Play
+
+The workflow `.github/workflows/play.yml` builds a signed bundle (`.aab`) and
+uploads it to a Play track. Run it by hand after the release, with the same
+version: Actions, then "Play", then "Run workflow". Choose the track (the
+default is `alpha`, the closed testing track) and the status.
+
+- Secret: `PLAY_SERVICE_ACCOUNT_JSON`. It holds the key of the service account
+  `play-publisher@service-accounts-512208.iam.gserviceaccount.com`.
+- Play App Signing uses the same keystore as the APK. The Play build and the
+  standalone APK can update each other.
+- The Play build has no self-update. The workflow sets `EXPO_PUBLIC_SELF_UPDATE=0`,
+  and the bundle has no `REQUEST_INSTALL_PACKAGES`. The workflow checks both.
+- Until the app is first published, Play accepts only the status `draft`. Use
+  `draft`, then roll out in the Play Console.
