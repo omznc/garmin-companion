@@ -9,6 +9,8 @@ import { importHistory } from "../src/data/useSync";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
 import { useRootColor } from "../src/theme/useRootColor";
+import { DialogHost } from "../src/ui/DialogHost";
+import { SnackbarHost } from "../src/ui/SnackbarHost";
 import { UpdateBanner } from "../src/update/UpdateBanner";
 
 export default function RootLayout() {
@@ -53,6 +55,8 @@ export default function RootLayout() {
           <Stack.Screen name="sign-in" options={{ headerShown: true, title: "Sign in" }} />
         </Stack>
         <UpdateBanner />
+        <SnackbarHost />
+        <DialogHost />
       </ThemeProvider>
     </QueryClientProvider>
   );

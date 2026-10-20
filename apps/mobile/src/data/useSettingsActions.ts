@@ -1,7 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Alert } from "react-native";
 import { setThemePref } from "../theme/prefs";
+import { showDialog } from "../ui/dialog";
+import { removed } from "../ui/haptics";
+import { notifyError } from "../ui/notify-error";
 import { setTheme, signOut } from "./account";
 import type { ThemeMode } from "./types";
 import { useSettings } from "./useAccount";
@@ -29,7 +31,7 @@ export function useSettingsActions() {
   };
 
   const disconnect = () =>
-    Alert.alert(
+    showDialog(
       "Disconnect Garmin?",
       "The app removes the sign-in from this phone. Your saved data stays.",
       [
@@ -41,9 +43,10 @@ export function useSettingsActions() {
             try {
               queryClient.setQueryData(["status"], await signOut());
             } catch (e) {
-              Alert.alert("Could not sign out", e instanceof Error ? e.message : String(e));
+              notifyError("Could not sign out", e);
               return;
             }
+            removed();
             queryClient.invalidateQueries({ queryKey: ["settings"] });
             router.dismissAll();
             router.replace("/setup");

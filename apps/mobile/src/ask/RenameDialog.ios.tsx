@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Alert } from "react-native";
+import { showDialog } from "../ui/dialog";
 
 // The longest title the core keeps. The core cuts a longer title to this length.
 const MAX_TITLE = 200;
@@ -35,9 +36,7 @@ export function RenameDialog({
             onPress: (value?: string) => {
               const next = (value ?? "").slice(0, MAX_TITLE).trim();
               const fail = (message: string) =>
-                Alert.alert(message, undefined, [
-                  { text: "OK", onPress: () => ask(value ?? text) },
-                ]);
+                showDialog(message, undefined, [{ text: "OK", onPress: () => ask(value ?? text) }]);
               if (!next) {
                 fail("Give it a name.");
                 return;
