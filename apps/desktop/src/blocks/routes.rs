@@ -72,7 +72,7 @@ pub fn crumb(_ctx: &Ctx) -> Option<String> {
 }
 
 /// The most tiles that the grid draws.
-const MAX_TILES: usize = 30;
+const MAX_TILES: usize = 18;
 /// The width that a tile asks for, in pixels.
 const TILE_WIDTH: f32 = 160.0;
 const TRACE_HEIGHT: f32 = 100.0;
@@ -91,21 +91,39 @@ struct Saved<'a> {
     distance: Option<&'a str>,
     elevation_m: Option<f64>,
     trace: &'a [[f32; 2]],
+    /// `Course` for a Garmin course, else how often the route was run. It
+    /// tells two routes with the same name apart.
+    tag: String,
+    course: bool,
 }
 
-/// The courses that the user saved, then the routes that have a trace.
+/// A route shorter than this is a walk round the block, not a route.
+const MIN_ROUTE_M: f64 = 1000.0;
+
+/// The courses that the user saved, then the routes that have a trace. The
+/// routes that repeat most come first, and short ones are left out.
 fn saved_routes(view: &RoutesView) -> Vec<Saved<'_>> {
     let courses = view.courses.iter().map(|c| Saved {
         name: &c.name,
         distance: c.distance.as_deref(),
         elevation_m: c.elevation_m,
         trace: &c.trace,
+        tag: "Course".into(),
+        course: true,
     });
-    let routes = view.routes.iter().map(|r| Saved {
+    let mut long: Vec<_> = view
+        .routes
+        .iter()
+        .filter(|r| r.distance_m >= MIN_ROUTE_M)
+        .collect();
+    long.sort_by_key(|r| std::cmp::Reverse(r.times));
+    let routes = long.into_iter().map(|r| Saved {
         name: &r.name,
         distance: r.distance.as_deref(),
         elevation_m: r.elevation_m,
         trace: &r.trace,
+        tag: r.times_line.clone(),
+        course: false,
     });
     courses
         .chain(routes)
@@ -154,6 +172,7 @@ fn tile(s: &Saved, t: &Theme) -> gpui::Div {
     use gpui::ColorExt as _;
     let (points, colours) = (s.trace.to_vec(), (t.line2, t.acc.opacity(0.25), t.acc));
     let meta = [
+        Some(s.tag.clone()),
         s.distance.map(str::to_string),
         s.elevation_m.map(|m| format!("{} m", m.round())),
     ]
@@ -168,7 +187,7 @@ fn tile(s: &Saved, t: &Theme) -> gpui::Div {
         .overflow_hidden()
         .rounded(px(7.0))
         .border_1()
-        .border_color(t.line2)
+        .border_color(if s.course { t.accline } else { t.line2 })
         .bg(t.bg2)
         .child(
             canvas(
@@ -239,7 +258,8 @@ fn most_run(ctx: &Ctx) -> Option<Block> {
                 .as_ref()
                 .map(|b| format!("best {}", b.text).into()),
             right: Some(format!("{} ×", r.times).into()),
-            right_sub: r.distance.clone().map(Into::into),
+            right_sub: (r.total_m > 0.0)
+                .then(|| format!("{:.0} km total", r.total_m / 1000.0).into()),
         })
         .collect();
     if rows.is_empty() {
@@ -331,6 +351,8 @@ mod tests {
             distance: None,
             elevation_m,
             trace: &[],
+            tag: String::new(),
+            course: false,
         }
     }
 
