@@ -119,7 +119,44 @@ pub fn tab_bar(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
 }
 
 /// The bar with the screen name, the page and the age of the last sync.
-pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme) -> Div {
+pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let (hover, fg) = (t.hover, t.fg);
+    let screen = root.active;
+    let home = div()
+        .id("crumb-home")
+        .flex_none()
+        .cursor_pointer()
+        .hover(move |s| s.text_color(fg).underline())
+        .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.screen_home(screen, cx)))
+        .child(screen.label());
+    let pick =
+        div()
+            .id("crumb-pick")
+            .min_w_0()
+            .flex()
+            .items_center()
+            .gap(px(4.0))
+            .h(px(24.0))
+            .px(px(6.0))
+            .rounded(px(5.0))
+            .cursor_pointer()
+            .text_color(t.fg)
+            .hover(move |s| s.bg(hover))
+            .on_click(cx.listener(|root, _: &ClickEvent, window, cx| {
+                root.toggle_calendar_popover(window, cx)
+            }))
+            .child(
+                div()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(SharedString::from(root.crumb(t))),
+            )
+            .child(icon(Icon::ChevronDown, 10.0, t, t.faint));
+    let pick = div()
+        .min_w_0()
+        .child(pick)
+        .children(crate::calendar::popover(root, t, cx));
     let synced = root
         .account
         .synced_ago
@@ -152,16 +189,9 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme) -> Div {
                 .items_center()
                 .gap(px(5.0))
                 .whitespace_nowrap()
-                .child(div().flex_none().child(root.active.label()))
+                .child(home)
                 .child(div().flex_none().text_color(t.faint).child("›"))
-                .child(
-                    div()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .text_color(t.fg)
-                        .child(SharedString::from(root.crumb(t))),
-                ),
+                .child(pick),
         )
         .children(synced)
 }

@@ -1,7 +1,9 @@
 //! The status bar at the bottom of the window. From the `footer` of the design.
 
-use gpui::{div, prelude::*, px, Div, SharedString};
+use gpui::{div, prelude::*, px, ClickEvent, Context, Div, SharedString};
 
+use crate::focus::Focus;
+use crate::icons::{icon, Icon};
 use crate::shell::Root;
 use crate::theme::Theme;
 use crate::ui::{MONO, SANS};
@@ -26,9 +28,28 @@ fn item(text: impl Into<SharedString>, mono: bool, dot: bool, t: &Theme) -> Div 
         .child(text.into())
 }
 
+/// "Focus: <label>" with an x. A click goes back to the live day.
+fn focus_chip(root: &Root, t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
+    let tint = t.acctint;
+    item(format!("Focus: {}", root.focus.label()), false, false, t)
+        .id("focus-chip")
+        .bg(tint)
+        .text_color(t.acc)
+        .cursor_pointer()
+        .child(icon(Icon::X, 10.0, t, t.acc))
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.set_focus(Focus::today(), cx)))
+}
+
 /// The bar. `coach` names the provider. `narrow` hides what the design hides
 /// in a small window.
-pub fn render(root: &Root, coach: Option<&str>, narrow: bool, t: &Theme) -> Div {
+pub fn render(
+    root: &Root,
+    coach: Option<&str>,
+    narrow: bool,
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> Div {
+    let focus = (!root.focus.is_live()).then(|| focus_chip(root, t, cx));
     let synced = root
         .account
         .synced_ago
@@ -56,6 +77,7 @@ pub fn render(root: &Root, coach: Option<&str>, narrow: bool, t: &Theme) -> Div 
         .font_family(SANS)
         .children(synced)
         .children(count)
+        .children(focus)
         .child(div().flex_1())
         .children(coach)
         .child(item(root.palette.name(), false, false, t))

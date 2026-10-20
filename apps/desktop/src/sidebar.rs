@@ -613,6 +613,8 @@ pub fn render<V: 'static>(
     t: &Theme,
     cx: &mut Context<V>,
     actions: Actions<V>,
+    calendar: AnyElement,
+    width: f32,
 ) -> impl IntoElement {
     let dragged = state.shared.clone();
     let mut list = div()
@@ -639,7 +641,7 @@ pub fn render<V: 'static>(
 
     div()
         .flex_none()
-        .w(px(SIDEBAR_W))
+        .w(px(width))
         .h_full()
         .flex()
         .flex_col()
@@ -649,6 +651,7 @@ pub fn render<V: 'static>(
         .border_r_1()
         .border_color(t.line)
         .child(state.scroll.area("nav").flex_1().min_h_0().child(list))
+        .child(calendar)
         .child(settings_row(state, t, cx, actions.select))
         .children(context_menu(state, t))
 }
@@ -765,6 +768,8 @@ mod tests {
                     select: |_, _, _, _| {},
                     toggle_group: |_, _, _, _| {},
                 },
+                div().into_any_element(),
+                SIDEBAR_W,
             )
         }
     }

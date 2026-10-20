@@ -30,6 +30,7 @@ mod appearance;
 mod ask;
 mod blocks;
 mod body;
+mod calendar;
 mod charts;
 mod chrome;
 mod cloud;
@@ -50,6 +51,7 @@ mod markdown;
 mod motion;
 mod openvsx;
 mod panel;
+mod panes;
 mod places;
 mod screen;
 mod scroll;
@@ -147,6 +149,20 @@ struct Cli {
     draft: Option<String>,
     start_sync: bool,
     background: bool,
+    /// The focus to start with, from `--focus YYYY-MM-DD[..YYYY-MM-DD]`.
+    focus: Option<focus::Focus>,
+}
+
+/// A day, or two days with `..` between them.
+fn parse_focus(text: &str) -> anyhow::Result<focus::Focus> {
+    let day = |d: &str| {
+        d.parse::<chrono::NaiveDate>()
+            .with_context(|| format!("--focus needs YYYY-MM-DD[..YYYY-MM-DD], got {text}"))
+    };
+    match text.split_once("..") {
+        Some((a, b)) => Ok(focus::Focus::range(day(a)?, day(b)?)),
+        None => Ok(focus::Focus::day(day(text)?)),
+    }
 }
 
 fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
@@ -200,6 +216,9 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
         draft: required(args, "--draft")?,
         start_sync: args.iter().any(|a| a == "--sync"),
         background: args.iter().any(|a| a == "--background"),
+        focus: required(args, "--focus")?
+            .map(|f| parse_focus(&f))
+            .transpose()?,
     })
 }
 
@@ -261,6 +280,7 @@ fn main() -> anyhow::Result<()> {
         draft,
         start_sync,
         background,
+        focus,
     } = parse_args(&args)?;
     if let Some(spec) = coach {
         let Source::Db { path, .. } = &source else {
@@ -374,7 +394,15 @@ fn main() -> anyhow::Result<()> {
                     if let Some(training) = training {
                         root = root.with_training(training);
                     }
+                    if let Some(focus) = focus {
+                        root.set_focus(focus, cx);
+                    }
                     root.start(cx);
+                    // For screenshots: `GC_OPEN_CALENDAR=1` opens the breadcrumb popover.
+                    #[cfg(debug_assertions)]
+                    if std::env::var("GC_OPEN_CALENDAR").is_ok() {
+                        root.toggle_calendar_popover(window, cx);
+                    }
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }
@@ -457,6 +485,18 @@ mod tests {
         assert_eq!(parse_palette("nope"), None);
         assert_eq!(parse_size("wide"), None);
         assert_eq!(option(&args, "--missing"), None);
+    }
+
+    #[test]
+    fn the_focus_flag_takes_a_day_or_a_range() {
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        assert_eq!(
+            parse_focus("2026-10-14").unwrap(),
+            focus::Focus::day(day(14))
+        );
+        let range = parse_focus("2026-10-20..2026-10-14").unwrap();
+        assert_eq!((range.start, range.end), (day(14), day(20)));
+        assert!(parse_focus("soon").is_err());
     }
 
     #[test]

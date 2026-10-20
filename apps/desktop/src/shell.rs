@@ -10,16 +10,17 @@ use gpui::{
 
 use crate::account::Account;
 use crate::activities::{self, Page, Store};
-use crate::ask::{Ask, AskEvent, Source as AskSource, PANEL_W};
+use crate::ask::{Ask, AskEvent, Source as AskSource};
 use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::{Source, Today};
 use crate::focus::Focus;
 use crate::motion;
+use crate::panes::{self, clamp_width, Side};
 use crate::places::Places;
 use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
-use crate::sidebar::{self, Sidebar, SIDEBAR_W};
+use crate::sidebar::{self, Sidebar};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
@@ -27,12 +28,8 @@ use crate::views::Views;
 use crate::wellness::{self, Wellness};
 use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
-/// At or below this window width the coach panel hides.
-const COACH_HIDES_AT: f32 = 1180.0;
 /// Below this grid width each block takes the whole row.
 const NARROW_GRID: f32 = 640.0;
-/// At or below this window width the sidebar hides.
-const SIDEBAR_HIDES_AT: f32 = 900.0;
 /// The widest the page gets.
 pub(crate) const PAGE_MAX: f32 = 1120.0;
 
@@ -74,6 +71,12 @@ pub struct Root {
     pub(crate) views: Views,
     /// The day or the range that every page looks at.
     pub(crate) focus: Focus,
+    /// The month on show and the drag of the calendar.
+    pub(crate) calendar: crate::calendar::Calendar,
+    /// The widths of the sidebar and the coach panel, and a drag of a handle.
+    pub(crate) sidebar_w: f32,
+    pub(crate) coach_w: f32,
+    pub(crate) pane_drag: Option<crate::panes::Drag>,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// The screen on show.
@@ -145,7 +148,11 @@ impl Root {
             body,
             places,
             views: Views::default(),
+            calendar: crate::calendar::Calendar::new(focus, window_state.calendar_closed),
             focus,
+            sidebar_w: clamp_width(Side::Sidebar, window_state.sidebar_w),
+            coach_w: clamp_width(Side::Coach, window_state.coach_w),
+            pane_drag: None,
             palette,
             active: sidebar.active,
             sidebar,
@@ -351,10 +358,13 @@ impl Root {
         cx.notify();
     }
 
-    fn save_window_state(&mut self) {
+    pub(crate) fn save_window_state(&mut self) {
         if self.account.demo {
             return;
         }
+        self.window_state.calendar_closed = self.calendar.collapsed;
+        self.window_state.sidebar_w = Some(self.sidebar_w);
+        self.window_state.coach_w = Some(self.coach_w);
         self.window_state.coach_open = self.coach_open;
         self.window_state.collapsed = self.sidebar.closed_keys();
         self.window_state.save();
@@ -398,6 +408,7 @@ impl Root {
     /// Load what the screen of the lit entry needs. Call it once at start, for
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
+        self.tell_ask_focus(cx);
         self.enter(self.active, cx);
         let (path, day) = self.places.cache();
         crate::account::load_async(
@@ -419,14 +430,31 @@ impl Root {
 
     /// Look at another day or range. Every view that takes a day reads again
     /// with `focus.end`. The pages keep the old data until the new data comes.
-    #[allow(dead_code)] // The calendar calls it.
     pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
         if focus == self.focus {
             return;
         }
         self.focus = focus;
+        self.calendar.month = crate::calendar::first_of_month(focus.end);
+        self.tell_ask_focus(cx);
         self.reload(cx);
         cx.notify();
+    }
+
+    /// The coach hears the focus with each question.
+    fn tell_ask_focus(&mut self, cx: &mut Context<Self>) {
+        let focus = self.focus;
+        self.ask.update(cx, |ask, cx| ask.set_focus(focus, cx));
+    }
+
+    /// The first crumb: go back to the main page of the screen. On
+    /// Activities this leaves the detail of a session.
+    pub(crate) fn screen_home(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        if screen == Screen::Activities {
+            self.close_activity(cx);
+        } else {
+            self.restart_page(cx);
+        }
     }
 
     fn enter(&mut self, screen: Screen, cx: &mut Context<Self>) {
@@ -542,17 +570,8 @@ impl Root {
     /// The width that the page gives to a grid of blocks.
     fn grid_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.viewport_size().width);
-        let sidebar = if width <= SIDEBAR_HIDES_AT {
-            0.0
-        } else {
-            SIDEBAR_W
-        };
-        let coach = if self.coach_open && width > COACH_HIDES_AT {
-            PANEL_W
-        } else {
-            0.0
-        };
-        (width - sidebar - coach - 40.0).min(PAGE_MAX)
+        let layout = self.layout(width);
+        (width - layout.sidebar - layout.coach - 40.0).min(PAGE_MAX)
     }
 
     /// The page of a screen that is built from blocks: a heading, a lede and
@@ -665,14 +684,21 @@ impl Render for Root {
             return self.framed(setup::render(self, &t, window, cx), &t, window);
         }
         let width = f32::from(window.viewport_size().width);
-        let narrow = width <= SIDEBAR_HIDES_AT;
+        let layout = self.layout(width);
+        let narrow = layout.sidebar == 0.0;
         let on_ask = self.active == Screen::Ask && !self.tabs.is_empty();
         // One Ask entity, in one place: the Ask screen, or the panel at the side.
-        self.ask.update(cx, |ask, _| ask.set_panel(!on_ask));
+        let coach_w = self.coach_w;
+        self.ask.update(cx, |ask, _| {
+            ask.set_panel(!on_ask);
+            ask.set_panel_width(coach_w);
+        });
 
         let nav = (!narrow).then(|| {
             let counts = self.nav_counts();
-            sidebar::render(
+            let calendar = crate::calendar::sidebar_block(self, &t, cx).into_any_element();
+            let edge = panes::handle(self, Side::Sidebar, &t, cx);
+            let bar = sidebar::render(
                 &self.sidebar,
                 &counts,
                 &t,
@@ -681,7 +707,10 @@ impl Render for Root {
                     select: |this, screen, window, cx| this.select(screen, window, cx),
                     toggle_group: |this, group, _, cx| this.toggle_group(group, cx),
                 },
-            )
+                calendar,
+                layout.sidebar,
+            );
+            div().relative().flex_none().h_full().child(bar).child(edge)
         });
 
         // Each screen gets a new `SmoothScroll` in `enter`, so it starts at the top.
@@ -713,17 +742,19 @@ impl Render for Root {
             .flex_col()
             .bg(t.bg)
             .child(tabs::tab_bar(self, &t, cx))
-            .child(tabs::crumb_bar(self, narrow, &t))
+            .child(tabs::crumb_bar(self, narrow, &t, cx))
             .child(div().flex_1().min_h_0().flex().child(content));
-        let coach = (self.coach_open && width > COACH_HIDES_AT && !on_ask).then(|| {
+        let coach = (layout.coach > 0.0 && !on_ask).then(|| {
             div()
+                .relative()
                 .flex_none()
-                .w(px(PANEL_W))
+                .w(px(layout.coach))
                 .h_full()
                 .bg(t.bg2)
                 .border_l_1()
                 .border_color(t.line)
                 .child(self.ask.clone())
+                .child(panes::handle(self, Side::Coach, &t, cx))
         });
         let provider = self.ask.read(cx).provider_label();
 
@@ -736,6 +767,15 @@ impl Render for Root {
             .text_color(t.fg)
             .font_family(SANS)
             .line_height(relative(LH_NORMAL))
+            .when(self.pane_drag.is_some(), |d| d.cursor_ew_resize())
+            .on_mouse_move(cx.listener(|root, event: &gpui::MouseMoveEvent, _, cx| {
+                let pressed = event.pressed_button == Some(gpui::MouseButton::Left);
+                root.pane_move(f32::from(event.position.x), pressed, cx)
+            }))
+            .on_mouse_up(
+                gpui::MouseButton::Left,
+                cx.listener(|root, _, _, cx| root.pane_release(cx)),
+            )
             .child(titlebar::render(self, window, &t, cx))
             .child(
                 div()
@@ -746,7 +786,7 @@ impl Render for Root {
                     .child(center)
                     .children(coach),
             )
-            .child(statusbar::render(self, provider, narrow, &t))
+            .child(statusbar::render(self, provider, narrow, &t, cx))
             .children(crate::update_ui::banner(self, &t, cx))
             .children(self.command_palette.clone())
             .children(crate::theme_dialog::render(self, &t, window, cx))

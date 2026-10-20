@@ -1,5 +1,6 @@
 //! The actions that the command palette lists, and the filter over them.
 
+use crate::calendar::Preset;
 use crate::fuzzy;
 use crate::screen::Screen;
 
@@ -13,6 +14,8 @@ pub enum Action {
     /// Show the Ask screen with an empty conversation.
     NewChat,
     ToggleTheme,
+    /// Focus the pages and the coach on a ready range.
+    Focus(Preset),
 }
 
 pub struct Command {
@@ -34,6 +37,9 @@ pub fn all() -> Vec<Command> {
         command("New chat", Action::NewChat),
         command("Check for updates", Action::CheckUpdates),
         command("Toggle light and dark", Action::ToggleTheme),
+        command("Focus today", Action::Focus(Preset::Today)),
+        command("Focus last 7 days", Action::Focus(Preset::Days7)),
+        command("Focus this month", Action::Focus(Preset::Month)),
     ];
     list.extend(Screen::ALL.into_iter().map(|screen| {
         let verb = if screen == Screen::Settings {
