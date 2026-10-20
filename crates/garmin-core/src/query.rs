@@ -891,6 +891,9 @@ pub struct RouteOuting {
     pub distance_m: Option<f64>,
     pub duration_s: Option<f64>,
     pub points: Vec<[f64; 2]>,
+    /// Metres climbed. `None` when the activity has no elevation.
+    #[serde(default)]
+    pub elevation_gain_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1021,6 +1024,7 @@ fn route_groups(db: &Db, sort: RouteSort) -> Result<Vec<Route>> {
                         distance_m: t.distance_m,
                         duration_s: t.duration_s,
                         points: t.points,
+                        elevation_gain_m: t.elevation_gain_m,
                     })
                     .collect(),
             }

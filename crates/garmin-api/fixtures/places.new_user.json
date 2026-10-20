@@ -19,7 +19,9 @@
     "tiles": [],
     "notes": [],
     "total": 0,
-    "routes": []
+    "routes": [],
+    "longest": null,
+    "courses": []
   },
   "gear": {
     "empty": {

@@ -1081,7 +1081,8 @@ impl Db {
             "SELECT t.activity_id, t.point_count, t.start_lat, t.start_lon,
                     t.end_lat, t.end_lon, t.min_lat, t.max_lat, t.min_lon,
                     t.max_lon, {points_col},
-                    a.name, a.type_key, a.local_date, a.distance_m, a.duration_s
+                    a.name, a.type_key, a.local_date, a.distance_m, a.duration_s,
+                    a.elevation_gain
              FROM activity_tracks t
              JOIN activities a USING (activity_id)
              ORDER BY a.start_time_local DESC"
@@ -1106,6 +1107,7 @@ impl Db {
                     local_date: r.get(13)?,
                     distance_m: r.get(14)?,
                     duration_s: r.get(15)?,
+                    elevation_gain_m: r.get(16)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1978,6 +1980,9 @@ pub struct ActivityTrack {
     pub local_date: Option<String>,
     pub distance_m: Option<f64>,
     pub duration_s: Option<f64>,
+    /// Metres climbed in the activity. Absent for an indoor session.
+    #[serde(default)]
+    pub elevation_gain_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

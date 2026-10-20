@@ -9,9 +9,11 @@
 
 pub mod activities;
 pub mod body;
+pub mod charts;
 mod derive;
 mod dispatch;
 mod error;
+pub mod extras;
 pub mod fitness;
 pub mod gear;
 pub mod health;
@@ -26,6 +28,7 @@ pub mod session;
 pub mod settings;
 pub mod sleep_view;
 mod text;
+pub mod tiles;
 pub mod today;
 pub mod training_fixtures;
 pub mod workouts;
