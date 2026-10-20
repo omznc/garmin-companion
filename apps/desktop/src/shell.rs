@@ -73,6 +73,8 @@ pub struct Root {
     pub(crate) focus: Focus,
     /// The month on show and the drag of the calendar.
     pub(crate) calendar: crate::calendar::Calendar,
+    /// The open menu of the status bar.
+    pub(crate) status_menu: crate::statusmenu::StatusMenu,
     /// The widths of the sidebar and the coach panel, and a drag of a handle.
     pub(crate) sidebar_w: f32,
     pub(crate) coach_w: f32,
@@ -155,6 +157,7 @@ impl Root {
             places,
             views: Views::default(),
             calendar: crate::calendar::Calendar::new(focus, window_state.calendar_closed),
+            status_menu: Default::default(),
             focus,
             sidebar_w: clamp_width(Side::Sidebar, window_state.sidebar_w),
             coach_w: clamp_width(Side::Coach, window_state.coach_w),

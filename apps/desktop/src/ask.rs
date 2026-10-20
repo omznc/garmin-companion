@@ -246,6 +246,24 @@ impl Ask {
         })
     }
 
+    pub fn provider(&self) -> Option<Provider> {
+        self.provider
+    }
+
+    /// The credits left, while the hosted coach is the provider.
+    pub fn credits_left(&self) -> Option<u64> {
+        self.credits
+            .as_ref()
+            .filter(|_| self.cloud_on)
+            .map(|v| v.credits_remaining)
+    }
+
+    /// A demo keeps the choice in memory only: set it here, with no read.
+    pub fn set_provider(&mut self, provider: Provider) {
+        self.provider = Some(provider);
+        self.cloud_on = provider == Provider::Cloud;
+    }
+
     /// Read the provider, and the balance if the hosted coach is the provider.
     pub fn refresh_credits(&mut self, cx: &mut Context<Self>) {
         let path = match &self.source {

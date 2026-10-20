@@ -63,6 +63,7 @@ mod shell;
 mod sidebar;
 mod spring;
 mod statusbar;
+mod statusmenu;
 mod tabs;
 mod theme;
 mod theme_dialog;
@@ -447,6 +448,14 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(debug_assertions)]
                     if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {
                         root.toggle_palette(&query, window, cx);
+                    }
+                    // `GC_OPEN_STATUS_MENU=sync|coach|palette|version` opens a status bar menu.
+                    #[cfg(debug_assertions)]
+                    if let Some(kind) = std::env::var("GC_OPEN_STATUS_MENU")
+                        .ok()
+                        .and_then(|v| statusmenu::MenuKind::from_name(&v))
+                    {
+                        root.toggle_status_menu(kind, window, cx);
                     }
                     // `GC_OPEN_THEMES=<query>` opens the theme dialog and runs the search.
                     #[cfg(debug_assertions)]
