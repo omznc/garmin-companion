@@ -196,6 +196,7 @@ fn attention(view: &TodayView) -> Vec<Attention> {
             link: o.link.as_ref().map(|l| Link {
                 label: l.label.clone(),
             }),
+            insight: o.insight.clone(),
         })
         .collect()
 }

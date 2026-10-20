@@ -10,6 +10,7 @@ use gpui::{div, prelude::*, Div};
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::Tone;
 use crate::icons::Icon;
+use crate::insight::{clickable_rows, open_insight};
 use crate::kit::{self, Cell, ListRow};
 use crate::screen::Screen;
 
@@ -52,7 +53,7 @@ pub fn crumb(_ctx: &Ctx) -> Option<String> {
 const NEW_DAYS: i64 = 7;
 
 /// How long ago a finding first showed, in words.
-fn age(first_seen: &str, today: NaiveDate) -> Option<String> {
+pub(crate) fn age(first_seen: &str, today: NaiveDate) -> Option<String> {
     let seen = NaiveDate::parse_from_str(first_seen, "%Y-%m-%d").ok()?;
     let days = (today - seen).num_days();
     Some(match days {
@@ -88,14 +89,15 @@ fn list(ctx: &Ctx) -> Option<Block> {
             } else {
                 Tone::Accent
             };
-            rows.push(ListRow {
+            let row = ListRow {
                 glyph: Icon::NavInsights,
                 tone,
                 title: item.claim.clone().into(),
                 sub: Some(sub.into()),
                 right: None,
                 right_sub: None,
-            });
+            };
+            rows.push((row, Some(open_insight(item.id.clone()))));
         }
     }
     if rows.is_empty() {
@@ -104,7 +106,7 @@ fn list(ctx: &Ctx) -> Option<Block> {
     Some(Block {
         meta: (fresh > 0).then(|| format!("{fresh} new").into()),
         link: None,
-        body: kit::list_rows(rows, ctx.t).into_any_element(),
+        body: clickable_rows(rows, ctx.t).into_any_element(),
     })
 }
 

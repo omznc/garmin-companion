@@ -44,6 +44,7 @@ mod field;
 mod focus;
 mod fuzzy;
 mod icons;
+mod insight;
 mod instance;
 mod kit;
 mod map;
@@ -411,6 +412,11 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(debug_assertions)]
                     if let Ok(value) = std::env::var("GC_EDIT_LAYOUT") {
                         root.start_edit(value.parse().ok(), window, cx);
+                    }
+                    // For screenshots: `GC_OPEN_INSIGHT=<id>` opens the detail of an item.
+                    #[cfg(debug_assertions)]
+                    if let Ok(id) = std::env::var("GC_OPEN_INSIGHT") {
+                        root.open_insight(id, cx);
                     }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
