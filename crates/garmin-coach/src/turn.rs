@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::prompt::{grounding_message, system_message, trim_history};
 use crate::sse::ToolCall;
-use crate::tools;
+use crate::tools::{self, Period};
 use crate::transport::{HttpTransport, Transport};
 
 /// Cap on tool rounds in one turn. Every tool reads a bounded slice, so a model
@@ -100,7 +100,21 @@ pub async fn run_turn<T: Transport>(
     open_db: &(dyn Fn() -> Result<Db> + Sync),
     drafts: bool,
 ) -> Result<Vec<String>> {
-    match rounds(transport, sink, stop, history, open_db, drafts).await {
+    run_turn_in(transport, sink, stop, history, open_db, drafts, None).await
+}
+
+/// [`run_turn`] with a `period`. When set, "today" for every tool is the end
+/// of the period, and a tool call without `days` reads the whole period.
+pub async fn run_turn_in<T: Transport>(
+    transport: &T,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+    history: Vec<HistoryMessage>,
+    open_db: &(dyn Fn() -> Result<Db> + Sync),
+    drafts: bool,
+    period: Option<Period>,
+) -> Result<Vec<String>> {
+    match rounds(transport, sink, stop, history, open_db, drafts, period).await {
         Ok(sources) => {
             sink.emit(Event::Done {
                 sources: sources.clone(),
@@ -129,10 +143,11 @@ async fn rounds<T: Transport>(
     history: Vec<HistoryMessage>,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
     drafts: bool,
+    period: Option<Period>,
 ) -> Result<Vec<String>> {
     let mut messages = vec![
         system_message(transport.caches_prompt(), drafts),
-        grounding_message(&open_db()?)?,
+        grounding_message(&open_db()?, period)?,
     ];
     messages.extend(
         trim_history(history)
@@ -188,7 +203,7 @@ async fn rounds<T: Transport>(
             let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
             let label = tools::describe(&call.name, &args);
             sink.emit(tool_event(&call.id, &label, true, true));
-            let result = run_call(&call.name, &args, drafts, open_db);
+            let result = run_call(&call.name, &args, drafts, open_db, period);
             let ok = result.get("error").is_none();
             sink.emit(tool_event(&call.id, &label, false, ok));
             report_call(sink, &mut sources, call, &args, label, ok);
@@ -226,11 +241,12 @@ fn run_call(
     args: &Value,
     drafts: bool,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
+    period: Option<Period>,
 ) -> Value {
     if name == tools::DRAFT_TOOL && !drafts {
         return json!({ "error": format!("unknown tool {name}") });
     }
-    tools::run(name, args, open_db)
+    tools::run(name, args, open_db, period)
 }
 
 /// Tell the host what a finished call produced. A read adds its label to the

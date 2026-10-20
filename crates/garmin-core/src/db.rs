@@ -640,23 +640,24 @@ impl Db {
         let sql = format!(
             "SELECT {ACTIVITY_COLS}
              FROM activities
-             WHERE {NOT_NOISE} {}
+             WHERE {NOT_NOISE} AND local_date <= ?2 {}
              ORDER BY start_time_local DESC
              LIMIT ?1",
             if type_key.is_some() {
-                "AND type_key LIKE '%' || ?2 || '%'"
+                "AND type_key LIKE '%' || ?3 || '%'"
             } else {
                 ""
             }
         );
 
         let mut stmt = self.conn.prepare(&sql)?;
+        let until = crate::until();
         let rows = match type_key {
             Some(t) => stmt
-                .query_map(params![limit, t], map_activity)?
+                .query_map(params![limit, until, t], map_activity)?
                 .collect::<rusqlite::Result<Vec<_>>>()?,
             None => stmt
-                .query_map(params![limit], map_activity)?
+                .query_map(params![limit, until], map_activity)?
                 .collect::<rusqlite::Result<Vec<_>>>()?,
         };
         Ok(rows)
@@ -668,11 +669,11 @@ impl Db {
     pub fn activities_since(&self, from: &str) -> Result<Vec<CachedActivity>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
-             WHERE local_date >= ?1 AND {NOT_NOISE}
+             WHERE local_date >= ?1 AND local_date <= ?2 AND {NOT_NOISE}
              ORDER BY start_time_local DESC"
         ))?;
         let rows = stmt
-            .query_map(params![from], map_activity)?
+            .query_map(params![from, crate::until()], map_activity)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -785,10 +786,10 @@ impl Db {
                     consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
                     net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml,
                     hrv_low_upper, hrv_balanced_low, hrv_balanced_upper
-             FROM daily_metrics WHERE date >= ?1 ORDER BY date DESC",
+             FROM daily_metrics WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(DailyMetrics {
                     date: r.get(0)?,
                     resting_hr: r.get(1)?,
@@ -887,10 +888,10 @@ impl Db {
                     awake_count, restless_count, avg_overnight_hrv, resting_hr, avg_hr,
                     avg_stress, body_battery_change, avg_respiration, low_respiration,
                     high_respiration, avg_spo2, lowest_spo2, score_parts, stages, hr
-             FROM sleep_nights WHERE date >= ?1 ORDER BY date DESC",
+             FROM sleep_nights WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(crate::sleep::SleepNight {
                     date: r.get(0)?,
                     score: r.get(1)?,
@@ -1189,11 +1190,11 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
                     body_water, bone_mass, muscle_mass, source_type
-             FROM weigh_ins WHERE calendar_date >= ?1
+             FROM weigh_ins WHERE calendar_date >= ?1 AND calendar_date <= ?2
              ORDER BY calendar_date ASC, sample_pk ASC",
         )?;
         let rows = stmt
-            .query_map(params![from], map_weigh_in)?
+            .query_map(params![from, crate::until()], map_weigh_in)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -1209,8 +1210,9 @@ impl Db {
             .query_row(
                 "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
                         body_water, bone_mass, muscle_mass, source_type
-                 FROM weigh_ins ORDER BY calendar_date DESC, sample_pk DESC LIMIT 1",
-                [],
+                 FROM weigh_ins WHERE calendar_date <= ?1
+                 ORDER BY calendar_date DESC, sample_pk DESC LIMIT 1",
+                params![crate::until()],
                 map_weigh_in,
             )
             .optional()?)
@@ -1285,9 +1287,13 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT activity_id FROM activity_tags WHERE tag = ?1)
+               AND local_date <= ?3
              ORDER BY start_time_local DESC LIMIT ?2"
         ))?;
-        let rows = stmt.query_map(params![tag.trim().to_lowercase(), limit], map_activity)?;
+        let rows = stmt.query_map(
+            params![tag.trim().to_lowercase(), limit, crate::until()],
+            map_activity,
+        )?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
@@ -1403,10 +1409,11 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT DISTINCT activity_id FROM exercise_sets)
+               AND local_date <= ?2
              ORDER BY start_time_local DESC LIMIT ?1"
         ))?;
         let rows = stmt
-            .query_map(params![limit], map_activity)?
+            .query_map(params![limit, crate::until()], map_activity)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -1552,10 +1559,10 @@ impl Db {
                     aerobic_high, aerobic_high_min, aerobic_high_max,
                     anaerobic, anaerobic_min, anaerobic_max, balance_phrase,
                     vo2max, race_5k_s, race_10k_s, race_half_s, race_marathon_s
-             FROM fitness_days WHERE date >= ?1 ORDER BY date DESC",
+             FROM fitness_days WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(FitnessDay {
                     date: r.get(0)?,
                     status: crate::TrainingStatus {
