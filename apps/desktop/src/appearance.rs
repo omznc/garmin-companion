@@ -36,7 +36,12 @@ pub fn ring(colour: Hsla) -> Vec<BoxShadow> {
 
 fn mode_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
     let choices = [
-        ("theme-system", "Match system", Icon::Desktop, ThemeMode::System),
+        (
+            "theme-system",
+            "Match system",
+            Icon::Desktop,
+            ThemeMode::System,
+        ),
         ("theme-light", "Light", Icon::Light, ThemeMode::Light),
         ("theme-dark", "Dark", Icon::Dark, ThemeMode::Dark),
     ];
@@ -230,10 +235,15 @@ fn palette_row(root: &Root, dark: bool, t: &Theme, cx: &mut Context<Root>) -> Di
 fn store_row(t: &Theme, cx: &mut Context<Root>) -> Div {
     let help = "Search open-vsx.org and see a theme before you install it. \
                 It appears in the picker of its mode.";
-    let open = panel::button("browse-themes", "Browse themes…", Kind::Plain, true, Some(Icon::Search), t)
-        .on_click(cx.listener(|root, _: &ClickEvent, window, cx| {
-            root.open_themes("", window, cx)
-        }));
+    let open = panel::button(
+        "browse-themes",
+        "Browse themes…",
+        Kind::Plain,
+        true,
+        Some(Icon::Search),
+        t,
+    )
+    .on_click(cx.listener(|root, _: &ClickEvent, window, cx| root.open_themes("", window, cx)));
     panel::row(
         false,
         "VS Code themes",

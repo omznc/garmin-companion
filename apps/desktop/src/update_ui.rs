@@ -247,7 +247,6 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     )
 }
 
-
 /// The status note of the Updates row: a result, an error, or the offer.
 fn status(state: &UpdateState, t: &Theme) -> Option<Div> {
     let (text, tone) = match (&state.note, &state.offer) {
@@ -282,8 +281,15 @@ pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
             "Install and restart"
         };
         buttons = buttons.child(
-            panel::button("update-install-row", label, panel::Kind::Primary, !state.busy(), None, t)
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx))),
+            panel::button(
+                "update-install-row",
+                label,
+                panel::Kind::Primary,
+                !state.busy(),
+                None,
+                t,
+            )
+            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx))),
         );
     }
     let mut value = panel::stack().child(buttons);

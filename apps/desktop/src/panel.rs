@@ -8,8 +8,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use gpui::{
-    div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString,
-    Stateful, TextTransform,
+    div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
+    TextTransform,
 };
 
 use crate::icons::{icon, Icon};
@@ -39,7 +39,10 @@ pub fn padded(d: Div) -> Div {
 
 /// A flex item as the stylesheet writes `flex: grow shrink basis`.
 fn flex(d: Div, grow: f32, basis: f32) -> Div {
-    d.flex_grow(grow).flex_shrink(1.0).flex_basis(px(basis)).min_w_0()
+    d.flex_grow(grow)
+        .flex_shrink(1.0)
+        .flex_basis(px(basis))
+        .min_w_0()
 }
 
 /// `.sec`: a title, an optional lead line, then what the caller adds.
@@ -115,7 +118,13 @@ pub fn row_with(first: bool, label: &str, below: Option<Div>, value: Div, t: &Th
 }
 
 pub fn row(first: bool, label: &str, help_text: Option<&str>, value: Div, t: &Theme) -> Div {
-    row_with(first, label, help_text.map(|h| help(h.to_string(), t)), value, t)
+    row_with(
+        first,
+        label,
+        help_text.map(|h| help(h.to_string(), t)),
+        value,
+        t,
+    )
 }
 
 /// `.row-danger`: the same row on a warning wash, with a warning title.
@@ -145,7 +154,12 @@ pub fn actions() -> Div {
 
 /// `.field`: an input and its button, in a wrapping line.
 pub fn field_line() -> Div {
-    div().flex().flex_wrap().items_center().gap(px(10.0)).w_full()
+    div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(10.0))
+        .w_full()
 }
 
 /// `.input`: the box that holds a `Field` in a `field_line`.
@@ -219,7 +233,11 @@ pub fn button(
             .border_color(t.line)
             .text_color(t.mutd);
     } else {
-        b = hover_of(b.bg(bg).border_color(line).text_color(fg).cursor_pointer(), kind, t);
+        b = hover_of(
+            b.bg(bg).border_color(line).text_color(fg).cursor_pointer(),
+            kind,
+            t,
+        );
     }
     let colour = if enabled { fg } else { t.mutd };
     if let Some(which) = lead {
@@ -305,19 +323,18 @@ pub enum Tone {
 }
 
 /// The mark at the start of a note: an icon, or the accent dot while it runs.
-fn note_mark(tone: Tone, t: &Theme) -> Option<Div> {
+fn note_mark(tone: Tone, t: &Theme) -> Div {
     let (which, colour) = match tone {
-        Tone::Run => return Some(div().mt(px(5.0)).child(dot(true, t))),
+        Tone::Run => return div().mt(px(5.0)).child(dot(true, t)),
         Tone::Ok => (Icon::Check, t.acc),
         Tone::Err => (Icon::Warning, t.warn),
         Tone::Info => (Icon::Info, t.mutd),
     };
-    Some(div().mt(px(1.0)).child(icon(which, 16.0, t, colour)))
+    div().mt(px(1.0)).child(icon(which, 16.0, t, colour))
 }
 
 /// `.note`: a line of status text with a mark. An error has its own box.
 pub fn note(tone: Tone, text: impl Into<SharedString>, t: &Theme) -> Div {
-    let mark = note_mark(tone, t);
     let colour = match tone {
         Tone::Ok => t.fg,
         Tone::Err => t.warn,
@@ -341,10 +358,7 @@ pub fn note(tone: Tone, text: impl Into<SharedString>, t: &Theme) -> Div {
             .border_color(t.line),
         _ => d,
     };
-    if let Some(mark) = mark {
-        d = d.child(mark.flex_none());
-    }
-    d.child(
+    d.child(note_mark(tone, t).flex_none()).child(
         body(text, 13.5, colour)
             .line_height(relative(1.45))
             .flex_1()

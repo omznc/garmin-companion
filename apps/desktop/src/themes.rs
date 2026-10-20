@@ -472,7 +472,10 @@ mod tests {
         let dark = [custom("a", true), custom("b", true)];
         assert_eq!((mode_tag(&dark), goes_to(&dark)), ("Dark", "dark palette"));
         let light = [custom("a", false)];
-        assert_eq!((mode_tag(&light), goes_to(&light)), ("Light", "light palette"));
+        assert_eq!(
+            (mode_tag(&light), goes_to(&light)),
+            ("Light", "light palette")
+        );
         let both = [custom("a", true), custom("b", false)];
         assert_eq!(mode_tag(&both), "Light + Dark");
         assert_eq!(goes_to(&both), "light and dark palettes");

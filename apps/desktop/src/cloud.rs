@@ -16,9 +16,9 @@ use garmin_coach::{AccountView, Balance, CloudClient, Provider};
 use garmin_core::{db::Db, store};
 use gpui::{div, prelude::*, px, App, ClickEvent, Context, Div, FontWeight, Window};
 
-use crate::panel::{self, Kind, Tone};
 use crate::data::Source;
 use crate::field::Field;
+use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE};
 use crate::ui::body;
@@ -517,8 +517,7 @@ fn account_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>
     if !cloud.live {
         return block.child(panel::note(Tone::Info, DEMO_NOTE, t));
     }
-    let signed_in = cloud.view.as_ref().and_then(|v| v.email.clone());
-    match signed_in {
+    match cloud.view.as_ref().and_then(|v| v.email.clone()) {
         Some(email) => block.child(signed_in_part(root, &email, t, cx)),
         None => block.child(sign_in(root, t, window, cx)),
     }
@@ -529,15 +528,35 @@ fn signed_in_part(root: &Root, email: &str, t: &Theme, cx: &mut Context<Root>) -
     let cloud = &root.account.cloud;
     let premium = cloud.view.as_ref().is_some_and(|v| v.premium);
     let main = if premium {
-        panel::button("cloud-portal", "Manage billing", Kind::Plain, !cloud.busy, None, t)
-            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_portal(cx)))
-    } else {
-        panel::button("cloud-premium", "Get premium", Kind::Primary, !cloud.busy, None, t).on_click(
-            cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_checkout(false, cx)),
+        panel::button(
+            "cloud-portal",
+            "Manage billing",
+            Kind::Plain,
+            !cloud.busy,
+            None,
+            t,
         )
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_portal(cx)))
+    } else {
+        panel::button(
+            "cloud-premium",
+            "Get premium",
+            Kind::Primary,
+            !cloud.busy,
+            None,
+            t,
+        )
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_checkout(false, cx)))
     };
-    let out = panel::button("cloud-sign-out", "Sign out", Kind::Danger, !cloud.busy, None, t)
-        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_sign_out(cx)));
+    let out = panel::button(
+        "cloud-sign-out",
+        "Sign out",
+        Kind::Danger,
+        !cloud.busy,
+        None,
+        t,
+    )
+    .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_sign_out(cx)));
     div()
         .flex()
         .flex_col()
@@ -567,7 +586,12 @@ fn sign_in(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> D
             panel::button("cloud-send", "Send code", Kind::Plain, !cloud.busy, None, t)
                 .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_send_code(cx))),
         );
-    let mut col = div().flex().flex_col().gap(px(10.0)).child(head).child(email);
+    let mut col = div()
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .child(head)
+        .child(email);
     if let Some(sent) = &cloud.pending_email {
         let code = panel::field_line()
             .child(panel::input_box(cloud.code.render(
@@ -579,11 +603,21 @@ fn sign_in(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> D
                 |root, _, cx| root.cloud_verify(cx),
             )))
             .child(
-                panel::button("cloud-verify", "Verify", Kind::Primary, !cloud.busy, None, t)
-                    .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_verify(cx))),
+                panel::button(
+                    "cloud-verify",
+                    "Verify",
+                    Kind::Primary,
+                    !cloud.busy,
+                    None,
+                    t,
+                )
+                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_verify(cx))),
             );
         col = col
-            .child(panel::help(format!("Enter the code that went to {sent}."), t))
+            .child(panel::help(
+                format!("Enter the code that went to {sent}."),
+                t,
+            ))
             .child(code);
     }
     col
@@ -614,8 +648,15 @@ fn key_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) ->
             |root, _, cx| root.cloud_save_key(cx),
         )))
         .child(
-            panel::button("cloud-save-key", "Save key", Kind::Plain, cloud.live, None, t)
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_save_key(cx))),
+            panel::button(
+                "cloud-save-key",
+                "Save key",
+                Kind::Plain,
+                cloud.live,
+                None,
+                t,
+            )
+            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_save_key(cx))),
         );
     div()
         .flex()
@@ -636,7 +677,10 @@ fn ollama_block(t: &Theme) -> Div {
         .flex_col()
         .gap(px(10.0))
         .child(body("Ollama", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
-        .child(panel::help("A model on this computer. No data leaves it.", t))
+        .child(panel::help(
+            "A model on this computer. No data leaves it.",
+            t,
+        ))
 }
 
 /// The area under the cards: the part of the chosen provider, then the last note.

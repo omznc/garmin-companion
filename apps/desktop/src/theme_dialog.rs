@@ -105,11 +105,12 @@ fn search_row(root: &Root, fit: &Fit, t: &Theme, window: &Window, cx: &mut Conte
         |root| &mut root.account.themes.search,
         |root, _, cx| root.search_themes(cx),
     );
-    let mark = div()
-        .absolute()
-        .left(px(12.0))
-        .top(px(12.0))
-        .child(icon(Icon::Search, 15.0, t, t.mutd));
+    let mark =
+        div()
+            .absolute()
+            .left(px(12.0))
+            .top(px(12.0))
+            .child(icon(Icon::Search, 15.0, t, t.mutd));
     let busy = matches!(themes.store.phase, Phase::Searching(_));
     let mut go = panel::button("theme-search-go", "Search", Kind::Plain, !busy, None, t);
     if !busy {
@@ -142,12 +143,7 @@ fn strip(colours: Option<&Theme>, t: &Theme) -> Div {
         .child(span(acc))
 }
 
-fn result_row(
-    index: usize,
-    store: &Store,
-    t: &Theme,
-    cx: &mut Context<Root>,
-) -> Stateful<Div> {
+fn result_row(index: usize, store: &Store, t: &Theme, cx: &mut Context<Root>) -> Stateful<Div> {
     let found = &store.found[index];
     let on = index == store.selected;
     let sel = t.sel;
@@ -229,9 +225,9 @@ fn results(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Statefu
             format!("Searching open-vsx.org for \u{201c}{text}\u{201d}."),
             t,
         ))),
-        Phase::Empty => col.child(
-            panel::note(Tone::Info, "No theme matches that search.", t).my(px(8.0)),
-        ),
+        Phase::Empty => {
+            col.child(panel::note(Tone::Info, "No theme matches that search.", t).my(px(8.0)))
+        }
         Phase::Failed(e) => col.child(panel::note(Tone::Err, e.clone(), t).my(px(8.0))),
         Phase::List => {
             col = col.child(
@@ -250,9 +246,8 @@ fn results(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Statefu
 
 /// The page that a theme would paint: the nav and a short Today.
 fn preview(p: &Theme) -> Div {
-    let label = |text: &str, colour: Hsla| {
-        body(text.to_string(), 12.5, colour).px(px(6.0)).py(px(5.0))
-    };
+    let label =
+        |text: &str, colour: Hsla| body(text.to_string(), 12.5, colour).px(px(6.0)).py(px(5.0));
     let current = div()
         .flex()
         .items_center()
@@ -280,10 +275,7 @@ fn preview(p: &Theme) -> Div {
                 .child("Companion"),
         )
         .child(current)
-        .children(
-            ["Health", "Sleep", "Training"]
-                .map(|name| label(name, p.mutd).pl(px(18.0))),
-        );
+        .children(["Health", "Sleep", "Training"].map(|name| label(name, p.mutd).pl(px(18.0))));
     let buttons = div()
         .mt_auto()
         .flex()
@@ -371,19 +363,33 @@ fn install_control(store: &Store, key: &str, t: &Theme, cx: &mut Context<Root>) 
         return panel::chip("Installed", true, t).into_any_element();
     }
     if store.installing.as_deref() == Some(key) {
-        return panel::button("theme-install", "Installing", Kind::Primary, false, Some(Icon::Spinner), t)
-            .into_any_element();
+        return panel::button(
+            "theme-install",
+            "Installing",
+            Kind::Primary,
+            false,
+            Some(Icon::Spinner),
+            t,
+        )
+        .into_any_element();
     }
     let free = store.installing.is_none();
     let mut install = panel::button("theme-install", "Install", Kind::Primary, free, None, t);
     if free {
-        install = install.on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_selected(cx)));
+        install =
+            install.on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_selected(cx)));
     }
     install.into_any_element()
 }
 
 /// The name, the facts and the install control under the preview.
-fn facts(store: &Store, i: usize, themes: &[folder::Theme], t: &Theme, cx: &mut Context<Root>) -> Div {
+fn facts(
+    store: &Store,
+    i: usize,
+    themes: &[folder::Theme],
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> Div {
     let found = &store.found[i];
     let mut meta = format!("{} · {}", found.namespace, downloads(found.downloads));
     if themes.len() > 1 {
@@ -417,10 +423,18 @@ fn notes(store: &Store, i: usize, themes: &[folder::Theme], t: &Theme) -> Vec<Di
     let key = key_of(found);
     let mut out = Vec::new();
     if store.installing.as_deref() == Some(key.as_str()) {
-        out.push(panel::note(Tone::Run, format!("Installing {}.", found.display), t));
+        out.push(panel::note(
+            Tone::Run,
+            format!("Installing {}.", found.display),
+            t,
+        ));
     }
     if let Some(names) = store.installed.get(&key) {
-        let text = format!("Installed {}. Pick it in the {}.", names.join(", "), goes_to(themes));
+        let text = format!(
+            "Installed {}. Pick it in the {}.",
+            names.join(", "),
+            goes_to(themes)
+        );
         out.push(panel::note(Tone::Ok, text, t));
     }
     if let Some(e) = &store.failure {
@@ -460,7 +474,10 @@ fn detail(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful
             let shown = themes.first().and_then(derived);
             let picture = match shown {
                 Some(p) => preview(&p),
-                None => placeholder(panel::note(Tone::Err, "The colours of this theme cannot be read.", t), t),
+                None => placeholder(
+                    panel::note(Tone::Err, "The colours of this theme cannot be read.", t),
+                    t,
+                ),
             };
             col.child(picture)
                 .child(facts(store, i, themes, t, cx))
@@ -468,7 +485,11 @@ fn detail(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful
         }
         Some(Fetch::Failed(e)) => col.child(placeholder(panel::note(Tone::Err, e.clone(), t), t)),
         _ => col.child(placeholder(
-            panel::note(Tone::Run, format!("Getting the colours of {}.", found.display), t),
+            panel::note(
+                Tone::Run,
+                format!("Getting the colours of {}.", found.display),
+                t,
+            ),
             t,
         )),
     }

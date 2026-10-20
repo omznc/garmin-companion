@@ -9,7 +9,7 @@ use gpui::{div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, 
 use crate::account::Sync;
 use crate::icons::Icon;
 use crate::panel::{self, Kind, Tone};
-use crate::shell::{Root, SHELL_MAX};
+use crate::shell::{Root, COLUMN_SIDE, SHELL_MAX};
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Theme, FS_MD};
 use crate::ui::{block_in, body, eyebrow_lg, MONO, SERIF};
@@ -24,7 +24,7 @@ const NARROW_AT: f32 = 748.0;
 
 /// The width of the content for a window `viewport` pixels wide.
 fn content_width(viewport: f32) -> f32 {
-    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * crate::shell::COLUMN_SIDE).min(CONTENT_MAX)
+    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * COLUMN_SIDE).min(CONTENT_MAX)
 }
 
 fn sync_note(root: &Root, t: &Theme) -> Option<Div> {
@@ -68,7 +68,13 @@ fn folder_row(folder: &str, t: &Theme) -> Div {
         .text_ellipsis()
         .child(folder.to_string());
     let value = panel::stack().items_stretch().child(path);
-    panel::row(false, "Data folder", Some("The database and the cache."), value, t)
+    panel::row(
+        false,
+        "Data folder",
+        Some("The database and the cache."),
+        value,
+        t,
+    )
 }
 
 fn sync_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
@@ -173,11 +179,7 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         .gap(px(14.0))
         .child(block_in(k, 0, eyebrow_lg("This machine", t)))
         .child(block_in(k, 0, title))
-        .child(block_in(
-            k,
-            1,
-            body(lead, FS_MD, t.mutd).max_w(px(544.0)),
-        ));
+        .child(block_in(k, 1, body(lead, FS_MD, t.mutd).max_w(px(544.0))));
     div()
         .flex()
         .flex_col()

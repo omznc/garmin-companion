@@ -336,8 +336,12 @@ mod tests {
     #[test]
     fn the_tints_and_lines_follow_the_design_alphas() {
         let (paper, ink) = (Palette::Paper.theme(), Palette::Ink.theme());
-        assert!((paper.acctint.alpha - 0.12).abs() < 1e-6 && (ink.acctint.alpha - 0.22).abs() < 1e-6);
-        assert!((paper.warntint.alpha - 0.07).abs() < 1e-6 && (ink.warntint.alpha - 0.12).abs() < 1e-6);
+        assert!(
+            (paper.acctint.alpha - 0.12).abs() < 1e-6 && (ink.acctint.alpha - 0.22).abs() < 1e-6
+        );
+        assert!(
+            (paper.warntint.alpha - 0.07).abs() < 1e-6 && (ink.warntint.alpha - 0.12).abs() < 1e-6
+        );
         assert!((ink.accline.alpha - 0.4).abs() < 1e-6 && (ink.warnline.alpha - 0.4).abs() < 1e-6);
         assert!((ink.scrim.alpha - 0.32).abs() < 1e-6 && (ink.dshadow.alpha - 0.18).abs() < 1e-6);
     }
