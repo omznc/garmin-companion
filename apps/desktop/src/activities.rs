@@ -63,6 +63,7 @@ impl Store {
     }
 
     /// The day the store reads for.
+    #[allow(dead_code)] // The block workers read it through `Ctx::store`.
     pub fn today(&self) -> NaiveDate {
         self.today
     }

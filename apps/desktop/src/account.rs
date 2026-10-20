@@ -300,8 +300,10 @@ impl Root {
 
     /// Read the Today view and the settings again, after a sync. The reads run
     /// on the background executor. The screens keep the old data until then.
-    fn reload(&mut self, cx: &mut Context<Self>) {
-        let source = self.source.clone();
+    pub(crate) fn reload(&mut self, cx: &mut Context<Self>) {
+        let source = self.focused_source();
+        self.places.set_day(self.focus.end);
+        let (cache, day) = self.places.cache();
         let store = self.store.clone();
         let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
         let live = !self.account.demo;
@@ -316,6 +318,7 @@ impl Root {
                 training: training::load(&source, offset),
                 activities: store.count(),
                 list: store.list(),
+                views: crate::views::Views::load(&cache, day),
                 synced_ago: live.then(settings::synced_ago),
             },
             |root, read, cx| {
@@ -344,6 +347,7 @@ impl Root {
             Ok(training) => self.training = Some(training),
             Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
+        self.views = read.views;
         self.list = read.list;
         self.set_activity_count(read.activities);
         if let Some(synced_ago) = read.synced_ago {
@@ -381,6 +385,7 @@ struct Reloaded {
     training: anyhow::Result<training::Training>,
     list: anyhow::Result<garmin_api::ActivitiesView>,
     activities: Option<i64>,
+    views: crate::views::Views,
     synced_ago: Option<Option<String>>,
 }
 

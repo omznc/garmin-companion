@@ -14,6 +14,7 @@ use crate::ask::{Ask, AskEvent, Source as AskSource, PANEL_W};
 use crate::body::{self, BodyData};
 use crate::chrome;
 use crate::data::{Source, Today};
+use crate::focus::Focus;
 use crate::motion;
 use crate::places::{self, Places};
 use crate::screen::{Group, Screen};
@@ -22,6 +23,7 @@ use crate::sidebar::{self, Sidebar, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
+use crate::views::Views;
 use crate::wellness::{self, Wellness};
 use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
@@ -68,6 +70,10 @@ pub struct Root {
     pub(crate) places: Places,
     /// Insights, Fitness and Reports. `None` leaves the entries as placeholders.
     pub(crate) training: Option<Training>,
+    /// The charts, tiles and extras views. Empty until `start` has read them.
+    pub(crate) views: Views,
+    /// The day or the range that every page looks at.
+    pub(crate) focus: Focus,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// The screen on show.
@@ -114,6 +120,13 @@ impl Root {
     ) -> Self {
         let list = store.list();
         let places = Places::load(&source);
+        // A copy of the cache can have its own day. Then the focus starts there.
+        let focus = match &source {
+            Source::Db {
+                date: Some(day), ..
+            } => Focus::day(*day),
+            _ => Focus::today(),
+        };
         // A demo shows the shipped order and leaves the saved one alone.
         let saved_order = if account.demo {
             Vec::new()
@@ -131,6 +144,8 @@ impl Root {
             training: None,
             body,
             places,
+            views: Views::default(),
+            focus,
             palette,
             active: sidebar.active,
             sidebar,
@@ -372,10 +387,11 @@ impl Root {
     }
 
     /// The page under the screen name in the breadcrumb bar.
-    pub(crate) fn crumb(&self) -> String {
+    pub(crate) fn crumb(&self, t: &Theme) -> String {
         match (&self.page, self.active) {
             (Page::Detail(view), Screen::Activities) => view.name.clone(),
-            _ => self.active.crumb(self.store.today()),
+            _ => blocks::crumb(self.active, &self.ctx(t))
+                .unwrap_or_else(|| self.active.crumb(self.focus.end)),
         }
     }
 
@@ -383,6 +399,34 @@ impl Root {
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
         self.enter(self.active, cx);
+        let (path, day) = self.places.cache();
+        crate::account::load_async(
+            self,
+            "views",
+            cx,
+            move || Views::load(&path, day),
+            |root, views, cx| {
+                root.views = views;
+                cx.notify();
+            },
+        );
+    }
+
+    /// The source to read for the day at the end of the focus.
+    pub(crate) fn focused_source(&self) -> Source {
+        self.source.on_day(self.focus.end)
+    }
+
+    /// Look at another day or range. Every view that takes a day reads again
+    /// with `focus.end`. The pages keep the old data until the new data comes.
+    #[allow(dead_code)] // The calendar calls it.
+    pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
+        if focus == self.focus {
+            return;
+        }
+        self.focus = focus;
+        self.reload(cx);
+        cx.notify();
     }
 
     fn enter(&mut self, screen: Screen, cx: &mut Context<Self>) {
@@ -446,8 +490,12 @@ impl Root {
                 .child("Pick a screen in the sidebar.")
                 .into_any_element();
         }
-        if self.active == Screen::Today {
-            return self.today_screen(t, window, cx);
+        // The detail page of a session stays on its old code path.
+        let on_detail = self.active == Screen::Activities && !matches!(self.page, Page::List);
+        if !on_detail {
+            if let Some(page) = self.block_page(t, window, cx) {
+                return page;
+            }
         }
         if self.active == Screen::Activities {
             return self.activities_screen(t, cx);
@@ -501,42 +549,47 @@ impl Root {
         (width - sidebar - coach - 40.0).min(PAGE_MAX)
     }
 
-    /// The Today screen: a heading, a lede, and the grid of blocks.
-    fn today_screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let heading = div()
-            .mb(px(16.0))
-            .child(
-                div()
-                    .text_size(px(20.0))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .child(self.today.title.clone()),
-            )
-            .child(
+    /// The page of a screen that is built from blocks: a heading, a lede and
+    /// the grid. `None` when the screen file has no layout yet.
+    fn block_page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let def = blocks::screen_def(self.active)?;
+        if def.layout.is_empty() {
+            return None;
+        }
+        let ctx = self.ctx(t);
+        let title = (def.title)(&ctx).unwrap_or_else(|| self.active.label().to_string());
+        let mut heading = div().mb(px(16.0)).child(
+            div()
+                .text_size(px(20.0))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .child(title),
+        );
+        if let Some(lede) = (def.lede)(&ctx) {
+            heading = heading.child(
                 div()
                     .mt(px(4.0))
                     .max_w(px(640.0))
                     .text_size(px(13.5))
                     .text_color(t.mutd)
-                    .child(self.today.lede.clone()),
+                    .child(lede),
             );
-        if self.today.empty {
-            return div()
-                .child(heading)
-                .child("Nothing cached yet.")
-                .into_any_element();
         }
-        let ctx = blocks::Ctx {
-            t,
-            today: &self.today,
-            wellness: self.wellness.as_ref(),
-        };
+        if self.active == Screen::Today && self.today.empty {
+            return Some(
+                div()
+                    .child(heading)
+                    .child("Nothing cached yet.")
+                    .into_any_element(),
+            );
+        }
         let available = self.grid_width(window);
         let narrow = available < NARROW_GRID;
-        let layout = blocks::default_layout(Screen::Today);
-        div()
-            .child(heading)
-            .child(blocks::grid(&layout, &ctx, available, narrow, cx))
-            .into_any_element()
+        Some(
+            div()
+                .child(heading)
+                .child(blocks::grid(def.layout, &ctx, available, narrow, cx))
+                .into_any_element(),
+        )
     }
 
     fn activities_screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {

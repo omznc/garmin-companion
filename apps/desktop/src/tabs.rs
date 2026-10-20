@@ -160,7 +160,7 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme) -> Div {
                         .overflow_hidden()
                         .text_ellipsis()
                         .text_color(t.fg)
-                        .child(SharedString::from(root.crumb())),
+                        .child(SharedString::from(root.crumb(t))),
                 ),
         )
         .children(synced)

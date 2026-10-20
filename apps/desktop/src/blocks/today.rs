@@ -11,7 +11,7 @@ use crate::screen::Screen;
 use crate::theme::Theme;
 use crate::ui::{MONO, SANS};
 
-pub static BLOCKS: [BlockDef; 7] = [
+pub const BLOCKS: &[BlockDef] = &[
     BlockDef {
         id: "health",
         title: "Health this morning",
@@ -62,6 +62,31 @@ pub static BLOCKS: [BlockDef; 7] = [
         render: fuel,
     },
 ];
+
+/// The default order and width of the blocks.
+pub const LAYOUT: &[(&str, Width)] = &[
+    ("health", Width::Full),
+    ("last", Width::TwoThirds),
+    ("attention", Width::Third),
+    ("week", Width::TwoThirds),
+    ("drift", Width::Third),
+    ("night", Width::TwoThirds),
+    ("fuel", Width::Third),
+];
+
+/// The verdict of the headline, or the weekday.
+pub fn title(ctx: &Ctx) -> Option<String> {
+    Some(ctx.today.title.clone())
+}
+
+pub fn lede(ctx: &Ctx) -> Option<String> {
+    Some(ctx.today.lede.clone())
+}
+
+/// Today keeps the date text of the screen.
+pub fn crumb(_ctx: &Ctx) -> Option<String> {
+    None
+}
 
 fn block(
     meta: Option<String>,
@@ -537,10 +562,24 @@ mod tests {
     fn shown(name: &str) -> Vec<&'static str> {
         let theme = crate::theme::Palette::Paper.theme();
         let today = persona(name);
+        let source = crate::data::Source::Persona(name.into());
+        let body = crate::body::load_body(&source).unwrap();
+        let places = crate::places::Places::load(&source);
+        let store = crate::activities::Store::for_source(&source).unwrap();
+        let list = store.list();
         let ctx = Ctx {
             t: &theme,
             today: &today,
             wellness: None,
+            focus: crate::focus::Focus::today(),
+            charts_view: None,
+            tiles_view: None,
+            extras_view: None,
+            body: &body,
+            training: None,
+            places: &places,
+            store: &store,
+            activities: &list,
         };
         BLOCKS
             .iter()

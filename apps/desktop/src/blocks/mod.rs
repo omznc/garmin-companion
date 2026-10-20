@@ -6,15 +6,37 @@
 //! data returns `None` and does not show. A screen is a list of block ids with
 //! a width for each. The grid has 12 columns with a gap of 14 px.
 
+mod activities;
+mod fitness;
+mod food;
+mod gear;
+mod health;
+mod insights;
+mod plan;
+mod reports;
+mod routes;
+mod sleep;
+mod strength;
 mod today;
+mod weight;
 
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, SharedString};
 
+use garmin_api::charts::ChartsView;
+use garmin_api::extras::ExtrasView;
+use garmin_api::tiles::TilesView;
+use garmin_api::ActivitiesView;
+
+use crate::activities::Store;
+use crate::body::BodyData;
 use crate::data::Today;
+use crate::focus::Focus;
 use crate::kit;
+use crate::places::Places;
 use crate::screen::Screen;
 use crate::shell::Root;
 use crate::theme::Theme;
+use crate::training::Training;
 use crate::wellness::Wellness;
 
 /// The gap between blocks, in pixels.
@@ -57,11 +79,50 @@ impl Width {
 }
 
 /// The shared data that a block draws from.
+#[allow(dead_code)] // The screens of the rewrite read the new fields.
 pub struct Ctx<'a> {
     pub t: &'a Theme,
     pub today: &'a Today,
     /// Health and Sleep. `None` until they have loaded.
     pub wellness: Option<&'a Wellness>,
+    /// The day or the range that the page looks at. The views above and below
+    /// are built for `focus.end`. A block that shows a series must clip it to
+    /// the range when the range is longer than one day.
+    pub focus: Focus,
+    /// `None` until the first read has ended, and when the read fails.
+    pub charts_view: Option<&'a ChartsView>,
+    pub tiles_view: Option<&'a TilesView>,
+    pub extras_view: Option<&'a ExtrasView>,
+    /// Food, Weight and Strength.
+    pub body: &'a BodyData,
+    /// Insights, Fitness and the report. `None` until they have loaded.
+    pub training: Option<&'a Training>,
+    /// The plan, the routes and the gear.
+    pub places: &'a Places,
+    /// The activities store, for a read that no view has.
+    pub store: &'a Store,
+    /// The list of the activities, read at start and after a sync.
+    pub activities: &'a anyhow::Result<ActivitiesView>,
+}
+
+impl Root {
+    /// The shared data of the window, for the blocks.
+    pub(crate) fn ctx<'a>(&'a self, t: &'a Theme) -> Ctx<'a> {
+        Ctx {
+            t,
+            today: &self.today,
+            wellness: self.wellness.as_ref(),
+            focus: self.focus,
+            charts_view: self.views.charts.as_ref(),
+            tiles_view: self.views.tiles.as_ref(),
+            extras_view: self.views.extras.as_ref(),
+            body: &self.body,
+            training: self.training.as_ref(),
+            places: &self.places,
+            store: &self.store,
+            activities: &self.list,
+        }
+    }
 }
 
 /// Where the link in the header of a block leads.
@@ -81,6 +142,7 @@ pub struct Block {
 }
 
 /// A block in the registry.
+#[allow(dead_code)] // The add panel reads `group` and `default_width`.
 pub struct BlockDef {
     /// The saved name. It never changes.
     pub id: &'static str,
@@ -92,20 +154,79 @@ pub struct BlockDef {
     pub render: fn(&Ctx) -> Option<Block>,
 }
 
-/// Every block. Track 4 lists them in the add panel.
-pub static REGISTRY: &[BlockDef] = &today::BLOCKS;
+/// The blocks of each screen. One file for each screen lists its own blocks.
+const ALL_BLOCKS: &[&[BlockDef]] = &[
+    today::BLOCKS,
+    health::BLOCKS,
+    sleep::BLOCKS,
+    food::BLOCKS,
+    weight::BLOCKS,
+    activities::BLOCKS,
+    strength::BLOCKS,
+    fitness::BLOCKS,
+    plan::BLOCKS,
+    routes::BLOCKS,
+    gear::BLOCKS,
+    insights::BLOCKS,
+    reports::BLOCKS,
+];
 
-pub fn def(id: &str) -> Option<&'static BlockDef> {
-    REGISTRY.iter().find(|d| d.id == id)
+/// Every block. The add panel lists them.
+pub fn registry() -> impl Iterator<Item = &'static BlockDef> {
+    ALL_BLOCKS.iter().flat_map(|blocks| blocks.iter())
 }
 
-/// The default layout of a screen: block ids with a width each.
-pub fn default_layout(screen: Screen) -> Vec<(&'static str, Width)> {
-    REGISTRY
-        .iter()
-        .filter(|d| d.group == screen)
-        .map(|d| (d.id, d.default_width))
-        .collect()
+pub fn def(id: &str) -> Option<&'static BlockDef> {
+    registry().find(|d| d.id == id)
+}
+
+/// What a screen file gives to the page of the screen.
+pub struct ScreenDef {
+    pub layout: &'static [(&'static str, Width)],
+    pub title: fn(&Ctx) -> Option<String>,
+    pub lede: fn(&Ctx) -> Option<String>,
+    pub crumb: fn(&Ctx) -> Option<String>,
+}
+
+/// The block page of a screen. `None` for Ask and Settings, which have no blocks.
+pub fn screen_def(screen: Screen) -> Option<ScreenDef> {
+    macro_rules! def {
+        ($m:ident) => {
+            ScreenDef {
+                layout: $m::LAYOUT,
+                title: $m::title,
+                lede: $m::lede,
+                crumb: $m::crumb,
+            }
+        };
+    }
+    Some(match screen {
+        Screen::Today => def!(today),
+        Screen::Health => def!(health),
+        Screen::Sleep => def!(sleep),
+        Screen::Food => def!(food),
+        Screen::Weight => def!(weight),
+        Screen::Activities => def!(activities),
+        Screen::Strength => def!(strength),
+        Screen::Fitness => def!(fitness),
+        Screen::Plan => def!(plan),
+        Screen::Routes => def!(routes),
+        Screen::Gear => def!(gear),
+        Screen::Insights => def!(insights),
+        Screen::Reports => def!(reports),
+        Screen::Ask | Screen::Settings => return None,
+    })
+}
+
+/// The default layout of a screen: block ids with a width each. Empty when
+/// the screen still uses its old page.
+pub fn default_layout(screen: Screen) -> &'static [(&'static str, Width)] {
+    screen_def(screen).map_or(&[], |d| d.layout)
+}
+
+/// The breadcrumb text from the file of the screen, when it gives one.
+pub fn crumb(screen: Screen, ctx: &Ctx) -> Option<String> {
+    screen_def(screen).and_then(|d| (d.crumb)(ctx))
 }
 
 /// The grid for a layout. A block that returns `None`, and an id that no
@@ -154,8 +275,18 @@ mod tests {
 
     #[test]
     fn the_ids_of_the_registry_are_unique() {
-        for (i, d) in REGISTRY.iter().enumerate() {
-            assert!(REGISTRY[i + 1..].iter().all(|o| o.id != d.id), "{}", d.id);
+        let all: Vec<_> = registry().collect();
+        for (i, d) in all.iter().enumerate() {
+            assert!(all[i + 1..].iter().all(|o| o.id != d.id), "{}", d.id);
+        }
+    }
+
+    #[test]
+    fn every_layout_id_has_a_block() {
+        for screen in Screen::ALL {
+            for (id, _) in default_layout(screen) {
+                assert!(def(id).is_some(), "{id}");
+            }
         }
     }
 }

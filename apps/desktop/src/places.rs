@@ -96,6 +96,18 @@ impl Places {
         places
     }
 
+    /// The cache file that this source reads, and the day it reads for.
+    pub fn cache(&self) -> (PathBuf, NaiveDate) {
+        (self.path.clone(), self.today)
+    }
+
+    /// Read for another day. A persona keeps its day.
+    pub fn set_day(&mut self, day: NaiveDate) {
+        if !matches!(self.origin, Origin::Persona(_)) {
+            self.today = day;
+        }
+    }
+
     /// The number of saved routes, for the sidebar.
     pub fn route_count(&self) -> Option<i64> {
         self.routes.as_ref().ok().map(|r| r.total as i64)

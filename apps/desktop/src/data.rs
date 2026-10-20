@@ -51,6 +51,28 @@ pub enum Source {
     },
 }
 
+impl Source {
+    /// The same source, read for `day`. The real today keeps the shipped
+    /// source. A persona is fixed and keeps its day.
+    pub fn on_day(&self, day: NaiveDate) -> Source {
+        match self {
+            Source::Default if day == chrono::Local::now().date_naive() => Source::Default,
+            Source::Default => match garmin_core::db::default_path() {
+                Some(path) => Source::Db {
+                    path,
+                    date: Some(day),
+                },
+                None => Source::Default,
+            },
+            Source::Db { path, .. } => Source::Db {
+                path: path.clone(),
+                date: Some(day),
+            },
+            Source::Persona(name) => Source::Persona(name.clone()),
+        }
+    }
+}
+
 /// A piece of a metric value. A unit draws smaller, as in "6h 24m".
 #[derive(Debug, Clone, PartialEq)]
 pub struct Part {
