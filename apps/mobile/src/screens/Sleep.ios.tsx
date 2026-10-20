@@ -189,7 +189,8 @@ function SleepBody({ view }: { view: SleepView }) {
   );
 }
 
-export function SleepScreen() {
+/** `root` is the Sleep tab. The iOS stack draws the back button itself, so it is unused. */
+export function SleepScreen(_props: { root?: boolean }) {
   const { data, error, refetch } = useSleep();
   return (
     <ScrollView

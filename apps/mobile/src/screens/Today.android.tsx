@@ -3,6 +3,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { Pressable, View } from "react-native";
+import { AskFab, FAB_CLEARANCE, useFabExtended } from "../components/AskFab";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
   BarLabels,
@@ -237,10 +238,31 @@ function SyncButton({ busy, onPress }: { busy: boolean; onPress: () => void }) {
   );
 }
 
+// A row near the top that opens the coach. The FAB does the same while the list scrolls.
+function AskCard() {
+  const router = useRouter();
+  const md = useMd();
+  return (
+    <Card gap={0} onPress={() => router.push("/ask/new")}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+        <IconTile name="chat" tone="secondary" />
+        <View style={{ flex: 1 }}>
+          <T v="titleMedium">Ask the coach</T>
+          <T v="bodyMedium" color={md.onSurfaceVariant}>
+            Questions about your sleep, training and recovery
+          </T>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={md.onSurfaceVariant} />
+      </View>
+    </Card>
+  );
+}
+
 function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   return (
     <Content>
       <HeroCard today={today} busy={busy} onSync={onSync} />
+      <AskCard />
       {today.sections.map((s) => (
         <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} hero={today.hero} />
       ))}
@@ -264,16 +286,23 @@ export function TodayScreen() {
   const { data, error, refetch } = useToday();
   const sync = useSync();
   const greeting = useGreeting();
+  const router = useRouter();
+  const fab = useFabExtended();
   return (
-    <LargeAppBarScreen
-      title={data ? greeting : "Today"}
-      refreshing={sync.busy}
-      onRefresh={() => sync.refresh()}
-    >
-      <SyncLine line={sync.line} error={sync.error} />
-      {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
-      {!data && !error ? <Loading /> : null}
-      {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
-    </LargeAppBarScreen>
+    <View style={{ flex: 1 }}>
+      <LargeAppBarScreen
+        title={data ? greeting : "Today"}
+        refreshing={sync.busy}
+        onRefresh={() => sync.refresh()}
+        onScrollOffset={fab.onScroll}
+        bottomSpace={FAB_CLEARANCE}
+      >
+        <SyncLine line={sync.line} error={sync.error} />
+        {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
+        {!data && !error ? <Loading /> : null}
+        {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
+      </LargeAppBarScreen>
+      <AskFab extended={fab.extended} onPress={() => router.push("/ask/new")} />
+    </View>
   );
 }

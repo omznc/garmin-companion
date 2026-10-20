@@ -1,6 +1,6 @@
 // Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
 // The core sends the sections in order. A section that has no data is not drawn.
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import type { ReactNode } from "react";
 import {
@@ -209,6 +209,15 @@ function SectionView({ s }: { s: Section }) {
   }
 }
 
+function AskGroup() {
+  const router = useRouter();
+  return (
+    <Group>
+      <Row left="Ask the coach" onPress={() => router.push("/ask/new")} last />
+    </Group>
+  );
+}
+
 function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   return (
     <>
@@ -226,6 +235,7 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
           )}
         </View>
       </Group>
+      <AskGroup />
       {today.sections.map((s) => (
         <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} />
       ))}
@@ -234,6 +244,7 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
 }
 
 export function TodayScreen() {
+  const router = useRouter();
   const { data, error, refetch } = useToday();
   const sync = useSync();
   return (
@@ -243,6 +254,13 @@ export function TodayScreen() {
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Button
+          icon="bubble.left"
+          accessibilityLabel="Ask the coach"
+          onPress={() => router.push("/ask/new")}
+        />
+      </Stack.Toolbar>
       {sync.line || sync.error ? (
         <Text style={{ fontSize: 13, color: secondary, marginTop: 8, marginHorizontal: 32 }}>
           {sync.error ?? sync.line}

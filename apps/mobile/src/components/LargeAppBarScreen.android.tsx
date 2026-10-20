@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostTheme, useMd } from "../theme/md";
 
@@ -26,6 +27,10 @@ type Props = {
   small?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
+  /** Called with the scroll offset, for a FAB that collapses. */
+  onScrollOffset?: (offset: number) => void;
+  /** Space below the last row, for a FAB. */
+  bottomSpace?: number;
   children: ReactNode;
 };
 
@@ -35,6 +40,8 @@ export function LargeAppBarScreen({
   small = false,
   refreshing = false,
   onRefresh,
+  onScrollOffset,
+  bottomSpace = 0,
   children,
 }: Props) {
   const md = useMd();
@@ -44,6 +51,7 @@ export function LargeAppBarScreen({
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
+    if (onScrollOffset) scheduleOnRN(onScrollOffset, e.contentOffset.y);
   });
 
   const barStyle = useAnimatedStyle(() => ({
@@ -80,7 +88,10 @@ export function LargeAppBarScreen({
             />
           ) : undefined
         }
-        contentContainerStyle={{ paddingTop: insets.top + expanded, paddingBottom: 24 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + expanded,
+          paddingBottom: 24 + bottomSpace,
+        }}
       >
         {children}
       </Animated.ScrollView>

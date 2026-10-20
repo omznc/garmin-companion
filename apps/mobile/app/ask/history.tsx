@@ -1,4 +1,4 @@
-import { ThreadList } from "../../../src/ask/ThreadList";
+import { ThreadList } from "../../src/ask/ThreadList";
 
 export default function Screen() {
   return <ThreadList />;

@@ -11,7 +11,7 @@ import { TABS } from "./tabs";
 const ICONS = {
   today: require("../../assets/icons/today.xml"),
   activities: require("../../assets/icons/activities.xml"),
-  ask: require("../../assets/icons/ask.xml"),
+  sleep: require("../../assets/icons/sleep.xml"),
   health: require("../../assets/icons/health.xml"),
   more: require("../../assets/icons/more.xml"),
 };
