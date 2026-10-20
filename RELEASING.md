@@ -397,6 +397,6 @@ default is `alpha`, the closed testing track) and the status.
 - Play App Signing uses the same keystore as the APK. The Play build and the
   standalone APK can update each other.
 - The Play build has no self-update. The workflow sets `EXPO_PUBLIC_SELF_UPDATE=0`,
-  and the bundle has no `REQUEST_INSTALL_PACKAGES`. The workflow checks both.
+  so the bundle has no `REQUEST_INSTALL_PACKAGES`. The workflow checks this.
 - Until the app is first published, Play accepts only the status `draft`. Use
   `draft`, then roll out in the Play Console.
