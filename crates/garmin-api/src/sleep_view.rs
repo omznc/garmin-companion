@@ -32,6 +32,17 @@ pub struct StageShare {
     pub text: String,
 }
 
+/// One stretch of one stage, for the hypnogram.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageSpan {
+    /// `deep`, `light`, `rem` or `awake`.
+    pub key: String,
+    /// Minutes from the moment sleep began.
+    pub from_mins: f64,
+    pub mins: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NightView {
@@ -48,6 +59,9 @@ pub struct NightView {
     pub end: Option<String>,
     /// Empty when the cache holds no stage detail for the night.
     pub stages: Vec<StageShare>,
+    /// The stages in time order. Empty when the cache holds no timeline.
+    #[serde(default)]
+    pub timeline: Vec<StageSpan>,
     pub sentence: String,
 }
 
@@ -95,6 +109,27 @@ struct Basic<'a> {
 
 fn clock(local: &Option<String>) -> Option<String> {
     local.as_deref()?.get(11..16).map(str::to_string)
+}
+
+fn timeline(n: &SleepNight) -> Vec<StageSpan> {
+    use garmin_core::sleep::Stage;
+    n.stages
+        .iter()
+        .filter_map(|s| {
+            let key = match s.stage {
+                Stage::Deep => "deep",
+                Stage::Light => "light",
+                Stage::Rem => "rem",
+                Stage::Awake => "awake",
+                Stage::Unmeasurable => return None,
+            };
+            Some(StageSpan {
+                key: key.into(),
+                from_mins: s.from_start_mins,
+                mins: s.secs / 60.0,
+            })
+        })
+        .collect()
 }
 
 fn stages(n: &SleepNight) -> Vec<StageShare> {
@@ -173,6 +208,7 @@ fn night_view(b: &Basic, today: NaiveDate) -> NightView {
         duration_secs: b.secs,
         duration_text: duration,
         stages: b.night.map(stages).unwrap_or_default(),
+        timeline: b.night.map(timeline).unwrap_or_default(),
         start,
         end,
     }
@@ -365,6 +401,30 @@ mod tests {
             std::env::temp_dir().join(format!("garmin-api-sleep-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         Db::open(&dir.join("cache.sqlite3")).unwrap()
+    }
+
+    #[test]
+    fn the_timeline_keeps_the_order_and_drops_unmeasured_slices() {
+        use garmin_core::sleep::{Stage, StageSlice};
+        let slice = |stage, from_start_mins, secs| StageSlice {
+            stage,
+            start_local: String::new(),
+            end_local: String::new(),
+            from_start_mins,
+            secs,
+        };
+        let n = SleepNight {
+            stages: vec![
+                slice(Stage::Light, 0.0, 1800.0),
+                slice(Stage::Unmeasurable, 30.0, 60.0),
+                slice(Stage::Deep, 31.0, 600.0),
+            ],
+            ..Default::default()
+        };
+        let t = timeline(&n);
+        assert_eq!(t.len(), 2);
+        assert_eq!((t[0].key.as_str(), t[0].mins), ("light", 30.0));
+        assert_eq!((t[1].key.as_str(), t[1].from_mins), ("deep", 31.0));
     }
 
     #[test]

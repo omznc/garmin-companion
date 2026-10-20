@@ -69,6 +69,18 @@ pub struct SleepDebt {
     pub debt_secs: f64,
 }
 
+/// The average bed and wake times of the last nights.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BedWake {
+    pub nights: usize,
+    /// Minutes after midnight, 0 to 1439.
+    pub bed_minute: f64,
+    pub wake_minute: f64,
+    /// The spread of the bed time: one standard deviation, in minutes.
+    pub consistency_mins: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SleepScores {
@@ -105,6 +117,8 @@ pub struct TilesView {
     pub sleep_debt: Option<SleepDebt>,
     pub sleep_scores: SleepScores,
     pub pace_drift: Option<PaceDrift>,
+    #[serde(default)]
+    pub bed_wake: Option<BedWake>,
 }
 
 fn tail<T: Clone>(v: &[T], n: usize) -> Vec<T> {
@@ -230,6 +244,60 @@ pub fn sleep_debt(nights: &[SleepNight], from: &str, to: &str) -> Option<SleepDe
     })
 }
 
+/// Minutes after midnight from `YYYY-MM-DDTHH:MM:SS`.
+fn minute_of_day(local: &str) -> Option<f64> {
+    let h: f64 = local.get(11..13)?.parse().ok()?;
+    let m: f64 = local.get(14..16)?.parse().ok()?;
+    Some(h * 60.0 + m)
+}
+
+/// The mean of clock minutes. Times before `cut` count as the next day, so
+/// 23:30 and 00:30 average to 00:00 and not to noon.
+fn clock_mean(minutes: &[f64], cut: f64) -> f64 {
+    let shifted: Vec<f64> = minutes
+        .iter()
+        .map(|m| if *m < cut { m + 1440.0 } else { *m })
+        .collect();
+    (shifted.iter().sum::<f64>() / shifted.len() as f64).rem_euclid(1440.0)
+}
+
+/// The mean bed and wake time over the nights from `from` to `to`, with the
+/// spread of the bed time. `None` when no night has both times.
+pub fn bed_wake(nights: &[SleepNight], from: &str, to: &str) -> Option<BedWake> {
+    let times: Vec<(f64, f64)> = nights
+        .iter()
+        .filter(|n| n.date.as_str() >= from && n.date.as_str() <= to)
+        .filter_map(|n| {
+            Some((
+                minute_of_day(n.start_local.as_deref()?)?,
+                minute_of_day(n.end_local.as_deref()?)?,
+            ))
+        })
+        .collect();
+    if times.is_empty() {
+        return None;
+    }
+    let beds: Vec<f64> = times.iter().map(|t| t.0).collect();
+    let wakes: Vec<f64> = times.iter().map(|t| t.1).collect();
+    // A bed time before 12:00 is after midnight.
+    let bed = clock_mean(&beds, 720.0);
+    let spread = beds
+        .iter()
+        .map(|b| {
+            let d = (b - bed).rem_euclid(1440.0);
+            let d = if d > 720.0 { d - 1440.0 } else { d };
+            d * d
+        })
+        .sum::<f64>()
+        / beds.len() as f64;
+    Some(BedWake {
+        nights: times.len(),
+        bed_minute: bed,
+        wake_minute: clock_mean(&wakes, 0.0),
+        consistency_mins: spread.sqrt(),
+    })
+}
+
 /// The sleep score of each of the last 14 nights, oldest first.
 pub fn sleep_scores(nights: &[SleepNight], today: NaiveDate) -> SleepScores {
     let by_date: HashMap<&str, f64> = nights
@@ -323,6 +391,7 @@ pub fn tiles_view(db: &Db, today: NaiveDate) -> Result<TilesView, ApiError> {
         sleep_debt: sleep_debt(&nights, &debt_from, &date_key(today)),
         sleep_scores: sleep_scores(&nights, today),
         pace_drift: pace_drift(&activities),
+        bed_wake: bed_wake(&nights, &debt_from, &date_key(today)),
     })
 }
 
@@ -435,6 +504,26 @@ mod tests {
             0.0
         );
         assert_eq!(sleep_debt(&[], "2026-02-26", "2026-03-11"), None);
+    }
+
+    #[test]
+    fn bed_times_across_midnight_average_near_midnight() {
+        let at = |date: &str, start: &str, end: &str| SleepNight {
+            date: date.into(),
+            start_local: Some(start.into()),
+            end_local: Some(end.into()),
+            ..Default::default()
+        };
+        let nights = [
+            at("2026-03-10", "2026-03-09T23:30:00", "2026-03-10T07:00:00"),
+            at("2026-03-11", "2026-03-11T00:30:00", "2026-03-11T08:00:00"),
+        ];
+        let b = bed_wake(&nights, "2026-03-01", "2026-03-11").unwrap();
+        assert_eq!(b.nights, 2);
+        assert!(b.bed_minute < 1.0 || b.bed_minute > 1439.0, "{}", b.bed_minute);
+        assert_eq!(b.wake_minute, 450.0);
+        assert!((b.consistency_mins - 30.0).abs() < 1e-9);
+        assert_eq!(bed_wake(&[], "a", "b"), None);
     }
 
     #[test]
