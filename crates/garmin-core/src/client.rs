@@ -496,6 +496,31 @@ impl GarminClient {
             .await
     }
 
+    /// The training plans of the account. Empty for an account with none.
+    pub async fn training_plans(&self) -> Result<serde_json::Value> {
+        self.get_json("/trainingplan-service/trainingplan/plans", &[])
+            .await
+    }
+
+    /// The events (races) that the athlete put on the calendar between two
+    /// dates.
+    pub async fn calendar_events(&self, start: &str, end: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            "/calendar-service/events",
+            &[
+                ("startDate", start.to_string()),
+                ("endDate", end.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// One saved workout with its steps.
+    pub async fn workout(&self, id: i64) -> Result<serde_json::Value> {
+        self.get_json(&format!("/workout-service/workout/{id}"), &[])
+            .await
+    }
+
     /// The devices registered to the account.
     pub async fn devices(&self) -> Result<serde_json::Value> {
         self.get_json("/device-service/deviceregistration/devices", &[])

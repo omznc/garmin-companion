@@ -5,6 +5,7 @@
 
 pub mod analysis;
 pub mod auth;
+pub mod calendar;
 pub mod client;
 pub mod coach;
 pub mod courses;

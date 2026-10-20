@@ -44,8 +44,11 @@ pub(crate) async fn sync_extras(
 ) -> Result<()> {
     sync_body_battery(client, db, report, on).await?;
     sync_courses(client, db, report, on).await?;
+    sync_calendar(client, db, report, on).await?;
+    sync_planned_workouts(client, db, report, on).await?;
     if due(db, "extras_static", STATIC_HOURS) {
         sync_devices(client, db, report, on).await?;
+        sync_plans(client, db, report, on).await?;
         db.set_sync_state("extras_static", &Utc::now().to_rfc3339())?;
     }
     Ok(())
@@ -156,9 +159,146 @@ async fn sync_body_battery(
     Ok(())
 }
 
+/// The month that is `ahead` months after the month of `today`: the year, the
+/// zero-based month that the calendar endpoint wants, and the first and last
+/// day as `YYYY-MM-DD`.
+fn month_window(today: chrono::NaiveDate, ahead: u32) -> Option<(i32, u32, String, String)> {
+    use chrono::Datelike;
+    let index = today.year() * 12 + today.month0() as i32 + ahead as i32;
+    let (year, month0) = (index.div_euclid(12), index.rem_euclid(12) as u32);
+    let first = chrono::NaiveDate::from_ymd_opt(year, month0 + 1, 1)?;
+    let last =
+        chrono::NaiveDate::from_ymd_opt(year + i32::from(month0 == 11), (month0 + 1) % 12 + 1, 1)?
+            - Duration::days(1);
+    let fmt = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
+    Some((year, month0, fmt(first), fmt(last)))
+}
+
+/// The planned workouts and races of this month and the next.
+async fn sync_calendar(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "calendar");
+    let today = Utc::now().date_naive();
+    for ahead in 0..2 {
+        let Some((year, month0, first, last)) = month_window(today, ahead) else {
+            continue;
+        };
+        let what = format!("calendar {first}");
+        let Some(v) = optional(report, &what, client.calendar(year, month0).await)? else {
+            continue;
+        };
+        // A reply with no item list says nothing about the month, so it must
+        // not clear the plan that the cache already holds.
+        if v.get("calendarItems").and_then(|i| i.as_array()).is_none() {
+            continue;
+        }
+        let items = crate::calendar::parse_plan_items(&v);
+        if let Err(e) = db.replace_plan_items(&first, &last, &items) {
+            report.warnings.push(format!("{what}: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// How many days ahead the steps of a planned workout are fetched for.
+const PLAN_AHEAD_DAYS: i64 = 14;
+
+/// How old the stored steps of a workout may be before they are read again.
+const STEPS_MAX_AGE_SECS: i64 = 24 * 3600;
+
+/// The steps of each workout that is planned in the next two weeks.
+async fn sync_planned_workouts(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "planned workouts");
+    let today = Utc::now().date_naive();
+    let day = |o: i64| (today + Duration::days(o)).format("%Y-%m-%d").to_string();
+    let ids: Vec<i64> = db
+        .plan_items(&day(0), &day(PLAN_AHEAD_DAYS))?
+        .iter()
+        .filter_map(|i| i.workout_id)
+        .collect();
+    let now = Utc::now().timestamp();
+    for id in db.workouts_to_fetch(&ids, now, STEPS_MAX_AGE_SECS)? {
+        let what = format!("workout {id}");
+        let Some(v) = optional(report, &what, client.workout(id).await)? else {
+            continue;
+        };
+        let steps = crate::calendar::parse_workout_steps(id, &v);
+        if let Err(e) = db.save_workout_steps(&steps, now) {
+            report.warnings.push(format!("{what}: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// The training plans and the races of the next year.
+async fn sync_plans(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "plans");
+    if let Some(v) = optional(report, "training plans", client.training_plans().await)? {
+        // As for the calendar: a reply with no plan list changes nothing.
+        if v.get("trainingPlanList")
+            .and_then(|l| l.as_array())
+            .is_some()
+        {
+            let plans = crate::calendar::parse_training_plans(&v);
+            if let Err(e) = db.replace_training_plans(&plans) {
+                report.warnings.push(format!("training plans: {e}"));
+            }
+        }
+    }
+    let today = Utc::now().date_naive();
+    let (from, to) = (
+        today.format("%Y-%m-%d").to_string(),
+        (today + Duration::days(365)).format("%Y-%m-%d").to_string(),
+    );
+    if let Some(v) = optional(report, "events", client.calendar_events(&from, &to).await)? {
+        if v.is_array() || v.get("events").is_some() {
+            let events = crate::calendar::parse_race_events(&v);
+            if let Err(e) = db.replace_race_events(&from, &to, &events) {
+                report.warnings.push(format!("events: {e}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_month_window_wraps_the_year() {
+        let d = |y, m, day| chrono::NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        assert_eq!(
+            month_window(d(2026, 3, 15), 0),
+            Some((2026, 2, "2026-03-01".into(), "2026-03-31".into()))
+        );
+        assert_eq!(
+            month_window(d(2026, 12, 31), 1),
+            Some((2027, 0, "2027-01-01".into(), "2027-01-31".into()))
+        );
+        assert_eq!(
+            month_window(d(2028, 1, 5), 1).map(|w| w.3),
+            Some("2028-02-29".into())
+        );
+        assert_eq!(
+            month_window(d(2026, 11, 2), 1).map(|w| (w.0, w.1, w.3)),
+            Some((2026, 11, "2026-12-31".into()))
+        );
+    }
 
     fn status(code: u16) -> anyhow::Error {
         anyhow::Error::new(crate::client::HttpStatus {

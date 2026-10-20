@@ -493,6 +493,7 @@ impl Db {
             crate::intraday::SCHEMA,
             crate::courses::SCHEMA,
             crate::devices::SCHEMA,
+            crate::calendar::SCHEMA,
         ] {
             self.conn.execute_batch(schema)?;
         }
