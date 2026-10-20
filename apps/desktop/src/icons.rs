@@ -53,7 +53,10 @@ icons! {
     Close => "stroke/close",
     Restore => "bold/copy-simple",
 
-    Logo => "stroke/logo",
+    // The Horizon mark in three layers, one tint each. See `titlebar::brand`.
+    LogoSun => "stroke/logo-sun",
+    LogoHorizon => "stroke/logo-horizon",
+    LogoLines => "stroke/logo-lines",
     Search => "stroke/search",
     Sync => "stroke/sync",
     Panel => "stroke/panel",

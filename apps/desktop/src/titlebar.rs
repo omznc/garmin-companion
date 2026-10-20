@@ -17,15 +17,16 @@ const SEARCH_W: f32 = 420.0;
 const TRAFFIC_LIGHTS: f32 = 62.0;
 
 fn brand(t: &Theme) -> impl IntoElement {
+    // The Horizon mark: the sun in the accent, the horizon in the text colour,
+    // the lower lines faint. The three layers stack like a duotone icon.
+    let layer = |which, colour| icon(which, 20.0, t, colour).absolute().top_0().left_0();
     let mark = div()
         .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .size(px(18.0))
-        .rounded(px(5.0))
-        .bg(t.acc)
-        .child(icon(Icon::Logo, 11.0, t, t.bg));
+        .relative()
+        .size(px(20.0))
+        .child(layer(Icon::LogoSun, t.acc))
+        .child(layer(Icon::LogoHorizon, t.fg))
+        .child(layer(Icon::LogoLines, t.faint));
     div()
         .flex_1()
         .min_w_0()
