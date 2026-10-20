@@ -9,8 +9,8 @@ use gpui::{
 use crate::commands::{self, Action, Command};
 use crate::field::Field;
 use crate::shell::Root;
-use crate::theme::{Palette, FS_CAPTION, FS_SMALL};
-use crate::ui::{MONO, SANS};
+use crate::theme::{Palette, FS_SMALL};
+use crate::ui::SANS;
 
 actions!(garmin_companion, [OpenPalette]);
 
@@ -117,7 +117,7 @@ impl Render for CommandPalette {
         for (row, &i) in hits.iter().enumerate().skip(first).take(ROWS) {
             let command = &self.commands[i];
             let action = command.action;
-            let (sel, hover) = (t.sel, t.sel);
+            let sel = t.sel;
             let mut line = div()
                 .id(("command", i))
                 .flex()
@@ -132,22 +132,13 @@ impl Render for CommandPalette {
                 .font_family(SANS)
                 .text_size(px(FS_SMALL))
                 .text_color(t.fg)
-                .hover(move |s| s.bg(hover))
+                .hover(move |s| s.bg(sel))
                 .on_click(cx.listener(move |_, _: &ClickEvent, _, cx| {
                     cx.emit(PaletteEvent::Run(action));
                 }))
                 .child(command.label.clone());
             if row == self.selected {
                 line = line.bg(sel);
-            }
-            if let Some(hint) = command.hint {
-                line = line.child(
-                    div()
-                        .font_family(MONO)
-                        .text_size(px(FS_CAPTION))
-                        .text_color(t.faint)
-                        .child(hint),
-                );
             }
             list = list.child(line);
         }

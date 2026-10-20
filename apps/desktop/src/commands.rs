@@ -17,15 +17,12 @@ pub enum Action {
 
 pub struct Command {
     pub label: String,
-    /// The keys that run this command outside the palette, if there are any.
-    pub hint: Option<&'static str>,
     pub action: Action,
 }
 
 fn command(label: impl Into<String>, action: Action) -> Command {
     Command {
         label: label.into(),
-        hint: None,
         action,
     }
 }
