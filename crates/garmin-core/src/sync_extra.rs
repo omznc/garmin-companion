@@ -1,15 +1,16 @@
 //! The optional sync steps: data that the screens can show without.
 //!
 //! Every step here follows one rule. A reply of "no data" (a 404, a 403, an
-//! empty body) is not a problem. Any other failure is a warning. Only a 429, a
-//! dropped network or a dead token stops the sync, as for the older steps, and
-//! see [`crate::sync::optional`]. These steps run after the steps that decide
+//! empty body) is not a problem. Any other failure is a warning. A 429, a
+//! dropped network or a dead token stops only these steps, and the sync still
+//! ends (see [`crate::sync::optional`]). These steps run after the steps that decide
 //! whether a history is complete, and they never count toward the outage
 //! streak. They also never walk the history: a per-day step covers the last
 //! few days only.
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
+use serde_json::Value;
 
 use crate::client::GarminClient;
 use crate::db::Db;
@@ -132,6 +133,11 @@ async fn sync_courses(
         let Some(detail) = optional(report, &what, client.course(id).await)? else {
             continue;
         };
+        // A reply with no point list says nothing about the track, so it
+        // must not mark the course as done.
+        if detail.get("geoPoints").and_then(|p| p.as_array()).is_none() {
+            continue;
+        }
         let track = crate::courses::parse_course_track(&detail);
         if let Err(e) = db.save_course_track(id, &track) {
             report.warnings.push(format!("{what}: {e}"));
@@ -190,7 +196,9 @@ async fn sync_vo2(
         "vo2 max",
         client.max_metrics_range(&start, &end).await,
     )?;
-    if let Some(v) = history {
+    // The history is a list. An error object or any other shape stores
+    // nothing and leaves the first-read marker unset.
+    if let Some(v) = history.filter(Value::is_array) {
         if let Err(e) = db.save_vo2_days(&crate::vo2::parse_vo2_days(&v)) {
             report.warnings.push(format!("vo2 max: {e}"));
         } else if first {
@@ -309,6 +317,13 @@ async fn sync_planned_workouts(
         let Some(v) = optional(report, &what, client.workout(id).await)? else {
             continue;
         };
+        // As for the calendar: a reply with no segment list stores nothing.
+        if v.get("workoutSegments")
+            .and_then(|s| s.as_array())
+            .is_none()
+        {
+            continue;
+        }
         let steps = crate::calendar::parse_workout_steps(id, &v);
         if let Err(e) = db.save_workout_steps(&steps, now) {
             report.warnings.push(format!("{what}: {e}"));

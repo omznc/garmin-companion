@@ -355,6 +355,18 @@ pub(crate) fn optional(
     }
 }
 
+/// The result of the extras phase. A fatal failure becomes a warning, because
+/// the required steps already succeeded. Any other error stays an error.
+fn extras_outcome(report: &mut SyncReport, extras: Result<()>) -> Result<()> {
+    match extras {
+        Err(e) if is_fatal(&e) => {
+            report.warnings.push(format!("extras stopped: {e:#}"));
+            Ok(())
+        }
+        other => other,
+    }
+}
+
 /// A per-item failure is a warning, but a dead network stops the loop. Each
 /// failing item costs a full set of retries, so going on would take minutes.
 fn warn_or_stop(report: &mut SyncReport, what: &str, e: anyhow::Error) -> Result<()> {
@@ -730,9 +742,10 @@ pub async fn sync_all_with(
     sync_strength(client, db, if full { 200 } else { 25 }, &mut report, on).await?;
 
     // Last, so that no optional endpoint can come between the sync and the
-    // steps above. A "no data" reply is quiet there, and only the failures
-    // that stop the other steps stop this one.
-    crate::sync_extra::sync_extras(client, db, &mut report, on).await?;
+    // steps above. A fatal failure there only stops the extras: the required
+    // steps are done, so the sync still ends and writes `last_sync`.
+    let extras = crate::sync_extra::sync_extras(client, db, &mut report, on).await;
+    extras_outcome(&mut report, extras)?;
 
     db.set_sync_state("last_sync", &Utc::now().to_rfc3339())?;
     on(SyncProgress {
@@ -814,6 +827,28 @@ fn history_days(db: &Db) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fatal_failure_in_the_extras_does_not_fail_the_sync() {
+        let status = |code| {
+            anyhow::Error::new(crate::client::HttpStatus {
+                path: "/x".into(),
+                status: code,
+                body: String::new(),
+            })
+        };
+        let mut report = SyncReport::default();
+        assert!(extras_outcome(&mut report, Ok(())).is_ok());
+        assert!(report.warnings.is_empty());
+        assert!(extras_outcome(&mut report, Err(status(429).context("courses"))).is_ok());
+        let dead = anyhow::Error::new(crate::auth::AuthFailed("refresh failed".into()));
+        assert!(extras_outcome(&mut report, Err(dead)).is_ok());
+        let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
+        assert!(extras_outcome(&mut report, Err(anyhow::Error::new(transport))).is_ok());
+        assert_eq!(report.warnings.len(), 3);
+        // An error that is not fatal (for example a database error) still fails.
+        assert!(extras_outcome(&mut report, Err(anyhow::anyhow!("disk full"))).is_err());
+    }
 
     #[test]
     fn a_failed_request_aborts_but_a_status_error_only_warns() {
