@@ -83,6 +83,7 @@ jobs:
             cat > "$RUNNER_TEMP/ccache-$tool" <<EOF
           #!/bin/sh
           export CCACHE_BASEDIR="$GITHUB_WORKSPACE"
+          export CCACHE_DEPEND=1 CCACHE_FILECLONE=1
           export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
           export CCACHE_SLOPPINESS=file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
           exec "$CCACHE" "$CLANG" "\$@"
