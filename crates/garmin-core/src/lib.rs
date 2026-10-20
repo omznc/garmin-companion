@@ -28,6 +28,7 @@ pub mod strength;
 pub mod sync;
 mod sync_extra;
 pub mod theme;
+pub mod vo2;
 pub mod workout;
 
 pub use analysis::ActivityAnalysis;

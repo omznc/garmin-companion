@@ -50,6 +50,7 @@ pub(crate) async fn sync_extras(
     if due(db, "extras_static", STATIC_HOURS) {
         sync_devices(client, db, report, on).await?;
         sync_plans(client, db, report, on).await?;
+        sync_vo2(client, db, report, on).await?;
         db.set_sync_state("extras_static", &Utc::now().to_rfc3339())?;
     }
     Ok(())
@@ -155,6 +156,53 @@ async fn sync_body_battery(
         let points = crate::intraday::parse_body_battery(&v);
         if let Err(e) = db.save_body_battery_curve(&date, &points) {
             report.warnings.push(format!("{what}: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// The first read of the VO2 max history covers a year. Later reads cover
+/// the last month, which is enough for a late upload from the watch.
+const VO2_FIRST_DAYS: i64 = 365;
+const VO2_LATER_DAYS: i64 = 30;
+
+/// VO2 max history and the fitness age.
+async fn sync_vo2(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "vo2 max");
+    let today = Utc::now().date_naive();
+    let day = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
+    let first = db.sync_state("vo2_history")?.is_none();
+    let span = if first {
+        VO2_FIRST_DAYS
+    } else {
+        VO2_LATER_DAYS
+    };
+    let (start, end) = (day(today - Duration::days(span)), day(today));
+    // A "no data" reply still counts as the first read: an empty list is the
+    // normal answer for an account that never ran outdoors.
+    let history = optional(
+        report,
+        "vo2 max",
+        client.max_metrics_range(&start, &end).await,
+    )?;
+    if let Some(v) = history {
+        if let Err(e) = db.save_vo2_days(&crate::vo2::parse_vo2_days(&v)) {
+            report.warnings.push(format!("vo2 max: {e}"));
+        } else if first {
+            db.set_sync_state("vo2_history", &end)?;
+        }
+    }
+    let date = day(today);
+    if let Some(v) = optional(report, "fitness age", client.fitness_age(&date).await)? {
+        if let Some(age) = crate::vo2::parse_fitness_age(&date, &v) {
+            if let Err(e) = db.save_fitness_age(&age) {
+                report.warnings.push(format!("fitness age: {e}"));
+            }
         }
     }
     Ok(())

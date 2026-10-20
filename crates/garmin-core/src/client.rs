@@ -496,6 +496,22 @@ impl GarminClient {
             .await
     }
 
+    /// VO2 max for each day between two dates. An empty list for an account
+    /// with no outdoor GPS run.
+    pub async fn max_metrics_range(&self, start: &str, end: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/metrics-service/metrics/maxmet/daily/{start}/{end}"),
+            &[],
+        )
+        .await
+    }
+
+    /// Garmin's fitness age for a date.
+    pub async fn fitness_age(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(&format!("/fitnessage-service/fitnessage/{date}"), &[])
+            .await
+    }
+
     /// The food log of one day with the goals and the nutrition figures.
     pub async fn food_log(&self, date: &str) -> Result<serde_json::Value> {
         self.get_json(

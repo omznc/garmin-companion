@@ -495,6 +495,7 @@ impl Db {
             crate::devices::SCHEMA,
             crate::calendar::SCHEMA,
             crate::nutrition::SCHEMA,
+            crate::vo2::SCHEMA,
         ] {
             self.conn.execute_batch(schema)?;
         }
