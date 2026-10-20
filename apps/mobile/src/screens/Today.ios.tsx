@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { metricRoute } from "../data/present";
 import type { Section, Today } from "../data/types";
-import { importLabel } from "../data/importLabel";
+import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 
@@ -269,7 +269,9 @@ export function TodayScreen() {
   return (
     <ScrollView
       contentInsetAdjustmentBehavior="automatic"
-      refreshControl={<RefreshControl refreshing={sync.busy} onRefresh={() => sync.refresh()} />}
+      refreshControl={
+        <RefreshControl refreshing={isPulling(sync)} onRefresh={() => sync.refresh()} />
+      }
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
@@ -289,9 +291,7 @@ export function TodayScreen() {
       ) : null}
       {data ? (
         <TodayBody
-          today={
-            sync.importing && !data.hero ? { ...data, lede: "Getting your Garmin data." } : data
-          }
+          today={importLede(sync.importing, !!data.hero, data)}
           busy={sync.busy}
           onSync={() => sync.refresh()}
         />

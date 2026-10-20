@@ -11,6 +11,18 @@ export type ImportLabelInput = Pick<
   "importing" | "importPass" | "phase" | "done" | "total" | "line"
 >;
 
+// The pull-to-refresh spinner stays off during the import, which has its own row.
+export const isPulling = (s: Pick<SyncState, "busy" | "importing">) => s.busy && !s.importing;
+
+// Until the first data arrives, the import replaces the lede of Today.
+export function importLede<T extends { lede: string }>(
+  importing: boolean,
+  hasHero: boolean,
+  data: T,
+): T {
+  return importing && !hasHero ? { ...data, lede: "Getting your Garmin data." } : data;
+}
+
 // Null means: show no row. The row hides when the import ends, not when done equals total.
 export function importLabel(s: ImportLabelInput): string | null {
   if (!s.importing) return null;

@@ -18,7 +18,7 @@ import {
   T,
 } from "../components/MdKit";
 import { Cookie, FitText, sportIcon, VitalGrid, zoneTones } from "../components/TodayKit";
-import { importLabel } from "../data/importLabel";
+import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { metricRoute } from "../data/present";
 import { useGreeting } from "../data/useGreeting";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
@@ -322,7 +322,7 @@ export function TodayScreen() {
     <View style={{ flex: 1 }}>
       <LargeAppBarScreen
         title={data ? greeting : "Today"}
-        refreshing={sync.busy}
+        refreshing={isPulling(sync)}
         onRefresh={() => sync.refresh()}
         onScrollOffset={fab.onScroll}
         bottomSpace={FAB_CLEARANCE}
@@ -334,9 +334,7 @@ export function TodayScreen() {
         )}
         {data ? (
           <TodayBody
-            today={
-              sync.importing && !data.hero ? { ...data, lede: "Getting your Garmin data." } : data
-            }
+            today={importLede(sync.importing, !!data.hero, data)}
             busy={sync.busy}
             onSync={() => sync.refresh()}
           />

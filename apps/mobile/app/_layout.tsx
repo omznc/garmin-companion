@@ -28,7 +28,7 @@ export default function RootLayout() {
     if (!historyPending()) return;
     getStatus().then(
       (s) => {
-        if (s.connected) importHistory(false);
+        if (s.connected) importHistory();
       },
       // The marker stays, so the next start tries again.
       () => {},

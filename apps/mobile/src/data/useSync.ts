@@ -86,12 +86,12 @@ async function ownSync(args: Args): Promise<SyncSummary> {
 }
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
-export async function importHistory(quick = true) {
-  // The marker comes first, so a stop in the quick pass still resumes at the next start.
-  markHistoryPending();
-  set({ importing: true, importError: null, importPass: quick ? "quick" : "full" });
+export async function importHistory() {
+  set({ importing: true, importError: null, importPass: "quick" });
   try {
-    if (quick) await ownSync({ days: QUICK_DAYS });
+    // The marker comes first, so a stop in the quick pass still resumes at the next start.
+    markHistoryPending();
+    await ownSync({ days: QUICK_DAYS });
     set({ importPass: "full" });
     await ownSync({ full: true, days: 365 });
     clearHistoryPending();

@@ -46,7 +46,10 @@ export default function SignIn() {
   const start = async (ticket: string) => {
     try {
       setStep("redeeming");
-      queryClient.setQueryData(["status"], await redeemTicket(ticket));
+      const status = await redeemTicket(ticket);
+      // Sample mode data must not outlive the sign-in.
+      await queryClient.resetQueries();
+      queryClient.setQueryData(["status"], status);
     } catch (e) {
       return fail(`Sign-in did not work. ${e instanceof Error ? e.message : String(e)}`);
     }
