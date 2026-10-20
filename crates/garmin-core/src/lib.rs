@@ -14,6 +14,7 @@ pub mod devices;
 pub mod findings;
 pub mod goals;
 pub mod intraday;
+pub mod nutrition;
 pub mod paths;
 pub mod query;
 pub mod records;

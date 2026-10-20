@@ -496,6 +496,18 @@ impl GarminClient {
             .await
     }
 
+    /// The food log of one day with the goals and the nutrition figures.
+    pub async fn food_log(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/nutrition-service/food/logs/{date}"),
+            &[
+                ("includeGoals", "true".to_string()),
+                ("includeNutrition", "true".to_string()),
+            ],
+        )
+        .await
+    }
+
     /// The training plans of the account. Empty for an account with none.
     pub async fn training_plans(&self) -> Result<serde_json::Value> {
         self.get_json("/trainingplan-service/trainingplan/plans", &[])

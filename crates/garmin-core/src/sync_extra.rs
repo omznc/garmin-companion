@@ -46,6 +46,7 @@ pub(crate) async fn sync_extras(
     sync_courses(client, db, report, on).await?;
     sync_calendar(client, db, report, on).await?;
     sync_planned_workouts(client, db, report, on).await?;
+    sync_nutrition(client, db, report, on).await?;
     if due(db, "extras_static", STATIC_HOURS) {
         sync_devices(client, db, report, on).await?;
         sync_plans(client, db, report, on).await?;
@@ -153,6 +154,35 @@ async fn sync_body_battery(
         };
         let points = crate::intraday::parse_body_battery(&v);
         if let Err(e) = db.save_body_battery_curve(&date, &points) {
+            report.warnings.push(format!("{what}: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// How many days of the food log one sync reads.
+const NUTRITION_DAYS: i64 = 3;
+
+/// The food log of the last three days.
+async fn sync_nutrition(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "nutrition");
+    for date in recent_days(NUTRITION_DAYS) {
+        let what = format!("food log {date}");
+        let Some(v) = optional(report, &what, client.food_log(&date).await)? else {
+            continue;
+        };
+        // A reply that is not a food log (no date) says nothing about the day.
+        if v.get("mealDate").is_none() {
+            continue;
+        }
+        let goals = crate::nutrition::parse_goals(&v);
+        let meals = crate::nutrition::parse_meals(&v);
+        if let Err(e) = db.save_nutrition_day(&date, goals.as_ref(), &meals) {
             report.warnings.push(format!("{what}: {e}"));
         }
     }
