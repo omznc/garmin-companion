@@ -29,7 +29,7 @@ use crate::wellness::Wellness;
 use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
 /// Below this grid width each block takes the whole row.
-const NARROW_GRID: f32 = 640.0;
+pub(crate) const NARROW_GRID: f32 = 640.0;
 /// The widest the page gets.
 pub(crate) const PAGE_MAX: f32 = 1120.0;
 
@@ -77,6 +77,8 @@ pub struct Root {
     pub(crate) sidebar_w: f32,
     pub(crate) coach_w: f32,
     pub(crate) pane_drag: Option<crate::panes::Drag>,
+    /// What the last frame showed, for the hysteresis of the layout.
+    pub(crate) shown: std::cell::Cell<panes::Shown>,
     pub(crate) palette: Palette,
     sidebar: Sidebar,
     /// The screen on show.
@@ -157,6 +159,7 @@ impl Root {
             sidebar_w: clamp_width(Side::Sidebar, window_state.sidebar_w),
             coach_w: clamp_width(Side::Coach, window_state.coach_w),
             pane_drag: None,
+            shown: std::cell::Cell::new(panes::Shown::ALL),
             palette,
             active: sidebar.active,
             sidebar,
@@ -649,7 +652,7 @@ impl Root {
             );
         }
         let available = self.grid_width(window);
-        let narrow = available < NARROW_GRID;
+        let narrow = !self.grid_is_wide(available);
         let grid = if layout.is_empty() {
             blocks::edit::empty_box(editing, t)
         } else if editing {
@@ -669,7 +672,7 @@ impl Root {
     /// The pages of the Activities screen that are not the block layout.
     fn activity_page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let available = self.grid_width(window);
-        let narrow = available < NARROW_GRID;
+        let narrow = !self.grid_is_wide(available);
         match &self.page {
             Page::Detail(view) => activities::detail(view, available, narrow, t, cx),
             Page::All(at) => activities::all(&self.list, *at, available, t, cx),
