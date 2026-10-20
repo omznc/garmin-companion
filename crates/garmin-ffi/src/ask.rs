@@ -12,7 +12,7 @@ use garmin_coach::{Event, EventSink, HistoryMessage};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::chat::{self, Status, Step, StepKind, Turn};
+use crate::chat::{self, DraftEntry, Status, Step, StepKind, Turn};
 use crate::FfiError;
 
 /// The turn that runs now: its session, its stop flag and its live state.
@@ -68,21 +68,12 @@ impl TurnSink {
                 }
             }
             Event::Delta { text } => turn.answer.push_str(text),
-            Event::Note { text } => {
-                // The answer holds only the text of the round that just ended.
-                turn.answer.clear();
-                // A blank note only clears the answer: no empty row in the trace.
-                if !text.is_empty() {
-                    let n = turn.steps.len();
-                    turn.steps.push(Step {
-                        kind: StepKind::Note,
-                        call_id: format!("note-{n}"),
-                        label: text.clone(),
-                        running: false,
-                        ok: None,
-                    });
-                }
-            }
+            Event::Draft { call_id, draft } => turn.drafts.push(DraftEntry {
+                call_id: call_id.clone(),
+                draft: draft.clone(),
+                saved_workout_id: None,
+            }),
+            Event::Note { text } => apply_note(&mut turn, text),
             Event::Done { .. } => {
                 turn.status = if self.0.flag.load(Ordering::Relaxed) {
                     Status::Stopped
@@ -95,7 +86,25 @@ impl TurnSink {
                 turn.error = Some(text.clone());
             }
         }
-        (turn.status != Status::Running).then(|| turn.clone())
+        // A draft is stored at once, so the app can save it while the turn runs.
+        (turn.status != Status::Running || matches!(event, Event::Draft { .. }))
+            .then(|| turn.clone())
+    }
+}
+
+fn apply_note(turn: &mut Turn, text: &str) {
+    // The answer holds only the text of the round that just ended.
+    turn.answer.clear();
+    // A blank note only clears the answer: no empty row in the trace.
+    if !text.is_empty() {
+        let n = turn.steps.len();
+        turn.steps.push(Step {
+            kind: StepKind::Note,
+            call_id: format!("note-{n}"),
+            label: text.to_owned(),
+            running: false,
+            ok: None,
+        });
     }
 }
 
@@ -107,7 +116,9 @@ impl EventSink for TurnSink {
                 // A failed save cannot reach the app in a better way than the thread missing the turn.
                 let _ = chat::finish_turn(self.0.fixture, &self.0.session_id, &turn);
             }
-            clear_running(&self.0);
+            if turn.status != Status::Running {
+                clear_running(&self.0);
+            }
         }
         crate::emit("ask", payload(&event, &self.0.session_id, &self.0.turn_id));
     }
@@ -124,6 +135,20 @@ fn clear_running(state: &Arc<SinkState>) {
 pub(crate) fn running_session() -> Option<String> {
     let running = RUNNING.lock().unwrap_or_else(|e| e.into_inner());
     running.as_ref().map(|s| s.session_id.clone())
+}
+
+/// A draft was saved to Garmin: record the id on the turn in memory too, so
+/// the live turn that `chat_get` returns agrees with the store.
+pub(crate) fn mark_saved(session_id: &str, turn_id: &str, call_id: &str, workout_id: i64) {
+    let Some(state) = RUNNING.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        return;
+    };
+    let mut turn = state.turn.lock().unwrap_or_else(|e| e.into_inner());
+    if state.session_id == session_id && turn.id == turn_id {
+        for d in turn.drafts.iter_mut().filter(|d| d.call_id == call_id) {
+            d.saved_workout_id = Some(workout_id);
+        }
+    }
 }
 
 /// The turn of this session as it is now in memory, with its partial answer.
@@ -249,7 +274,7 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let task = if fixture {
         tokio::spawn(async move { fixture_turn(&run).await })
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag).await })
+        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag, true).await })
     };
     tokio::spawn(report_panic(task, sink));
     Ok("{}".into())
@@ -296,9 +321,32 @@ async fn fixture_turn(sink: &TurnSink) {
         sink.emit(Event::Delta { text: word.into() });
         tokio::time::sleep(Duration::from_millis(40)).await;
     }
+    if let Ok(draft) = garmin_core::workout::parse_draft(&sample_draft()) {
+        sink.emit(Event::Draft {
+            call_id: "fixture-draft".into(),
+            draft,
+        });
+    }
     sink.emit(Event::Done {
         sources: vec![label.into()],
     });
+}
+
+/// The workout of the sample turn, so the sample mode shows a draft card.
+fn sample_draft() -> Value {
+    json!({
+        "name": "4 x 3 min steady",
+        "sport": "running",
+        "description": "An easy start, four steady blocks and an easy end.",
+        "steps": [
+            { "kind": "warmup", "end": { "seconds": 600 }, "target": { "zone": 2 } },
+            { "times": 4, "steps": [
+                { "kind": "interval", "end": { "seconds": 180 }, "target": { "zone": 3 } },
+                { "kind": "recovery", "end": { "seconds": 120 }, "target": { "zone": 1 } }
+            ] },
+            { "kind": "cooldown", "end": { "seconds": 300 } }
+        ]
+    })
 }
 
 async fn config(fixture: bool) -> Result<String, FfiError> {
@@ -389,6 +437,7 @@ mod tests {
             steps: Vec::new(),
             status: Status::Running,
             error: None,
+            drafts: Vec::new(),
         };
         let sink = TurnSink(Arc::new(SinkState {
             session_id: "s".into(),
@@ -398,6 +447,17 @@ mod tests {
             flag: Arc::new(AtomicBool::new(false)),
             turn: Mutex::new(turn),
         }));
+        let draft = garmin_core::workout::parse_draft(&sample_draft()).unwrap();
+        sink.apply(&Event::Draft {
+            call_id: "d1".into(),
+            draft: draft.clone(),
+        });
+        {
+            let turn = sink.0.turn.lock().unwrap();
+            assert_eq!(turn.drafts.len(), 1);
+            assert_eq!(turn.drafts[0].draft, draft);
+            assert_eq!(turn.drafts[0].saved_workout_id, None);
+        }
         sink.apply(&Event::Delta {
             text: "\n\n".into(),
         });

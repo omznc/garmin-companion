@@ -10,6 +10,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use chrono::SecondsFormat;
 use garmin_core::db::{ChatSession, ChatSessionMeta, Db};
+use garmin_core::workout::WorkoutDraft;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -69,6 +70,21 @@ pub(crate) struct Turn {
     pub steps: Vec<Step>,
     pub status: Status,
     pub error: Option<String>,
+    /// The workouts that the coach proposed in this turn. A row from before
+    /// drafts existed has none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drafts: Vec<DraftEntry>,
+}
+
+/// One proposed workout. `saved_workout_id` is set once the person saved it to
+/// Garmin, so a second press does not create a second workout.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DraftEntry {
+    pub call_id: String,
+    pub draft: WorkoutDraft,
+    #[serde(default)]
+    pub saved_workout_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -258,6 +274,7 @@ pub(crate) fn begin_turn(fixture: bool, session_id: &str, question: &str) -> Res
             steps: Vec::new(),
             status: Status::Running,
             error: None,
+            drafts: Vec::new(),
         };
         turns.push(turn.clone());
         if existing.is_some() {
@@ -276,7 +293,9 @@ pub(crate) fn begin_turn(fixture: bool, session_id: &str, question: &str) -> Res
     })
 }
 
-/// Store the final state of a turn. A thread or turn that is gone stays gone.
+/// Store the state of a turn. The turn in memory can be older than the stored
+/// one: a draft may be saved to Garmin while the turn still runs. So the saved
+/// ids of the stored turn stay. A thread or turn that is gone stays gone.
 pub(crate) fn finish_turn(fixture: bool, session_id: &str, turn: &Turn) -> Result<(), String> {
     with_store(fixture, |store| {
         let Some(row) = store.get(session_id)? else {
@@ -286,8 +305,58 @@ pub(crate) fn finish_turn(fixture: bool, session_id: &str, turn: &Turn) -> Resul
         let Some(slot) = turns.iter_mut().find(|t| t.id == turn.id) else {
             return Ok(());
         };
-        *slot = turn.clone();
+        let mut next = turn.clone();
+        for d in &mut next.drafts {
+            let stored = slot.drafts.iter().find(|s| s.call_id == d.call_id);
+            d.saved_workout_id = d
+                .saved_workout_id
+                .or(stored.and_then(|s| s.saved_workout_id));
+        }
+        *slot = next;
         store.update_turns(session_id, &turns)
+    })
+}
+
+/// Set the saved workout id of one draft in the stored thread. Returns the
+/// draft, or `None` when the thread, turn or draft is gone.
+pub(crate) fn set_saved(
+    fixture: bool,
+    (session_id, turn_id, call_id): (&str, &str, &str),
+    workout_id: i64,
+) -> Result<Option<DraftEntry>, String> {
+    with_store(fixture, |store| {
+        let Some(row) = store.get(session_id)? else {
+            return Ok(None);
+        };
+        let mut turns = decode(&row.messages);
+        let found = turns
+            .iter_mut()
+            .filter(|t| t.id == turn_id)
+            .flat_map(|t| t.drafts.iter_mut())
+            .find(|d| d.call_id == call_id);
+        let Some(entry) = found else {
+            return Ok(None);
+        };
+        entry.saved_workout_id = Some(workout_id);
+        let saved = entry.clone();
+        store.update_turns(session_id, &turns)?;
+        Ok(Some(saved))
+    })
+}
+
+/// The stored draft of one turn.
+pub(crate) fn find_draft(
+    fixture: bool,
+    (session_id, turn_id, call_id): (&str, &str, &str),
+) -> Result<Option<DraftEntry>, String> {
+    with_store(fixture, |store| {
+        let row = store.get(session_id)?;
+        let turns = row.map_or_else(Vec::new, |r| decode(&r.messages));
+        Ok(turns
+            .into_iter()
+            .filter(|t| t.id == turn_id)
+            .flat_map(|t| t.drafts)
+            .find(|d| d.call_id == call_id))
     })
 }
 
@@ -420,7 +489,33 @@ mod tests {
             }],
             status,
             error: None,
+            drafts: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_draft_entry_round_trips_and_an_old_row_has_none() {
+        let draft = garmin_core::workout::parse_draft(&json!({
+            "name": "Easy", "sport": "running",
+            "steps": [{ "kind": "interval", "end": { "seconds": 600 } }]
+        }))
+        .unwrap();
+        let mut t = turn(Status::Done);
+        t.drafts.push(DraftEntry {
+            call_id: "d1".into(),
+            draft,
+            saved_workout_id: Some(42),
+        });
+        let json: Value = serde_json::from_str(&encode(&[t.clone()])).unwrap();
+        assert_eq!(json["turns"][0]["drafts"][0]["callId"], "d1");
+        assert_eq!(json["turns"][0]["drafts"][0]["savedWorkoutId"], 42);
+        assert_eq!(json["turns"][0]["drafts"][0]["draft"]["name"], "Easy");
+        assert_eq!(decode(&encode(&[t])).remove(0).drafts.len(), 1);
+        // A turn without drafts writes no key, and an old row reads as empty.
+        let plain: Value = serde_json::from_str(&encode(&[turn(Status::Done)])).unwrap();
+        assert!(plain["turns"][0].get("drafts").is_none());
+        let old = r#"{"v":1,"turns":[{"id":"s:0","question":"q","answer":"a","steps":[],"status":"done","error":null}]}"#;
+        assert!(decode(old)[0].drafts.is_empty());
     }
 
     #[test]

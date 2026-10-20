@@ -5,10 +5,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{anyhow, Result};
 use garmin_core::db::Db;
+use garmin_core::workout::WorkoutDraft;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::prompt::{grounding_message, system_message, trim_history};
+use crate::sse::ToolCall;
 use crate::tools;
 use crate::transport::{HttpTransport, Transport};
 
@@ -48,6 +50,12 @@ pub enum Event {
     Note {
         text: String,
     },
+    /// A workout that the model proposed and the tool accepted. The host shows
+    /// it as a card. Nothing is saved to Garmin until the person asks.
+    Draft {
+        call_id: String,
+        draft: WorkoutDraft,
+    },
     /// The turn ended. `sources` are the labels of what it read.
     Done {
         sources: Vec<String>,
@@ -64,27 +72,35 @@ pub trait EventSink: Send + Sync {
 
 /// Run one turn with the saved config. The result goes to the sink as `Done`
 /// or `Error`. A stopped turn ends with `Done`, and the host keeps the text.
-pub async fn ask(history: Vec<HistoryMessage>, sink: &dyn EventSink, stop: &AtomicBool) {
+pub async fn ask(
+    history: Vec<HistoryMessage>,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+    drafts: bool,
+) {
     let transport = Db::open_default().and_then(|db| HttpTransport::from_config(&db));
     match transport {
         Ok(t) => {
             // The turn reports its own end to the sink.
-            let _ = run_turn(&t, sink, stop, history, &Db::open_default).await;
+            let _ = run_turn(&t, sink, stop, history, &Db::open_default, drafts).await;
         }
         Err(e) => sink.emit(Event::Error { text: chain(&e) }),
     }
 }
 
 /// The engine. `open_db` opens the cache for each tool call and for the
-/// grounding message, so no handle lives across an await.
+/// grounding message, so no handle lives across an await. `drafts` is on for
+/// a host that shows a workout card: it adds the `draft_workout` tool and its
+/// prompt text.
 pub async fn run_turn<T: Transport>(
     transport: &T,
     sink: &dyn EventSink,
     stop: &AtomicBool,
     history: Vec<HistoryMessage>,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
+    drafts: bool,
 ) -> Result<Vec<String>> {
-    match rounds(transport, sink, stop, history, open_db).await {
+    match rounds(transport, sink, stop, history, open_db, drafts).await {
         Ok(sources) => {
             sink.emit(Event::Done {
                 sources: sources.clone(),
@@ -112,9 +128,10 @@ async fn rounds<T: Transport>(
     stop: &AtomicBool,
     history: Vec<HistoryMessage>,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
+    drafts: bool,
 ) -> Result<Vec<String>> {
     let mut messages = vec![
-        system_message(transport.caches_prompt()),
+        system_message(transport.caches_prompt(), drafts),
         grounding_message(&open_db()?)?,
     ];
     messages.extend(
@@ -123,7 +140,7 @@ async fn rounds<T: Transport>(
             .map(|m| json!({ "role": m.role, "content": m.content })),
     );
 
-    let schemas = tools::schemas();
+    let schemas = tools::schemas(drafts);
     let mut sources = Vec::new();
 
     for round in 0..=MAX_TOOL_ROUNDS {
@@ -168,10 +185,10 @@ async fn rounds<T: Transport>(
             let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
             let label = tools::describe(&call.name, &args);
             sink.emit(tool_event(&call.id, &label, true, true));
-            sources.push(label.clone());
-            let result = tools::run(&call.name, &args, open_db);
+            let result = run_call(&call.name, &args, drafts, open_db);
             let ok = result.get("error").is_none();
             sink.emit(tool_event(&call.id, &label, false, ok));
+            report_call(sink, &mut sources, call, &args, label, ok);
             messages.push(json!({
                 "role": "tool",
                 "tool_call_id": call.id,
@@ -184,6 +201,46 @@ async fn rounds<T: Transport>(
         }
     }
     Err(no_answer())
+}
+
+/// Run one tool call. A host with drafts off does not know `draft_workout`,
+/// even if the model calls it.
+fn run_call(
+    name: &str,
+    args: &Value,
+    drafts: bool,
+    open_db: &(dyn Fn() -> Result<Db> + Sync),
+) -> Value {
+    if name == tools::DRAFT_TOOL && !drafts {
+        return json!({ "error": format!("unknown tool {name}") });
+    }
+    tools::run(name, args, open_db)
+}
+
+/// Tell the host what a finished call produced. A read adds its label to the
+/// sources. A draft is not a read: it becomes a `Draft` event, built with the
+/// same parse that the tool used, so the host gets what the tool accepted.
+fn report_call(
+    sink: &dyn EventSink,
+    sources: &mut Vec<String>,
+    call: &ToolCall,
+    args: &Value,
+    label: String,
+    ok: bool,
+) {
+    if call.name != tools::DRAFT_TOOL {
+        sources.push(label);
+        return;
+    }
+    if let Some(draft) = ok
+        .then(|| garmin_core::workout::parse_draft(args).ok())
+        .flatten()
+    {
+        sink.emit(Event::Draft {
+            call_id: call.id.clone(),
+            draft,
+        });
+    }
 }
 
 /// A reasoning model can spend its whole budget thinking and return nothing.
@@ -305,7 +362,7 @@ mod tests {
         ]);
         let sink = Rec::default();
         let stop = AtomicBool::new(false);
-        let sources = run_turn(&mock, &sink, &stop, user("How am I?"), &empty_db)
+        let sources = run_turn(&mock, &sink, &stop, user("How am I?"), &empty_db, false)
             .await
             .unwrap();
         assert_eq!(sources, vec!["Reading 7 days of recovery signals"]);
@@ -340,9 +397,16 @@ mod tests {
             &text("Rest today."),
         ]);
         let sink = Rec::default();
-        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
-            .await
-            .unwrap();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap();
         let events = sink.events();
         let note = events
             .iter()
@@ -363,9 +427,16 @@ mod tests {
     async fn whitespace_narration_still_sends_a_note_to_clear_it() {
         let mock = Mock::new(&[&narrated_call("\n\n", "cache_status"), &text("Rest.")]);
         let sink = Rec::default();
-        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
-            .await
-            .unwrap();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap();
         assert!(sink.events().contains(&Event::Note {
             text: String::new()
         }));
@@ -385,6 +456,7 @@ mod tests {
             &AtomicBool::new(false),
             user("hi"),
             &empty_db,
+            false,
         )
         .await;
         assert!(ok.is_ok());
@@ -400,6 +472,7 @@ mod tests {
             &AtomicBool::new(false),
             user("hi"),
             &empty_db,
+            false,
         )
         .await
         .unwrap_err();
@@ -410,9 +483,16 @@ mod tests {
     async fn an_unknown_tool_is_a_failed_step_and_not_a_failed_turn() {
         let mock = Mock::new(&[&call("nope", "{}"), &text("Sorry.")]);
         let sink = Rec::default();
-        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
-            .await
-            .unwrap();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap();
         assert!(sink.events().iter().any(|e| matches!(
             e,
             Event::Tool {
@@ -433,9 +513,16 @@ mod tests {
         replies.push(&answer);
         let mock = Mock::new(&replies);
         let sink = Rec::default();
-        run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
-            .await
-            .unwrap();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap();
         let seen = mock.seen.lock().unwrap().clone();
         assert_eq!(seen.len(), MAX_TOOL_ROUNDS + 1);
         // The earlier requests leave the choice open.
@@ -461,6 +548,7 @@ mod tests {
             &AtomicBool::new(false),
             user("hi"),
             &empty_db,
+            false,
         )
         .await
         .unwrap_err();
@@ -471,9 +559,16 @@ mod tests {
     async fn an_empty_answer_is_an_error_the_person_can_read() {
         let mock = Mock::new(&["data: [DONE]\n\n"]);
         let sink = Rec::default();
-        let err = run_turn(&mock, &sink, &AtomicBool::new(false), user("hi"), &empty_db)
-            .await
-            .unwrap_err();
+        let err = run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("hi"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap_err();
         assert!(err.to_string().contains("without writing an answer"));
         assert!(matches!(sink.events().last(), Some(Event::Error { .. })));
     }
@@ -483,10 +578,103 @@ mod tests {
         let mock = Mock::new(&[]);
         let sink = Rec::default();
         let stop = AtomicBool::new(true);
-        run_turn(&mock, &sink, &stop, user("hi"), &empty_db)
+        run_turn(&mock, &sink, &stop, user("hi"), &empty_db, false)
             .await
             .unwrap();
         assert_eq!(sink.events(), vec![Event::Done { sources: vec![] }]);
+    }
+
+    fn good_draft_args() -> String {
+        json!({
+            "name": "Easy 30", "sport": "running",
+            "steps": [{ "kind": "interval", "end": { "seconds": 1800 } }]
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn a_draft_call_emits_a_draft_and_is_not_a_source() {
+        let args = good_draft_args();
+        let mock = Mock::new(&[&call("draft_workout", &args), &text("Here it is.")]);
+        let sink = Rec::default();
+        let sources = run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("plan"),
+            &empty_db,
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(sources.is_empty());
+        let drafts: Vec<_> = sink
+            .events()
+            .into_iter()
+            .filter_map(|e| match e {
+                Event::Draft { call_id, draft } => Some((call_id, draft)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].0, "c1");
+        assert_eq!(drafts[0].1.name, "Easy 30");
+        let json = serde_json::to_value(Event::Draft {
+            call_id: "c1".into(),
+            draft: drafts[0].1.clone(),
+        })
+        .unwrap();
+        assert_eq!(json["type"], "draft");
+        assert_eq!(json["callId"], "c1");
+        assert_eq!(json["draft"]["name"], "Easy 30");
+    }
+
+    #[tokio::test]
+    async fn an_invalid_draft_is_an_error_result_and_no_draft_event() {
+        let bad = r#"{"name":"Long","sport":"running","steps":[{"kind":"interval","end":{"seconds":90000}}]}"#;
+        let mock = Mock::new(&[&call("draft_workout", bad), &text("Sorry.")]);
+        let sink = Rec::default();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("plan"),
+            &empty_db,
+            true,
+        )
+        .await
+        .unwrap();
+        let events = sink.events();
+        assert!(!events.iter().any(|e| matches!(e, Event::Draft { .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            Event::Tool {
+                running: false,
+                ok: false,
+                ..
+            }
+        )));
+    }
+
+    #[tokio::test]
+    async fn drafts_off_hides_the_tool_and_rejects_a_call_to_it() {
+        let args = good_draft_args();
+        let mock = Mock::new(&[&call("draft_workout", &args), &text("Sorry.")]);
+        let sink = Rec::default();
+        run_turn(
+            &mock,
+            &sink,
+            &AtomicBool::new(false),
+            user("plan"),
+            &empty_db,
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(!sink
+            .events()
+            .iter()
+            .any(|e| matches!(e, Event::Draft { .. })));
     }
 
     #[test]

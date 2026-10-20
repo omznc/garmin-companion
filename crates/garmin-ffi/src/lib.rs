@@ -21,6 +21,7 @@ mod ask;
 mod backup;
 mod chat;
 mod cloud;
+mod workout;
 
 uniffi::setup_scaffolding!();
 
@@ -156,6 +157,9 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         return out;
     }
     if let Some(out) = cloud::handle(cmd, args, fixture).await {
+        return out;
+    }
+    if let Some(out) = workout::handle(cmd, args, fixture).await {
         return out;
     }
     match cmd {
@@ -424,6 +428,8 @@ mod tests {
         let save = serde_json::json!({ "provider": "openrouter", "key": "k" });
         let sid = serde_json::json!({ "sessionId": "guard" });
         let rename = serde_json::json!({ "sessionId": "guard", "title": "t" });
+        let create =
+            serde_json::json!({ "sessionId": "guard", "turnId": "guard:0", "callId": "c" });
         let cmds = [
             ("today", &none),
             ("activities", &none),
@@ -449,6 +455,7 @@ mod tests {
             ("chat_get", &sid),
             ("chat_rename", &rename),
             ("chat_delete", &sid),
+            ("workout_create", &create),
             ("cloud_account", &none),
             ("cloud_sign_out", &none),
         ];

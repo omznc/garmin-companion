@@ -28,6 +28,7 @@ pub mod sleep_view;
 mod text;
 pub mod today;
 pub mod training_fixtures;
+pub mod workouts;
 
 pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
