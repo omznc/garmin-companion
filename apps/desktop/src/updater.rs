@@ -20,6 +20,9 @@ use base64::Engine as _;
 use minisign_verify::{PublicKey, Signature};
 use serde::Deserialize;
 
+use crate::updater_pkg::package_of;
+pub use crate::updater_pkg::{Outcome, PackageKind};
+
 /// The URL of the old app (`plugins.updater.endpoints` in its `tauri.conf.json`).
 pub const MANIFEST_URL: &str =
     "https://github.com/omznc/garmin-companion/releases/latest/download/latest.json";
@@ -92,7 +95,9 @@ pub enum Kind {
     MacApp(PathBuf),
     /// The AppImage file is the path: it is replaced.
     AppImage(PathBuf),
-    /// A deb or rpm, or a build run from a folder. The app only points to the release page.
+    /// A deb or rpm: the package manager installs the new file.
+    Package(PackageKind),
+    /// A build run from a folder. The app only points to the release page.
     Manual,
 }
 
@@ -141,6 +146,10 @@ fn kind_of(os: &str, exe: &Path, appimage: Option<PathBuf>, appdir: Option<PathB
             (Some(image), Some(dir)) if image.is_file() && exe.starts_with(&dir) => {
                 Kind::AppImage(image)
             }
+            // We ship the deb and the rpm for x86_64 only.
+            _ if std::env::consts::ARCH == "x86_64" => {
+                package_of(Path::new("/"), exe).map_or(Kind::Manual, Kind::Package)
+            }
             _ => Kind::Manual,
         },
         _ => Kind::Manual,
@@ -155,6 +164,9 @@ pub fn platform_keys(os: &str, arch: &str, kind: &Kind) -> Vec<String> {
         Kind::Windows => "nsis",
         Kind::MacApp(_) => "app",
         Kind::AppImage(_) => "appimage",
+        // No short key: `linux-x86_64` is the AppImage, not a package.
+        Kind::Package(PackageKind::Deb) => return vec![format!("{os}-{arch}-deb")],
+        Kind::Package(PackageKind::Rpm) => return vec![format!("{os}-{arch}-rpm")],
         Kind::Manual => return Vec::new(),
     };
     vec![format!("{os}-{arch}-{installer}"), format!("{os}-{arch}")]
@@ -249,8 +261,7 @@ pub fn selftest() -> Result<()> {
     runtime.block_on(async {
         let offer = check().await?.context("no update is offered")?;
         println!("offer {}", offer.version);
-        install(&offer).await?;
-        println!("installed");
+        println!("{:?}", install(&offer).await?);
         Ok(())
     })
 }
@@ -271,7 +282,7 @@ pub fn verify(data: &[u8], signature_b64: &str, pubkey_b64: &str) -> Result<()> 
 
 /// Download the file of an offer, check it, install it, and start the new
 /// app where that is needed. On `Ok`, the caller must quit the app.
-pub async fn install(offer: &Offer) -> Result<()> {
+pub async fn install(offer: &Offer) -> Result<Outcome> {
     let (url, signature) = offer
         .download
         .as_ref()
@@ -287,12 +298,12 @@ pub async fn install(offer: &Offer) -> Result<()> {
     install_bytes(&bytes, &offer.kind, &offer.version)
 }
 
-fn install_bytes(bytes: &[u8], kind: &Kind, version: &str) -> Result<()> {
+fn install_bytes(bytes: &[u8], kind: &Kind, version: &str) -> Result<Outcome> {
     match kind {
         Kind::Windows => {
             run_nsis(bytes, version)?;
             crate::instance::release();
-            Ok(())
+            Ok(Outcome::Installed)
         }
         Kind::MacApp(app) => {
             replace_bundle(bytes, app)?;
@@ -300,11 +311,21 @@ fn install_bytes(bytes: &[u8], kind: &Kind, version: &str) -> Result<()> {
                 .file_name()
                 .context("no executable name")?
                 .to_owned();
-            relaunch(&app.join("Contents/MacOS").join(name))
+            relaunch(&app.join("Contents/MacOS").join(name))?;
+            Ok(Outcome::Installed)
         }
         Kind::AppImage(path) => {
             replace_appimage(bytes, path)?;
-            relaunch(path)
+            relaunch(path)?;
+            Ok(Outcome::Installed)
+        }
+        Kind::Package(package) => {
+            let outcome = crate::updater_pkg::install(*package, bytes, version)?;
+            if outcome == Outcome::Installed {
+                // The package put the new binary at the same path.
+                relaunch(Path::new(crate::updater_pkg::BINARY))?;
+            }
+            Ok(outcome)
         }
         Kind::Manual => bail!("this install is updated by hand"),
     }
@@ -593,6 +614,30 @@ mod tests {
             ["linux-x86_64-appimage", "linux-x86_64"]
         );
         assert!(platform_keys("linux", "x86_64", &Kind::Manual).is_empty());
+        // A package never falls back to the AppImage key.
+        assert_eq!(
+            platform_keys("linux", "x86_64", &Kind::Package(PackageKind::Deb)),
+            ["linux-x86_64-deb"]
+        );
+        assert_eq!(
+            platform_keys("linux", "x86_64", &Kind::Package(PackageKind::Rpm)),
+            ["linux-x86_64-rpm"]
+        );
+    }
+
+    #[test]
+    fn a_package_install_gets_its_own_file() {
+        let mut m = manifest();
+        let deb = Kind::Package(PackageKind::Deb);
+        let offer = evaluate(&m, "1.0.0", "linux", "x86_64", &deb)
+            .unwrap()
+            .unwrap();
+        assert_eq!(offer.download.unwrap().1, "s4");
+        // The manifest has no rpm entry, and the AppImage one must not serve.
+        let rpm = Kind::Package(PackageKind::Rpm);
+        assert!(evaluate(&m, "1.0.0", "linux", "x86_64", &rpm).is_err());
+        m.platforms.get_mut("linux-x86_64-deb").unwrap().url = "http://x/l.deb".into();
+        assert!(evaluate(&m, "1.0.0", "linux", "x86_64", &deb).is_err());
     }
 
     #[test]
@@ -667,7 +712,7 @@ mod tests {
     }
 
     #[test]
-    fn a_package_install_gets_no_download() {
+    fn a_manual_install_gets_no_download() {
         let offer = evaluate(&manifest(), "1.0.0", "linux", "x86_64", &Kind::Manual)
             .unwrap()
             .unwrap();

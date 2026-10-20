@@ -48,6 +48,7 @@ mod training;
 mod ui;
 mod update_ui;
 mod updater;
+mod updater_pkg;
 mod wellness;
 
 use std::borrow::Cow;

@@ -12,7 +12,7 @@ use crate::controls::quiet;
 use crate::shell::Root;
 use crate::theme::{Theme, FS_SMALL};
 use crate::ui::{body, SANS};
-use crate::updater::{self, Kind, Offer};
+use crate::updater::{self, Kind, Offer, Outcome};
 
 /// The wait after the start, so the check does not compete with the first draw.
 const START_DELAY: Duration = Duration::from_secs(20);
@@ -127,7 +127,21 @@ impl Root {
                 )
                 .await;
             let _ = this.update(cx, |root, cx| match result {
-                Ok(()) => cx.quit(),
+                Ok(Outcome::Installed) => cx.quit(),
+                Ok(Outcome::Declined(why)) => {
+                    // No install without the system's permission: the user does it by hand.
+                    cx.open_url(updater::RELEASE_PAGE);
+                    let state = &mut root.account.update;
+                    state.installing = false;
+                    state.dismissed = false;
+                    state.note = Some((
+                        format!(
+                            "Could not install: {why}. Install the package from the release page."
+                        ),
+                        true,
+                    ));
+                    cx.notify();
+                }
                 Err(e) => {
                     let state = &mut root.account.update;
                     state.installing = false;
@@ -154,6 +168,10 @@ async fn check_job() -> Result<Option<Offer>, String> {
 fn headline(offer: &Offer) -> String {
     match offer.kind {
         Kind::Manual => format!("Version {} is available.", offer.version),
+        Kind::Package(_) => format!(
+            "Version {} is ready to install. The system asks for your password.",
+            offer.version
+        ),
         _ => format!("Version {} is ready to install.", offer.version),
     }
 }
@@ -165,6 +183,9 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     let manual = offer.kind == Kind::Manual;
     let line = match &state.note {
         Some((text, true)) => text.clone(),
+        _ if state.installing && matches!(offer.kind, Kind::Package(_)) => {
+            "Installing. Answer the password prompt. The app restarts when this is done.".into()
+        }
         _ if state.installing => "Installing. The app restarts when this is done.".into(),
         _ => headline(offer),
     };
