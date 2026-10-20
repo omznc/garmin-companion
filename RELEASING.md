@@ -390,7 +390,8 @@ notarization is the one worth buying.
 The workflow `.github/workflows/testflight.yml` builds a signed iOS app and
 uploads it to TestFlight. Run it by hand after you publish the release:
 Actions, then "TestFlight", then "Run workflow". Enter the tag, for example
-`v1.0.5`. The tag must exist.
+`v1.1.0`. The tag must exist. The tag must include `scripts/check-privacy-manifest.mjs`,
+so v1.0.5 and the earlier tags do not work.
 
 Without the six secrets below, the run prints a notice, skips the build and
 passes. The workflow is not tested on a real account yet. Expect to fix the

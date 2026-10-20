@@ -6,7 +6,7 @@
 # Run it by hand after the release, with the tag of the release:
 # Actions -> TestFlight -> Run workflow.
 #
-# The signing and upload steps need five secrets. Without them the run
+# The signing and upload steps need six secrets. Without them the run
 # skips the build and passes. RELEASING.md lists the secrets.
 name: TestFlight
 
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag of the release, for example v1.0.5."
+        description: "Tag of the release, for example v1.1.0. The tag must include scripts/check-privacy-manifest.mjs."
         required: true
 
 permissions:
@@ -61,6 +61,10 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         with:
           ref: ${{ inputs.tag }}
+
+      - name: Check that the tag has the privacy manifest check
+        if: steps.check.outputs.ready == 'true'
+        run: '[[ -f scripts/check-privacy-manifest.mjs ]] || { echo "::error::This tag is older than the privacy manifest check. Use a newer tag."; exit 1; }'
 
       - uses: dtolnay/rust-toolchain@stable
         if: steps.check.outputs.ready == 'true'
