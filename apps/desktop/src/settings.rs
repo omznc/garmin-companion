@@ -107,7 +107,7 @@ fn disconnect_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
         panel::button(
             "sign-out",
             "Disconnect from Garmin",
-            Kind::Destroy,
+            Kind::Danger,
             !busy,
             Some(Icon::SignOut),
             t,
@@ -115,7 +115,7 @@ fn disconnect_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
         .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.sign_out(cx))),
     );
     let help = "Signs this computer out of Garmin. To sync again, you must connect again.";
-    panel::danger_row("Disconnect", Some(help), value, t)
+    panel::row(false, "Disconnect", Some(help), value, t)
 }
 
 fn garmin(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -> Div {

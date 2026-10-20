@@ -127,15 +127,6 @@ pub fn row(first: bool, label: &str, help_text: Option<&str>, value: Div, t: &Th
     )
 }
 
-/// `.row-danger`: the same row on a warning wash, with a warning title.
-pub fn danger_row(label: &str, help_text: Option<&str>, value: Div, t: &Theme) -> Div {
-    let below = help_text.map(|h| help(h.to_string(), t));
-    wrapped(label_column(label, below, t.warn), value)
-        .bg(t.warntint)
-        .border_t_1()
-        .border_color(t.warnline)
-}
-
 /// `.sub`: the grey area under the rows of a panel.
 pub fn sub(t: &Theme) -> Div {
     padded(div())
@@ -176,8 +167,6 @@ pub enum Kind {
     Primary,
     /// A warning outline.
     Danger,
-    /// A solid warning fill.
-    Destroy,
 }
 
 /// The ground, text and outline of a button kind.
@@ -186,7 +175,6 @@ fn kind_colours(kind: Kind, t: &Theme) -> (Hsla, Hsla, Hsla) {
         Kind::Plain => (t.bg, t.fg, t.line),
         Kind::Primary => (t.fg, t.bg, t.fg),
         Kind::Danger => (gpui::transparent_black(), t.warn, t.warnline),
-        Kind::Destroy => (t.warn, t.bg, t.warn),
     }
 }
 
@@ -196,7 +184,7 @@ fn hover_of(b: Stateful<Div>, kind: Kind, t: &Theme) -> Stateful<Div> {
     match kind {
         Kind::Plain => b.hover(move |s| s.bg(sel)),
         Kind::Danger => b.hover(move |s| s.bg(tint)),
-        Kind::Primary | Kind::Destroy => b.hover(|s| s.opacity(0.88)),
+        Kind::Primary => b.hover(|s| s.opacity(0.88)),
     }
 }
 
