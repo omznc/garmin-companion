@@ -85,6 +85,7 @@ jobs:
           export CCACHE_BASEDIR="$GITHUB_WORKSPACE"
           export CCACHE_DEPEND=1 CCACHE_FILECLONE=1
           export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
+          export CCACHE_DEBUG=1 CCACHE_DEBUGDIR="\$(cat $RUNNER_TEMP/ccdebugdir)"
           export CCACHE_SLOPPINESS=file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
           exec "$CCACHE" "$CLANG" "\$@"
           EOF
@@ -92,12 +93,32 @@ jobs:
           done
           WORKSPACE="$(ls -d ios/*.xcworkspace)"
           SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
-          xcodebuild -quiet -workspace "$WORKSPACE" -scheme "$SCHEME" \
-            CC="$RUNNER_TEMP/ccache-clang" CXX="$RUNNER_TEMP/ccache-clang++" \
-            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/derived" \
-            COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          build() {
+            mkdir -p "$RUNNER_TEMP/dbg$1"; echo "$RUNNER_TEMP/dbg$1" > "$RUNNER_TEMP/ccdebugdir"
+            xcodebuild -quiet -workspace "$WORKSPACE" -scheme "$SCHEME" \
+              CC="$RUNNER_TEMP/ccache-clang" CXX="$RUNNER_TEMP/ccache-clang++" \
+              -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+              -derivedDataPath "$RUNNER_TEMP/derived" \
+              COMPILER_INDEX_STORE_ENABLE=NO DEBUG_INFORMATION_FORMAT=dwarf \
+              CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          }
+          build 1
+          ccache -s
+          cp -R "$RUNNER_TEMP/derived/Build/Products" "$RUNNER_TEMP/products-keep"
+          rm -rf "$RUNNER_TEMP/derived"
+          ccache -z
+          build 2
+          ccache -s
+          rm -rf "$RUNNER_TEMP/derived/Build/Products"
+          mkdir -p "$RUNNER_TEMP/derived/Build" && mv "$RUNNER_TEMP/products-keep" "$RUNNER_TEMP/derived/Build/Products"
+          n=0
+          find "$RUNNER_TEMP/dbg1" -name '*.ccache-input-text' | head -n 400 | while read -r f; do
+            g="$RUNNER_TEMP/dbg2${f#$RUNNER_TEMP/dbg1}"
+            [[ -f "$g" ]] || continue
+            cmp -s "$f" "$g" && continue
+            echo "== $(basename "$f")"; diff <(tr '\0' '\n' < "$f") <(tr '\0' '\n' < "$g") | cut -c1-250 | head -20
+            n=$((n+1)); [[ $n -ge 4 ]] && break
+          done
 
       # If the hit rate is zero, ccache is not in use.
       - name: Show the ccache statistics
