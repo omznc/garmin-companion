@@ -1,6 +1,6 @@
 {
-	"platforms": ["android"],
-	"android": {
-		"modules": ["expo.modules.nightmode.NightModeModule"]
-	}
+  "platforms": ["android"],
+  "android": {
+    "modules": ["expo.modules.nightmode.NightModeModule"]
+  }
 }
