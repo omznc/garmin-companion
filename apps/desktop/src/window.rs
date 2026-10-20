@@ -25,6 +25,8 @@ pub struct State {
     /// The widths that the user dragged. `None` is the default width.
     pub sidebar_w: Option<f32>,
     pub coach_w: Option<f32>,
+    /// The Today blocks that the user arranged. `None` is the shipped layout.
+    pub today_layout: Option<Vec<crate::blocks::layout::Saved>>,
 }
 
 impl Default for State {
@@ -39,6 +41,7 @@ impl Default for State {
             calendar_closed: false,
             sidebar_w: None,
             coach_w: None,
+            today_layout: None,
         }
     }
 }

@@ -8,11 +8,13 @@
 
 pub mod activities;
 mod daily;
+pub mod edit;
 mod fitness;
 mod food;
 mod gear;
 mod health;
 mod insights;
+pub mod layout;
 mod plan;
 mod reports;
 mod routes;
