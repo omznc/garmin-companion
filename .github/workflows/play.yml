@@ -29,7 +29,8 @@ permissions:
   contents: read
 
 jobs:
-  play:
+  # The same job id as in release-rewrite.yml, so the two jobs share the Rust cache.
+  android:
     runs-on: ubuntu-24.04
     env:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -43,7 +44,11 @@ jobs:
       # the update code in the JavaScript bundle.
       EXPO_PUBLIC_SELF_UPDATE: "0"
     steps:
+      # Build the published release, not the current master. The tag appears when
+      # the release is published.
       - uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.version }}
 
       - name: Check the version
         run: |
@@ -131,7 +136,10 @@ jobs:
             || { echo "The bundle is not signed with the upload key."; exit 1; }
           # Play does not allow this permission. The manifest is protobuf, but
           # the permission name is plain text in the file.
-          if unzip -p "$AAB" base/manifest/AndroidManifest.xml | grep -aq REQUEST_INSTALL_PACKAGES; then
+          # Read the manifest into a file first. An unzip error must not look like "no match".
+          unzip -p "$AAB" base/manifest/AndroidManifest.xml > manifest.pb
+          [[ -s manifest.pb ]] || { echo "The bundle has no manifest."; exit 1; }
+          if grep -aq REQUEST_INSTALL_PACKAGES manifest.pb; then
             echo "The bundle has REQUEST_INSTALL_PACKAGES."; exit 1
           fi
           mkdir -p play-out
