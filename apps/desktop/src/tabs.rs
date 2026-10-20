@@ -1,9 +1,9 @@
 //! The tab bar of the open screens and the breadcrumb bar under it. From the
 //! `tablist` and the toolbar of the design.
 //!
-//! Today is always the first tab and has no close button. The tab of a
-//! screen opens when the user picks the screen. At most eight tabs stay open:
-//! a new one closes the oldest tab that is not Today and not in view.
+//! Each tab can close, Today too. The tab of a screen opens at the end when
+//! the user picks the screen. At most eight tabs stay open: a new one closes
+//! the oldest tab.
 
 use gpui::{div, prelude::*, px, ClickEvent, Context, Div, MouseButton, SharedString};
 
@@ -15,29 +15,28 @@ use crate::ui::SANS;
 
 pub const MAX_TABS: usize = 8;
 
-/// Open the tab of `screen`, or find it when it is open. The oldest tab that
-/// can close makes room when the bar is full.
+/// Open the tab of `screen` at the end, or find it when it is open. The
+/// oldest tab makes room when the bar is full.
 pub fn open(tabs: &mut Vec<Screen>, screen: Screen) {
     if tabs.contains(&screen) {
         return;
     }
     if tabs.len() >= MAX_TABS {
-        if let Some(at) = tabs.iter().position(|s| *s != Screen::Today) {
-            tabs.remove(at);
-        }
+        tabs.remove(0);
     }
     tabs.push(screen);
 }
 
-/// Close the tab of `screen`. Today stays. Returns the screen to show when
-/// the closed tab was the one in view: its left neighbour.
+/// Close the tab of `screen`. Returns the screen to show when the closed tab
+/// was the one in view: its left neighbour. `None` when the view stays, or
+/// when no tab is left.
 pub fn close(tabs: &mut Vec<Screen>, screen: Screen, active: Screen) -> Option<Screen> {
-    if screen == Screen::Today {
-        return None;
-    }
     let at = tabs.iter().position(|s| *s == screen)?;
     tabs.remove(at);
-    (screen == active).then(|| tabs[at.saturating_sub(1)])
+    if screen != active {
+        return None;
+    }
+    tabs.get(at.saturating_sub(1)).copied()
 }
 
 fn close_button(active: bool, t: &Theme) -> Div {
@@ -67,7 +66,7 @@ fn tab(
 ) -> impl IntoElement {
     let (fg, bg) = (t.fg, t.bg);
     let colour = if active { t.fg } else { t.mutd };
-    let mut tab = div()
+    let tab = div()
         .id(("tab", index))
         .group("tab")
         .flex_none()
@@ -93,17 +92,14 @@ fn tab(
         )
         .child(icon(screen.icon(), 13.0, t, colour))
         .child(SharedString::from(screen.label()));
-    if screen != Screen::Today {
-        let x = close_button(active, t)
-            .id(("tab-close", index))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| {
-                cx.stop_propagation();
-                root.close_tab(screen, cx)
-            }));
-        tab = tab.child(x);
-    }
-    tab
+    let x = close_button(active, t)
+        .id(("tab-close", index))
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| {
+            cx.stop_propagation();
+            root.close_tab(screen, cx)
+        }));
+    tab.child(x)
 }
 
 /// The bar of tabs. The part right of the last tab is empty.
@@ -192,22 +188,20 @@ mod tests {
         assert_eq!(tabs.len(), MAX_TABS);
         open(&mut tabs, Screen::Settings);
         assert_eq!(tabs.len(), MAX_TABS);
-        assert_eq!(tabs[0], Screen::Today);
-        assert!(!tabs.contains(&Screen::Health));
+        assert!(!tabs.contains(&Screen::Today));
         assert_eq!(tabs.last(), Some(&Screen::Settings));
     }
 
     #[test]
-    fn today_does_not_close_and_a_closed_tab_gives_its_neighbour() {
+    fn a_closed_tab_gives_its_neighbour_and_the_last_gives_none() {
         let mut tabs = vec![Screen::Today, Screen::Sleep, Screen::Gear];
-        assert_eq!(close(&mut tabs, Screen::Today, Screen::Today), None);
-        assert_eq!(tabs.len(), 3);
         // A tab out of view closes and the view stays.
         assert_eq!(close(&mut tabs, Screen::Gear, Screen::Sleep), None);
         assert_eq!(
             close(&mut tabs, Screen::Sleep, Screen::Sleep),
             Some(Screen::Today)
         );
-        assert_eq!(tabs, [Screen::Today]);
+        assert_eq!(close(&mut tabs, Screen::Today, Screen::Today), None);
+        assert!(tabs.is_empty());
     }
 }

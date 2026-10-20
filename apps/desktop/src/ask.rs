@@ -814,6 +814,7 @@ impl Ask {
             .child(
                 div()
                     .max_w(px(COLUMN_MAX))
+                    .mx_auto()
                     .pt(px(COLUMN_TOP))
                     .pb(px(COMPOSER_ROOM))
                     .child(content),
@@ -827,6 +828,7 @@ impl Ask {
             .child(
                 div()
                     .max_w(px(COLUMN_MAX))
+                    .mx_auto()
                     .pt(px(24.0))
                     .pb(px(18.0))
                     .bg(linear_gradient(

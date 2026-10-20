@@ -14,9 +14,6 @@ use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Theme, FS_MD};
 use crate::ui::{body, eyebrow_lg, MONO, SANS};
 
-/// The widest the Settings content gets. The reading column is narrower.
-pub const CONTENT_MAX: f32 = 800.0;
-
 /// At or below this content width the design's narrow rule applies: the title
 /// shrinks and the rows get less padding. It is the 860px window of the design,
 /// less the 2 x 56px of side air.
@@ -24,8 +21,8 @@ const NARROW_AT: f32 = 748.0;
 
 /// The width of the content for a window `viewport` pixels wide.
 fn content_width(viewport: f32) -> f32 {
-    // The page pads 20 px and the column 16 px on each side.
-    (viewport - SIDEBAR_W - 2.0 * 36.0).min(CONTENT_MAX)
+    // The page pads 20 px on each side.
+    (viewport - SIDEBAR_W - 2.0 * 20.0).min(crate::shell::PAGE_MAX)
 }
 
 fn sync_note(root: &Root, t: &Theme) -> Option<Div> {

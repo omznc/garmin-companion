@@ -32,9 +32,7 @@ const NARROW_GRID: f32 = 640.0;
 /// At or below this window width the sidebar hides.
 const SIDEBAR_HIDES_AT: f32 = 900.0;
 /// The widest the page gets.
-const PAGE_MAX: f32 = 1120.0;
-/// The width of the reading column of a screen that is not built from blocks.
-const COLUMN_MAX: f32 = 720.0;
+pub(crate) const PAGE_MAX: f32 = 1120.0;
 
 /// What the Ask screen starts with. Only the command line sets it.
 pub struct AskStart {
@@ -290,8 +288,9 @@ impl Root {
 
     /// Show a screen: open its tab, or find it, and light its entry.
     pub(crate) fn select_screen(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        let was_empty = self.tabs.is_empty();
         tabs::open(&mut self.tabs, screen);
-        if screen != self.active {
+        if screen != self.active || was_empty {
             self.active = screen;
             self.sidebar.select(screen);
             self.enter(screen, cx);
@@ -311,6 +310,7 @@ impl Root {
     }
 
     /// Close a tab. If it was in view, the tab on its left comes into view.
+    /// When the last tab closes, the page shows an empty area.
     pub(crate) fn close_tab(&mut self, screen: Screen, cx: &mut Context<Self>) {
         if let Some(next) = tabs::close(&mut self.tabs, screen, self.active) {
             self.select_screen(next, cx);
@@ -439,6 +439,13 @@ impl Root {
     }
 
     fn screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+        if self.tabs.is_empty() {
+            return div()
+                .text_size(px(13.5))
+                .text_color(t.mutd)
+                .child("Pick a screen in the sidebar.")
+                .into_any_element();
+        }
         if self.active == Screen::Today {
             return self.today_screen(t, window, cx);
         }
@@ -569,19 +576,11 @@ impl Root {
             .collect()
     }
 
-    /// The screen in the scrolling page. A screen that is not built from blocks
-    /// keeps its own reading column.
+    /// The screen in the scrolling page. Every screen goes through this
+    /// column, so all of them have the same width and the same centering.
     fn page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let screen = self.screen(t, window, cx);
-        let cap = if self.active == Screen::Settings {
-            settings::CONTENT_MAX
-        } else {
-            COLUMN_MAX
-        };
-        let column = match self.active {
-            Screen::Today => div().max_w(px(PAGE_MAX)).mx_auto(),
-            _ => div().max_w(px(cap)).px(px(16.0)).pt(px(8.0)),
-        };
+        let column = div().max_w(px(PAGE_MAX)).mx_auto();
         self.scroll
             .area(ElementId::NamedInteger("page".into(), self.visits as u64))
             .flex_1()
@@ -607,7 +606,7 @@ impl Render for Root {
         }
         let width = f32::from(window.viewport_size().width);
         let narrow = width <= SIDEBAR_HIDES_AT;
-        let on_ask = self.active == Screen::Ask;
+        let on_ask = self.active == Screen::Ask && !self.tabs.is_empty();
         // One Ask entity, in one place: the Ask screen, or the panel at the side.
         self.ask.update(cx, |ask, _| ask.set_panel(!on_ask));
 
@@ -628,7 +627,21 @@ impl Render for Root {
         // Each screen gets a new `SmoothScroll` in `enter`, so it starts at the top.
         self.scroll.tick(window);
         let content = if on_ask {
-            self.ask.clone().into_any_element()
+            // Ask has its own scroll, so it gets the same column without the page.
+            div()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .w_full()
+                        .max_w(px(PAGE_MAX))
+                        .h_full()
+                        .child(self.ask.clone()),
+                )
+                .into_any_element()
         } else {
             self.page(&t, window, cx)
         };
