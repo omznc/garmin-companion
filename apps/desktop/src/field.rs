@@ -274,9 +274,10 @@ impl Field {
             strikethrough: None,
             letter_spacing: None,
         };
-        let shaped = window
-            .text_system()
-            .shape_line(shown.clone().into(), px(FS_SMALL), &[run], None);
+        let shaped =
+            window
+                .text_system()
+                .shape_line(shown.clone().into(), px(FS_SMALL), &[run], None);
         let byte = shaped.closest_index_for_x(x - self.origin.get());
         shown[..byte.min(shown.len())].chars().count()
     }
@@ -423,7 +424,10 @@ mod tests {
         shift: false,
         mask: false,
     };
-    const SHIFT: Held = Held { shift: true, ..PLAIN };
+    const SHIFT: Held = Held {
+        shift: true,
+        ..PLAIN
+    };
     const CMD: Held = Held {
         command: true,
         ..PLAIN
@@ -533,10 +537,7 @@ mod tests {
 
     #[test]
     fn a_masked_field_does_not_copy_or_cut() {
-        let held = Held {
-            mask: true,
-            ..CMD
-        };
+        let held = Held { mask: true, ..CMD };
         let mut line = typed("secret");
         line.select_all();
         assert_eq!(line.key("c", Some("c"), held, ""), Reply::Ignored);
