@@ -429,10 +429,13 @@ to `app.json`.
 ## Google Play
 
 The workflow `.github/workflows/play.yml` builds a signed bundle (`.aab`) and
-uploads it to a Play track. Run it by hand after you publish the release, with
-the same version: Actions, then "Play", then "Run workflow". It builds the tag
-`v<version>`, so the tag must exist. Choose the track (the default is `alpha`,
-the closed testing track) and the status.
+uploads it to a Play track. The release run calls it in the `play` job. The job
+uploads the bundle to the `alpha` track with the status `completed`. A failed
+`play` job does not stop the `draft` job.
+
+Run the workflow by hand only to upload again, or to use another track:
+Actions, then "Play", then "Run workflow". Use the same version. It builds the
+tag `v<version>`, so the tag must exist. Choose the track and the status.
 
 - Secret: `PLAY_SERVICE_ACCOUNT_JSON`. It holds the key of the service account
   `play-publisher@service-accounts-512208.iam.gserviceaccount.com`.
