@@ -244,7 +244,11 @@ fn saved(ctx: &Ctx) -> Option<Block> {
 
 fn most_run(ctx: &Ctx) -> Option<Block> {
     let view = ctx.places.routes()?;
-    let mut routes: Vec<_> = view.routes.iter().filter(|r| r.times > 1).collect();
+    let mut routes: Vec<_> = view
+        .routes
+        .iter()
+        .filter(|r| r.times > 1 && r.distance_m >= MIN_ROUTE_M)
+        .collect();
     routes.sort_by_key(|r| std::cmp::Reverse(r.times));
     let rows: Vec<ListRow> = routes
         .into_iter()
@@ -315,6 +319,7 @@ fn outings(ctx: &Ctx) -> Option<Block> {
     let rows: Vec<Vec<gpui::SharedString>> = view
         .routes
         .iter()
+        .filter(|r| r.distance_m >= MIN_ROUTE_M)
         .flat_map(|r| {
             r.outings.iter().map(move |o| {
                 vec![
