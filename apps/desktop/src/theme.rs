@@ -12,13 +12,17 @@ use gpui::{rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
 /// The motion tokens. Durations in milliseconds. The slow step is the page entrance.
 pub const DUR_SLOW: u64 = 180;
 
-/// The type scale. Every size below display comes from these six steps.
-pub const FS_MICRO: f32 = 12.0;
-pub const FS_CAPTION: f32 = 13.0;
-pub const FS_SMALL: f32 = 14.0;
-pub const FS_BASE: f32 = 15.0;
-pub const FS_MD: f32 = 16.0;
-pub const FS_LG: f32 = 17.5;
+/// The type scale of the design. Every size below display comes from these steps.
+/// Micro is the mono meta and key hint. Caption is a card title and a button.
+/// Small is an input and a table cell. Base is the text. Md is the lede.
+pub const FS_MICRO: f32 = 11.0;
+pub const FS_CAPTION: f32 = 12.0;
+pub const FS_SMALL: f32 = 12.5;
+pub const FS_BASE: f32 = 13.0;
+pub const FS_MD: f32 = 13.5;
+pub const FS_LG: f32 = 15.0;
+/// The page title.
+pub const FS_H1: f32 = 20.0;
 
 /// One palette. Colours are final: derived tokens are already applied.
 #[derive(Debug, Clone, Copy, PartialEq)]

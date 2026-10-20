@@ -24,7 +24,7 @@ use crate::body::{empty_state, head, note, row, section};
 use crate::data::{Metric, Part, Source};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, metric, MONO, SANS, SERIF};
+use crate::ui::{block_in, body, ch, metric, MONO, SANS};
 
 /// Where the cache and the gear come from.
 #[derive(Clone, Copy, PartialEq)]
@@ -496,7 +496,7 @@ fn gear_item(g: &GearRow, t: &Theme) -> Div {
         .child(title)
         .child(
             div()
-                .font_family(SERIF)
+                .font_family(SANS)
                 .text_size(px(24.0))
                 .child(g.distance.clone().unwrap_or_else(|| "—".into())),
         )

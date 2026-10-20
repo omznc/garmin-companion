@@ -78,17 +78,14 @@ use gpui::{
 use data::Source;
 use theme::Palette;
 
-/// The fonts of the current app, in the binary. They are static TrueType
-/// instances of the upstream variable fonts, with the Latin Extended-A glyphs
-/// that Bosnian names need.
-const FONTS: [&[u8]; 7] = [
-    include_bytes!("../assets/fonts/InstrumentSans-Regular.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSans-Medium.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSans-SemiBold.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSerif-Regular.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSerif-Italic.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-Regular.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-Medium.ttf"),
+/// The fonts of the design, in the binary. IBM Plex is static TrueType from the
+/// IBM release (SIL OFL). It has the Latin Extended-A glyphs that Bosnian names need.
+const FONTS: [&[u8]; 5] = [
+    include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexSans-Medium.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexMono-Medium.ttf"),
 ];
 
 const DEFAULT_SIZE: (f32, f32) = (1100.0, 780.0);

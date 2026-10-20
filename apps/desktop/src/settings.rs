@@ -12,7 +12,7 @@ use crate::panel::{self, Kind, Tone};
 use crate::shell::{Root, COLUMN_SIDE, SHELL_MAX};
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Theme, FS_MD};
-use crate::ui::{block_in, body, eyebrow_lg, MONO, SERIF};
+use crate::ui::{block_in, body, eyebrow_lg, MONO, SANS};
 
 /// The widest the Settings content gets. The reading column is narrower.
 pub const CONTENT_MAX: f32 = 800.0;
@@ -166,7 +166,7 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
     let narrow = content_width(f32::from(window.viewport_size().width)) <= NARROW_AT;
     panel::set_narrow(narrow);
     let title = div()
-        .font_family(SERIF)
+        .font_family(SANS)
         .text_size(px(if narrow { 42.0 } else { 52.0 }))
         .line_height(relative(1.04))
         .letter_spacing(px(if narrow { -0.42 } else { -0.52 }))

@@ -4,7 +4,7 @@ use gpui::{div, prelude::*, px, relative, Div, ElementId, SharedString, Stateful
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Theme, FS_SMALL};
-use crate::ui::{SANS, SERIF};
+use crate::ui::SANS;
 
 /// `.cta`: the one big action of a screen. 24px serif in the accent, with an
 /// arrow. A disabled one is faint and has no pointer.
@@ -21,7 +21,7 @@ pub fn cta(
         .flex()
         .items_center()
         .gap(px(10.0))
-        .font_family(SERIF)
+        .font_family(SANS)
         .text_size(px(24.0))
         .line_height(relative(1.2))
         .text_color(colour)

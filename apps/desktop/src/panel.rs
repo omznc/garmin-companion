@@ -14,7 +14,7 @@ use gpui::{
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_SMALL};
-use crate::ui::{body, SANS, SERIF};
+use crate::ui::{body, SANS};
 
 /// The content is narrower than the design's 860px rule allows: rows get less
 /// padding. The Settings screen sets it each frame from the width of the content.
@@ -48,7 +48,7 @@ fn flex(d: Div, grow: f32, basis: f32) -> Div {
 /// `.sec`: a title, an optional lead line, then what the caller adds.
 pub fn section(title: &str, lead: Option<&str>, t: &Theme) -> Div {
     let head = div()
-        .font_family(SERIF)
+        .font_family(SANS)
         .text_size(px(30.0))
         .line_height(relative(1.1))
         .text_color(t.fg)

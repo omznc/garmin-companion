@@ -16,7 +16,7 @@ use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
 use crate::theme::{Palette, Theme};
 use crate::themes::{downloads, goes_to, key_of, mode_tag, Fetch, Phase, Store};
-use crate::ui::{body, eyebrow, MONO, SERIF};
+use crate::ui::{body, eyebrow, MONO, SANS};
 
 /// At or below this window width the design's narrow rule applies.
 const NARROW_AT: f32 = 860.0;
@@ -64,7 +64,7 @@ fn header(fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Div {
         .gap(px(4.0))
         .child(
             div()
-                .font_family(SERIF)
+                .font_family(SANS)
                 .text_size(px(28.0))
                 .line_height(relative(1.1))
                 .child("VS Code themes"),
@@ -267,7 +267,7 @@ fn preview(p: &Theme) -> Div {
         .bg(p.bg2)
         .child(
             div()
-                .font_family(SERIF)
+                .font_family(SANS)
                 .text_size(px(16.0))
                 .text_color(p.fg)
                 .px(px(6.0))
@@ -312,7 +312,7 @@ fn preview(p: &Theme) -> Div {
         )
         .child(
             div()
-                .font_family(SERIF)
+                .font_family(SANS)
                 .text_size(px(30.0))
                 .line_height(relative(1.05))
                 .text_color(p.fg)

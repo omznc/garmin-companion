@@ -7,22 +7,21 @@ use std::time::Duration;
 
 use gpui::{
     canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px, relative, Animation,
-    AnimationExt, Bounds, ColorExt as _, Div, ElementId, Hsla, PathBuilder, Pixels, Point,
-    SharedString, TextTransform,
+    AnimationExt, Bounds, ColorExt as _, Div, ElementId, FontWeight, Hsla, PathBuilder, Pixels,
+    Point, SharedString, TextTransform,
 };
 
 use crate::data::{Attention, Metric};
 use crate::spring::ease_out;
-use crate::theme::{Theme, DUR_SLOW, FS_CAPTION, FS_MD, FS_MICRO, FS_SMALL};
+use crate::theme::{Theme, DUR_SLOW, FS_CAPTION, FS_H1, FS_MD, FS_MICRO, FS_SMALL};
 
-pub const SERIF: &str = "Instrument Serif";
-pub const SANS: &str = "Instrument Sans";
-pub const MONO: &str = "Geist Mono";
+pub const SANS: &str = "IBM Plex Sans";
+pub const MONO: &str = "IBM Plex Mono";
 
-/// What a browser calls `line-height: normal` for Instrument Sans.
-pub const LH_NORMAL: f32 = 1.26;
+/// The base line height of the design.
+pub const LH_NORMAL: f32 = 1.45;
 
-/// The width of a `ch` in Instrument Sans, as a share of the font size.
+/// The width of a `ch` in IBM Plex Sans, as a share of the font size.
 /// `max-width: 58ch` in the current app becomes `ch(58.0, size)`.
 pub fn ch(count: f32, font_size: f32) -> Pixels {
     px(count * font_size * 0.6)
@@ -50,12 +49,14 @@ pub fn eyebrow_lg(text: impl Into<SharedString>, t: &Theme) -> Div {
     caps(text, FS_CAPTION, 0.14, t.faint)
 }
 
-/// `.h1`: the page title in the display face.
+/// `.h1`: the page title.
 pub fn h1(text: impl Into<SharedString>) -> Div {
     div()
-        .font_family(SERIF)
-        .text_size(px(38.0))
-        .line_height(relative(1.1))
+        .font_family(SANS)
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_size(px(FS_H1))
+        .letter_spacing(px(-0.01 * FS_H1))
+        .line_height(relative(1.2))
         .child(text.into())
 }
 

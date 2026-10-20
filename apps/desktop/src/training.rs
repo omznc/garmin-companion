@@ -17,8 +17,7 @@ use crate::data::{Metric, Source};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, block_in, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, MONO,
-    SANS, SERIF,
+    axis_labels, block_in, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, MONO, SANS,
 };
 
 /// The made-up users of `garmin-api`, as the three training views.
@@ -151,7 +150,7 @@ fn figure_tiles(figures: &[Figure], t: &Theme) -> Div {
 /// The serif sentence that a finding is.
 fn claim(text: &str, t: &Theme) -> Div {
     div()
-        .font_family(SERIF)
+        .font_family(SANS)
         .text_size(px(27.0))
         .line_height(relative(1.3))
         .text_color(t.fg)
@@ -383,7 +382,7 @@ fn report_text(v: &ReportView, t: &Theme) -> Div {
         .min_w_0()
         .child(
             div()
-                .font_family(SERIF)
+                .font_family(SANS)
                 .text_size(px(26.0))
                 .line_height(relative(1.3))
                 .mb(px(14.0))
