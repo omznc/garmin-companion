@@ -3,11 +3,28 @@
 # The setup steps copy the "android" job of release-rewrite.yml. A change to
 # that job must also go here.
 #
-# Run it by hand after the release, with the same version:
-# Actions -> Play -> Run workflow.
+# The release run (release-rewrite.yml) calls this workflow and uploads to the
+# alpha track. Run it by hand only for a new upload of a published release, or
+# for another track: Actions -> Play -> Run workflow. It builds the tag.
 name: Play
 
 on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version as major.minor.patch."
+        type: string
+        required: true
+      ref:
+        description: "Commit to build. Empty means the tag v<version>."
+        type: string
+        default: ""
+      track:
+        type: string
+        default: alpha
+      status:
+        type: string
+        default: draft
   workflow_dispatch:
     inputs:
       version:
@@ -44,11 +61,11 @@ jobs:
       # the update code in the JavaScript bundle.
       EXPO_PUBLIC_SELF_UPDATE: "0"
     steps:
-      # Build the published release, not the current master. The tag appears when
-      # the release is published.
+      # A manual run builds the published tag. The release run gives the commit,
+      # because the tag appears only when the user publishes the draft.
       - uses: actions/checkout@v7
         with:
-          ref: v${{ inputs.version }}
+          ref: ${{ inputs.ref || format('v{0}', inputs.version) }}
 
       - name: Check the version
         run: |
