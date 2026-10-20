@@ -49,3 +49,9 @@ test("dismiss works only for a cancelable dialog", () => {
   assert.equal(currentDialog(), undefined);
   assert.equal(dismissed, true);
 });
+
+test("Back closes a dialog that has a Cancel button", () => {
+  enqueueDialog("Delete?", undefined, [{ text: "Cancel", style: "cancel" }, { text: "Delete" }]);
+  dismissDialog(currentDialog()?.id ?? 0);
+  assert.equal(currentDialog(), undefined);
+});

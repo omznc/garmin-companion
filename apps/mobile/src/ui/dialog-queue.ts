@@ -33,15 +33,16 @@ export const enqueueDialog = (
   options?: AlertOptions,
 ): number => {
   const id = nextId++;
+  const list = buttons && buttons.length > 0 ? buttons : DEFAULT_BUTTONS;
   publish([
     ...queue,
     {
       id,
       title,
       message: message || undefined,
-      buttons: buttons && buttons.length > 0 ? buttons : DEFAULT_BUTTONS,
-      // Alert.alert on Android is not cancelable unless the options say so.
-      cancelable: options?.cancelable ?? false,
+      buttons: list,
+      // A dialog with a Cancel button closes on Back. Otherwise the options decide.
+      cancelable: options?.cancelable ?? list.some((b) => b.style === "cancel"),
       onDismiss: options?.onDismiss,
     },
   ]);
