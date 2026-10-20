@@ -330,13 +330,7 @@ pub fn bar_chart_sized(
                 .font_family(MONO)
                 .text_size(px(10.0))
                 .text_color(t.faint)
-                .child(
-                    div()
-                        .w(px(14.0))
-                        .border_t_1()
-                        .border_dashed()
-                        .border_color(t.faint.opacity(0.7)),
-                )
+                .child(div().w(px(14.0)).h(px(1.0)).bg(t.faint.opacity(0.7)))
                 .child(label),
         );
     }
