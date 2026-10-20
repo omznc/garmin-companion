@@ -256,6 +256,12 @@ impl Root {
         self.open_activity(id, cx);
     }
 
+    /// Show the table of every session, from page `at`.
+    pub fn show_all_activities(&mut self, at: usize, cx: &mut Context<Self>) {
+        self.page = Page::All(at);
+        self.restart_page(cx);
+    }
+
     pub fn close_activity(&mut self, cx: &mut Context<Self>) {
         self.loads.remove("detail");
         self.page = Page::List;
@@ -320,6 +326,10 @@ impl Root {
             crate::blocks::Go::Activity(id) => {
                 self.select_screen(Screen::Activities, cx);
                 self.open_activity(id, cx);
+            }
+            crate::blocks::Go::AllActivities => {
+                self.select_screen(Screen::Activities, cx);
+                self.show_all_activities(0, cx);
             }
         }
     }
@@ -389,7 +399,8 @@ impl Root {
     /// The page under the screen name in the breadcrumb bar.
     pub(crate) fn crumb(&self, t: &Theme) -> String {
         match (&self.page, self.active) {
-            (Page::Detail(view), Screen::Activities) => view.name.clone(),
+            (Page::Detail(view), Screen::Activities) => activities::crumb(view),
+            (Page::All(_), Screen::Activities) => "All sessions".into(),
             _ => blocks::crumb(self.active, &self.ctx(t))
                 .unwrap_or_else(|| self.active.crumb(self.focus.end)),
         }
@@ -398,6 +409,7 @@ impl Root {
     /// Load what the screen of the lit entry needs. Call it once at start, for
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
+        cx.set_global(blocks::RootHandle(cx.entity().downgrade()));
         self.enter(self.active, cx);
         let (path, day) = self.places.cache();
         crate::account::load_async(
@@ -490,15 +502,12 @@ impl Root {
                 .child("Pick a screen in the sidebar.")
                 .into_any_element();
         }
-        // The detail page of a session stays on its old code path.
-        let on_detail = self.active == Screen::Activities && !matches!(self.page, Page::List);
-        if !on_detail {
-            if let Some(page) = self.block_page(t, window, cx) {
-                return page;
-            }
+        // A session and the table of all sessions are not in the block layout.
+        if self.active == Screen::Activities && !matches!(self.page, Page::List) {
+            return self.activity_page(t, window, cx);
         }
-        if self.active == Screen::Activities {
-            return self.activities_screen(t, cx);
+        if let Some(page) = self.block_page(t, window, cx) {
+            return page;
         }
         if let Some(screen) = self.wellness_screen(t) {
             return screen;
@@ -521,6 +530,24 @@ impl Root {
                 training::screen(label, data, t, cx)
             })
     }
+}
+
+/// The heading of a page: the title and, when there is one, the lede.
+pub(crate) fn page_heading(title: String, lede: Option<String>, t: &Theme) -> gpui::Div {
+    let heading = div().mb(px(16.0)).child(
+        div()
+            .text_size(px(20.0))
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .child(title),
+    );
+    heading.children(lede.map(|lede| {
+        div()
+            .mt(px(4.0))
+            .max_w(px(640.0))
+            .text_size(px(13.5))
+            .text_color(t.mutd)
+            .child(lede)
+    }))
 }
 
 /// The page of a screen that nothing draws yet.
@@ -567,22 +594,7 @@ impl Root {
         }
         let ctx = self.ctx(t);
         let title = (def.title)(&ctx).unwrap_or_else(|| self.active.label().to_string());
-        let mut heading = div().mb(px(16.0)).child(
-            div()
-                .text_size(px(20.0))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .child(title),
-        );
-        if let Some(lede) = (def.lede)(&ctx) {
-            heading = heading.child(
-                div()
-                    .mt(px(4.0))
-                    .max_w(px(640.0))
-                    .text_size(px(13.5))
-                    .text_color(t.mutd)
-                    .child(lede),
-            );
-        }
+        let heading = page_heading(title, (def.lede)(&ctx), t);
         if self.active == Screen::Today && self.today.empty {
             return Some(
                 div()
@@ -601,14 +613,14 @@ impl Root {
         )
     }
 
-    fn activities_screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
+    /// The pages of the Activities screen that are not the block layout.
+    fn activity_page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        let available = self.grid_width(window);
+        let narrow = available < NARROW_GRID;
         match &self.page {
-            Page::Detail(view) => activities::detail(view, t, cx),
-            Page::Missing => activities::missing(t, cx),
-            Page::List => match &self.list {
-                Ok(view) => activities::list(view, t, cx),
-                Err(error) => activities::failed(error, t),
-            },
+            Page::Detail(view) => activities::detail(view, available, narrow, t, cx),
+            Page::All(at) => activities::all(&self.list, *at, available, t, cx),
+            Page::Missing | Page::List => activities::missing(t, cx),
         }
     }
 }

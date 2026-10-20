@@ -6,19 +6,17 @@
 //! because the API leaves it out. This file lays the views out.
 
 use anyhow::{ensure, Context, Result};
-use garmin_api::fitness::{Balance, FitnessView, LoadBar};
+use garmin_api::fitness::FitnessView;
 use garmin_api::insights::{Figure, InsightItem, InsightsView};
 use garmin_api::reports::ReportView;
 use garmin_api::training_fixtures::TrainingViews;
 use gpui::{div, prelude::*, px, relative, AnyElement, ClickEvent, Context as GpuiContext, Div};
 
-use crate::body::{empty_state, head, note, row, section, tile, tiles};
+use crate::body::{empty_state, head, row, section, tile, tiles};
 use crate::data::{Metric, Source};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{
-    axis_labels, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, MONO, SANS,
-};
+use crate::ui::{axis_labels, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, SANS};
 
 /// The made-up users of `garmin-api`, as the three training views.
 const PERSONAS: [(&str, &str); 5] = [
@@ -131,7 +129,6 @@ pub fn screen(
 ) -> Option<AnyElement> {
     Some(match label {
         "Insights" => insights(&data.insights, t),
-        "Fitness" => fitness(&data.fitness, t),
         "Reports" => report(&data.report, t, cx),
         _ => return None,
     })
@@ -227,105 +224,6 @@ fn insights(v: &InsightsView, t: &Theme) -> AnyElement {
             .iter()
             .fold(div(), |col, item| col.child(insight(item, t)));
         page = page.child(div().child(section(&s.title, t)).child(items));
-    }
-    page.into_any_element()
-}
-
-/* ----------------------------------------------------------------- fitness --- */
-
-/// One load bucket against the range that Garmin wants it in.
-fn load_bar(bar: &LoadBar, t: &Theme) -> Div {
-    let scale = (bar.max * 1.25).max(bar.value * 1.05);
-    let fill = match bar.state.as_str() {
-        "over" => t.warn,
-        "under" => t.mutd,
-        _ => t.acc,
-    };
-    let share = |v: f64| relative((v / scale).clamp(0.0, 1.0) as f32);
-    let track = div()
-        .relative()
-        .h(px(8.0))
-        .rounded(px(2.0))
-        .bg(t.line2)
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .bottom_0()
-                .left(share(bar.min))
-                .w(share(bar.max - bar.min))
-                .rounded(px(2.0))
-                .bg(t.line),
-        )
-        .child(
-            div()
-                .absolute()
-                .top(px(2.0))
-                .bottom(px(2.0))
-                .left_0()
-                .w(share(bar.value))
-                .rounded(px(2.0))
-                .bg(fill),
-        );
-    let caption = div()
-        .flex()
-        .justify_between()
-        .mb(px(6.0))
-        .font_family(SANS)
-        .text_size(px(FS_CAPTION))
-        .child(div().text_color(t.mutd).child(bar.label.clone()))
-        .child(
-            div()
-                .font_family(MONO)
-                .text_color(if bar.state == "over" { t.warn } else { t.mutd })
-                .child(bar.text.clone()),
-        );
-    div().mb(px(18.0)).child(caption).child(track)
-}
-
-fn balance(b: &Balance, t: &Theme) -> Div {
-    let bars = b
-        .bars
-        .iter()
-        .fold(div().mt(px(18.0)), |col, bar| col.child(load_bar(bar, t)));
-    div()
-        .child(section("Load balance, this month", t))
-        .child(note(&b.intro, t))
-        .child(bars)
-}
-
-fn fitness(v: &FitnessView, t: &Theme) -> AnyElement {
-    let lede = v.lede.as_deref().unwrap_or("");
-    let mut page = div().child(head("Fitness".into(), "What Garmin makes of it", lede, t));
-    if let Some(e) = &v.empty {
-        return page.child(empty_state(e, t)).into_any_element();
-    }
-    if !v.figures.is_empty() {
-        page = page.child(figure_tiles(&v.figures, t));
-    }
-    for n in &v.notes {
-        page = page.child(note(n, t));
-    }
-    if let Some(b) = &v.balance {
-        page = page.child(balance(b, t));
-    }
-    if let Some(p) = &v.predictions {
-        page = page.child(
-            div()
-                .child(section("Race predictions", t))
-                .child(note(&p.intro, t))
-                .child(div().mt(px(18.0)).child(figure_tiles(&p.rows, t))),
-        );
-    }
-    if !v.records.is_empty() {
-        let list = v.records.iter().fold(div(), |col, r| {
-            col.child(row(
-                r.label.clone(),
-                &[(r.value.clone(), t.fg), (r.date.clone(), t.faint)],
-                t,
-            ))
-        });
-        page = page.child(div().child(section("Records", t)).child(list));
     }
     page.into_any_element()
 }

@@ -5,14 +5,14 @@
 //! The screens only read. They log nothing, as the current app does not.
 
 use anyhow::{ensure, Context, Result};
-use garmin_api::body::{BodyViews, EmptyNote, ExerciseHistory, FoodView, StrengthView, WeightView};
+use garmin_api::body::{BodyViews, EmptyNote, FoodView, WeightView};
 use gpui::{div, prelude::*, px, relative, AnyElement, Div, Hsla};
 
 use crate::data::{Metric, Part, Source};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, body, ch, eyebrow, eyebrow_lg, h1, line_chart, metric, small_stat, spark,
-    LH_NORMAL, MONO, SANS,
+    axis_labels, body, ch, eyebrow, eyebrow_lg, h1, line_chart, metric, small_stat, LH_NORMAL,
+    MONO, SANS,
 };
 
 const SAMPLE: &str = include_str!("../../../crates/garmin-api/fixtures/body.sample.json");
@@ -59,7 +59,6 @@ pub fn screen(label: &str, data: &BodyData, t: &Theme) -> Option<AnyElement> {
     Some(match label {
         "Weight" => weight(&v.weight, t),
         "Food" => food(&v.food, t),
-        "Strength" => strength(&v.strength, t),
         _ => return None,
     })
 }
@@ -380,74 +379,6 @@ fn food_rows(v: &FoodView, t: &Theme) -> Div {
             ]
         };
         list.child(row(d.label.clone(), &figures, t))
-    })
-}
-
-/* ---------------------------------------------------------------- strength --- */
-
-fn strength(v: &StrengthView, t: &Theme) -> AnyElement {
-    if let Some(e) = &v.empty {
-        return div()
-            .child(head("Strength".into(), "Lifting", "", t))
-            .child(empty_state(e, t))
-            .into_any_element();
-    }
-    let pct = v.identified_pct.map(|p| p.to_string());
-    let stats = [
-        tile(
-            "Sets per session",
-            v.avg_sets.map(|x| format!("{x:.0}")),
-            "",
-            false,
-        ),
-        tile(
-            "Reps per session",
-            v.avg_reps.map(|x| format!("{x:.0}")),
-            "",
-            false,
-        ),
-        tile(
-            "Typical rest",
-            v.median_rest_s.map(garmin_api::body::mmss),
-            "min",
-            false,
-        ),
-        tile("Sets identified", pct, "%", false),
-    ];
-    let mut page = div()
-        .child(head("Strength".into(), "Lifting", &v.sentence, t))
-        .child(tiles(&stats, t))
-        .child(note(&v.caveat, t));
-    if !v.exercises.is_empty() {
-        page = page.child(section("By movement", t));
-        for e in &v.exercises {
-            page = page.child(exercise_row(e, t));
-        }
-    }
-    page.child(section("Sessions", t))
-        .child(session_rows(v, t))
-        .into_any_element()
-}
-
-fn exercise_row(e: &ExerciseHistory, t: &Theme) -> Div {
-    let reps: Vec<Option<f32>> = e.history.iter().map(|d| Some(d.reps as f32)).collect();
-    row(
-        e.name.clone(),
-        &[(e.detail.clone(), t.faint), (e.reps_text.clone(), t.fg)],
-        t,
-    )
-    .child(div().child(spark(&reps, t)))
-}
-
-fn session_rows(v: &StrengthView, t: &Theme) -> Div {
-    v.sessions.iter().fold(div(), |list, s| {
-        let line = row(s.label.clone(), &[(s.summary.clone(), t.mutd)], t);
-        match &s.movements {
-            Some(m) => list
-                .child(line)
-                .child(body(m.clone(), FS_CAPTION, t.faint).pt(px(4.0))),
-            None => list.child(line),
-        }
     })
 }
 

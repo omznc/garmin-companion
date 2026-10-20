@@ -6,7 +6,7 @@
 //! data returns `None` and does not show. A screen is a list of block ids with
 //! a width for each. The grid has 12 columns with a gap of 14 px.
 
-mod activities;
+pub mod activities;
 mod fitness;
 mod food;
 mod gear;
@@ -204,6 +204,23 @@ pub enum Go {
     Screen(Screen),
     /// The detail of one session.
     Activity(i64),
+    /// The table of every session, in pages.
+    AllActivities,
+}
+
+/// The window, for a click in a block. A block has no `Context<Root>`.
+pub struct RootHandle(pub gpui::WeakEntity<Root>);
+
+impl gpui::Global for RootHandle {}
+
+/// A click on a row that opens the detail of one session.
+pub fn open_activity(id: i64) -> kit::RowClick {
+    Box::new(move |_, cx| {
+        let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
+            return;
+        };
+        let _ = root.update(cx, |root, cx| root.open_activity(id, cx));
+    })
 }
 
 /// What a block returns: the header text and the body. The registry adds the
@@ -311,7 +328,7 @@ pub fn grid(
     narrow: bool,
     cx: &mut Context<Root>,
 ) -> Div {
-    let mut cards: Vec<(u8, Option<Div>)> = Vec::new();
+    let mut cards: Vec<(u8, Div)> = Vec::new();
     for (n, (id, width)) in layout.iter().enumerate() {
         let Some(def) = def(id) else {
             continue;
@@ -324,8 +341,15 @@ pub fn grid(
                 .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.go(go, cx)))
         });
         let card = kit::card(def.title, block.meta, link, block.body, ctx.t);
-        cards.push((width.columns(), Some(card)));
+        cards.push((width.columns(), card));
     }
+    lay_out(cards, available, narrow)
+}
+
+/// The grid for cards that are built already, each with its width in columns.
+pub fn lay_out(cards: Vec<(u8, Div)>, available: f32, narrow: bool) -> Div {
+    let mut cards: Vec<(u8, Option<Div>)> =
+        cards.into_iter().map(|(c, card)| (c, Some(card))).collect();
     let widths: Vec<u8> = cards.iter().map(|(c, _)| *c).collect();
     // A narrow window has one lane with every block, in order.
     let segments = if narrow {

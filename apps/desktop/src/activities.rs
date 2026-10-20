@@ -1,25 +1,32 @@
-//! The Activities list and the Activity detail screen.
-//!
-//! From `app/src/screens/Activities.tsx` and `ActivityDetail.tsx`. The
-//! `garmin-api` view model holds the figures and the sentences. This file only
-//! lays them out. The map and the per-activity chat are not here yet.
+//! The activity store, the detail page of one session and the page of all
+//! sessions. The `garmin-api` view model holds the figures and the sentences.
+//! This file lays them out with the block kit. The blocks of the list are in
+//! `crate::blocks::activities`.
 
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use chrono::NaiveDate;
 use garmin_api::activities::{
-    ActivityCard, ActivityDetailView, Chart, DayGroup, LapRow, SetRow, StrengthBlock, ZoneBlock,
+    ActivityDetailView, Chart, ExerciseSummary, LapRow, SetRow, StrengthBlock, ZoneBlock,
 };
 use garmin_api::ActivitiesView;
-use gpui::{
-    div, prelude::*, px, relative, AnyElement, ClickEvent, ColorExt as _, Context, Div, Hsla,
-};
+use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, SharedString};
 
+use crate::blocks::{self, Width};
+use crate::charts::{self, AreaChart, MeterRow, Tone};
 use crate::data::Source;
-use crate::shell::Root;
-use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MICRO, FS_SMALL};
-use crate::ui::{body, ch, eyebrow, eyebrow_lg, h1, line_chart, small_stat, MONO, SANS};
+use crate::kit::{self, Cell, Column};
+use crate::screen::Screen;
+use crate::shell::{page_heading, Root};
+use crate::theme::Theme;
+use crate::ui::MONO;
+
+/// The sessions that the store reads for the tables.
+const ROWS: u32 = 400;
+/// The rows on one page of all sessions.
+const PAGE_ROWS: usize = 25;
+const DASH: &str = "—";
 
 /// Where the activity views come from. Both read a cache file through
 /// `garmin-api`. A persona is a made-up cache that the app seeds in a temp folder.
@@ -75,7 +82,7 @@ impl Store {
 
     pub fn list(&self) -> Result<ActivitiesView> {
         let db = garmin_api::open_db(&self.path)?;
-        Ok(garmin_api::activities_view(&db, self.today, 60)?)
+        Ok(garmin_api::activities_view_rows(&db, self.today, 0, ROWS)?)
     }
 
     pub fn detail(&self, id: i64) -> Result<Option<ActivityDetailView>> {
@@ -84,169 +91,105 @@ impl Store {
     }
 }
 
-/// The two screens of the Activities entry.
+/// The pages of the Activities entry. `List` is the block layout.
 #[derive(Debug, Clone, Default)]
 pub enum Page {
     #[default]
     List,
     Detail(Box<ActivityDetailView>),
+    /// The table of every session. The number is the page, from 0.
+    All(usize),
     /// The id has no row in the cache.
     Missing,
 }
 
-/* ------------------------------------------------------------------- list --- */
-
-fn row(card: &ActivityCard, t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
-    let id = card.activity_id;
-    let sel = t.sel;
-    div()
-        .id(("activity", id as usize))
-        .flex()
-        .items_baseline()
-        .gap(px(16.0))
-        .py(px(13.0))
-        .border_b_1()
-        .border_color(t.line2)
-        .cursor_pointer()
-        .hover(move |s| s.bg(sel))
-        .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.open_activity(id, cx)))
-        .child(
-            div()
-                .flex_none()
-                .w(px(50.0))
-                .font_family(SANS)
-                .text_size(px(FS_CAPTION))
-                .text_color(t.faint)
-                .child(card.time.clone().unwrap_or_default()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(body(card.name.clone(), FS_BASE, t.fg))
-                .child(body(card.sport_label.clone(), FS_SMALL, t.faint)),
-        )
-        .child(
-            div()
-                .flex_none()
-                .font_family(MONO)
-                .text_size(px(FS_BASE))
-                .text_color(t.fg)
-                .child(card.headline.clone()),
-        )
-        .child(
-            div()
-                .flex_none()
-                .w(px(230.0))
-                .whitespace_nowrap()
-                .text_size(px(FS_SMALL))
-                .text_color(t.mutd)
-                .child(card.detail.clone()),
-        )
-}
-
-fn group(g: &DayGroup, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let rows = g
-        .sessions
-        .iter()
-        .fold(div(), |col, c| col.child(row(c, t, cx)));
-    div()
-        .child(
-            div()
-                .mt(px(26.0))
-                .mb(px(4.0))
-                .child(eyebrow(g.label.clone(), t)),
-        )
-        .child(rows)
-}
-
-fn empty_note(t: &Theme) -> Div {
-    body(
-        "No sessions yet. When your watch records a session, it shows here.",
-        16.0,
-        t.mutd,
-    )
-    .mt(px(28.0))
-    .max_w(ch(62.0, 16.0))
-}
-
-pub fn list(view: &ActivitiesView, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
-    let head = div()
-        .child(eyebrow_lg("Activities", t))
-        .child(h1("Every session").mt(px(18.0)))
-        .child(body("Newest first.", 16.0, t.mutd).mt(px(14.0)));
-    if view.empty {
-        return head.child(empty_note(t)).into_any_element();
-    }
-    let groups = view
-        .groups
-        .iter()
-        .fold(div(), |col, g| col.child(group(g, t, cx)));
-    head.child(groups).into_any_element()
-}
-
-/* ----------------------------------------------------------------- detail --- */
-
-fn zone_fill(t: &Theme, zone: usize) -> Hsla {
-    match zone {
-        0 => t.line,
-        1 => t.mutd,
-        2 => t.acc.opacity(0.55),
-        3 => t.acc.opacity(0.78),
-        _ => t.acc,
+impl Root {
+    /// Go to the main page of a screen. The breadcrumb calls it when the
+    /// reader clicks the name of the screen.
+    #[allow(dead_code)] // The shell calls it from the breadcrumb.
+    pub fn screen_home(&mut self, screen: Screen, cx: &mut Context<Self>) {
+        if screen == Screen::Activities {
+            self.close_activity(cx);
+        }
     }
 }
 
-fn section_head(text: &str, t: &Theme) -> Div {
-    div()
-        .mt(px(56.0))
-        .mb(px(16.0))
-        .child(eyebrow(text.to_string(), t))
+/* ----------------------------------------------------------------- helpers --- */
+
+fn col(title: &str, numeric: bool) -> Column {
+    Column {
+        title: title.to_string().into(),
+        numeric,
+    }
 }
 
-fn zones(z: &ZoneBlock, t: &Theme) -> Div {
-    let bar = z.rows.iter().filter(|r| r.percent > 0.0).fold(
-        div().flex().h(px(10.0)).overflow_hidden().rounded(px(2.0)),
-        |bar, r| {
-            let i = usize::from(r.zone) - 1;
-            bar.child(
-                div()
-                    .h_full()
-                    .w(relative(r.percent as f32 / 100.0))
-                    .bg(zone_fill(t, i)),
-            )
-        },
-    );
-    let legend = z.rows.iter().fold(
-        div()
-            .flex()
-            .flex_wrap()
-            .gap(px(16.0))
-            .mt(px(9.0))
-            .font_family(SANS)
-            .text_size(px(FS_CAPTION))
-            .text_color(t.mutd),
-        |row, r| {
-            row.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .child(
-                        div()
-                            .size(px(6.0))
-                            .rounded(px(1.0))
-                            .bg(zone_fill(t, usize::from(r.zone) - 1)),
-                    )
-                    .child(format!("Z{} {}", r.zone, r.time)),
-            )
-        },
-    );
+fn text(value: Option<&str>) -> SharedString {
+    value.unwrap_or(DASH).to_string().into()
+}
+
+fn padded(body: impl IntoElement) -> Div {
+    div().px(px(12.0)).py(px(12.0)).child(body)
+}
+
+fn note(words: &str, t: &Theme) -> Div {
+    padded(words.to_string())
+        .text_size(px(12.0))
+        .text_color(t.mutd)
+}
+
+/// The crumb of a session: the name and the day.
+pub fn crumb(v: &ActivityDetailView) -> String {
+    match v.when.split(',').next().filter(|d| !d.is_empty()) {
+        Some(day) => format!("{} · {day}", v.name),
+        None => v.name.clone(),
+    }
+}
+
+/// The line under the title: the sport, the day with the year and time, the duration.
+fn lede(v: &ActivityDetailView) -> String {
+    let time = v.when.split(", ").nth(1);
+    let day = NaiveDate::parse_from_str(&v.date, "%Y-%m-%d")
+        .ok()
+        .map(|d| d.format("%a %-d %b %Y").to_string());
+    let when = match (day, time) {
+        (Some(d), Some(t)) => Some(format!("{d}, {t}")),
+        (Some(d), None) => Some(d),
+        _ => None,
+    };
+    let duration = ["Elapsed time", "Time"]
+        .iter()
+        .find_map(|label| v.stats.iter().find(|s| s.label == *label))
+        .map(|s| s.value.clone());
+    let mut parts = vec![v.sport_label.clone()];
+    parts.extend(when);
+    parts.extend(duration);
+    parts.join(" · ")
+}
+
+/* ------------------------------------------------------------------ detail --- */
+
+fn zone_rows(z: &ZoneBlock) -> Vec<MeterRow> {
+    let most = z.rows.iter().map(|r| r.percent).fold(1.0, f64::max);
+    z.rows
+        .iter()
+        .map(|r| MeterRow {
+            name: format!("Z{}", r.zone).into(),
+            fraction: (r.percent / most) as f32,
+            value: r.time.clone().into(),
+            share: format!("{:.0}%", r.percent).into(),
+            tone: match r.zone {
+                1 => Tone::Muted,
+                4 | 5 => Tone::Warn,
+                _ => Tone::Accent,
+            },
+        })
+        .collect()
+}
+
+fn zones_card(z: &ZoneBlock, t: &Theme) -> Div {
     div()
-        .child(section_head("Heart rate zones", t))
-        .child(bar)
-        .child(legend)
-        .child(body(z.sentence.clone(), FS_BASE, t.mutd).mt(px(14.0)))
+        .child(padded(charts::meter_rows(zone_rows(z), t)))
+        .child(note(&z.sentence, t).pt(px(0.0)))
 }
 
 /// Fill a gap with the last value, so the line stays whole.
@@ -262,163 +205,280 @@ fn solid(values: &[Option<f64>]) -> Vec<f32> {
         .collect()
 }
 
-fn chart(c: &Chart, t: &Theme) -> Div {
-    let mut out =
-        div()
-            .child(section_head("Heart rate", t))
-            .child(line_chart(&solid(&c.hr), 110.0, 6.0, t));
-    if !c.elevation.is_empty() {
-        out = out.child(section_head("Elevation", t)).child(line_chart(
-            &solid(&c.elevation),
-            70.0,
-            6.0,
-            t,
+/// A line chart of one series, or `None` when it has too few points.
+fn series_card(
+    title: &'static str,
+    unit: &str,
+    values: &[Option<f64>],
+    chart: &Chart,
+    width: Width,
+    t: &Theme,
+) -> Option<(u8, Div)> {
+    if values.iter().flatten().count() < 2 {
+        return None;
+    }
+    let line = charts::area_chart(
+        AreaChart {
+            values: &solid(values),
+            colour: t.acc,
+            height: Some(110.0),
+            head: None,
+            head_colour: None,
+            x_first: "0".into(),
+            x_last: chart.span.clone().into(),
+        },
+        t,
+    );
+    let meta = format!("{unit} · {}", chart.span);
+    Some((
+        width.columns(),
+        kit::card(title, Some(meta.into()), None, line, t),
+    ))
+}
+
+fn chart_cards(c: &Chart, t: &Theme) -> Vec<(u8, Div)> {
+    [
+        series_card("Heart rate", "bpm", &c.hr, c, Width::TwoThirds, t),
+        series_card("Pace", "min/km", &c.pace, c, Width::Half, t),
+        series_card("Elevation", "m", &c.elevation, c, Width::Half, t),
+        series_card("Cadence", "per minute", &c.cadence, c, Width::Half, t),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+fn laps_table(rows: &[LapRow], t: &Theme) -> Div {
+    let columns = [
+        col("Lap", false),
+        col("Distance", true),
+        col("Time", true),
+        col("Pace", true),
+        col("Avg HR", true),
+    ];
+    let lines = rows
+        .iter()
+        .map(|l| {
+            vec![
+                l.label.clone().into(),
+                text(l.distance.as_deref()),
+                text(l.time.as_deref()),
+                text(l.pace.as_deref()),
+                text(l.avg_hr.as_deref()),
+            ]
+        })
+        .collect();
+    kit::table(&columns, lines, t)
+}
+
+fn sets_table(rows: &[SetRow], t: &Theme) -> Div {
+    let columns = [
+        col("Set", false),
+        col("Exercise", false),
+        col("Reps", true),
+        col("Weight", true),
+        col("Time", true),
+        col("Rest", true),
+    ];
+    let lines = rows
+        .iter()
+        .map(|s| {
+            vec![
+                s.label.clone().into(),
+                text(s.exercise.as_deref()),
+                text(s.reps.as_deref()),
+                text(s.weight.as_deref()),
+                text(s.work.as_deref()),
+                text(s.rest.as_deref()),
+            ]
+        })
+        .collect();
+    kit::table(&columns, lines, t)
+}
+
+fn exercises_table(rows: &[ExerciseSummary], t: &Theme) -> Div {
+    let columns = [
+        col("Exercise", false),
+        col("Sets", true),
+        col("Reps", true),
+        col("Volume", true),
+        col("Top set", true),
+    ];
+    let kg = |v: Option<f64>| text(v.map(|v| format!("{v:.0} kg")).as_deref());
+    let lines = rows
+        .iter()
+        .map(|e| {
+            vec![
+                e.name.clone().into(),
+                e.sets.to_string().into(),
+                e.reps.to_string().into(),
+                kg(e.volume_kg),
+                kg(e.top_kg),
+            ]
+        })
+        .collect();
+    kit::table(&columns, lines, t)
+}
+
+fn muscle_rows(muscles: &[(String, usize)]) -> Vec<MeterRow> {
+    let most = muscles.iter().map(|m| m.1).max().unwrap_or(1).max(1);
+    muscles
+        .iter()
+        .enumerate()
+        .map(|(i, (group, n))| MeterRow {
+            name: group.clone().into(),
+            fraction: *n as f32 / most as f32,
+            value: n.to_string().into(),
+            share: "sets".into(),
+            tone: if i == 0 { Tone::Accent } else { Tone::Muted },
+        })
+        .collect()
+}
+
+fn strength_cards(s: &StrengthBlock, t: &Theme) -> Vec<(u8, Div)> {
+    let sets = div()
+        .child(note(&s.sentence, t))
+        .child(sets_table(&s.sets, t));
+    let mut cards = vec![(12, kit::card("Sets", None, None, sets, t))];
+    if !s.exercises.is_empty() {
+        let table = exercises_table(&s.exercises, t);
+        cards.push((8, kit::card("Exercises", None, None, table, t)));
+    }
+    if !s.muscles.is_empty() {
+        let meter = padded(charts::meter_rows(muscle_rows(&s.muscles), t));
+        cards.push((4, kit::card("Muscle groups", None, None, meter, t)));
+    }
+    cards
+}
+
+fn summary_card(v: &ActivityDetailView, t: &Theme) -> Option<(u8, Div)> {
+    if v.stats.is_empty() {
+        return None;
+    }
+    let cells = v
+        .stats
+        .iter()
+        .map(|s| Cell {
+            label: s.label.clone().into(),
+            value: s.value.clone().into(),
+            unit: None,
+            sub: None,
+            spark: None,
+            big: false,
+        })
+        .collect();
+    let grid = kit::stat_grid(cells, 4, t);
+    Some((12, kit::card("Summary", None, None, grid, t)))
+}
+
+fn detail_cards(v: &ActivityDetailView, t: &Theme) -> Vec<(u8, Div)> {
+    let mut cards: Vec<(u8, Div)> = summary_card(v, t).into_iter().collect();
+    let charts = v
+        .chart
+        .as_ref()
+        .map(|c| chart_cards(c, t))
+        .unwrap_or_default();
+    let mut charts = charts.into_iter();
+    cards.extend(charts.next());
+    if let Some(z) = &v.zones {
+        cards.push((
+            4,
+            kit::card("Time in zones", None, None, zones_card(z, t), t),
         ));
     }
-    out.child(
-        div()
-            .mt(px(9.0))
-            .flex()
-            .justify_between()
-            .text_size(px(FS_MICRO))
-            .text_color(t.faint)
-            .child("0")
-            .child(c.span.clone()),
-    )
-}
-
-fn cell(text: &str, width: f32, colour: Hsla, mono: bool) -> Div {
-    let d = div()
-        .flex_none()
-        .w(px(width))
-        .text_size(px(FS_SMALL))
-        .text_color(colour)
-        .child(text.to_string());
-    if mono {
-        d.font_family(MONO)
-    } else {
-        d
-    }
-}
-
-fn table_row(cells: [(&str, f32, bool); 5], t: &Theme) -> Div {
-    cells.into_iter().fold(
-        div()
-            .flex()
-            .gap(px(12.0))
-            .py(px(9.0))
-            .border_b_1()
-            .border_color(t.line2),
-        |row, (text, w, strong)| {
-            row.child(cell(text, w, if strong { t.fg } else { t.mutd }, strong))
-        },
-    )
-}
-
-fn laps(rows: &[LapRow], t: &Theme) -> Div {
-    let list = rows.iter().fold(div(), |col, l| {
-        let none = "-";
-        col.child(table_row(
-            [
-                (&l.label, 70.0, false),
-                (l.distance.as_deref().unwrap_or(none), 80.0, true),
-                (l.time.as_deref().unwrap_or(none), 80.0, true),
-                (l.pace.as_deref().unwrap_or(none), 100.0, true),
-                (l.avg_hr.as_deref().unwrap_or(none), 50.0, false),
-            ],
-            t,
-        ))
-    });
-    div().child(section_head("Laps", t)).child(list)
-}
-
-fn set_row(s: &SetRow, t: &Theme) -> Div {
-    let none = "-";
-    let name = s.exercise.clone().unwrap_or_default();
-    table_row(
-        [
-            (&s.label, 60.0, false),
-            (s.reps.as_deref().unwrap_or(none), 80.0, true),
-            (s.work.as_deref().unwrap_or(none), 60.0, true),
-            (
-                &format!("rest {}", s.rest.as_deref().unwrap_or(none)),
-                90.0,
-                false,
-            ),
-            (&name, 190.0, false),
-        ],
-        t,
-    )
-}
-
-fn strength(s: &StrengthBlock, t: &Theme) -> Div {
-    let rows = s.sets.iter().fold(div(), |col, r| col.child(set_row(r, t)));
-    div()
-        .child(section_head("Sets", t))
-        .child(body(s.sentence.clone(), FS_BASE, t.mutd).mb(px(12.0)))
-        .child(rows)
-}
-
-fn back(t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
-    let fg = t.fg;
-    div()
-        .id("back")
-        .flex_none()
-        .font_family(SANS)
-        .text_size(px(FS_SMALL))
-        .text_color(t.mutd)
-        .cursor_pointer()
-        .hover(move |s| s.text_color(fg))
-        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.close_activity(cx)))
-        .child("< All activities")
-}
-
-pub fn detail(v: &ActivityDetailView, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
-    let stats = v.stats.iter().fold(
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_x(px(38.0))
-            .gap_y(px(20.0))
-            .mt(px(28.0)),
-        |row, s| row.child(small_stat(&s.label, &s.value, t)),
-    );
-    let mut page = div()
-        .child(back(t, cx))
-        .child(eyebrow_lg(format!("{} - {}", v.sport_label, v.when), t).mt(px(26.0)))
-        .child(h1(v.name.clone()).mt(px(18.0)))
-        .child(stats);
-    if let Some(z) = &v.zones {
-        page = page.child(zones(z, t));
-    }
-    if let Some(c) = &v.chart {
-        page = page.child(chart(c, t));
-    }
+    cards.extend(charts);
     if !v.laps.is_empty() {
-        page = page.child(laps(&v.laps, t));
+        let table = laps_table(&v.laps, t);
+        cards.push((12, kit::card("Laps", None, None, table, t)));
     }
     if let Some(s) = &v.strength {
-        page = page.child(strength(s, t));
+        cards.extend(strength_cards(s, t));
     }
-    page.into_any_element()
+    cards
 }
 
-/// Said when the list cannot be read. The reason stays in the text.
-pub fn failed(error: &anyhow::Error, t: &Theme) -> AnyElement {
-    body(
-        format!("The list could not be read. {error:#}"),
-        FS_LG,
-        t.mutd,
-    )
-    .mt(px(28.0))
-    .into_any_element()
+pub fn detail(
+    v: &ActivityDetailView,
+    available: f32,
+    narrow: bool,
+    t: &Theme,
+    _cx: &mut Context<Root>,
+) -> AnyElement {
+    div()
+        .child(page_heading(v.name.clone(), Some(lede(v)), t))
+        .child(blocks::lay_out(detail_cards(v, t), available, narrow))
+        .into_any_element()
+}
+
+/* --------------------------------------------------------------------- all --- */
+
+fn page_link(
+    id: &'static str,
+    label: &'static str,
+    to: Option<usize>,
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> AnyElement {
+    let Some(to) = to else {
+        return div().into_any_element();
+    };
+    kit::link(id, label, t)
+        .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.show_all_activities(to, cx)))
+        .into_any_element()
+}
+
+/// The table of every session, in pages of newest first.
+pub fn all(
+    list: &Result<ActivitiesView>,
+    at: usize,
+    available: f32,
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> AnyElement {
+    let rows = list.as_ref().map(|v| v.rows.as_slice()).unwrap_or_default();
+    let pages = rows.len().div_ceil(PAGE_ROWS).max(1);
+    let at = at.min(pages - 1);
+    let shown: Vec<_> = rows.iter().skip(at * PAGE_ROWS).take(PAGE_ROWS).collect();
+    let meta = format!(
+        "{} - {} of {}",
+        at * PAGE_ROWS + 1,
+        at * PAGE_ROWS + shown.len(),
+        rows.len()
+    );
+    let pager = div()
+        .flex()
+        .justify_between()
+        .px(px(12.0))
+        .py(px(10.0))
+        .border_t_1()
+        .border_color(t.line2)
+        .font_family(MONO)
+        .child(page_link("newer", "Newer", at.checked_sub(1), t, cx))
+        .child(page_link(
+            "older",
+            "Older",
+            (at + 1 < pages).then_some(at + 1),
+            t,
+            cx,
+        ));
+    let body = div()
+        .child(blocks::activities::table(&shown, t))
+        .child(pager);
+    let card = kit::card("All sessions", Some(meta.into()), None, body, t);
+    div()
+        .child(page_heading(
+            "Activities".into(),
+            Some("Every session, newest first.".into()),
+            t,
+        ))
+        .child(blocks::lay_out(vec![(12, card)], available, false))
+        .into_any_element()
 }
 
 /// Said when the id has no row, for example after a cache reset.
-pub fn missing(t: &Theme, cx: &mut Context<Root>) -> AnyElement {
-    div()
-        .child(back(t, cx))
-        .child(body("This session is not in the cache.", FS_LG, t.mutd).mt(px(28.0)))
+pub fn missing(t: &Theme, _cx: &mut Context<Root>) -> AnyElement {
+    padded("This session is not in the cache.")
+        .text_color(t.mutd)
         .into_any_element()
 }
 
@@ -438,7 +498,8 @@ mod tests {
     fn a_persona_store_lists_and_opens_a_session() {
         let store = Store::persona("sample").unwrap();
         let list = store.list().unwrap();
-        let id = list.groups[0].sessions[0].activity_id;
+        let id = list.rows[0].activity_id;
+        assert!(list.total > 0);
         assert!(store.detail(id).unwrap().is_some());
         assert!(store.detail(1).unwrap().is_none());
         let _ = std::fs::remove_dir_all(store.path.parent().unwrap());
