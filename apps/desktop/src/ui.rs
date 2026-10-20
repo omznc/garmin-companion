@@ -3,17 +3,14 @@
 //! Each function matches a piece of `app/src/components/ui.tsx` and the
 //! classes in `styles.css`. The sizes and the spacing are the same numbers.
 
-use std::time::Duration;
-
 use gpui::{
-    canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px, relative, Animation,
-    AnimationExt, Bounds, ColorExt as _, Div, ElementId, FontWeight, Hsla, PathBuilder, Pixels,
-    Point, SharedString, TextTransform,
+    canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px, relative, Bounds,
+    ColorExt as _, Div, ElementId, FontWeight, Hsla, PathBuilder, Pixels, Point, SharedString,
+    TextTransform,
 };
 
 use crate::data::Metric;
-use crate::spring::ease_out;
-use crate::theme::{Theme, DUR_SLOW, FS_CAPTION, FS_H1, FS_MICRO};
+use crate::theme::{Theme, FS_CAPTION, FS_H1, FS_MICRO};
 
 pub const SANS: &str = "IBM Plex Sans";
 pub const MONO: &str = "IBM Plex Mono";
@@ -286,31 +283,5 @@ pub fn axis_labels(labels: &[String], t: &Theme) -> Div {
             .line_height(relative(1.0))
             .text_color(t.faint),
         |row, label| row.child(label.clone()),
-    )
-}
-
-/// `block-in`: a block that rises 6px and fades in, after a delay.
-///
-/// `key` changes on each navigation, so the animation runs again. The cascade
-/// stops at the fifth block, as in the stylesheet.
-pub fn block_in(key: usize, index: usize, child: impl IntoElement) -> impl IntoElement {
-    // Reduced motion shows the block at once: one millisecond, with no cascade.
-    let reduced = crate::motion::reduced();
-    let delay = if reduced {
-        0.0
-    } else {
-        (index.min(4) as f32) * 28.0
-    };
-    let total = if reduced {
-        1.0
-    } else {
-        DUR_SLOW as f32 + delay
-    };
-    let slow = if reduced { 1.0 } else { DUR_SLOW as f32 };
-    div().relative().child(child).with_animation(
-        ElementId::NamedInteger("block".into(), (key * 64 + index) as u64),
-        Animation::new(Duration::from_millis(total as u64))
-            .with_easing(move |x| ease_out(((x * total - delay) / slow).clamp(0.0, 1.0))),
-        |el, t| el.opacity(t).top(px(6.0 * (1.0 - t))),
     )
 }

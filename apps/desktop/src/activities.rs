@@ -19,7 +19,7 @@ use gpui::{
 use crate::data::Source;
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MICRO, FS_SMALL};
-use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, line_chart, small_stat, MONO, SANS};
+use crate::ui::{body, ch, eyebrow, eyebrow_lg, h1, line_chart, small_stat, MONO, SANS};
 
 /// Where the activity views come from. Both read a cache file through
 /// `garmin-api`. A persona is a made-up cache that the app seeds in a temp folder.
@@ -169,15 +169,11 @@ fn empty_note(t: &Theme) -> Div {
     .max_w(ch(62.0, 16.0))
 }
 
-pub fn list(view: &ActivitiesView, key: usize, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
+pub fn list(view: &ActivitiesView, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
     let head = div()
-        .child(block_in(key, 0, eyebrow_lg("Activities", t)))
-        .child(block_in(key, 0, h1("Every session").mt(px(18.0))))
-        .child(block_in(
-            key,
-            1,
-            body("Newest first.", 16.0, t.mutd).mt(px(14.0)),
-        ));
+        .child(eyebrow_lg("Activities", t))
+        .child(h1("Every session").mt(px(18.0)))
+        .child(body("Newest first.", 16.0, t.mutd).mt(px(14.0)));
     if view.empty {
         return head.child(empty_note(t)).into_any_element();
     }
@@ -185,7 +181,7 @@ pub fn list(view: &ActivitiesView, key: usize, t: &Theme, cx: &mut Context<Root>
         .groups
         .iter()
         .fold(div(), |col, g| col.child(group(g, t, cx)));
-    head.child(block_in(key, 2, groups)).into_any_element()
+    head.child(groups).into_any_element()
 }
 
 /* ----------------------------------------------------------------- detail --- */
@@ -376,7 +372,7 @@ fn back(t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
         .child("< All activities")
 }
 
-pub fn detail(v: &ActivityDetailView, key: usize, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
+pub fn detail(v: &ActivityDetailView, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
     let stats = v.stats.iter().fold(
         div()
             .flex()
@@ -387,25 +383,21 @@ pub fn detail(v: &ActivityDetailView, key: usize, t: &Theme, cx: &mut Context<Ro
         |row, s| row.child(small_stat(&s.label, &s.value, t)),
     );
     let mut page = div()
-        .child(block_in(key, 0, back(t, cx)))
-        .child(block_in(
-            key,
-            0,
-            eyebrow_lg(format!("{} - {}", v.sport_label, v.when), t).mt(px(26.0)),
-        ))
-        .child(block_in(key, 0, h1(v.name.clone()).mt(px(18.0))))
-        .child(block_in(key, 1, stats));
+        .child(back(t, cx))
+        .child(eyebrow_lg(format!("{} - {}", v.sport_label, v.when), t).mt(px(26.0)))
+        .child(h1(v.name.clone()).mt(px(18.0)))
+        .child(stats);
     if let Some(z) = &v.zones {
-        page = page.child(block_in(key, 2, zones(z, t)));
+        page = page.child(zones(z, t));
     }
     if let Some(c) = &v.chart {
-        page = page.child(block_in(key, 3, chart(c, t)));
+        page = page.child(chart(c, t));
     }
     if !v.laps.is_empty() {
-        page = page.child(block_in(key, 4, laps(&v.laps, t)));
+        page = page.child(laps(&v.laps, t));
     }
     if let Some(s) = &v.strength {
-        page = page.child(block_in(key, 4, strength(s, t)));
+        page = page.child(strength(s, t));
     }
     page.into_any_element()
 }

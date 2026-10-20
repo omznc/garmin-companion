@@ -14,7 +14,7 @@ use garmin_api::{HealthView, SleepView};
 use crate::data::{Metric, Part, Source};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, block_in, body, ch, eyebrow, eyebrow_lg, h1, metric, spark_wide, LH_NORMAL, SANS,
+    axis_labels, body, ch, eyebrow, eyebrow_lg, h1, metric, spark_wide, LH_NORMAL, SANS,
 };
 
 /// The made-up users of `garmin-api`, as the Health and Sleep views.
@@ -84,13 +84,11 @@ pub fn load(source: &Source) -> Result<Wellness> {
     }
 }
 
-fn header(eyebrow_text: &str, title: &str, lede: &str, key: usize, t: &Theme) -> impl IntoElement {
+fn header(eyebrow_text: &str, title: &str, lede: &str, t: &Theme) -> impl IntoElement {
     div()
-        .child(block_in(key, 0, eyebrow_lg(eyebrow_text.to_string(), t)))
-        .child(block_in(key, 0, h1(title.to_string()).mt(px(18.0))))
-        .child(block_in(
-            key,
-            1,
+        .child(eyebrow_lg(eyebrow_text.to_string(), t))
+        .child(h1(title.to_string()).mt(px(18.0)))
+        .child(
             div().mt(px(28.0)).mb(px(44.0)).child(
                 div()
                     .max_w(ch(62.0, FS_MD))
@@ -100,7 +98,7 @@ fn header(eyebrow_text: &str, title: &str, lede: &str, key: usize, t: &Theme) ->
                     .text_color(t.mutd)
                     .child(lede.to_string()),
             ),
-        ))
+        )
 }
 
 fn tile(label: &str, value: &str, unit: &str) -> Metric {
@@ -145,11 +143,11 @@ fn metric_row(m: &MetricTrend, t: &Theme) -> Div {
         )
 }
 
-pub fn render_health(view: &HealthView, key: usize, t: &Theme) -> impl IntoElement {
+pub fn render_health(view: &HealthView, t: &Theme) -> impl IntoElement {
     let eyebrow_text = format!("Last {} days", view.days);
-    let mut screen = div().child(header(&eyebrow_text, "Health", &view.note, key, t));
-    for (i, m) in view.metrics.iter().enumerate() {
-        screen = screen.child(block_in(key, 2 + i, metric_row(m, t)));
+    let mut screen = div().child(header(&eyebrow_text, "Health", &view.note, t));
+    for m in view.metrics.iter() {
+        screen = screen.child(metric_row(m, t));
     }
     screen
 }
@@ -328,12 +326,12 @@ fn insights(view: &SleepView, t: &Theme) -> Div {
         .child(list)
 }
 
-pub fn render_sleep(view: &SleepView, key: usize, t: &Theme) -> impl IntoElement {
+pub fn render_sleep(view: &SleepView, t: &Theme) -> impl IntoElement {
     let title = view
         .last_night
         .as_ref()
         .map_or("Sleep", |n| n.title.as_str());
-    let mut screen = div().child(header(title, "Sleep", &view.lede, key, t));
+    let mut screen = div().child(header(title, "Sleep", &view.lede, t));
     if view.empty {
         return screen;
     }
@@ -346,8 +344,8 @@ pub fn render_sleep(view: &SleepView, key: usize, t: &Theme) -> impl IntoElement
     if !view.insights.is_empty() {
         blocks.push(insights(view, t).into_any_element());
     }
-    for (i, block) in blocks.into_iter().enumerate() {
-        screen = screen.child(block_in(key, 2 + i, block));
+    for block in blocks {
+        screen = screen.child(block);
     }
     screen
 }
@@ -399,8 +397,8 @@ mod tests {
         let t = Palette::Paper.theme();
         for (name, _) in TODAY_PERSONAS {
             let w = persona(name);
-            let _ = render_health(&w.health, 0, &t);
-            let _ = render_sleep(&w.sleep, 0, &t);
+            let _ = render_health(&w.health, &t);
+            let _ = render_sleep(&w.sleep, &t);
         }
     }
 }

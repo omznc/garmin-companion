@@ -7,7 +7,6 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
 
 use gpui::{
     anchored, deferred, div, point, prelude::*, px, relative, AnyElement, BoxShadow, ClickEvent,
@@ -19,7 +18,6 @@ use crate::icons::{icon, icon_hover, Icon};
 use crate::kit::{kbd, modifier};
 use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
-use crate::spring::{Spring, SETTLE};
 use crate::theme::{Theme, FS_SMALL};
 use crate::ui::{MONO, SANS};
 
@@ -144,13 +142,11 @@ pub struct Sidebar {
     /// The groups that the user closed.
     closed: Vec<Group>,
     shared: Rc<RefCell<Shared>>,
-    /// How far each entry is drawn from its row, by `Screen::index`. A
-    /// moved entry springs to zero.
-    shift: Vec<Spring>,
-    last_tick: Option<Instant>,
+    /// How far each entry is drawn from its row, by `Screen::index`. It is
+    /// non-zero only during a drag.
+    shift: Vec<f32>,
     /// The list scrolls when the window is too short for every entry.
     scroll: SmoothScroll,
-    reduced_motion: bool,
 }
 
 impl Sidebar {
@@ -171,10 +167,8 @@ impl Sidebar {
             order,
             closed,
             shared: Rc::new(RefCell::new(shared)),
-            shift: vec![Spring::new(SETTLE); Screen::ALL.len()],
-            last_tick: None,
+            shift: vec![0.0; Screen::ALL.len()],
             scroll: SmoothScroll::new(reduced_motion),
-            reduced_motion,
         }
     }
 
@@ -231,7 +225,7 @@ impl Sidebar {
     }
 
     /// Put the entry at position `from` at position `to`. The rows keep the
-    /// place they are drawn at and glide to the new place. True when the order changed.
+    /// place they are drawn at, and move to the new place at once. True when the order changed.
     fn apply_move(&mut self, from: usize, to: usize) -> bool {
         if from == to || from >= self.order.len() || to >= self.order.len() {
             return false;
@@ -241,17 +235,8 @@ impl Sidebar {
             return false;
         }
         let next = moved(&self.order, from, to);
-        for (new, &screen) in next.iter().enumerate() {
-            let shift = self.top_of(self.position(screen)) - self.top_of(new);
-            let spring = &mut self.shift[screen.index()];
-            spring.x += shift;
-            spring.target = 0.0;
-            if self.reduced_motion {
-                spring.set(0.0);
-            }
-        }
+        self.shift.fill(0.0);
         self.order = next;
-        self.last_tick = None;
         true
     }
 
@@ -276,13 +261,7 @@ impl Sidebar {
             return;
         };
         for (new, &screen) in moved(&self.order, d.from, d.to).iter().enumerate() {
-            let target = self.top_of(new) - self.top_of(self.position(screen));
-            let spring = &mut self.shift[screen.index()];
-            if self.reduced_motion {
-                spring.set(target);
-            } else {
-                spring.to(target);
-            }
+            self.shift[screen.index()] = self.top_of(new) - self.top_of(self.position(screen));
         }
     }
 
@@ -292,19 +271,6 @@ impl Sidebar {
         self.scroll.tick(window);
         let changed = self.take_gestures(dragging);
         self.aim_rows();
-        if !self.shift.iter().any(Spring::is_moving) {
-            self.last_tick = None;
-            return changed;
-        }
-        let now = Instant::now();
-        let dt = self
-            .last_tick
-            .map_or(1.0 / 60.0, |t| now.duration_since(t).as_secs_f32());
-        self.last_tick = Some(now);
-        for spring in &mut self.shift {
-            spring.step(dt);
-        }
-        window.request_animation_frame();
         changed
     }
 }
@@ -442,7 +408,7 @@ fn entry<V: 'static>(
         t,
     )
     .relative()
-    .top(px(state.shift[screen.index()].x))
+    .top(px(state.shift[screen.index()]))
     .flex_none()
     .when(held, |d| d.opacity(0.35))
     .on_click(cx.listener(move |view, _: &ClickEvent, window, cx| select(view, screen, window, cx)))
@@ -750,14 +716,12 @@ mod tests {
     }
 
     #[test]
-    fn a_move_keeps_the_rows_where_they_are_drawn() {
+    fn a_move_puts_the_rows_in_place_at_once() {
         let mut bar = bar();
         assert!(bar.apply_move(3, 0));
         assert_eq!(bar.order[..2], [Screen::Food, Screen::Today]);
-        // The entry that was at row 3 is drawn there until it glides to row 0.
-        let (row0, row1, row3) = (bar.top_of(0), bar.top_of(1), bar.top_of(3));
-        assert!((bar.shift[Screen::Food.index()].x - (row3 - row0)).abs() < 1e-3);
-        assert!((bar.shift[Screen::Today.index()].x - (row0 - row1)).abs() < 1e-3);
+        // The rows stand in their new places at once.
+        assert!(bar.shift.iter().all(|&x| x == 0.0));
         assert!(!bar.apply_move(2, 2));
         // A move across a group does nothing.
         assert!(!bar.apply_move(0, 5));

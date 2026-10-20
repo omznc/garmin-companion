@@ -45,7 +45,7 @@ use crate::motion;
 use crate::scroll::SmoothScroll;
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Palette, Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
+use crate::ui::{body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
@@ -160,7 +160,7 @@ pub struct Ask {
     busy: bool,
     stop: Arc<AtomicBool>,
     scroll: SmoothScroll,
-    /// Counts the visits, so the empty screen animates in again.
+    /// Counts the visits, so each visit starts with a fresh scroll area.
     visits: usize,
     task: Option<Task<()>>,
     _subscription: Subscription,
@@ -723,7 +723,6 @@ fn credit_row(view: &AccountView, cx: &mut Context<Ask>, t: &Theme) -> impl Into
 
 impl Ask {
     fn empty(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
-        let key = self.visits;
         let day = chrono::Datelike::ordinal(&chrono::Local::now().date_naive()) as usize;
         let chips = (0..3).map(|i| {
             let text = OPENERS[(day + i * 3) % OPENERS.len()];
@@ -734,39 +733,27 @@ impl Ask {
         let lede = "Ask about your sleep, recovery, activity or weight. The coach reads \
                     your own Garmin data before it answers.";
         div()
-            .child(block_in(key, 0, eyebrow_lg("Ask", t)))
-            .child(block_in(
-                key,
-                0,
-                h1("What would you like to know?").mt(px(18.0)),
-            ))
-            .child(block_in(
-                key,
-                1,
-                body(lede, 16.0, t.mutd).mt(px(22.0)).max_w(ch(58.0, 16.0)),
-            ))
-            .child(block_in(
-                key,
-                2,
-                div()
+            .child(eyebrow_lg("Ask", t))
+            .child(h1("What would you like to know?").mt(px(18.0)),
+            )
+            .child(body(lede, 16.0, t.mutd).mt(px(22.0)).max_w(ch(58.0, 16.0)),
+            )
+            .child(div()
                     .mt(px(36.0))
                     .flex()
                     .flex_col()
                     .items_start()
                     .gap(px(14.0))
                     .children(chips),
-            ))
+            )
             .when(matches!(self.source, Source::Demo), |d| {
-                d.child(block_in(
-                    key,
-                    3,
-                    body(
+                d.child(body(
                         "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
                         FS_CAPTION,
                         t.faint,
                     )
                     .mt(px(48.0)),
-                ))
+                )
             })
             .into_any_element()
     }

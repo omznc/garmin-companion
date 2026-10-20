@@ -17,7 +17,7 @@ use crate::data::{Metric, Source};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, block_in, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, MONO, SANS,
+    axis_labels, body, ch, eyebrow, line_chart, metric, underlined, LH_NORMAL, MONO, SANS,
 };
 
 /// The made-up users of `garmin-api`, as the three training views.
@@ -126,14 +126,13 @@ pub fn load_report(source: &Source, offset: usize) -> Result<ReportView> {
 pub fn screen(
     label: &str,
     data: &Training,
-    key: usize,
     t: &Theme,
     cx: &mut GpuiContext<Root>,
 ) -> Option<AnyElement> {
     Some(match label {
-        "Insights" => insights(&data.insights, key, t),
-        "Fitness" => fitness(&data.fitness, key, t),
-        "Reports" => report(&data.report, key, t, cx),
+        "Insights" => insights(&data.insights, t),
+        "Fitness" => fitness(&data.fitness, t),
+        "Reports" => report(&data.report, t, cx),
         _ => return None,
     })
 }
@@ -217,23 +216,17 @@ fn insight_rows(item: &InsightItem, t: &Theme) -> Div {
     })
 }
 
-fn insights(v: &InsightsView, key: usize, t: &Theme) -> AnyElement {
-    let mut page = div().child(head(v.eyebrow.clone(), "Insights", &v.lede, key, t));
+fn insights(v: &InsightsView, t: &Theme) -> AnyElement {
+    let mut page = div().child(head(v.eyebrow.clone(), "Insights", &v.lede, t));
     if let Some(e) = &v.empty {
-        return page
-            .child(block_in(key, 2, empty_state(e, t)))
-            .into_any_element();
+        return page.child(empty_state(e, t)).into_any_element();
     }
-    for (i, s) in v.sections.iter().enumerate() {
+    for s in v.sections.iter() {
         let items = s
             .items
             .iter()
             .fold(div(), |col, item| col.child(insight(item, t)));
-        page = page.child(block_in(
-            key,
-            2 + i,
-            div().child(section(&s.title, t)).child(items),
-        ));
+        page = page.child(div().child(section(&s.title, t)).child(items));
     }
     page.into_any_element()
 }
@@ -301,38 +294,28 @@ fn balance(b: &Balance, t: &Theme) -> Div {
         .child(bars)
 }
 
-fn fitness(v: &FitnessView, key: usize, t: &Theme) -> AnyElement {
+fn fitness(v: &FitnessView, t: &Theme) -> AnyElement {
     let lede = v.lede.as_deref().unwrap_or("");
-    let mut page = div().child(head(
-        "Fitness".into(),
-        "What Garmin makes of it",
-        lede,
-        key,
-        t,
-    ));
+    let mut page = div().child(head("Fitness".into(), "What Garmin makes of it", lede, t));
     if let Some(e) = &v.empty {
-        return page
-            .child(block_in(key, 2, empty_state(e, t)))
-            .into_any_element();
+        return page.child(empty_state(e, t)).into_any_element();
     }
     if !v.figures.is_empty() {
-        page = page.child(block_in(key, 2, figure_tiles(&v.figures, t)));
+        page = page.child(figure_tiles(&v.figures, t));
     }
     for n in &v.notes {
         page = page.child(note(n, t));
     }
     if let Some(b) = &v.balance {
-        page = page.child(block_in(key, 3, balance(b, t)));
+        page = page.child(balance(b, t));
     }
     if let Some(p) = &v.predictions {
-        page = page.child(block_in(
-            key,
-            4,
+        page = page.child(
             div()
                 .child(section("Race predictions", t))
                 .child(note(&p.intro, t))
                 .child(div().mt(px(18.0)).child(figure_tiles(&p.rows, t))),
-        ));
+        );
     }
     if !v.records.is_empty() {
         let list = v.records.iter().fold(div(), |col, r| {
@@ -342,11 +325,7 @@ fn fitness(v: &FitnessView, key: usize, t: &Theme) -> AnyElement {
                 t,
             ))
         });
-        page = page.child(block_in(
-            key,
-            4,
-            div().child(section("Records", t)).child(list),
-        ));
+        page = page.child(div().child(section("Records", t)).child(list));
     }
     page.into_any_element()
 }
@@ -421,12 +400,10 @@ fn report_sessions(v: &ReportView, t: &Theme) -> Div {
     })
 }
 
-fn report(v: &ReportView, key: usize, t: &Theme, cx: &mut GpuiContext<Root>) -> AnyElement {
-    let mut page = div().child(head(v.eyebrow.clone(), "The Weekly", &v.lede, key, t));
+fn report(v: &ReportView, t: &Theme, cx: &mut GpuiContext<Root>) -> AnyElement {
+    let mut page = div().child(head(v.eyebrow.clone(), "The Weekly", &v.lede, t));
     if let Some(e) = &v.empty {
-        return page
-            .child(block_in(key, 2, empty_state(e, t)))
-            .into_any_element();
+        return page.child(empty_state(e, t)).into_any_element();
     }
     let columns = div()
         .flex()
@@ -438,7 +415,7 @@ fn report(v: &ReportView, key: usize, t: &Theme, cx: &mut GpuiContext<Root>) -> 
     let earlier = v.has_earlier.then_some(v.offset + 1);
     let later = v.offset.checked_sub(1).filter(|_| v.has_later);
     page = page
-        .child(block_in(key, 2, columns))
+        .child(columns)
         .child(section(&v.daily_title, t))
         .child(line_chart(&values, 80.0, 6.0, t))
         .child(axis_labels(&labels, t))

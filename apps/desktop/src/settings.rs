@@ -12,7 +12,7 @@ use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Theme, FS_MD};
-use crate::ui::{block_in, body, eyebrow_lg, MONO, SANS};
+use crate::ui::{body, eyebrow_lg, MONO, SANS};
 
 /// The widest the Settings content gets. The reading column is narrower.
 pub const CONTENT_MAX: f32 = 800.0;
@@ -163,7 +163,6 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
     let Some(view) = root.account.settings.clone() else {
         return div().into_any_element();
     };
-    let k = root.visits;
     let narrow = content_width(f32::from(window.viewport_size().width)) <= NARROW_AT;
     panel::set_narrow(narrow);
     let title = div()
@@ -178,17 +177,17 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         .flex()
         .flex_col()
         .gap(px(14.0))
-        .child(block_in(k, 0, eyebrow_lg("This machine", t)))
-        .child(block_in(k, 0, title))
-        .child(block_in(k, 1, body(lead, FS_MD, t.mutd).max_w(px(544.0))));
+        .child(eyebrow_lg("This machine", t))
+        .child(title)
+        .child(body(lead, FS_MD, t.mutd).max_w(px(544.0)));
     div()
         .flex()
         .flex_col()
         .gap(px(60.0))
         .child(header)
-        .child(block_in(k, 2, garmin(root, &view, t, cx)))
-        .child(block_in(k, 3, crate::cloud::render(root, t, window, cx)))
-        .child(block_in(k, 3, crate::appearance::render(root, t, cx)))
-        .child(block_in(k, 4, about(root, &view, t, cx)))
+        .child(garmin(root, &view, t, cx))
+        .child(crate::cloud::render(root, t, window, cx))
+        .child(crate::appearance::render(root, t, cx))
+        .child(about(root, &view, t, cx))
         .into_any_element()
 }

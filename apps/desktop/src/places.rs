@@ -24,7 +24,7 @@ use crate::body::{empty_state, head, note, row, section};
 use crate::data::{Metric, Part, Source};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, metric, MONO, SANS};
+use crate::ui::{body, ch, metric, MONO, SANS};
 
 /// Where the cache and the gear come from.
 #[derive(Clone, Copy, PartialEq)]
@@ -211,23 +211,18 @@ impl Root {
 
 /// The screen for a sidebar label, or `None` for a label that this file does not draw.
 pub fn screen(label: &str, root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<AnyElement> {
-    let key = root.visits;
     Some(match label {
-        "Plan" => plan(&root.places.plan, key, t),
-        "Routes" => routes(&root.places, key, t, cx),
-        "Gear" => gear(&root.places.gear, key, t, cx),
+        "Plan" => plan(&root.places.plan, t),
+        "Routes" => routes(&root.places, t, cx),
+        "Gear" => gear(&root.places.gear, t, cx),
         _ => return None,
     })
 }
 
-fn failed(title: &str, message: &str, key: usize, t: &Theme) -> AnyElement {
+fn failed(title: &str, message: &str, t: &Theme) -> AnyElement {
     div()
-        .child(head("Garmin Companion".into(), title, "", key, t))
-        .child(block_in(
-            key,
-            1,
-            body(message.to_string(), FS_MD, t.mutd).max_w(ch(62.0, FS_MD)),
-        ))
+        .child(head("Garmin Companion".into(), title, "", t))
+        .child(body(message.to_string(), FS_MD, t.mutd).max_w(ch(62.0, FS_MD)))
         .into_any_element()
 }
 
@@ -250,23 +245,23 @@ fn tiles(items: &[Tile], t: &Theme) -> Div {
 
 /* -------------------------------------------------------------------- plan --- */
 
-fn plan(view: &Result<PlanView, String>, key: usize, t: &Theme) -> AnyElement {
+fn plan(view: &Result<PlanView, String>, t: &Theme) -> AnyElement {
     let v = match view {
         Ok(v) => v,
-        Err(e) => return failed("Plan", e, key, t),
+        Err(e) => return failed("Plan", e, t),
     };
     let eyebrow = format!("Last {} days", v.window_days);
     let lede = "The workouts you have built, and how your training compares with them.";
     if let Some(e) = &v.empty {
         return div()
-            .child(head(eyebrow, "Plan", lede, key, t))
-            .child(block_in(key, 2, empty_state(e, t)))
+            .child(head(eyebrow, "Plan", lede, t))
+            .child(empty_state(e, t))
             .child(note(&v.gap_note, t).mt(px(40.0)))
             .into_any_element();
     }
     let mut page = div()
-        .child(head(eyebrow, "Plan", lede, key, t))
-        .child(block_in(key, 2, tiles(&v.tiles, t)));
+        .child(head(eyebrow, "Plan", lede, t))
+        .child(tiles(&v.tiles, t));
     if let Some(s) = &v.sentence {
         page = page.child(
             body(s.clone(), FS_MD, t.mutd)
@@ -308,20 +303,18 @@ const SORTS: [(RouteSort, &str); 3] = [
     (RouteSort::Distance, "Longest"),
 ];
 
-fn routes(places: &Places, key: usize, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
+fn routes(places: &Places, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
     let v = match &places.routes {
         Ok(v) => v,
-        Err(e) => return failed("Routes", e, key, t),
+        Err(e) => return failed("Routes", e, t),
     };
     let lede = "Every route you have a GPS trace for. Outings that start and finish in the \
                 same place over a similar distance are one route.";
-    let mut page = div().child(head("All cached traces".into(), "Routes", lede, key, t));
+    let mut page = div().child(head("All cached traces".into(), "Routes", lede, t));
     if let Some(e) = &v.empty {
-        return page
-            .child(block_in(key, 2, empty_state(e, t)))
-            .into_any_element();
+        return page.child(empty_state(e, t)).into_any_element();
     }
-    page = page.child(block_in(key, 2, tiles(&v.tiles, t)));
+    page = page.child(tiles(&v.tiles, t));
     for n in &v.notes {
         page = page.child(note(n, t));
     }
@@ -453,9 +446,9 @@ fn trace(points: &[[f32; 2]], t: &Theme) -> impl IntoElement {
 
 /* -------------------------------------------------------------------- gear --- */
 
-fn gear(state: &Gear, key: usize, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
+fn gear(state: &Gear, t: &Theme, cx: &mut Context<Root>) -> AnyElement {
     let lede = "Shoes, bikes and other gear registered on your account, with the distance logged against each.";
-    let page = div().child(head("Live from Garmin".into(), "Gear", lede, key, t));
+    let page = div().child(head("Live from Garmin".into(), "Gear", lede, t));
     match state {
         Gear::Idle | Gear::Loading => page
             .child(body("Asking Garmin about your gear.", FS_MD, t.mutd))
@@ -474,9 +467,7 @@ fn gear(state: &Gear, key: usize, t: &Theme, cx: &mut Context<Root>) -> AnyEleme
             )
             .into_any_element(),
         Gear::Ready(v) => match &v.empty {
-            Some(e) => page
-                .child(block_in(key, 2, empty_state(e, t)))
-                .into_any_element(),
+            Some(e) => page.child(empty_state(e, t)).into_any_element(),
             None => v
                 .items
                 .iter()

@@ -21,7 +21,7 @@ use crate::scroll::SmoothScroll;
 use crate::sidebar::{self, Sidebar, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
-use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
+use crate::ui::{body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
 use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
@@ -80,7 +80,7 @@ pub struct Root {
     pub(crate) coach_open: bool,
     /// The number of cached activities, for the sidebar and the status bar.
     activity_count: Option<i64>,
-    /// Counts the screens shown, so each one animates in again.
+    /// Counts the screens shown, so each one starts with a fresh scroll area.
     pub(crate) visits: usize,
     scroll: SmoothScroll,
     /// The Activities screen reads its view models from this store.
@@ -432,12 +432,8 @@ impl Root {
     fn wellness_screen(&self, t: &Theme) -> Option<gpui::AnyElement> {
         let w = self.wellness.as_ref()?;
         match self.active {
-            Screen::Health => {
-                Some(wellness::render_health(&w.health, self.visits, t).into_any_element())
-            }
-            Screen::Sleep => {
-                Some(wellness::render_sleep(&w.sleep, self.visits, t).into_any_element())
-            }
+            Screen::Health => Some(wellness::render_health(&w.health, t).into_any_element()),
+            Screen::Sleep => Some(wellness::render_sleep(&w.sleep, t).into_any_element()),
             _ => None,
         }
     }
@@ -459,20 +455,18 @@ impl Root {
         if let Some(screen) = places::screen(label, self, t, cx) {
             return screen;
         }
-        if let Some(screen) = body::screen(label, &self.body, self.visits, t) {
+        if let Some(screen) = body::screen(label, &self.body, t) {
             return screen;
         }
         if let Some(data) = &self.training {
-            if let Some(screen) = training::screen(label, data, self.visits, t, cx) {
+            if let Some(screen) = training::screen(label, data, t, cx) {
                 return screen;
             }
         }
         div()
-            .child(block_in(self.visits, 0, eyebrow_lg("Not built yet", t)))
-            .child(block_in(self.visits, 0, h1(label).mt(px(18.0))))
-            .child(block_in(
-                self.visits,
-                1,
+            .child(eyebrow_lg("Not built yet", t))
+            .child(h1(label).mt(px(18.0)))
+            .child(
                 body(
                     "This screen comes in a later phase of the rewrite.",
                     16.0,
@@ -480,7 +474,7 @@ impl Root {
                 )
                 .mt(px(28.0))
                 .max_w(ch(62.0, 16.0)),
-            ))
+            )
             .into_any_element()
     }
 
@@ -540,10 +534,10 @@ impl Root {
 
     fn activities_screen(&self, t: &Theme, cx: &mut Context<Self>) -> gpui::AnyElement {
         match &self.page {
-            Page::Detail(view) => activities::detail(view, self.visits, t, cx),
+            Page::Detail(view) => activities::detail(view, t, cx),
             Page::Missing => activities::missing(t, cx),
             Page::List => match &self.list {
-                Ok(view) => activities::list(view, self.visits, t, cx),
+                Ok(view) => activities::list(view, t, cx),
                 Err(error) => activities::failed(error, t),
             },
         }

@@ -11,8 +11,8 @@ use gpui::{div, prelude::*, px, relative, AnyElement, Div, Hsla};
 use crate::data::{Metric, Part, Source};
 use crate::theme::{Theme, FS_BASE, FS_CAPTION, FS_LG, FS_MD, FS_SMALL};
 use crate::ui::{
-    axis_labels, block_in, body, ch, eyebrow, eyebrow_lg, h1, line_chart, metric, small_stat,
-    spark, LH_NORMAL, MONO, SANS,
+    axis_labels, body, ch, eyebrow, eyebrow_lg, h1, line_chart, metric, small_stat, spark,
+    LH_NORMAL, MONO, SANS,
 };
 
 const SAMPLE: &str = include_str!("../../../crates/garmin-api/fixtures/body.sample.json");
@@ -54,12 +54,12 @@ pub fn load_body(source: &Source) -> Result<BodyData> {
 }
 
 /// The screen for a sidebar label, or `None` for a label that this file does not draw.
-pub fn screen(label: &str, data: &BodyData, key: usize, t: &Theme) -> Option<AnyElement> {
+pub fn screen(label: &str, data: &BodyData, t: &Theme) -> Option<AnyElement> {
     let v = &data.0;
     Some(match label {
-        "Weight" => weight(&v.weight, key, t),
-        "Food" => food(&v.food, key, t),
-        "Strength" => strength(&v.strength, key, t),
+        "Weight" => weight(&v.weight, t),
+        "Food" => food(&v.food, t),
+        "Strength" => strength(&v.strength, t),
         _ => return None,
     })
 }
@@ -89,19 +89,15 @@ pub(crate) fn tiles(items: &[Metric], t: &Theme) -> Div {
     )
 }
 
-pub(crate) fn head(eyebrow_text: String, title: &str, lede: &str, key: usize, t: &Theme) -> Div {
+pub(crate) fn head(eyebrow_text: String, title: &str, lede: &str, t: &Theme) -> Div {
     div()
         .mb(px(28.0))
-        .child(block_in(key, 0, eyebrow_lg(eyebrow_text, t)))
-        .child(block_in(key, 0, h1(title.to_string()).mt(px(18.0))))
+        .child(eyebrow_lg(eyebrow_text, t))
+        .child(h1(title.to_string()).mt(px(18.0)))
         .children((!lede.is_empty()).then(|| {
-            block_in(
-                key,
-                1,
-                body(lede.to_string(), FS_LG, t.mutd)
-                    .mt(px(20.0))
-                    .max_w(ch(58.0, FS_LG)),
-            )
+            body(lede.to_string(), FS_LG, t.mutd)
+                .mt(px(20.0))
+                .max_w(ch(58.0, FS_LG))
         }))
 }
 
@@ -204,11 +200,11 @@ pub(crate) fn chart(values: &[f32], labels: [&str; 2], t: &Theme) -> Div {
 
 /* ------------------------------------------------------------------ weight --- */
 
-fn weight(v: &WeightView, key: usize, t: &Theme) -> AnyElement {
+fn weight(v: &WeightView, t: &Theme) -> AnyElement {
     if let Some(e) = &v.empty {
         return div()
-            .child(head("From Garmin".into(), "Weight", "", key, t))
-            .child(block_in(key, 1, empty_state(e, t)))
+            .child(head("From Garmin".into(), "Weight", "", t))
+            .child(empty_state(e, t))
             .into_any_element();
     }
     let eyebrow_text = format!(
@@ -235,10 +231,9 @@ fn weight(v: &WeightView, key: usize, t: &Theme) -> AnyElement {
             eyebrow_text,
             "Weight",
             v.sentence.as_deref().unwrap_or(""),
-            key,
             t,
         ))
-        .child(block_in(key, 2, tiles(&shown, t)));
+        .child(tiles(&shown, t));
     for w in &v.windows {
         page = page.child(note(&w.sentence, t));
     }
@@ -312,14 +307,14 @@ fn weight_rows(v: &WeightView, t: &Theme) -> Div {
 
 /* -------------------------------------------------------------------- food --- */
 
-fn food(v: &FoodView, key: usize, t: &Theme) -> AnyElement {
+fn food(v: &FoodView, t: &Theme) -> AnyElement {
     let lede = "Intake against expenditure, matched to what Garmin says you burned.";
-    let mut page = div().child(head("Last 30 days".into(), "Food", lede, key, t));
+    let mut page = div().child(head("Last 30 days".into(), "Food", lede, t));
     match &v.empty {
-        Some(e) => page = page.child(block_in(key, 2, empty_state(e, t))),
+        Some(e) => page = page.child(empty_state(e, t)),
         None => {
             page = page
-                .child(block_in(key, 2, tiles(&food_tiles(v), t)))
+                .child(tiles(&food_tiles(v), t))
                 .child(note(&v.sentence, t))
                 .child(food_chart(v, t));
         }
@@ -390,11 +385,11 @@ fn food_rows(v: &FoodView, t: &Theme) -> Div {
 
 /* ---------------------------------------------------------------- strength --- */
 
-fn strength(v: &StrengthView, key: usize, t: &Theme) -> AnyElement {
+fn strength(v: &StrengthView, t: &Theme) -> AnyElement {
     if let Some(e) = &v.empty {
         return div()
-            .child(head("Strength".into(), "Lifting", "", key, t))
-            .child(block_in(key, 1, empty_state(e, t)))
+            .child(head("Strength".into(), "Lifting", "", t))
+            .child(empty_state(e, t))
             .into_any_element();
     }
     let pct = v.identified_pct.map(|p| p.to_string());
@@ -420,8 +415,8 @@ fn strength(v: &StrengthView, key: usize, t: &Theme) -> AnyElement {
         tile("Sets identified", pct, "%", false),
     ];
     let mut page = div()
-        .child(head("Strength".into(), "Lifting", &v.sentence, key, t))
-        .child(block_in(key, 2, tiles(&stats, t)))
+        .child(head("Strength".into(), "Lifting", &v.sentence, t))
+        .child(tiles(&stats, t))
         .child(note(&v.caveat, t));
     if !v.exercises.is_empty() {
         page = page.child(section("By movement", t));

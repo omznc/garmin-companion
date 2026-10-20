@@ -9,9 +9,6 @@ use std::sync::Mutex;
 
 use gpui::{hsla, rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
 
-/// The motion tokens. Durations in milliseconds. The slow step is the page entrance.
-pub const DUR_SLOW: u64 = 180;
-
 /// The type scale of the design. Every size below display comes from these steps.
 /// Micro is the mono meta and key hint. Caption is a card title and a button.
 /// Small is an input and a table cell. Base is the text. Md is the lede.
