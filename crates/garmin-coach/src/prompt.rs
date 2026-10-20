@@ -71,20 +71,59 @@ alarm, and say plainly what is going well. Prefer short paragraphs to bullet \
 lists. You can ask the person a short question in your answer when the answer \
 changes your advice and no tool can supply it.";
 
+/// The paragraphs that only a host with drafting needs. They stay out of the
+/// prompt when the tool is off, so the model never reads about a missing tool.
+const DRAFT_PROMPT: &str = "
+
+When the person asks for a session, a workout or a plan for a day, always \
+call `draft_workout` in that turn. A session that exists only in prose is a \
+failure: the person cannot save it to the watch. \
+Read the recent data first. A session prescribed without the last few \
+sessions and this morning's recovery is a guess. Explain in prose why the \
+session has this shape. The person sees the steps on a card, so do not list \
+every step.
+
+If the data does not reach today, a session built on it fits the person of \
+that day. Still build one when they ask, but pitch it off the gap: someone back \
+after weeks away needs less than the old numbers show. Say that reason in the \
+prose.
+
+`draft_workout` saves nothing. It proposes, and the person presses a button to \
+save the session to Garmin. Never say that a workout was created, saved, sent \
+to the watch or scheduled. None of that has happened when the tool returns. If \
+the tool returns an error, the draft was rejected: fix what the error names and \
+call the tool again. Do not describe the session in prose in its place.
+
+Two cases get prose and no draft. The first is a sport that the tool does \
+not list, for example swimming: do not put it under a different sport. The \
+second is a day when rest is the right advice: say so, and do not build a \
+session.";
+
+/// The system prompt text. It is the same bytes on every request for one
+/// `drafts` value, so the provider can cache it.
+pub(crate) fn system_text(drafts: bool) -> String {
+    if drafts {
+        format!("{SYSTEM_PROMPT}{DRAFT_PROMPT}")
+    } else {
+        SYSTEM_PROMPT.to_string()
+    }
+}
+
 /// The fixed prompt as a system message. With `cache` it is a content array
 /// with an ephemeral cache marker, so the provider bills a repeat of this
 /// prefix at the cached price. The marker is a hint: a model that caches by
 /// itself, or that needs a longer prefix, ignores it. Ollama is local and free,
 /// so it gets the plain string.
-pub(crate) fn system_message(cache: bool) -> Value {
+pub(crate) fn system_message(cache: bool, drafts: bool) -> Value {
+    let text = system_text(drafts);
     if !cache {
-        return json!({ "role": "system", "content": SYSTEM_PROMPT });
+        return json!({ "role": "system", "content": text });
     }
     json!({
         "role": "system",
         "content": [{
             "type": "text",
-            "text": SYSTEM_PROMPT,
+            "text": text,
             "cache_control": { "type": "ephemeral" },
         }],
     })
@@ -203,10 +242,19 @@ mod tests {
     /// so it gets the plain string that it expects.
     #[test]
     fn the_cache_marker_rides_on_the_system_message() {
-        let hosted = system_message(true);
+        let hosted = system_message(true, false);
         assert_eq!(hosted["content"][0]["text"], SYSTEM_PROMPT);
         assert_eq!(hosted["content"][0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(system_message(false)["content"], SYSTEM_PROMPT);
+        assert_eq!(system_message(false, false)["content"], SYSTEM_PROMPT);
+    }
+
+    #[test]
+    fn the_draft_paragraphs_ride_only_when_drafts_are_on() {
+        assert!(!system_text(false).contains("draft_workout"));
+        let on = system_text(true);
+        assert!(on.starts_with(SYSTEM_PROMPT));
+        assert!(on.contains("saves nothing"));
+        assert_eq!(system_message(false, true)["content"], on);
     }
 
     #[test]
@@ -237,7 +285,7 @@ mod tests {
 
     #[test]
     fn the_prompt_names_no_sport_as_the_default() {
-        let lower = SYSTEM_PROMPT.to_lowercase();
+        let lower = system_text(true).to_lowercase();
         for word in [
             "running coach",
             "runner",

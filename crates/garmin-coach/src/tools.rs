@@ -46,10 +46,15 @@ fn days(default: u64, max: u64) -> Value {
     json!({ "days": { "type": "integer", "description": format!("How many days back from today. Default {default}, capped at {max}.") } })
 }
 
-/// The tool surface offered to the model.
-pub(crate) fn schemas() -> Value {
+/// The tool that proposes a workout. It does not read the cache and it saves
+/// nothing: the host shows the draft and the person saves it.
+pub(crate) const DRAFT_TOOL: &str = "draft_workout";
+
+/// The tool surface offered to the model. `drafts` adds the tool that proposes
+/// a workout, for a host that can show one.
+pub(crate) fn schemas(drafts: bool) -> Value {
     let none = json!({});
-    Value::Array(vec![
+    let mut tools = vec![
         tool(
             "recent_activities",
             "List recent activities of any sport with duration, distance, heart rate, per-zone minutes and training effect. Start here for 'how am I doing'. Each row has an `activity_id` that names one session for `activity_zones`.",
@@ -152,7 +157,32 @@ pub(crate) fn schemas() -> Value {
             none,
             &[],
         ),
-    ])
+    ];
+    if drafts {
+        tools.push(tool(
+            DRAFT_TOOL,
+            "Propose a structured workout for the person to review. This SAVES NOTHING: it shows the session as a card, and the person saves it to Garmin themselves. Call it when they ask for a session or a workout. Read their recent activities and recovery first.",
+            garmin_core::workout::schema()["properties"].clone(),
+            &["name", "sport", "steps"],
+        ));
+    }
+    Value::Array(tools)
+}
+
+/// Run `draft_workout`: the model gets a thin result, and the same parse gives
+/// the host the draft. The steps are not echoed back, so the model does not
+/// list them in prose next to the card.
+fn draft_result(args: &Value) -> Value {
+    match garmin_core::workout::parse_draft(args) {
+        Ok(d) => json!({
+            "ok": true,
+            "name": d.name,
+            "steps": d.flat_count(),
+            "estimatedMinutes": d.est_duration_secs().map(|s| (s / 60.0).round()),
+            "status": "Shown to the person for review. Nothing is saved to Garmin, and nothing will be unless they press the button on it.",
+        }),
+        Err(e) => json!({ "error": e.to_string() }),
+    }
 }
 
 /// The label of a tool call, shown to the person while the model works. It
@@ -202,6 +232,7 @@ pub(crate) fn describe(name: &str, args: &Value) -> String {
         "coach" => "Checking what the coach already says".into(),
         "findings" => "Reading a year of history".into(),
         "cache_status" => "Checking what is cached".into(),
+        DRAFT_TOOL => "Putting a session together".into(),
         other => format!("Running {other}"),
     }
 }
@@ -333,6 +364,7 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
             ))?
         }
         "cache_status" => to(cache_status(db)?)?,
+        DRAFT_TOOL => draft_result(args),
         other => json!({ "error": format!("unknown tool {other}") }),
     })
 }
@@ -372,7 +404,7 @@ mod tests {
     #[test]
     fn every_schema_has_a_label_and_a_runner() {
         let db = Db::open(std::path::Path::new(":memory:")).unwrap();
-        for t in schemas().as_array().unwrap() {
+        for t in schemas(true).as_array().unwrap() {
             let name = t["function"]["name"].as_str().unwrap();
             assert!(!describe(name, &json!({})).starts_with("Running"), "{name}");
             let out = read(&db, name, &json!({ "tag": "x" })).unwrap();
@@ -420,7 +452,7 @@ mod tests {
 
     #[test]
     fn the_row_tools_stop_at_120_days() {
-        let text = schemas().to_string();
+        let text = schemas(true).to_string();
         assert_eq!(text.matches("capped at 120").count(), 3);
         assert_eq!(
             window(&json!({ "days": 365 }), "days", 14, MAX_ROW_DAYS),
@@ -430,10 +462,38 @@ mod tests {
 
     #[test]
     fn no_tool_text_leans_on_running() {
-        let text = schemas().to_string().to_lowercase();
+        let text = schemas(true).to_string().to_lowercase();
         for word in ["runner", "cadence", "pace", "per kilometre", "run/walk"] {
             assert!(!text.contains(word), "{word}");
         }
+    }
+
+    #[test]
+    fn the_draft_tool_is_offered_only_when_drafts_are_on() {
+        let has = |on| schemas(on).to_string().contains(DRAFT_TOOL);
+        assert!(has(true));
+        assert!(!has(false));
+        assert_eq!(
+            describe(DRAFT_TOOL, &json!({})),
+            "Putting a session together"
+        );
+    }
+
+    #[test]
+    fn the_draft_result_is_thin_and_an_error_names_the_step() {
+        let ok = draft_result(&json!({
+            "name": "Easy", "sport": "running",
+            "steps": [{ "kind": "interval", "end": { "seconds": 600 } }]
+        }));
+        assert_eq!(ok["ok"], true);
+        assert_eq!(ok["steps"], 1);
+        assert_eq!(ok["estimatedMinutes"], 10.0);
+        assert!(ok.get("draft").is_none());
+        let bad = draft_result(&json!({
+            "name": "Long", "sport": "running",
+            "steps": [{ "kind": "interval", "end": { "seconds": 90000 } }]
+        }));
+        assert!(bad["error"].as_str().unwrap().contains("step 1"));
     }
 
     #[test]

@@ -57,6 +57,15 @@ export function applyEvent(turn: Turn, event: AskEventPayload): Turn {
         : [...turn.steps, step];
       return { ...turn, steps };
     }
+    case "draft":
+      // A revised draft has a new call id, so each one adds a card, in order.
+      return {
+        ...turn,
+        drafts: [
+          ...(turn.drafts ?? []),
+          { callId: event.callId, draft: event.draft, savedWorkoutId: null },
+        ],
+      };
     case "done":
       return turn.status === "running" ? { ...turn, status: "done" } : turn;
     case "error":
@@ -67,7 +76,21 @@ export function applyEvent(turn: Turn, event: AskEventPayload): Turn {
 // The live turn replaces the stored turn of the same place, or follows the stored ones.
 // The place, not the id, decides, so a stored copy never shows twice.
 export function overlay(stored: Turn[], live: Live | undefined): Turn[] {
-  return live ? [...stored.slice(0, live.index), live.turn] : stored;
+  if (!live) return stored;
+  return [...stored.slice(0, live.index), withSaved(live.turn, stored[live.index])];
+}
+
+// The live turn does not hear about a save from an earlier visit. The stored turn does.
+function withSaved(turn: Turn, kept: Turn | undefined): Turn {
+  if (!turn.drafts || !kept?.drafts) return turn;
+  const saved = new Map(kept.drafts.map((d) => [d.callId, d.savedWorkoutId]));
+  return {
+    ...turn,
+    drafts: turn.drafts.map((d) => ({
+      ...d,
+      savedWorkoutId: d.savedWorkoutId ?? saved.get(d.callId) ?? null,
+    })),
+  };
 }
 
 // A done turn gives both messages. A stopped turn gives its question and its partial

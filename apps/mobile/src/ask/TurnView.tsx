@@ -5,6 +5,7 @@ import { Answer } from "./Answer";
 import { Thinking } from "./Thinking";
 import { ToolTrace } from "./ToolTrace";
 import { UserMessage } from "./UserMessage";
+import { WorkoutCard } from "./WorkoutCard";
 import { useChatTheme } from "./theme";
 
 // One turn: the question, the tools, the answer, and the end mark. Only the turn
@@ -16,6 +17,9 @@ export const TurnView = memo(function TurnView({ turn }: { turn: Turn }) {
     <View style={{ gap: 12 }}>
       <UserMessage text={turn.question} />
       <ToolTrace steps={turn.steps} working={running} />
+      {turn.drafts?.map((entry) => (
+        <WorkoutCard key={entry.callId} turnId={turn.id} entry={entry} />
+      ))}
       <Answer text={turn.answer} />
       {running && !turn.answer && turn.steps.length === 0 ? <Thinking /> : null}
       {turn.status === "error" ? (

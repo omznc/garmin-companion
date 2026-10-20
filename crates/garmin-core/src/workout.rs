@@ -436,11 +436,353 @@ fn exec_json(e: &ExecStep, order: u32) -> Value {
     v
 }
 
+/* ----------------------------------------------------------- model input --- */
+
+/// The JSON schema of a draft, for the tool that lets a model propose one.
+///
+/// It is one flat step object, not a `oneOf` over "step" and "repeat". Small
+/// models fail on a union. The looser schema costs nothing: [`parse_draft`]
+/// repairs the input, parses it and validates it, and a bad step comes back as
+/// a sentence that names the step.
+pub fn schema() -> Value {
+    // The top-level steps and the steps inside a repeat share these fields.
+    let exec = json!({
+        "kind": {
+            "type": "string",
+            "enum": ["warmup", "interval", "recovery", "rest", "cooldown"]
+        },
+        "end": {
+            "type": "object",
+            "description": "When the step ends.",
+            "properties": {
+                "type": { "type": "string", "enum": ["time", "distance", "lap_button"] },
+                "seconds": { "type": "number", "description": "For 'time'. 10 minutes is 600." },
+                "metres": { "type": "number", "description": "For 'distance'. 5k is 5000." }
+            },
+            "required": ["type"]
+        },
+        "target": {
+            "type": "object",
+            "description": "What to hold. Prefer hr_zone: a zone number stays right when the zones change. Omit for none.",
+            "properties": {
+                "type": { "type": "string", "enum": ["none", "hr_zone", "bpm"] },
+                "zone": { "type": "integer", "description": "1-5, for 'hr_zone'." },
+                "low": { "type": "number", "description": "For 'bpm'." },
+                "high": { "type": "number", "description": "For 'bpm'." }
+            },
+            "required": ["type"]
+        },
+        "note": {
+            "type": "string",
+            "description": "One short instruction for the watch, under 200 characters."
+        }
+    });
+
+    json!({
+        "type": "object",
+        "properties": {
+            "name": { "type": "string", "description": "Short and specific, e.g. '4 x 3min Z4'." },
+            "sport": { "type": "string", "enum": ["running", "cycling", "cardio", "strength_training"] },
+            "description": { "type": "string", "description": "One line on what the session is for." },
+            "steps": {
+                "type": "array",
+                "description": "The workout in order. Use a repeat for anything done more than once. Never write out every rep.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["exec", "repeat"],
+                            "description": "'exec' is one step, 'repeat' a block."
+                        },
+                        "times": { "type": "integer", "description": "For 'repeat'. At least 2." },
+                        "steps": {
+                            "type": "array",
+                            "description": "For 'repeat': the steps in the block, each untagged. No nested repeats.",
+                            "items": { "type": "object", "properties": exec, "required": ["kind", "end"] }
+                        },
+                        "kind": exec["kind"],
+                        "end": exec["end"],
+                        "target": exec["target"],
+                        "note": exec["note"]
+                    },
+                    "required": ["type"]
+                }
+            }
+        },
+        "required": ["name", "sport", "steps"]
+    })
+}
+
+/// Turn the arguments of a model into a validated draft, or into an error text
+/// that the model can act on. Both failures are recoverable: the model calls
+/// the tool again with the fix.
+pub fn parse_draft(args: &Value) -> Result<WorkoutDraft> {
+    let draft: WorkoutDraft = serde_json::from_value(repair(args.clone())).map_err(|e| {
+        anyhow!(
+            "that is not a workout this app can build: {e}. Every step needs \
+             `kind` and `end`; `end` is one of {{\"type\":\"time\",\"seconds\":N}}, \
+             {{\"type\":\"distance\",\"metres\":N}} or {{\"type\":\"lap_button\"}}. \
+             Send `steps` as a JSON array, not as a string."
+        )
+    })?;
+    draft.validate()?;
+    Ok(draft)
+}
+
+/// Fix the shapes that models send in place of the documented one: a tag left
+/// out, an array sent as a string of JSON, `meters` for `metres`. Each fix is
+/// unambiguous, because the tag follows from the fields that are present.
+/// Repair only re-labels. `validate` still rejects a workout that is wrong.
+pub fn repair(mut v: Value) -> Value {
+    if let Some(steps) = v.get_mut("steps") {
+        unstring(steps);
+        // A single step sent bare and not as a list of one.
+        if steps.is_object() {
+            *steps = Value::Array(vec![steps.clone()]);
+        }
+        if let Some(arr) = steps.as_array_mut() {
+            arr.iter_mut().for_each(repair_step);
+        }
+    }
+    v
+}
+
+/// A JSON array or object that arrived as a string of JSON.
+fn unstring(v: &mut Value) {
+    let parsed = v
+        .as_str()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok());
+    if let Some(p) = parsed.filter(|p| p.is_array() || p.is_object()) {
+        *v = p;
+    }
+}
+
+fn repair_step(step: &mut Value) {
+    let Some(obj) = step.as_object_mut() else {
+        return;
+    };
+
+    // `times` is the field only a repeat has, so it marks the tag.
+    if !obj.contains_key("type") {
+        let tag = if obj.contains_key("times") {
+            "repeat"
+        } else {
+            "exec"
+        };
+        obj.insert("type".into(), json!(tag));
+    }
+
+    if obj.get("type").and_then(Value::as_str) == Some("repeat") {
+        if let Some(inner) = obj.get_mut("steps") {
+            unstring(inner);
+            // Children are plain steps: they have no tag to infer.
+            if let Some(arr) = inner.as_array_mut() {
+                arr.iter_mut().for_each(repair_exec);
+            }
+        }
+        return;
+    }
+    repair_exec(step);
+}
+
+fn repair_exec(step: &mut Value) {
+    let Some(obj) = step.as_object_mut() else {
+        return;
+    };
+    if let Some(end) = obj.get_mut("end") {
+        repair_end(end);
+    }
+    if let Some(target) = obj.get_mut("target") {
+        repair_target(target);
+    }
+}
+
+fn repair_end(end: &mut Value) {
+    // A bare number where an object is due. It means seconds.
+    if let Some(n) = end.as_f64() {
+        *end = json!({ "type": "time", "seconds": n });
+        return;
+    }
+    let Some(obj) = end.as_object_mut() else {
+        return;
+    };
+
+    // The spelling fixes run with or without the tag.
+    if let Some(m) = obj.remove("meters") {
+        obj.entry("metres").or_insert(m);
+    }
+    // Models speak in minutes. The two units are never both present.
+    if let Some(mins) = obj.remove("minutes").and_then(|m| m.as_f64()) {
+        obj.entry("seconds").or_insert(json!(mins * 60.0));
+    }
+
+    if obj.contains_key("type") {
+        return;
+    }
+    let tag = if obj.contains_key("seconds") {
+        "time"
+    } else if obj.contains_key("metres") {
+        "distance"
+    } else {
+        "lap_button"
+    };
+    obj.insert("type".into(), json!(tag));
+}
+
+fn repair_target(target: &mut Value) {
+    // A bare zone number, or "Z4" / "hr_zone" / "none" as a string.
+    if let Some(n) = target.as_u64() {
+        *target = json!({ "type": "hr_zone", "zone": n });
+        return;
+    }
+    if let Some(s) = target.as_str() {
+        let zone = s
+            .strip_prefix(['z', 'Z'])
+            .and_then(|n| n.parse::<u64>().ok());
+        *target = match zone {
+            Some(z) => json!({ "type": "hr_zone", "zone": z }),
+            None => json!({ "type": s }),
+        };
+        return;
+    }
+
+    let Some(obj) = target.as_object_mut() else {
+        return;
+    };
+    if obj.contains_key("type") {
+        return;
+    }
+    let tag = if obj.contains_key("zone") {
+        "hr_zone"
+    } else if obj.contains_key("low") && obj.contains_key("high") {
+        "bpm"
+    } else {
+        "none"
+    };
+    obj.insert("type".into(), json!(tag));
+}
+
 /* ------------------------------------------------------------------ tests --- */
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The exact shape that the schema tells the model to send. If this stops
+    /// parsing, every draft fails and the model can only apologise in prose.
+    #[test]
+    fn the_documented_draft_shape_parses() {
+        let d = parse_draft(&json!({
+            "name": "4 x 3min Z4",
+            "sport": "running",
+            "description": "Two easy bookends around the reps.",
+            "steps": [
+                { "type": "exec", "kind": "warmup", "end": { "type": "time", "seconds": 600 },
+                  "target": { "type": "hr_zone", "zone": 2 }, "note": "conversational" },
+                { "type": "repeat", "times": 4, "steps": [
+                    { "kind": "interval", "end": { "type": "time", "seconds": 180 },
+                      "target": { "type": "hr_zone", "zone": 4 } },
+                    { "kind": "recovery", "end": { "type": "time", "seconds": 120 },
+                      "target": { "type": "hr_zone", "zone": 1 } } ] },
+                { "type": "exec", "kind": "cooldown", "end": { "type": "time", "seconds": 300 } }
+            ]
+        }))
+        .unwrap();
+        assert_eq!(d.name, "4 x 3min Z4");
+        assert_eq!(d.steps.len(), 3, "the repeat stays one step");
+        assert_eq!(d.flat_count(), 10);
+        assert_eq!(d.est_duration_secs(), Some(2100.0));
+    }
+
+    /// The arguments that a small model sent in a real attempt: `steps` is a
+    /// string of JSON and no `end` has its `type` tag.
+    #[test]
+    fn the_shape_a_small_model_sends_still_parses() {
+        let d = parse_draft(&json!({
+            "name": "4 x 3min Z4 Hard",
+            "sport": "running",
+            "steps": "[{\"type\": \"exec\", \"kind\": \"warmup\", \"end\": {\"seconds\": 300}}, \
+                       {\"type\": \"repeat\", \"kind\": \"interval\", \"times\": 4, \"steps\": [\
+                         {\"type\": \"exec\", \"kind\": \"interval\", \"end\": {\"seconds\": 180}, \
+                          \"target\": {\"type\": \"hr_zone\", \"zone\": 4}}, \
+                         {\"type\": \"exec\", \"kind\": \"recovery\", \"end\": {\"seconds\": 90}}]}, \
+                       {\"type\": \"exec\", \"kind\": \"cooldown\", \"end\": {\"seconds\": 300}}]"
+        }))
+        .unwrap();
+        assert_eq!(d.steps.len(), 3);
+        // 300 + 4 * (180 + 90) + 300
+        assert_eq!(d.est_duration_secs(), Some(1680.0));
+    }
+
+    /// Each repair on its own, so a failure names the one that broke.
+    #[test]
+    fn repair_recovers_the_tag_from_the_fields_that_are_present() {
+        let d = parse_draft(&json!({
+            "name": "Mixed", "sport": "running",
+            "steps": [
+                { "kind": "warmup", "end": { "minutes": 5 } },
+                { "kind": "interval", "end": 120, "target": { "zone": 4 } },
+                { "kind": "interval", "end": { "meters": 400 }, "target": "Z5" },
+                { "kind": "recovery", "end": { "low": 1 }, "target": { "low": 110, "high": 125 } },
+            ]
+        }))
+        .unwrap();
+        let p = d.payload();
+        let s = p["workoutSegments"][0]["workoutSteps"].as_array().unwrap();
+        assert_eq!(s[0]["endConditionValue"], 300.0, "minutes became seconds");
+        assert_eq!(s[1]["endConditionValue"], 120.0, "a bare number is seconds");
+        assert_eq!(s[1]["zoneNumber"], 4);
+        assert_eq!(s[2]["endCondition"]["conditionTypeKey"], "distance");
+        assert_eq!(s[2]["endConditionValue"], 400.0, "meters became metres");
+        assert_eq!(s[2]["zoneNumber"], 5, "\"Z5\" is zone 5");
+        assert!(s[3]["zoneNumber"].is_null(), "a bpm target sets no zone");
+        assert_eq!(s[3]["targetValueOne"], 110.0);
+        assert_eq!(s[3]["endCondition"]["conditionTypeKey"], "lap.button");
+
+        let d = parse_draft(&json!({
+            "name": "Reps", "sport": "running",
+            "steps": [{ "times": 3, "steps": "[{\"kind\":\"interval\",\"end\":{\"seconds\":60}}]" }]
+        }))
+        .unwrap();
+        assert_eq!(d.flat_count(), 3, "`times` alone marks a repeat");
+
+        let d = parse_draft(&json!({
+            "name": "Single", "sport": "running",
+            "steps": { "kind": "interval", "end": { "seconds": 600 } }
+        }))
+        .unwrap();
+        assert_eq!(d.steps.len(), 1, "a lone step is a list of one");
+    }
+
+    #[test]
+    fn repair_does_not_soften_validation() {
+        let err = parse_draft(&json!({
+            "name": "Nope", "sport": "running",
+            "steps": [{ "kind": "interval", "end": { "minutes": 2000 } }]
+        }))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("step 1"), "got: {err}");
+    }
+
+    /// A rejected draft must say which step or field is wrong.
+    #[test]
+    fn a_bad_draft_names_what_is_wrong() {
+        let err = parse_draft(&json!({
+            "name": "Reps", "sport": "running",
+            "steps": [{ "type": "repeat", "steps": [] }]
+        }))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("times"), "got: {err}");
+        assert!(parse_draft(&json!({})).is_err());
+    }
+
+    #[test]
+    fn the_schema_requires_name_sport_and_steps() {
+        assert_eq!(schema()["required"], json!(["name", "sport", "steps"]));
+    }
 
     fn step(kind: StepKind, seconds: f64, target: Target) -> ExecStep {
         ExecStep {

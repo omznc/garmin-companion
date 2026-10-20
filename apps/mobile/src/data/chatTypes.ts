@@ -8,6 +8,29 @@ export type Step = {
   running: boolean;
   ok: boolean | null;
 };
+// A workout that the coach proposed. It matches `WorkoutDraft` of the core.
+export type DraftSport = "running" | "cycling" | "cardio" | "strength_training";
+export type DraftKind = "warmup" | "interval" | "recovery" | "rest" | "cooldown";
+export type DraftEnd =
+  | { type: "time"; seconds: number }
+  | { type: "distance"; metres: number }
+  | { type: "lap_button" };
+export type DraftTarget =
+  | { type: "none" }
+  | { type: "hr_zone"; zone: number }
+  | { type: "bpm"; low: number; high: number };
+export type DraftExec = { kind: DraftKind; end: DraftEnd; target?: DraftTarget; note?: string };
+export type DraftStep =
+  | ({ type: "exec" } & DraftExec)
+  | { type: "repeat"; times: number; steps: DraftExec[] };
+export type WorkoutDraft = {
+  name: string;
+  sport: DraftSport;
+  description?: string;
+  steps: DraftStep[];
+};
+// `savedWorkoutId` is set once the person saved the draft to Garmin.
+export type DraftEntry = { callId: string; draft: WorkoutDraft; savedWorkoutId: number | null };
 export type TurnStatus = "running" | "done" | "error" | "stopped";
 export type Turn = {
   id: string;
@@ -16,6 +39,8 @@ export type Turn = {
   steps: Step[];
   status: TurnStatus;
   error: string | null;
+  /** The key is absent when the coach proposed no workout. */
+  drafts?: DraftEntry[];
 };
 export type ThreadMeta = {
   sessionId: string;
@@ -37,6 +62,7 @@ export type AskEventPayload = { sessionId: string; turnId: string } & (
   | { type: "delta"; text: string }
   | { type: "note"; text: string }
   | { type: "tool"; callId: string; label: string; running: boolean; ok: boolean }
+  | { type: "draft"; callId: string; draft: WorkoutDraft }
   | { type: "done"; sources: string[] }
   | { type: "error"; text: string }
 );

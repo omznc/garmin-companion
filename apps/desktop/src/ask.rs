@@ -242,6 +242,8 @@ impl Ask {
             Event::Delta { text } => turn.text.push_str(&text),
             // The desktop has no trace of notes: it drops the narration.
             Event::Note { .. } => turn.text.clear(),
+            // The desktop runs with drafts off, so this event never comes.
+            Event::Draft { .. } => {}
             Event::Tool {
                 call_id,
                 label,
@@ -331,7 +333,7 @@ fn run_on_thread(
         match source {
             Source::Demo => {
                 let memory = || Db::open(std::path::Path::new(":memory:"));
-                let _ = garmin_coach::run_turn(&Demo, &sink, &stop, history, &memory).await;
+                let _ = garmin_coach::run_turn(&Demo, &sink, &stop, history, &memory, false).await;
             }
             Source::Db(path) => real_turn(&path, false, history, &sink, &stop).await,
             Source::Copy(path) => real_turn(&path, true, history, &sink, &stop).await,
@@ -355,7 +357,7 @@ async fn real_turn(
     });
     match transport {
         Ok(transport) => {
-            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open).await;
+            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open, false).await;
         }
         Err(e) => sink.emit(Event::Error {
             text: format!("{e:#}"),
