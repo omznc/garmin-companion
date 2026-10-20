@@ -508,6 +508,25 @@ fn compare_for<'a>(
     }
 }
 
+/// The Monday of the week at `offset`, as `report_view` counts weeks.
+/// `None` when the cache has no week.
+pub(crate) fn week_start(
+    db: &Db,
+    today: NaiveDate,
+    offset: usize,
+) -> Result<Option<NaiveDate>, ApiError> {
+    let from = date_key(today - Duration::days(HISTORY_DAYS - 1));
+    let activities: Vec<CachedActivity> = db
+        .activities_since(&from)?
+        .into_iter()
+        .filter(|a| is_exercise(a.type_key.as_deref()))
+        .collect();
+    let weeks = by_week(&activities);
+    Ok(weeks
+        .get(offset.min(weeks.len().saturating_sub(1)))
+        .map(|w| w.start))
+}
+
 /// Build the report for the week at `offset`. 0 is the newest week with a
 /// session. An offset past the oldest week gives the oldest week.
 pub fn report_view(db: &Db, today: NaiveDate, offset: usize) -> Result<ReportView, ApiError> {
