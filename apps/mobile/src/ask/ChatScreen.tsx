@@ -1,7 +1,7 @@
 // One chat, for the draft and for a saved thread. The draft has the opening and no
 // session. The first message makes the session, and this same screen goes on with it.
 import { useRouter } from "expo-router";
-import { useHeaderHeight, useNavigationState } from "expo-router/react-navigation";
+import { useHeaderHeight, useNavigationState, useRoute } from "expo-router/react-navigation";
 import { type ComponentRef, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
@@ -176,7 +176,8 @@ function Credits() {
   const config = useCoachConfig();
   const account = useCloudAccount(config.data?.provider === "cloud").data;
   if (!account || config.data?.provider !== "cloud") return null;
-  return <CreditLine account={account} onOwnKey={() => router.push("/more/coach" as never)} />;
+  // Ask sits on top of the tabs: a push would add a second set of tabs, so go back to them.
+  return <CreditLine account={account} onOwnKey={() => router.dismissTo("/more/coach" as never)} />;
 }
 
 // The credits and the composer. A turn of another chat locks the field.
@@ -236,7 +237,8 @@ export function ChatScreen({
   const theme = useChatTheme();
   const router = useRouter();
   // The first screen of the Ask stack has no screen below it in the stack: Back leaves Ask.
-  const first = useNavigationState((state) => state.index === 0);
+  const route = useRoute();
+  const first = useNavigationState((state) => state.routes[0]?.key === route.key);
   // A draft whose first message went out. The same screen goes on with that thread, so no
   // screen slides in and Back goes where it went before.
   const [startedId, setStartedId] = useState<string | null>(null);

@@ -20,7 +20,7 @@ export function ChatHeader({
           <Stack.Toolbar.Button
             icon="chevron.left"
             accessibilityLabel="Back"
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/today"))}
           />
         </Stack.Toolbar>
       ) : null}

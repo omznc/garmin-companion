@@ -213,7 +213,7 @@ function AskGroup() {
   const router = useRouter();
   return (
     <Group>
-      <Row left="Ask the coach" onPress={() => router.push("/ask/new")} last />
+      <Row left="Ask the coach" onPress={() => router.push("/ask")} last />
     </Group>
   );
 }
@@ -258,7 +258,7 @@ export function TodayScreen() {
         <Stack.Toolbar.Button
           icon="bubble.left"
           accessibilityLabel="Ask the coach"
-          onPress={() => router.push("/ask/new")}
+          onPress={() => router.push("/ask")}
         />
       </Stack.Toolbar>
       {sync.line || sync.error ? (

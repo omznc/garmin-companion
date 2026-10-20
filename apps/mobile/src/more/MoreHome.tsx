@@ -60,7 +60,7 @@ export function MoreHome() {
       : []),
   ];
   const training: Row[] = [
-    row("Ask the coach", "/ask/new", "bubble.left.fill", "systemPurple", {
+    row("Ask the coach", "/ask", "bubble.left.fill", "systemPurple", {
       icon: "chat",
       tone: "secondary",
     }),
