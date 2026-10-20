@@ -205,6 +205,16 @@ impl Ask {
         .detach();
     }
 
+    /// Drop the conversation and start an empty one.
+    pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+        self.stop();
+        self.task = None;
+        self.turns.clear();
+        self.busy = false;
+        self.composer.update(cx, |c, cx| c.set_busy(false, cx));
+        cx.notify();
+    }
+
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
     }
