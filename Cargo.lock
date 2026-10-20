@@ -2770,11 +2770,13 @@ dependencies = [
  "anyhow",
  "chrono",
  "garmin-core",
+ "pdf-writer",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
  "tokio",
+ "ttf-parser",
  "url",
 ]
 
@@ -5911,6 +5913,18 @@ checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
 dependencies = [
  "digest",
  "hmac",
+]
+
+[[package]]
+name = "pdf-writer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5e456864a7a304047bff84977dc6fb162bd956475d40ba50b2dcecaada7f753"
+dependencies = [
+ "bitflags 2.13.1",
+ "itoa",
+ "memchr",
+ "ryu",
 ]
 
 [[package]]

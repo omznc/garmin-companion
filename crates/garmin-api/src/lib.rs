@@ -13,6 +13,7 @@ pub mod charts;
 mod derive;
 mod dispatch;
 mod error;
+pub mod export;
 pub mod extras;
 pub mod fitness;
 pub mod gear;
