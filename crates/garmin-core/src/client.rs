@@ -434,6 +434,16 @@ impl GarminClient {
         .await
     }
 
+    /// Stress and Body Battery samples of one day, about one every three
+    /// minutes. Needs no display name in its path, unlike the daily summary.
+    pub async fn daily_stress(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/wellness-service/wellness/dailyStress/{date}"),
+            &[],
+        )
+        .await
+    }
+
     pub async fn hrv(&self, date: &str) -> Result<serde_json::Value> {
         self.get_json(&format!("/hrv-service/hrv/{date}"), &[])
             .await

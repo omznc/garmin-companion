@@ -22,6 +22,7 @@ pub mod stats;
 pub mod store;
 pub mod strength;
 pub mod sync;
+mod sync_extra;
 pub mod theme;
 pub mod workout;
 
