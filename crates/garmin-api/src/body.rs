@@ -28,6 +28,18 @@ fn empty(title: &str, body: &str) -> EmptyNote {
     }
 }
 
+/// The note of a screen that has no data at all. `what` is the plain name of the
+/// data, for example "sleep". The text names no sport.
+pub fn no_data(what: &str) -> EmptyNote {
+    empty(
+        &format!("No {what} data yet."),
+        &format!(
+            "Garmin has no {what} data for you in the cache. Sync your watch, then check again. \
+             This page fills when the data is there."
+        ),
+    )
+}
+
 fn label(date: &str) -> String {
     short_date(date).unwrap_or_else(|| date.to_string())
 }
@@ -603,6 +615,25 @@ fn seed_lifting(db: &Db, today: NaiveDate) -> Result<(), Box<dyn std::error::Err
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_no_data_note_names_the_screen_and_no_sport() {
+        for what in [
+            "sleep",
+            "health",
+            "fitness",
+            "gear",
+            "activities",
+            "reports",
+        ] {
+            let note = no_data(what);
+            let text = format!("{} {}", note.title, note.body).to_lowercase();
+            assert!(text.contains(what), "{what}");
+            for word in ["run", "pace", "marathon", "shoe", "golf", "ride"] {
+                assert!(!text.contains(word), "{what}: {word}");
+            }
+        }
+    }
 
     fn seeded() -> (Db, NaiveDate, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!(
