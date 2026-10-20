@@ -2,9 +2,6 @@
 //! and the area chart. The sizes and the colours come from the CSS of the
 //! design (`.spark`, `.mrow`, `bars`, `line`).
 
-// The Today blocks in the next commit use these charts.
-#![allow(dead_code)]
-
 use gpui::{
     canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, px, relative, size,
     Bounds, BoxShadow, ColorExt as _, Corners, Div, Hsla, PathBuilder, Pixels, Point, SharedString,

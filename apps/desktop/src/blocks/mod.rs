@@ -6,8 +6,7 @@
 //! data returns `None` and does not show. A screen is a list of block ids with
 //! a width for each. The grid has 12 columns with a gap of 14 px.
 
-// The registry and the grid are used by the Today screen in the next commit.
-#![allow(dead_code)]
+mod today;
 
 use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, SharedString};
 
@@ -28,6 +27,7 @@ pub enum Width {
     /// 1/3
     Third,
     /// 1/2
+    #[allow(dead_code)] // The other screens of the rewrite use it.
     Half,
     /// 2/3
     TwoThirds,
@@ -93,7 +93,7 @@ pub struct BlockDef {
 }
 
 /// Every block. Track 4 lists them in the add panel.
-pub static REGISTRY: &[BlockDef] = &[];
+pub static REGISTRY: &[BlockDef] = &today::BLOCKS;
 
 pub fn def(id: &str) -> Option<&'static BlockDef> {
     REGISTRY.iter().find(|d| d.id == id)

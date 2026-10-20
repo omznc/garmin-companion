@@ -63,7 +63,6 @@ mod theme;
 mod theme_dialog;
 mod themes;
 mod titlebar;
-mod today;
 mod training;
 mod ui;
 mod update_ui;

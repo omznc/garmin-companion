@@ -2,9 +2,6 @@
 //! hints and the charts. The sizes come from the CSS of the design (`.ib`,
 //! `.btn`, `.chip`, `.kbd`).
 
-// The cards, the grids, the lists and the table are used from the next commit on.
-#![allow(dead_code)]
-
 use gpui::{
     div, prelude::*, px, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
 };
@@ -375,6 +372,7 @@ pub fn list_rows(rows: Vec<ListRow>, t: &Theme) -> Div {
 /* ------------------------------------------------------------------ table --- */
 
 /// A column of a table: its title, and whether it holds numbers.
+#[allow(dead_code)] // The table, the segmented control and the switch wait for later screens.
 pub struct Column {
     pub title: SharedString,
     pub numeric: bool,
@@ -382,6 +380,7 @@ pub struct Column {
 
 /// `.tbl`: a header row, then rows. A numeric column is mono and right
 /// aligned. The first column is dim.
+#[allow(dead_code)]
 pub fn table(columns: &[Column], rows: Vec<Vec<SharedString>>, t: &Theme) -> Div {
     let hover = t.hover;
     let cell = |text: SharedString, column: &Column, head: bool, first: bool| {
@@ -430,6 +429,7 @@ pub fn table(columns: &[Column], rows: Vec<Vec<SharedString>>, t: &Theme) -> Div
 /* --------------------------------------------------------- segmented, switch --- */
 
 /// `.seg`: a choice of one among a few. The chosen one has the `active` ground.
+#[allow(dead_code)]
 pub fn segmented(id: &'static str, options: &[&'static str], chosen: usize, t: &Theme) -> Div {
     let mut row = div()
         .flex()
@@ -464,6 +464,7 @@ pub fn segmented(id: &'static str, options: &[&'static str], chosen: usize, t: &
 }
 
 /// `.switch`: 30 by 17, with a round thumb.
+#[allow(dead_code)]
 pub fn switch(on: bool, t: &Theme) -> Div {
     let (ground, thumb) = if on { (t.acc, t.bg) } else { (t.line, t.faint) };
     let thumb = div().size(px(13.0)).rounded_full().bg(thumb);

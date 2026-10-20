@@ -10,7 +10,7 @@ use garmin_core::analysis::Discipline;
 use garmin_core::CachedActivity;
 
 use crate::data::{
-    Attention, Drift, DriftRun, Fuel, Link, Metric, Part, Session, Stat, Today, Week,
+    Attention, Drift, DriftRun, Fuel, Link, Metric, Part, Session, Stat, Today, Vital, Week,
 };
 
 const DASH: &str = "—";
@@ -123,7 +123,61 @@ fn fuel(view: &TodayView) -> Option<Fuel> {
         Some(h) => format!("{} {h}", view.fuel_sentence),
         None => view.fuel_sentence.clone(),
     };
-    Some(Fuel { tile, note })
+    let when = match view.fuel.age {
+        Some(0) | None => "today".to_string(),
+        Some(1) => "yesterday".to_string(),
+        Some(n) => format!("{n} days ago"),
+    };
+    let day = view.fuel.day.as_ref();
+    Some(Fuel {
+        tile,
+        note,
+        when,
+        eaten: day.and_then(|d| d.consumed_kcal).map(|v| v as f32),
+        burned: day.and_then(|d| d.total_burn_kcal).map(|v| v as f32),
+    })
+}
+
+/// The vital signs of this morning that have a figure. A sign with no figure is left out.
+fn vitals(view: &TodayView) -> Vec<Vital> {
+    let vital = |key, label: &str, value: String, unit: Option<&str>| Vital {
+        key,
+        label: label.to_string(),
+        value,
+        unit: unit.map(str::to_string),
+        sub: None,
+        accent: false,
+    };
+    let resting = view.resting_hr.as_ref().map(|r| Vital {
+        sub: Some(format!(
+            "{}{:.0} vs 30 days",
+            if r.delta > 0.0 { "+" } else { "" },
+            r.delta
+        )),
+        accent: r.accent,
+        ..vital("resting_hr", "Resting HR", num(r.value), Some("bpm"))
+    });
+    let sleep = view.sleep.as_ref().map(|s| {
+        let minutes = (s.value / 60.0).round() as i64;
+        let value = format!("{}:{:02}", minutes / 60, minutes % 60);
+        vital("sleep", "Sleep", value, Some("h"))
+    });
+    [
+        resting,
+        view.hrv
+            .as_ref()
+            .map(|h| vital("hrv", "HRV", num(h.value), Some("ms"))),
+        sleep,
+        view.body_battery
+            .as_ref()
+            .map(|b| vital("body_battery", "Body Battery", num(b.value), None)),
+        view.stress
+            .as_ref()
+            .map(|s| vital("stress", "Stress", num(s.value), Some("avg"))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 fn attention(view: &TodayView) -> Vec<Attention> {
@@ -185,6 +239,7 @@ fn stats(a: &CachedActivity, discipline: Discipline) -> Vec<Stat> {
         rate,
         positive(a.avg_hr).map(|v| ("Avg HR", format!("{v:.0}"))),
         positive(a.max_hr).map(|v| ("Max HR", format!("{v:.0}"))),
+        positive(a.elevation_gain).map(|v| ("Elevation", format!("{v:.0} m"))),
         positive(a.avg_cadence)
             .zip(garmin_core::analysis::cadence_unit(a.type_key.as_deref()))
             .map(|(c, unit)| ("Cadence", format!("{c:.0} {unit}"))),
@@ -212,7 +267,20 @@ fn session(l: &garmin_api::today::LastSession) -> Session {
     if l.show_zone_verdict && has_zones {
         detail.push_str(&format!(" · {:.0}% above Z2", l.above_z2_pct));
     }
+    let when = a
+        .start_time_local
+        .as_deref()
+        .and_then(|raw| {
+            chrono::NaiveDateTime::parse_from_str(raw.get(..19)?, "%Y-%m-%d %H:%M:%S").ok()
+        })
+        .map(|d| d.format("%a %-d %b, %H:%M").to_string());
+    let shows_zones = l.show_zone_verdict && has_zones;
     Session {
+        id: a.activity_id,
+        sport: l.sport_label.clone(),
+        when,
+        zone_secs: shows_zones.then(|| a.zone_secs.map(|s| s as f32)),
+        max_hr: a.max_hr.filter(|v| *v > 0.0).map(|v| v as f32),
         name: a
             .name
             .clone()
@@ -238,6 +306,7 @@ fn drift(view: &TodayView) -> Option<Drift> {
         )
     });
     Some(Drift {
+        recent_avg: d.recent_avg_pct.map(|v| v as f32),
         noun: d.noun.clone(),
         target: d.target_pct as f32,
         summary,
@@ -274,6 +343,7 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
         empty: view.empty,
         sections: view.sections.clone(),
         metrics: metrics(view),
+        vitals: vitals(view),
         fuel: fuel(view),
         weight_note: view.weight.as_ref().map(|w| w.sentence.clone()),
         attention: attention(view),
@@ -295,6 +365,8 @@ fn week(view: &TodayView, day: Option<NaiveDate>) -> Option<Week> {
         minutes: w.daily_minutes.iter().map(|m| *m as f32).collect(),
         axis: week_axis(day.unwrap_or_else(|| chrono::Local::now().date_naive())),
         summary: w.sentence.clone(),
+        sessions: w.sessions,
+        total_minutes: w.total_minutes as f32,
         distance: (w.total_km > 0.0).then(|| format!("{:.1} km", w.total_km)),
     })
 }

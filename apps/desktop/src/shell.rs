@@ -18,15 +18,17 @@ use crate::motion;
 use crate::places::{self, Places};
 use crate::screen::{Group, Screen};
 use crate::scroll::SmoothScroll;
-use crate::sidebar::{self, Sidebar};
+use crate::sidebar::{self, Sidebar, SIDEBAR_W};
 use crate::theme::{Palette, Theme};
 use crate::training::{self, Training};
 use crate::ui::{block_in, body, ch, eyebrow_lg, h1, LH_NORMAL, SANS};
 use crate::wellness::{self, Wellness};
-use crate::{settings, setup, statusbar, tabs, titlebar, today, window};
+use crate::{blocks, settings, setup, statusbar, tabs, titlebar, window};
 
 /// At or below this window width the coach panel hides.
 const COACH_HIDES_AT: f32 = 1180.0;
+/// Below this grid width each block takes the whole row.
+const NARROW_GRID: f32 = 640.0;
 /// At or below this window width the sidebar hides.
 const SIDEBAR_HIDES_AT: f32 = 900.0;
 /// The widest the page gets.
@@ -442,7 +444,7 @@ impl Root {
 
     fn screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         if self.active == Screen::Today {
-            return today::render(&self.today, self.visits, t).into_any_element();
+            return self.today_screen(t, window, cx);
         }
         if self.active == Screen::Activities {
             return self.activities_screen(t, cx);
@@ -479,6 +481,60 @@ impl Root {
                 .mt(px(28.0))
                 .max_w(ch(62.0, 16.0)),
             ))
+            .into_any_element()
+    }
+
+    /// The width that the page gives to a grid of blocks.
+    fn grid_width(&self, window: &Window) -> f32 {
+        let width = f32::from(window.viewport_size().width);
+        let sidebar = if width <= SIDEBAR_HIDES_AT {
+            0.0
+        } else {
+            SIDEBAR_W
+        };
+        let coach = if self.coach_open && width > COACH_HIDES_AT {
+            PANEL_W
+        } else {
+            0.0
+        };
+        (width - sidebar - coach - 40.0).min(PAGE_MAX)
+    }
+
+    /// The Today screen: a heading, a lede, and the grid of blocks.
+    fn today_screen(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let heading = div()
+            .mb(px(16.0))
+            .child(
+                div()
+                    .text_size(px(20.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(self.today.title.clone()),
+            )
+            .child(
+                div()
+                    .mt(px(4.0))
+                    .max_w(px(640.0))
+                    .text_size(px(13.5))
+                    .text_color(t.mutd)
+                    .child(self.today.lede.clone()),
+            );
+        if self.today.empty {
+            return div()
+                .child(heading)
+                .child("Nothing cached yet.")
+                .into_any_element();
+        }
+        let ctx = blocks::Ctx {
+            t,
+            today: &self.today,
+            wellness: self.wellness.as_ref(),
+        };
+        let available = self.grid_width(window);
+        let narrow = available < NARROW_GRID;
+        let layout = blocks::default_layout(Screen::Today);
+        div()
+            .child(heading)
+            .child(blocks::grid(&layout, &ctx, available, narrow, cx))
             .into_any_element()
     }
 

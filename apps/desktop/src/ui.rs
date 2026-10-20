@@ -11,9 +11,9 @@ use gpui::{
     Point, SharedString, TextTransform,
 };
 
-use crate::data::{Attention, Metric};
+use crate::data::Metric;
 use crate::spring::ease_out;
-use crate::theme::{Theme, DUR_SLOW, FS_CAPTION, FS_H1, FS_MD, FS_MICRO, FS_SMALL};
+use crate::theme::{Theme, DUR_SLOW, FS_CAPTION, FS_H1, FS_MICRO};
 
 pub const SANS: &str = "IBM Plex Sans";
 pub const MONO: &str = "IBM Plex Mono";
@@ -152,53 +152,6 @@ pub fn small_stat(label: &str, value: &str, t: &Theme) -> Div {
                 .child(value.to_string()),
         )
         .child(caps(label.to_string(), FS_MICRO, 0.11, t.faint).mt(px(8.0)))
-}
-
-/// The dotted list used for Attention.
-pub fn bullet(index: usize, item: &Attention, t: &Theme) -> Div {
-    // Level with the first line. Text and dot do not share a baseline here.
-    let dot = div()
-        .flex_none()
-        .mt(px(10.0))
-        .size(px(4.0))
-        .rounded_full()
-        .bg(if item.accent { t.acc } else { t.faint });
-    let text = div()
-        .flex_1()
-        .min_w_0()
-        .font_family(SANS)
-        .text_size(px(FS_MD))
-        .line_height(relative(1.55))
-        .child(item.text.clone());
-    let mut row = div()
-        .flex()
-        .gap(px(14.0))
-        .items_start()
-        .child(dot)
-        .child(text);
-    let has_spark = item.spark.iter().any(Option::is_some);
-    if has_spark || item.link.is_some() {
-        // At the end of the last line, where the current app sets it inline.
-        let mut tail = div()
-            .flex_none()
-            .self_end()
-            .flex()
-            .items_center()
-            .gap(px(6.0));
-        if has_spark {
-            tail = tail.child(spark(&item.spark, t));
-        }
-        if let Some(link) = &item.link {
-            tail = tail.child(underlined(
-                ("attention-link", index),
-                link.label.clone(),
-                FS_SMALL,
-                t,
-            ));
-        }
-        row = row.child(tail);
-    }
-    row
 }
 
 /// Map values to points inside a box, as `scaleFor` in `chart.ts` does. A
