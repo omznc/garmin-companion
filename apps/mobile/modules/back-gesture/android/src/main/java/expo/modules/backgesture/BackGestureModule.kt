@@ -107,9 +107,10 @@ class BackGestureModule : Module() {
           return
         }
         // The second visit: JavaScript let the event go, or the callback was
-        // entered again while a real Back was on its way (`sendingBack`). Run the default
-        // action (leave the app) with this callback off, as the React
-        // Native callback does in `ReactActivity.invokeDefaultOnBackPressed`.
+        // entered again while a real Back was on its way (`sendingBack`).
+        // Run the default action (leave the app) with this callback off, as
+        // the React Native callback does in
+        // `ReactActivity.invokeDefaultOnBackPressed`.
         // A flag that stays set until JavaScript answers would be wrong:
         // JavaScript gives no signal when it takes the event, so the next
         // real Back would count as a default one. The call stack tells the
