@@ -124,12 +124,12 @@ fn theme_choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
     row
 }
 
-fn appearance(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
+fn appearance(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
     section(false, "Appearance", t)
         .child(div().font_family(SANS).text_size(px(FS_MD)).child("Theme"))
         .child(
             body(
-                "Match system follows the setting of your desktop.",
+                "Match system follows the setting of your desktop. Each mode has its own palette.",
                 FS_SMALL,
                 t.faint,
             )
@@ -137,6 +137,7 @@ fn appearance(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
             .mb(px(14.0)),
         )
         .child(theme_choice(root, t, cx))
+        .child(crate::themes::render(root, t, window, cx))
 }
 
 pub(crate) fn prose(text: &str, t: &Theme) -> Div {
@@ -169,7 +170,7 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         ))
         .child(block_in(k, 2, garmin(root, &view, t, cx)))
         .child(block_in(k, 3, crate::cloud::render(root, t, window, cx)))
-        .child(block_in(k, 3, appearance(root, t, cx)))
+        .child(block_in(k, 3, appearance(root, t, window, cx)))
         .child(block_in(
             k,
             4,

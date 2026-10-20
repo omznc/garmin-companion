@@ -20,6 +20,7 @@ use crate::data::Source;
 use crate::field::Field;
 use crate::shell::Root;
 use crate::theme::Palette;
+use crate::themes::Themes;
 use crate::{body, data, training, wellness};
 
 /// How far back a recent sync reads.
@@ -54,6 +55,8 @@ pub struct Account {
     pub settings: Option<SettingsView>,
     pub synced_ago: Option<String>,
     pub mode: ThemeMode,
+    /// The light and dark palette, the themes folder and the theme store.
+    pub themes: Themes,
     pub token_path: Field,
     pub token_path_default: Option<String>,
     /// The coach settings and the cloud account.
@@ -88,6 +91,7 @@ impl Account {
             } else {
                 settings::prefs().theme
             },
+            themes: Themes::new(demo, cx),
             token_path: Field::new("Path to garmin_tokens.json", false, cx),
             token_path_default: status.and_then(|s| s.importable_token_path),
             cloud: Cloud::new(cx),
@@ -114,13 +118,18 @@ enum Msg {
     Finished(Result<String, String>),
 }
 
-/// The palette for a mode. `System` follows the window.
-pub fn palette_for(mode: ThemeMode, appearance: WindowAppearance) -> Palette {
+/// The saved light or dark palette for a mode. `System` follows the window.
+pub fn palette_for(
+    mode: ThemeMode,
+    appearance: WindowAppearance,
+    light: Palette,
+    dark: Palette,
+) -> Palette {
     match (mode, appearance) {
-        (ThemeMode::Light, _) => Palette::Paper,
-        (ThemeMode::Dark, _) => Palette::Ink,
-        (ThemeMode::System, WindowAppearance::Dark | WindowAppearance::VibrantDark) => Palette::Ink,
-        (ThemeMode::System, _) => Palette::Paper,
+        (ThemeMode::Light, _) => light,
+        (ThemeMode::Dark, _) => dark,
+        (ThemeMode::System, WindowAppearance::Dark | WindowAppearance::VibrantDark) => dark,
+        (ThemeMode::System, _) => light,
     }
 }
 
@@ -279,9 +288,7 @@ impl Root {
     /// Choose light, dark or system. The choice is saved, except in demo mode.
     pub fn set_theme_mode(&mut self, mode: ThemeMode, window: &Window, cx: &mut Context<Self>) {
         self.account.mode = mode;
-        self.palette = palette_for(mode, window.appearance());
-        let palette = self.palette;
-        self.ask.update(cx, |ask, cx| ask.set_palette(palette, cx));
+        self.apply_palette(window, cx);
         if !self.account.demo {
             if let Err(e) = settings::set_theme(mode) {
                 eprintln!("could not save the theme: {e}");
@@ -502,10 +509,11 @@ mod tests {
     #[test]
     fn a_mode_picks_a_palette() {
         let (light, dark) = (WindowAppearance::Light, WindowAppearance::Dark);
-        assert_eq!(palette_for(ThemeMode::Light, dark), Palette::Paper);
-        assert_eq!(palette_for(ThemeMode::Dark, light), Palette::Ink);
-        assert_eq!(palette_for(ThemeMode::System, dark), Palette::Ink);
-        assert_eq!(palette_for(ThemeMode::System, light), Palette::Paper);
+        let pick = |mode, appearance| palette_for(mode, appearance, Palette::Linen, Palette::Moss);
+        assert_eq!(pick(ThemeMode::Light, dark), Palette::Linen);
+        assert_eq!(pick(ThemeMode::Dark, light), Palette::Moss);
+        assert_eq!(pick(ThemeMode::System, dark), Palette::Moss);
+        assert_eq!(pick(ThemeMode::System, light), Palette::Linen);
     }
 
     #[test]

@@ -12,8 +12,12 @@
 //! nor `--persona`, the app reads the cache in the data folder and asks for a
 //! Garmin sign-in when there is none. `--persona` and `--db` run a demo: the
 //! sync is a fake and no setting is saved.
+//! `--palette` also takes `custom:<slug>`, a theme from the themes folder.
+//! `--install-theme <query>` (debug builds) installs the top open-vsx result and exits.
 //! `--ask "question"` sends a question at once. `--draft "text"` leaves text in the
 //! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
+//! Ctrl+K or Ctrl+Shift+P opens the command palette (Cmd on macOS). A debug build
+//! opens it at start when `GC_OPEN_PALETTE` is set, with its value as the query.
 //! Without `--db`, a persona runs the Ask screen as a canned demo.
 
 // No console window on Windows in a release build.
@@ -25,16 +29,20 @@ mod ask;
 mod body;
 mod chrome;
 mod cloud;
+mod command_palette;
+mod commands;
 mod composer;
 mod controls;
 mod data;
 mod editor;
 mod field;
+mod fuzzy;
 mod icons;
 mod instance;
 mod map;
 mod markdown;
 mod motion;
+mod openvsx;
 mod places;
 mod scroll;
 mod settings;
@@ -43,11 +51,14 @@ mod shell;
 mod sidebar;
 mod spring;
 mod theme;
+mod themes;
 mod today;
 mod training;
 mod ui;
 mod update_ui;
 mod updater;
+mod updater_pkg;
+mod vscode;
 mod wellness;
 
 use std::borrow::Cow;
@@ -102,10 +113,15 @@ fn parse_size(text: &str) -> Option<(f32, f32)> {
     Some((w.parse().ok()?, h.parse().ok()?))
 }
 
+/// A built-in name, `custom:<slug>`, or the slug or name of a theme in the themes folder.
 fn parse_palette(name: &str) -> Option<Palette> {
-    Palette::ALL
-        .into_iter()
-        .find(|p| p.name().eq_ignore_ascii_case(name))
+    let custom = garmin_core::theme::list().unwrap_or_default();
+    Palette::from_id(name, &custom).or_else(|| {
+        let theme = custom
+            .iter()
+            .find(|t| t.slug == name || t.name.eq_ignore_ascii_case(name))?;
+        Palette::custom(theme)
+    })
 }
 
 /// The command line, read once at the start.
@@ -223,6 +239,10 @@ fn main() -> anyhow::Result<()> {
     if args.iter().any(|a| a == "--update-selftest") {
         return updater::selftest();
     }
+    #[cfg(debug_assertions)]
+    if let Some(query) = option(&args, "--install-theme") {
+        return openvsx::selftest(&query);
+    }
     let Cli {
         palette,
         explicit_palette,
@@ -314,7 +334,12 @@ fn main() -> anyhow::Result<()> {
             let palette = if explicit_palette {
                 palette
             } else {
-                account::palette_for(account.mode, cx.window_appearance())
+                account::palette_for(
+                    account.mode,
+                    cx.window_appearance(),
+                    account.themes.light,
+                    account.themes.dark,
+                )
             };
             let opened = cx.open_window(options, |window, cx| {
                 cx.new(|cx| {
@@ -345,6 +370,11 @@ fn main() -> anyhow::Result<()> {
                         root.start_sync(false, cx);
                     }
                     root.watch_for_updates(cx);
+                    // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
+                    #[cfg(debug_assertions)]
+                    if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {
+                        root.toggle_palette(&query, window, cx);
+                    }
                     root
                 })
             });
@@ -356,6 +386,10 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
             };
+            command_palette::bind_keys(cx);
+            cx.on_action(move |_: &command_palette::OpenPalette, cx| {
+                let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));
+            });
             if background {
                 // The login item passes --background. The app has no tray icon,
                 // so the window starts minimised and stays in the task bar.

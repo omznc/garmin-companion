@@ -2,8 +2,8 @@
 // "Material You" takes the colours of the wallpaper (Android 12 and later). The other
 // swatches are seed colours. Compose builds a full Material 3 scheme from each seed.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { Pressable, View } from "react-native";
-import { SectionLabel, T } from "../components/MdKit";
+import { Pressable, Switch, View } from "react-native";
+import { ListRow, SectionLabel, T } from "../components/MdKit";
 import { THEMES as SCHEMES, useSettingsActions } from "../data/useSettingsActions";
 import { isMaterialYouAvailable, useMd } from "../theme/md";
 import { setThemePref, useThemePrefs } from "../theme/prefs";
@@ -108,6 +108,29 @@ function Swatches() {
   );
 }
 
+function HighContrastRow() {
+  const md = useMd();
+  const { highContrast } = useThemePrefs();
+  const toggle = () => setThemePref("highContrast", !highContrast);
+  return (
+    <ListRow
+      icon="contrast"
+      title="High contrast"
+      supporting="Darker text and lines"
+      onPress={toggle}
+      trailing={
+        // The row takes the touch, so the switch only shows the state.
+        <Switch
+          pointerEvents="none"
+          value={highContrast}
+          trackColor={{ false: md.surfaceContainerHighest, true: md.primary }}
+          thumbColor={highContrast ? md.onPrimary : md.outline}
+        />
+      }
+    />
+  );
+}
+
 export function AppearancePage() {
   const a = useSettingsActions();
   const { scheme } = useThemePrefs();
@@ -125,6 +148,9 @@ export function AppearancePage() {
       </Section>
       <SectionLabel>Theme colour</SectionLabel>
       <Swatches />
+      <Section title="Contrast">
+        <HighContrastRow />
+      </Section>
     </Page>
   );
 }

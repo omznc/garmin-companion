@@ -37,7 +37,7 @@ const FADE_H: f32 = 44.0;
 /// The entry of the Settings screen: the last one in the nav.
 const SETTINGS: usize = NAV.len() - 1;
 /// The sidebar entry of the Ask screen.
-const ASK: usize = 6;
+pub(crate) const ASK: usize = 6;
 
 /// The width of the text column for a window `viewport` pixels wide.
 pub fn column_width(viewport: f32) -> f32 {
@@ -93,6 +93,8 @@ pub struct Root {
     pub(crate) account: Account,
     /// The background reads in flight, one for each key. A new read drops the old one.
     pub(crate) loads: std::collections::HashMap<&'static str, gpui::Task<()>>,
+    /// The command palette, while it is open.
+    pub(crate) command_palette: Option<Entity<crate::command_palette::CommandPalette>>,
 }
 
 impl Root {
@@ -130,6 +132,7 @@ impl Root {
             source,
             account,
             loads: Default::default(),
+            command_palette: None,
         }
     }
 
@@ -237,7 +240,7 @@ impl Root {
         self.select_index(index, cx);
     }
 
-    fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub(crate) fn select_index(&mut self, index: usize, cx: &mut Context<Self>) {
         if index != self.sidebar.active {
             self.sidebar.select(index);
             self.enter(index, cx);
@@ -281,7 +284,7 @@ impl Root {
 
     /// Light and dark swap. Any palette settles light or dark for itself. The
     /// choice is saved, so it stops following the system.
-    fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn toggle_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mode = if self.palette.theme().dark {
             ThemeMode::Light
         } else {
@@ -462,6 +465,7 @@ impl Render for Root {
             root = root.child(controls);
         }
         root.children(crate::update_ui::banner(self, &t, cx))
+            .children(self.command_palette.clone())
             .children(chrome::resize_handles(window))
     }
 }

@@ -284,6 +284,22 @@ jobs:
           path: android-out/
           if-no-files-found: error
 
+  # Upload the Play bundle to the alpha track in the same run. The tag does not
+  # exist yet, so the job builds the commit of this run. The draft job does not
+  # need this job: a failed Play upload must not stop the draft release. The
+  # upload can run again with the Play workflow.
+  play:
+    needs: check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/play.yml
+    with:
+      version: ${{ inputs.version }}
+      ref: ${{ github.sha }}
+      track: alpha
+      status: completed
+    secrets: inherit
+
   # An unsigned device IPA for testers who sign it themselves (Sideloadly,
   # AltStore). It is not in latest.json, and no updater reads it.
   ios:
@@ -334,6 +350,12 @@ jobs:
           rm -rf ios
           npx expo prebuild -p ios --no-install
           cd ios && pod install
+
+      - name: Check the privacy manifest
+        run: |
+          manifest="$(find apps/mobile/ios -name PrivacyInfo.xcprivacy -not -path '*/Pods/*' | head -n 1)"
+          [[ -n "$manifest" ]] || { echo "Prebuild made no PrivacyInfo.xcprivacy."; exit 1; }
+          node scripts/check-privacy-manifest.mjs "$manifest"
 
       - name: Build the app without a signature
         working-directory: apps/mobile
