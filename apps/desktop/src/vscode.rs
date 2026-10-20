@@ -25,6 +25,8 @@ const MAX_INCLUDE_DEPTH: usize = 6;
 const TEXT_FLOOR: f32 = 4.5;
 /// The least spread between the top and the bottom channel for a colour to count as a hue.
 const MIN_CHROMA: f32 = 0.15;
+/// The most HSL saturation that a muted or faint text colour may have.
+const NEUTRAL_SATURATION: f32 = 0.35;
 /// The floor for the quietest text step. It repeats words that are near it.
 const FAINT_FLOOR: f32 = 3.0;
 
@@ -336,6 +338,27 @@ impl Keys {
             .find(|c| chroma(c) >= MIN_CHROMA)
             .or_else(|| self.solid(keys, on))
     }
+
+    /// The first key in the chain with a grey colour that is none of `not`. Some
+    /// themes put the text colour or an accent under a quiet key.
+    fn neutral(&self, keys: &[&str], on: Rgba, not: &[Rgba]) -> Option<Rgba> {
+        keys.iter()
+            .filter_map(|key| self.0.get(*key).map(|c| over(*c, on)))
+            .find(|c| {
+                saturation(*c) < NEUTRAL_SATURATION && not.iter().all(|n| n.to_hex() != c.to_hex())
+            })
+    }
+}
+
+/// The HSL saturation: 0 for a grey, 1 for a pure hue.
+fn saturation(c: Rgba) -> f32 {
+    let (hi, lo) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
+    let spread = 1.0 - (hi + lo - 1.0).abs();
+    if spread <= f32::EPSILON {
+        0.0
+    } else {
+        (hi - lo) / spread
+    }
 }
 
 const GROUND: [&str; 3] = [
@@ -445,13 +468,15 @@ pub fn to_colors(file: &File, appearance: Appearance) -> Colors {
         .filter(|c| contrast(*c, bg) >= 1.02)
         .unwrap_or_else(|| toward(bg, fg, if light { 0.05 } else { 0.07 }));
 
+    // A quiet key may equal the text colour as the theme wrote it or as shown.
+    let raw = fg;
     let fg = readable(readable(fg, bg, TEXT_FLOOR), bg2, TEXT_FLOOR);
     let muted = keys
-        .solid(&MUTED, bg2)
+        .neutral(&MUTED, bg2, &[raw, fg])
         .unwrap_or_else(|| toward(fg, bg, 0.32));
     let muted = readable(readable(muted, bg, TEXT_FLOOR), bg2, TEXT_FLOOR);
     let faint = keys
-        .solid(&FAINT, bg2)
+        .neutral(&FAINT, bg2, &[raw, fg])
         .unwrap_or_else(|| toward(fg, bg, 0.48));
     let faint = readable(faint, bg, FAINT_FLOOR);
     let acc = keys.vivid(&ACCENT, bg).unwrap_or(base.acc);
@@ -579,6 +604,23 @@ mod tests {
     }
 
     #[test]
+    fn a_muted_key_with_the_text_colour_or_a_hue_is_not_taken() {
+        // Catppuccin Frappe: the quiet keys hold the text colour and mauve.
+        let c = colors(
+            r##"{"colors":{
+                "editor.background":"#303446","editor.foreground":"#c6d0f5",
+                "sideBar.background":"#292c3c","descriptionForeground":"#c6d0f5",
+                "editorLineNumber.activeForeground":"#babbf1",
+                "icon.foreground":"#ca9ee6","editorLineNumber.foreground":"#838ba7"}}"##,
+            Appearance::Dark,
+        );
+        assert_eq!(c.fg, "#c6d0f5");
+        assert_ne!(c.muted, c.fg);
+        assert!(saturation(rgba(&c.muted)) < NEUTRAL_SATURATION);
+        assert_eq!(c.faint, "#838ba7");
+    }
+
+    #[test]
     fn theme_keys_land_on_the_seven_colours() {
         let c = colors(
             r##"{"colors":{
@@ -635,6 +677,18 @@ mod tests {
             Appearance::Light,
         );
         assert!(contrast(rgba(&c.acc), rgba(&c.bg)) >= TEXT_FLOOR);
+    }
+
+    #[test]
+    fn a_quiet_key_equal_to_the_raw_text_is_not_the_muted_colour() {
+        // The text is too dim, so it moves. The quiet key still equals the raw text.
+        let c = colors(
+            r##"{"colors":{"editor.background":"#101010","editor.foreground":"#202020",
+                "descriptionForeground":"#202020"}}"##,
+            Appearance::Dark,
+        );
+        assert_ne!(c.muted, c.fg);
+        assert_ne!(c.muted, "#202020");
     }
 
     #[test]

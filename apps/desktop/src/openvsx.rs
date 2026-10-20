@@ -128,17 +128,37 @@ pub async fn search(query: &str) -> Result<Vec<Found>> {
         .extensions
         .into_iter()
         .map(Listing::into_found)
+        .filter(|f| !icon_pack(f))
         .collect())
 }
 
-/// Download one extension and save each theme in it. Answers with the saved
-/// names. One theme that cannot be read does not stop the others. A theme with
-/// the name of a saved theme replaces it, and its name ends with "(replaced)".
-pub async fn install(found: &Found) -> Result<Vec<String>> {
+/// The Themes category also holds icon packs, and they carry no colours.
+/// shortcut: a name check, not the manifest. A colour theme with "icon" in its
+/// name drops out. Read `contributes` at install time if that happens.
+fn icon_pack(found: &Found) -> bool {
+    let words = format!("{} {}", found.display, found.name).to_lowercase();
+    words.contains("icon")
+}
+
+/// Download one extension and turn it into themes. It saves nothing. One theme
+/// that cannot be read does not stop the others.
+pub async fn fetch_themes(found: &Found) -> Result<Vec<Theme>> {
     let url = download_url(found).await?;
     let archive = fetch(&url, VSIX_CEILING, INSTALL_TIMEOUT).await?;
-    let themes = convert(&unpack(&archive)?, found)?;
-    let taken: Vec<String> = theme::list()
+    convert(&unpack(&archive)?, found)
+}
+
+/// Download one extension and save each theme in it. The dialog saves what it
+/// fetched for the preview, so only the selftest needs this.
+#[cfg(debug_assertions)]
+pub async fn install(found: &Found) -> Result<Vec<String>> {
+    save(fetch_themes(found).await?)
+}
+
+/// Save themes. Answers with the saved names. A theme with the name of a saved
+/// theme replaces it, and its name ends with "(replaced)".
+pub fn save(themes: Vec<Theme>) -> Result<Vec<String>> {
+    let mut taken: Vec<String> = theme::list()
         .unwrap_or_default()
         .into_iter()
         .map(|t| t.slug)
@@ -146,7 +166,10 @@ pub async fn install(found: &Found) -> Result<Vec<String>> {
     let mut names = Vec::new();
     for t in themes {
         let replaced = taken.contains(&theme::slugify(&t.name));
-        let name = theme::save(t)?.name;
+        let saved = theme::save(t)?;
+        // Two themes of one extension with one slug: the second replaces the first.
+        taken.push(saved.slug);
+        let name = saved.name;
         names.push(if replaced {
             format!("{name} (replaced)")
         } else {
@@ -164,8 +187,14 @@ pub fn selftest(query: &str) -> Result<()> {
         .enable_all()
         .build()?;
     runtime.block_on(async {
-        let found = search(query).await?;
-        let top = found.first().context("no theme matches")?;
+        // `words=namespace.name` takes the result with that key, not the top one.
+        let (words, key) = query.split_once('=').unwrap_or((query, ""));
+        let found = search(words).await?;
+        let top = found
+            .iter()
+            .find(|f| crate::themes::key_of(f).eq_ignore_ascii_case(key))
+            .or(found.first())
+            .context("no theme matches")?;
         println!("found {} ({} results)", top.display, found.len());
         println!("installed {:?}", install(top).await?);
         Ok(())

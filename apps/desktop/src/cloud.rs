@@ -14,15 +14,14 @@ use std::time::Duration;
 use chrono::Utc;
 use garmin_coach::{AccountView, Balance, CloudClient, Provider};
 use garmin_core::{db::Db, store};
-use gpui::{div, prelude::*, px, relative, App, ClickEvent, Context, Div, FontWeight, Window};
+use gpui::{div, prelude::*, px, App, ClickEvent, Context, Div, FontWeight, Window};
 
-use crate::controls::quiet;
 use crate::data::Source;
 use crate::field::Field;
-use crate::settings::{prose, section};
+use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
-use crate::theme::{Theme, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{body, ch};
+use crate::theme::{Theme, FS_BASE};
+use crate::ui::body;
 
 /// The checkout page is watched for 2 minutes: every 3 seconds for the first
 /// 30 seconds, when a payment is most likely, then every 15 seconds.
@@ -447,130 +446,179 @@ impl Cloud {
 
 /* ---------------------------------------------------------------- drawing --- */
 
-fn choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let choices = [
-        ("coach-cloud", "Cloud", Provider::Cloud),
-        ("coach-key", "Your own key", Provider::Openrouter),
-        ("coach-ollama", "Ollama", Provider::Ollama),
-    ];
-    let mut row = div().flex().items_baseline().gap(px(26.0));
-    for (id, label, provider) in choices {
-        let on = root.account.cloud.provider == provider;
-        row = row.child(
-            quiet(id, label, true, false, t)
-                .text_color(if on { t.fg } else { t.faint })
-                .when(on, |d| d.font_weight(FontWeight::MEDIUM))
-                .on_click(
-                    cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
-                ),
-        );
-    }
-    row
-}
+/// The three cards: the name, a short tag and what the choice means.
+const CHOICES: [(&str, &str, &str, &str, Provider); 3] = [
+    (
+        "coach-cloud",
+        "Cloud",
+        "Free credits",
+        "Only the rows that a question needs leave this computer.",
+        Provider::Cloud,
+    ),
+    (
+        "coach-key",
+        "Your own key",
+        "OpenRouter",
+        "Questions go to OpenRouter with your key. OpenRouter bills you.",
+        Provider::Openrouter,
+    ),
+    (
+        "coach-ollama",
+        "Ollama",
+        "Local",
+        "A model on this computer. No data leaves it.",
+        Provider::Ollama,
+    ),
+];
 
-fn describe(provider: Provider) -> &'static str {
-    match provider {
-        Provider::Cloud => {
-            "Garmin Companion cloud. It needs no setup. Free use gives 30 credits a day. \
-             Only the rows that a question needs leave this computer."
-        }
-        Provider::Openrouter => {
-            "Your own OpenRouter account. OpenRouter bills you. The key stays in the keyring \
-             of this computer."
-        }
-        Provider::Ollama => "A model on this computer. No data leaves it.",
+fn choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let mut cards = panel::opts();
+    for (id, name, tag, desc, provider) in CHOICES {
+        let on = root.account.cloud.provider == provider;
+        cards = cards.child(panel::opt(id, name, Some(tag), desc, on, t).on_click(
+            cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
+        ));
     }
+    panel::padded(div()).child(cards)
 }
 
 /// The cloud account section of a demo. No sign-in form: nothing is sent.
 const DEMO_NOTE: &str = "The cloud account is off in a demo. Nothing is sent.";
 
+/// A bold label over a help line, above a form.
+fn form_head(label: &str, help: &str, t: &Theme) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .child(body(label.to_string(), 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(panel::help(help.to_string(), t))
+}
+
+/// The credits line over the plan line. The account view has no daily total,
+/// so there is no meter: a bar would need a number that is not there.
+fn credits(view: &AccountView, t: &Theme) -> Div {
+    div()
+        .flex()
+        .flex_wrap()
+        .justify_between()
+        .items_baseline()
+        .gap_x(px(16.0))
+        .gap_y(px(6.0))
+        .child(body(view.credits_line.clone(), FS_BASE, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(panel::help(view.plan_line.clone(), t))
+}
+
 fn account_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
     let cloud = &root.account.cloud;
-    if !cloud.live {
-        return div().mt(px(20.0)).child(body(DEMO_NOTE, FS_SMALL, t.mutd));
-    }
-    let mut block = div().mt(px(20.0)).flex().flex_col().gap(px(12.0));
+    let mut block = div().flex().flex_col().gap(px(16.0));
     if let Some(view) = &cloud.view {
-        block = block
-            .child(body(view.credits_line.clone(), FS_MD, t.fg))
-            .child(body(view.plan_line.clone(), FS_SMALL, t.mutd));
+        block = block.child(credits(view, t));
     }
-    let signed_in = cloud.view.as_ref().is_some_and(|v| v.email.is_some());
+    if !cloud.live {
+        return block.child(panel::note(Tone::Info, DEMO_NOTE, t));
+    }
+    match cloud.view.as_ref().and_then(|v| v.email.clone()) {
+        Some(email) => block.child(signed_in_part(root, &email, t, cx)),
+        None => block.child(sign_in(root, t, window, cx)),
+    }
+}
+
+/// Premium or billing, and the sign-out.
+fn signed_in_part(root: &Root, email: &str, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let cloud = &root.account.cloud;
     let premium = cloud.view.as_ref().is_some_and(|v| v.premium);
-    let mut actions = div().flex().items_baseline().gap(px(26.0));
-    actions = if premium {
-        actions.child(
-            quiet("cloud-portal", "Manage billing", !cloud.busy, false, t)
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_portal(cx))),
+    let main = if premium {
+        panel::button(
+            "cloud-portal",
+            "Manage billing",
+            Kind::Plain,
+            !cloud.busy,
+            None,
+            t,
         )
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_portal(cx)))
     } else {
-        actions.child(
-            quiet("cloud-premium", "Get premium", !cloud.busy, false, t).on_click(
-                cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_checkout(false, cx)),
-            ),
+        panel::button(
+            "cloud-premium",
+            "Get premium",
+            Kind::Primary,
+            !cloud.busy,
+            None,
+            t,
         )
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_checkout(false, cx)))
     };
-    if signed_in {
-        actions = actions.child(
-            quiet("cloud-sign-out", "Sign out", !cloud.busy, true, t)
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_sign_out(cx))),
-        );
-    }
-    block = block.child(actions);
-    if !signed_in {
-        block = block.child(sign_in(root, t, window, cx));
-    }
-    block
+    let out = panel::button(
+        "cloud-sign-out",
+        "Sign out",
+        Kind::Danger,
+        !cloud.busy,
+        None,
+        t,
+    )
+    .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_sign_out(cx)));
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(12.0))
+        .child(body(format!("Signed in as {email}."), 14.5, t.fg))
+        .child(panel::actions().child(main).child(out))
 }
 
 /// The email step, then the code step. Premium needs it. Free use does not.
 fn sign_in(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
     let cloud = &root.account.cloud;
+    let head = form_head(
+        "Account",
+        "Sign in by email to get premium. Free use needs no account.",
+        t,
+    );
+    let email = panel::field_line()
+        .child(panel::input_box(cloud.email.render(
+            "cloud-email",
+            t,
+            cx,
+            window,
+            |root: &mut Root| &mut root.account.cloud.email,
+            |root, _, cx| root.cloud_send_code(cx),
+        )))
+        .child(
+            panel::button("cloud-send", "Send code", Kind::Plain, !cloud.busy, None, t)
+                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_send_code(cx))),
+        );
     let mut col = div()
-        .mt(px(14.0))
         .flex()
         .flex_col()
         .gap(px(10.0))
-        .max_w(ch(34.0, FS_SMALL));
-    if let Some(email) = &cloud.pending_email {
-        col = col
-            .child(body(
-                format!("Enter the code that went to {email}."),
-                FS_SMALL,
-                t.mutd,
-            ))
-            .child(cloud.code.render(
+        .child(head)
+        .child(email);
+    if let Some(sent) = &cloud.pending_email {
+        let code = panel::field_line()
+            .child(panel::input_box(cloud.code.render(
                 "cloud-code",
                 t,
                 cx,
                 window,
                 |root: &mut Root| &mut root.account.cloud.code,
                 |root, _, cx| root.cloud_verify(cx),
-            ))
+            )))
             .child(
-                quiet("cloud-verify", "Verify", !cloud.busy, false, t)
-                    .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_verify(cx))),
+                panel::button(
+                    "cloud-verify",
+                    "Verify",
+                    Kind::Primary,
+                    !cloud.busy,
+                    None,
+                    t,
+                )
+                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_verify(cx))),
             );
-    } else {
         col = col
-            .child(body(
-                "Sign in by email to get premium. Free use needs no account.",
-                FS_SMALL,
-                t.mutd,
-            ))
-            .child(cloud.email.render(
-                "cloud-email",
+            .child(panel::help(
+                format!("Enter the code that went to {sent}."),
                 t,
-                cx,
-                window,
-                |root: &mut Root| &mut root.account.cloud.email,
-                |root, _, cx| root.cloud_send_code(cx),
             ))
-            .child(
-                quiet("cloud-send", "Send code", !cloud.busy, false, t)
-                    .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_send_code(cx))),
-            );
+            .child(code);
     }
     col
 }
@@ -582,53 +630,81 @@ fn key_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) ->
     } else {
         "No key is saved yet."
     };
-    div()
-        .mt(px(20.0))
+    let label = div()
         .flex()
-        .flex_col()
-        .gap(px(10.0))
-        .max_w(ch(34.0, FS_SMALL))
-        .child(body(state, FS_SMALL, t.mutd))
-        .child(cloud.key.render(
+        .flex_wrap()
+        .items_center()
+        .gap_x(px(12.0))
+        .gap_y(px(8.0))
+        .child(body("OpenRouter API key", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(panel::chip(state, cloud.has_key, t));
+    let form = panel::field_line()
+        .child(panel::input_box(cloud.key.render(
             "cloud-key",
             t,
             cx,
             window,
             |root: &mut Root| &mut root.account.cloud.key,
             |root, _, cx| root.cloud_save_key(cx),
-        ))
+        )))
         .child(
-            quiet("cloud-save-key", "Save key", cloud.live, false, t)
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_save_key(cx))),
-        )
+            panel::button(
+                "cloud-save-key",
+                "Save key",
+                Kind::Plain,
+                cloud.live,
+                None,
+                t,
+            )
+            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.cloud_save_key(cx))),
+        );
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .child(label)
+        .child(form)
+        .child(panel::help(
+            "The key stays in the keyring of this computer. OpenRouter bills you.",
+            t,
+        ))
+}
+
+/// Ollama has no setting here. A failed probe shows as the note below.
+fn ollama_block(t: &Theme) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .child(body("Ollama", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(panel::help(
+            "A model on this computer. No data leaves it.",
+            t,
+        ))
+}
+
+/// The area under the cards: the part of the chosen provider, then the last note.
+fn detail(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
+    let cloud = &root.account.cloud;
+    let part = match cloud.provider {
+        Provider::Cloud => account_block(root, t, window, cx),
+        Provider::Openrouter => key_block(root, t, window, cx),
+        Provider::Ollama => ollama_block(t),
+    };
+    let mut area = panel::sub(t).child(part);
+    if let Some(n) = &cloud.note {
+        let tone = if n.bad { Tone::Err } else { Tone::Ok };
+        area = area.child(panel::note(tone, n.text.clone(), t));
+    }
+    area
 }
 
 /// The Coach section of Settings.
 pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
-    let cloud = &root.account.cloud;
-    let mut block = section(false, "Coach", t)
-        .child(prose("Choose where the coach model runs.", t))
-        .child(div().mt(px(14.0)).child(choice(root, t, cx)))
-        .child(
-            body(describe(cloud.provider), FS_SMALL, t.faint)
-                .mt(px(10.0))
-                .line_height(relative(1.6))
-                .max_w(ch(62.0, FS_SMALL)),
-        );
-    block = match cloud.provider {
-        Provider::Cloud => block.child(account_block(root, t, window, cx)),
-        Provider::Openrouter => block.child(key_block(root, t, window, cx)),
-        Provider::Ollama => block,
-    };
-    if let Some(note) = &cloud.note {
-        let colour = if note.bad { t.warn } else { t.mutd };
-        block = block.child(
-            body(note.text.clone(), FS_CAPTION, colour)
-                .mt(px(14.0))
-                .max_w(ch(62.0, FS_CAPTION)),
-        );
-    }
-    block
+    let rows = panel::panel(t)
+        .child(choice(root, t, cx))
+        .child(detail(root, t, window, cx));
+    panel::section("Coach", Some("Choose where the coach model runs."), t).child(rows)
 }
 
 #[cfg(test)]

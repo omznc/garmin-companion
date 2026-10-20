@@ -1,149 +1,161 @@
-//! The Settings screen, from `app/src/screens/Settings.tsx`.
+//! The Settings screen, from `app/src/screens/Settings.tsx` and the Settings design.
 //!
-//! Only the essential sections are here: Garmin (account, sync), Appearance
-//! (light, dark or system), what leaves this machine, and About. The rest of
-//! the old screen comes with the screens it belongs to.
+//! The page is a header and four sections, each a panel of rows: Garmin account,
+//! Coach, Appearance (`appearance.rs`) and About. A change applies at once.
 
-use garmin_api::settings::{SettingsView, ThemeMode};
-use gpui::{
-    div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, FontWeight, Window,
-};
+use garmin_api::settings::SettingsView;
+use gpui::{div, prelude::*, px, relative, AnyElement, ClickEvent, Context, Div, Window};
 
 use crate::account::Sync;
-use crate::controls::quiet;
-use crate::shell::Root;
-use crate::theme::{Theme, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, MONO, SANS};
+use crate::icons::Icon;
+use crate::panel::{self, Kind, Tone};
+use crate::shell::{Root, COLUMN_SIDE, SHELL_MAX};
+use crate::sidebar::SIDEBAR_W;
+use crate::theme::{Theme, FS_MD};
+use crate::ui::{block_in, body, eyebrow_lg, MONO, SERIF};
 
-/// A section: its marker, then the content, with the same air above each.
-pub(crate) fn section(first: bool, title: &str, t: &Theme) -> Div {
-    div()
-        .mt(px(if first { 0.0 } else { 62.0 }))
-        .child(div().mb(px(20.0)).child(eyebrow(title.to_string(), t)))
+/// The widest the Settings content gets. The reading column is narrower.
+pub const CONTENT_MAX: f32 = 800.0;
+
+/// At or below this content width the design's narrow rule applies: the title
+/// shrinks and the rows get less padding. It is the 860px window of the design,
+/// less the 2 x 56px of side air.
+const NARROW_AT: f32 = 748.0;
+
+/// The width of the content for a window `viewport` pixels wide.
+fn content_width(viewport: f32) -> f32 {
+    (viewport.min(SHELL_MAX) - SIDEBAR_W - 2.0 * COLUMN_SIDE).min(CONTENT_MAX)
 }
 
-/// The dot before the account line: the accent when connected.
-fn dot(on: bool, t: &Theme) -> Div {
-    div()
-        .flex_none()
-        .mt(px(10.5))
-        .size(px(5.0))
-        .rounded_full()
-        .bg(if on { t.acc } else { t.line })
-}
-
-fn sync_note(root: &Root, t: &Theme) -> Option<AnyElement> {
+fn sync_note(root: &Root, t: &Theme) -> Option<Div> {
     match &root.account.sync {
         Sync::Idle => None,
-        Sync::Running(line) | Sync::Done(line) => {
-            Some(body(line.clone(), FS_SMALL, t.mutd).into_any_element())
-        }
-        Sync::Failed(error) => Some(body(error.clone(), FS_SMALL, t.warn).into_any_element()),
+        Sync::Running(line) => Some(panel::note(Tone::Run, line.clone(), t)),
+        Sync::Done(line) => Some(panel::note(Tone::Ok, line.clone(), t)),
+        Sync::Failed(error) => Some(panel::note(Tone::Err, error.clone(), t)),
     }
 }
 
-fn garmin(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -> Div {
+fn connection_row(view: &SettingsView, t: &Theme) -> Div {
+    let state = if view.connected {
+        "Connected"
+    } else {
+        "Not connected"
+    };
+    let value = panel::stack()
+        .child(panel::chip(state, view.connected, t))
+        .child(body(view.account_line.clone(), 14.5, t.fg))
+        .child(panel::help(view.cache_line.clone(), t));
+    panel::row(true, "Connection", None, value, t)
+}
+
+fn folder_row(folder: &str, t: &Theme) -> Div {
+    // A path has no break points. A long one ends in an ellipsis.
+    let path = div()
+        .w_full()
+        .px(px(12.0))
+        .py(px(9.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(t.line2)
+        .bg(t.bg2)
+        .font_family(MONO)
+        .text_size(px(13.0))
+        .text_color(t.fg)
+        .min_w_0()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis()
+        .child(folder.to_string());
+    let value = panel::stack().items_stretch().child(path);
+    panel::row(
+        false,
+        "Data folder",
+        Some("The database and the cache."),
+        value,
+        t,
+    )
+}
+
+fn sync_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
     let busy = root.account.syncing();
-    let label = if busy { "Syncing..." } else { "Sync recent" };
-    let actions = div()
-        .flex()
-        .items_baseline()
-        .gap(px(26.0))
-        .mt(px(24.0))
+    let (label, lead) = if busy {
+        ("Syncing...", Some(Icon::Spinner))
+    } else {
+        ("Sync recent", None)
+    };
+    let buttons = panel::actions()
         .child(
-            quiet("sync-recent", label, !busy, false, t)
+            panel::button("sync-recent", label, Kind::Primary, !busy, lead, t)
                 .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.start_sync(false, cx))),
         )
         .child(
-            quiet("sync-full", "Full re-sync", !busy, false, t)
+            panel::button("sync-full", "Full re-sync", Kind::Plain, !busy, None, t)
                 .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.start_sync(true, cx))),
-        )
-        .child(
-            // Pushed to the far end: it undoes the others.
-            quiet("sign-out", "Disconnect", !busy, true, t)
-                .ml_auto()
-                .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.sign_out(cx))),
         );
-
-    let mut block = section(true, "Garmin", t).child(
-        div()
-            .flex()
-            .items_start()
-            .gap(px(12.0))
-            .child(dot(view.connected, t))
-            .child(
-                body(
-                    format!("{} {}", view.account_line, view.cache_line),
-                    FS_MD,
-                    t.fg,
-                )
-                .flex_1()
-                .min_w_0()
-                .line_height(relative(1.6)),
-            ),
-    );
-    if let Some(folder) = &view.data_folder {
-        block = block.child(
-            div()
-                .mt(px(10.0))
-                .font_family(MONO)
-                .text_size(px(FS_CAPTION))
-                .text_color(t.faint)
-                // A path has no break points. A long one ends in an ellipsis.
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(folder.clone()),
-        );
-    }
-    block = block.child(actions);
+    let mut value = panel::stack().child(buttons);
     if let Some(note) = sync_note(root, t) {
-        block = block.child(div().mt(px(14.0)).child(note));
+        value = value.child(note);
     }
-    block
+    let help = "Recent brings in the last days. A full re-sync reads all of your history again.";
+    panel::row(false, "Sync", Some(help), value, t)
 }
 
-fn theme_choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let choices = [
-        ("theme-system", "Match system", ThemeMode::System),
-        ("theme-light", "Light", ThemeMode::Light),
-        ("theme-dark", "Dark", ThemeMode::Dark),
-    ];
-    let mut row = div().flex().items_baseline().gap(px(26.0));
-    for (id, label, mode) in choices {
-        let on = root.account.mode == mode;
-        let item = quiet(id, label, true, false, t)
-            .text_color(if on { t.fg } else { t.faint })
-            .when(on, |d| d.font_weight(FontWeight::MEDIUM))
-            .on_click(cx.listener(move |root, _: &ClickEvent, window, cx| {
-                root.set_theme_mode(mode, window, cx)
-            }));
-        row = row.child(item);
-    }
-    row
-}
-
-fn appearance(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
-    section(false, "Appearance", t)
-        .child(div().font_family(SANS).text_size(px(FS_MD)).child("Theme"))
-        .child(
-            body(
-                "Match system follows the setting of your desktop. Each mode has its own palette.",
-                FS_SMALL,
-                t.faint,
-            )
-            .mt(px(5.0))
-            .mb(px(14.0)),
+fn disconnect_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let busy = root.account.syncing();
+    let value = panel::stack().justify_center().child(
+        panel::button(
+            "sign-out",
+            "Disconnect from Garmin",
+            Kind::Danger,
+            !busy,
+            Some(Icon::SignOut),
+            t,
         )
-        .child(theme_choice(root, t, cx))
-        .child(crate::themes::render(root, t, window, cx))
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.sign_out(cx))),
+    );
+    let help = "Signs this computer out of Garmin. To sync again, you must connect again.";
+    panel::row(false, "Disconnect", Some(help), value, t)
 }
 
-pub(crate) fn prose(text: &str, t: &Theme) -> Div {
-    body(text.to_string(), FS_MD, t.mutd)
-        .line_height(relative(1.7))
-        .max_w(ch(62.0, FS_MD))
+fn garmin(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let mut rows = panel::panel(t).child(connection_row(view, t));
+    if let Some(folder) = &view.data_folder {
+        rows = rows.child(folder_row(folder, t));
+    }
+    let rows = rows
+        .child(sync_row(root, t, cx))
+        .child(disconnect_row(root, t, cx));
+    panel::section("Garmin account", None, t).child(rows)
+}
+
+fn about(root: &Root, view: &SettingsView, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let text = "Garmin Companion reads your Garmin data into a database on this computer. \
+                You can delete that file at any time. The app is open source.";
+    let prose = |text: String, colour| body(text, 14.5, colour).line_height(relative(1.6));
+    // The version stands under the name, in mono.
+    let version = div()
+        .font_family(MONO)
+        .text_size(px(12.5))
+        .text_color(t.mutd)
+        .child(format!("Version {}", view.version));
+    let rows = panel::panel(t)
+        .child(panel::row_with(
+            true,
+            "Garmin Companion",
+            Some(version),
+            panel::stack().child(prose(text.to_string(), t.mutd)),
+            t,
+        ))
+        .child(crate::update_ui::settings_row(root, t, cx))
+        .child(panel::row(
+            false,
+            "What leaves this machine",
+            None,
+            panel::stack().child(prose(view.privacy_line.clone(), t.fg)),
+            t,
+        ));
+    panel::section("About", None, t).child(rows)
 }
 
 pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> AnyElement {
@@ -151,38 +163,31 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         return div().into_any_element();
     };
     let k = root.visits;
-    let about = "Garmin Companion reads your Garmin data into a database on this computer. \
-                 You can delete that file at any time. The app is open source.";
-    div()
+    let narrow = content_width(f32::from(window.viewport_size().width)) <= NARROW_AT;
+    panel::set_narrow(narrow);
+    let title = div()
+        .font_family(SERIF)
+        .text_size(px(if narrow { 42.0 } else { 52.0 }))
+        .line_height(relative(1.04))
+        .letter_spacing(px(if narrow { -0.42 } else { -0.52 }))
+        .child("Settings");
+    let lead = "Your Garmin history lives here, in a file you can delete. \
+                A change applies at once. There is no save button.";
+    let header = div()
+        .flex()
+        .flex_col()
+        .gap(px(14.0))
         .child(block_in(k, 0, eyebrow_lg("This machine", t)))
-        .child(block_in(k, 0, h1("Settings").mt(px(18.0))))
-        .child(block_in(
-            k,
-            1,
-            body(
-                "Your Garmin history lives here, in a file you can delete.",
-                FS_MD,
-                t.mutd,
-            )
-            .mt(px(18.0))
-            .mb(px(52.0))
-            .max_w(ch(62.0, FS_MD)),
-        ))
+        .child(block_in(k, 0, title))
+        .child(block_in(k, 1, body(lead, FS_MD, t.mutd).max_w(px(544.0))));
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(60.0))
+        .child(header)
         .child(block_in(k, 2, garmin(root, &view, t, cx)))
         .child(block_in(k, 3, crate::cloud::render(root, t, window, cx)))
-        .child(block_in(k, 3, appearance(root, t, window, cx)))
-        .child(block_in(
-            k,
-            4,
-            section(false, "What leaves this machine", t).child(prose(&view.privacy_line, t)),
-        ))
-        .child(block_in(
-            k,
-            4,
-            section(false, "About", t)
-                .child(prose(about, t))
-                .child(prose(&format!("Version {}.", view.version), t).mt(px(12.0)))
-                .child(crate::update_ui::settings_row(root, t, cx)),
-        ))
+        .child(block_in(k, 3, crate::appearance::render(root, t, cx)))
+        .child(block_in(k, 4, about(root, &view, t, cx)))
         .into_any_element()
 }
