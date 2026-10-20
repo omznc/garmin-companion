@@ -9,6 +9,7 @@ pub mod client;
 pub mod coach;
 pub mod courses;
 pub mod db;
+pub mod devices;
 pub mod findings;
 pub mod goals;
 pub mod intraday;

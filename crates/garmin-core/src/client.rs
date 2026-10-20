@@ -496,6 +496,18 @@ impl GarminClient {
             .await
     }
 
+    /// The devices registered to the account.
+    pub async fn devices(&self) -> Result<serde_json::Value> {
+        self.get_json("/device-service/deviceregistration/devices", &[])
+            .await
+    }
+
+    /// The device that uploaded last, and when.
+    pub async fn last_used_device(&self) -> Result<serde_json::Value> {
+        self.get_json("/device-service/deviceservice/mylastused", &[])
+            .await
+    }
+
     /// The account's `displayName`, which several wellness endpoints need in
     /// their path.
     pub async fn profile(&self) -> Result<Profile> {

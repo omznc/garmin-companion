@@ -44,6 +44,46 @@ pub(crate) async fn sync_extras(
 ) -> Result<()> {
     sync_body_battery(client, db, report, on).await?;
     sync_courses(client, db, report, on).await?;
+    if due(db, "extras_static", STATIC_HOURS) {
+        sync_devices(client, db, report, on).await?;
+        db.set_sync_state("extras_static", &Utc::now().to_rfc3339())?;
+    }
+    Ok(())
+}
+
+/// How long the slow-changing data (devices, plans, VO2 max) is left alone
+/// between two syncs. A sync on a timer would otherwise ask for it every time.
+const STATIC_HOURS: i64 = 6;
+
+/// Whether the step stored under `key` is due. A missing or unreadable time
+/// means due.
+fn due(db: &Db, key: &str, hours: i64) -> bool {
+    let at = db
+        .sync_state(key)
+        .ok()
+        .flatten()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok());
+    at.is_none_or(|t| Utc::now().signed_duration_since(t) >= Duration::hours(hours))
+}
+
+/// The devices, with the upload time of the last used one.
+async fn sync_devices(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+    on: Progress<'_>,
+) -> Result<()> {
+    announce(on, "devices");
+    let Some(list) = optional(report, "devices", client.devices().await)? else {
+        return Ok(());
+    };
+    let mut devices = crate::devices::parse_devices(&list);
+    if let Some(last) = optional(report, "last used device", client.last_used_device().await)? {
+        crate::devices::apply_last_used(&mut devices, &last);
+    }
+    if let Err(e) = db.replace_devices(&devices) {
+        report.warnings.push(format!("devices: {e}"));
+    }
     Ok(())
 }
 
