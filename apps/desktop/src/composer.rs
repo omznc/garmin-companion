@@ -51,6 +51,8 @@ pub struct Composer {
     column_w: f32,
     /// The box sits in the side panel: smaller text and a row of buttons under it.
     panel: bool,
+    /// The label of the focus period, for the hint of the panel.
+    focus_label: Option<String>,
 }
 
 impl EventEmitter<ComposerEvent> for Composer {}
@@ -114,11 +116,18 @@ impl Composer {
             palette,
             column_w: 720.0,
             panel: false,
+            focus_label: None,
         }
     }
 
     pub fn set_panel(&mut self, panel: bool) {
         self.panel = panel;
+    }
+
+    /// The label of the focus period, when the focus is not the live day.
+    pub fn set_hint(&mut self, focus: Option<String>, cx: &mut Context<Self>) {
+        self.focus_label = focus;
+        cx.notify();
     }
 
     /// Put an at sign in the box, to start a mention.
@@ -293,10 +302,10 @@ impl Render for Composer {
             .h(px(height_rows as f32 * line_h + 2.0 * pad))
             .overflow_hidden();
         if text.is_empty() {
-            let hint = if panel {
-                "Ask about this screen..."
-            } else {
-                "Ask about your sleep, training or recovery"
+            let hint = match (&self.focus_label, panel) {
+                (Some(label), true) => format!("Ask about {label}..."),
+                (None, true) => "Ask about this screen...".to_string(),
+                (_, false) => "Ask about your sleep, training or recovery".to_string(),
             };
             area = area.child(
                 div()

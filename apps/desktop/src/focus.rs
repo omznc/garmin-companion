@@ -12,7 +12,7 @@ pub struct Focus {
 }
 
 /// The real date on this computer.
-fn real_today() -> NaiveDate {
+pub fn real_today() -> NaiveDate {
     chrono::Local::now().date_naive()
 }
 

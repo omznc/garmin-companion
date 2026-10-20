@@ -38,6 +38,7 @@ use serde_json::Value;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
+use crate::focus::Focus;
 use crate::icons::Icon;
 use crate::kit::{chip, icon_button};
 use crate::markdown;
@@ -154,6 +155,8 @@ pub struct Ask {
     panel: bool,
     /// The name of the screen behind the panel. The coach hears it with a question.
     context: Option<&'static str>,
+    /// The focus period, when it is not the live day.
+    focus: Option<Focus>,
     palette: Palette,
     composer: Entity<Composer>,
     turns: Vec<Turn>,
@@ -183,6 +186,7 @@ impl Ask {
             provider: None,
             panel: false,
             context: None,
+            focus: None,
             palette,
             composer,
             turns: Vec::new(),
@@ -214,6 +218,13 @@ impl Ask {
     /// The screen behind the panel, or `None` on the Ask screen.
     pub fn set_context(&mut self, screen: Option<&'static str>) {
         self.context = screen;
+    }
+
+    /// The period that the pages look at. A live focus adds nothing to a question.
+    pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
+        self.focus = (!focus.is_live()).then_some(focus);
+        let hint = self.focus.map(|f| f.label());
+        self.composer.update(cx, |c, cx| c.set_hint(hint, cx));
     }
 
     /// The name of the provider for the status bar.
@@ -283,7 +294,7 @@ impl Ask {
             return;
         }
         self.turns.push(Turn::new(Who::You, text));
-        let history = with_context(history(&self.turns), self.context);
+        let history = with_context(history(&self.turns), self.context, self.focus);
         self.turns.push(Turn::new(Who::Coach, String::new()));
         self.busy = true;
         self.stop = Arc::default();
@@ -393,9 +404,26 @@ fn history(turns: &[Turn]) -> Vec<HistoryMessage> {
 
 /// The question gets one more line: the screen that the user is on. The
 /// thread on screen does not show the line.
-fn with_context(mut messages: Vec<HistoryMessage>, screen: Option<&str>) -> Vec<HistoryMessage> {
-    if let (Some(screen), Some(last)) = (screen, messages.last_mut()) {
+fn with_context(
+    mut messages: Vec<HistoryMessage>,
+    screen: Option<&str>,
+    focus: Option<Focus>,
+) -> Vec<HistoryMessage> {
+    let Some(last) = messages.last_mut() else {
+        return messages;
+    };
+    if let Some(screen) = screen {
         last.content = format!("{}\n\nThe user is on the {screen} screen.", last.content);
+    }
+    if let Some(f) = focus {
+        last.content = format!(
+            "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
+             The tools count days back from today, {}: ask for enough days to reach the start of the period, then ignore older rows.",
+            last.content,
+            f.start,
+            f.end,
+            crate::focus::real_today()
+        );
     }
     messages
 }
@@ -1044,10 +1072,21 @@ mod tests {
     #[test]
     fn the_question_carries_the_screen_but_the_thread_does_not() {
         let turns = vec![Turn::new(Who::You, "hi".into())];
-        let sent = with_context(history(&turns), Some("Sleep"));
+        let sent = with_context(history(&turns), Some("Sleep"), None);
         assert_eq!(sent[0].content, "hi\n\nThe user is on the Sleep screen.");
         assert_eq!(turns[0].text, "hi");
-        assert_eq!(with_context(history(&turns), None)[0].content, "hi");
+        assert_eq!(with_context(history(&turns), None, None)[0].content, "hi");
+    }
+
+    #[test]
+    fn a_focus_period_adds_its_dates_to_the_question() {
+        let turns = vec![Turn::new(Who::You, "hi".into())];
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        let focus = Focus::range(day(14), day(20));
+        let sent = with_context(history(&turns), None, Some(focus));
+        assert!(sent[0]
+            .content
+            .contains("Focus period: 2026-10-14 to 2026-10-20 (ISO dates)."));
     }
 
     #[test]
