@@ -26,9 +26,12 @@ use garmin_coach::{
     AccountView, Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
 };
 use garmin_core::db::Db;
+use garmin_core::workout::{
+    EndCondition, ExecStep, Sport, Step as DraftStep, StepKind, Target, WorkoutDraft,
+};
 use gpui::{
     div, linear_color_stop, linear_gradient, prelude::*, px, relative, ClickEvent, ColorExt as _,
-    Context, ElementId, Entity, IntoElement, Render, SharedString, Subscription, Task, Window,
+    Context, Div, ElementId, Entity, IntoElement, Render, SharedString, Subscription, Task, Window,
 };
 use serde_json::Value;
 
@@ -40,7 +43,7 @@ use crate::motion;
 use crate::scroll::SmoothScroll;
 use crate::shell::{column_width, COLUMN_MAX, COLUMN_SIDE, COLUMN_TOP};
 use crate::theme::{Palette, Theme, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, eyebrow_lg, h1, underlined, SANS};
+use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
@@ -80,6 +83,16 @@ struct Turn {
     text: String,
     steps: Vec<Step>,
     error: Option<String>,
+    /// A workout the coach proposed, and whether it went to Garmin.
+    draft: Option<(WorkoutDraft, Save)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Save {
+    Idle,
+    Saving,
+    Saved,
+    Failed(String),
 }
 
 impl Turn {
@@ -89,6 +102,7 @@ impl Turn {
             text,
             steps: Vec::new(),
             error: None,
+            draft: None,
         }
     }
 }
@@ -252,8 +266,7 @@ impl Ask {
             Event::Delta { text } => turn.text.push_str(&text),
             // The desktop has no trace of notes: it drops the narration.
             Event::Note { .. } => turn.text.clear(),
-            // The desktop runs with drafts off, so this event never comes.
-            Event::Draft { .. } => {}
+            Event::Draft { draft, .. } => turn.draft = Some((draft, Save::Idle)),
             Event::Tool {
                 call_id,
                 label,
@@ -281,6 +294,36 @@ impl Ask {
         self.refresh_credits(cx);
         self.busy = false;
         self.composer.update(cx, |c, cx| c.set_busy(false, cx));
+    }
+
+    /// Send the draft of one turn to Garmin. A second press while one runs, or
+    /// after it saved, does nothing.
+    fn save_draft(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some((draft, state)) = self.turns.get_mut(index).and_then(|t| t.draft.as_mut()) else {
+            return;
+        };
+        if matches!(state, Save::Saving | Save::Saved) {
+            return;
+        }
+        *state = Save::Saving;
+        let draft = draft.clone();
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { garmin_api::workouts::create_workout(&draft) })
+                .await;
+            let _ = this.update(cx, |ask, cx| {
+                if let Some((_, state)) = ask.turns.get_mut(index).and_then(|t| t.draft.as_mut()) {
+                    *state = match result {
+                        Ok(_) => Save::Saved,
+                        Err(e) => Save::Failed(e.to_string()),
+                    };
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     /// Put text in the composer without sending it.
@@ -367,7 +410,7 @@ async fn real_turn(
     });
     match transport {
         Ok(transport) => {
-            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open, false).await;
+            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open, true).await;
         }
         Err(e) => sink.emit(Event::Error {
             text: format!("{e:#}"),
@@ -468,7 +511,108 @@ fn user_bubble(text: &str, t: &Theme) -> impl IntoElement {
     )
 }
 
-fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> impl IntoElement {
+fn minutes(seconds: f64) -> String {
+    let s = seconds.round() as u32;
+    match (s / 60, s % 60) {
+        (0, s) => format!("{s} s"),
+        (m, 0) => format!("{m} min"),
+        (m, s) => format!("{m} min {s} s"),
+    }
+}
+
+fn end_text(end: EndCondition) -> String {
+    match end {
+        EndCondition::Time { seconds } => minutes(seconds),
+        EndCondition::Distance { metres } if metres >= 1000.0 => {
+            format!("{} km", metres / 1000.0)
+        }
+        EndCondition::Distance { metres } => format!("{metres} m"),
+        EndCondition::LapButton => "until lap".into(),
+    }
+}
+
+fn exec_line(e: &ExecStep) -> String {
+    let kind = match e.kind {
+        StepKind::Warmup => "Warm-up",
+        StepKind::Interval => "Interval",
+        StepKind::Recovery => "Recovery",
+        StepKind::Rest => "Rest",
+        StepKind::Cooldown => "Cool-down",
+    };
+    let target = match e.target {
+        Target::None => String::new(),
+        Target::HrZone { zone } => format!(", zone {zone}"),
+        Target::Bpm { low, high } => format!(", {low:.0}-{high:.0} bpm"),
+    };
+    format!("{kind} {}{target}", end_text(e.end))
+}
+
+/// One short line for each step. A repeat reads "N x" and lists its steps.
+fn step_lines(steps: &[DraftStep]) -> Vec<String> {
+    steps
+        .iter()
+        .map(|s| match s {
+            DraftStep::Exec(e) => exec_line(e),
+            DraftStep::Repeat { times, steps } => {
+                let inner: Vec<_> = steps.iter().map(exec_line).collect();
+                format!("{times} x {}", inner.join(", "))
+            }
+        })
+        .collect()
+}
+
+fn sport_name(sport: Sport) -> &'static str {
+    match sport {
+        Sport::Running => "Running",
+        Sport::Cycling => "Cycling",
+        Sport::Cardio => "Cardio",
+        Sport::StrengthTraining => "Strength",
+    }
+}
+
+/// The card for a proposed workout, with the button that saves it.
+fn draft_card(
+    index: usize,
+    draft: &WorkoutDraft,
+    save: &Save,
+    cx: &mut Context<Ask>,
+    t: &Theme,
+) -> impl IntoElement {
+    let (label, enabled) = match save {
+        Save::Idle | Save::Failed(_) => ("Save to Garmin", true),
+        Save::Saving => ("Saving", false),
+        Save::Saved => ("Saved", false),
+    };
+    // The quiet disabled colour is the border colour, too faint for "Saved".
+    let mut button = quiet(("save-draft", index), label, enabled, true, t).text_color(t.mutd);
+    if enabled {
+        button = button
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.save_draft(index, cx)));
+    }
+    let mut card = div()
+        .max_w(ch(62.0, FS_SMALL))
+        .p(px(16.0))
+        .rounded(px(8.0))
+        .border_1()
+        .border_color(t.line)
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .child(eyebrow(sport_name(draft.sport), t))
+        .child(body(draft.name.clone(), FS_MD, t.fg))
+        .children(
+            step_lines(&draft.steps)
+                .into_iter()
+                .map(|l| body(l, FS_SMALL, t.mutd)),
+        )
+        .child(div().mt(px(4.0)).child(button));
+    if let Save::Failed(e) = save {
+        card = card.child(body(e.clone(), FS_SMALL, t.warn));
+    }
+    card
+}
+
+fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> Div {
     let mut col = div().flex().flex_col().gap(px(16.0));
     if !turn.steps.is_empty() {
         col = col.child(
@@ -592,22 +736,20 @@ impl Render for Ask {
         } else {
             let last = self.turns.len() - 1;
             let live = self.busy;
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(34.0))
-                .children(
-                    self.turns
-                        .iter()
-                        .enumerate()
-                        .map(|(i, turn)| match turn.who {
-                            Who::You => user_bubble(&turn.text, &t).into_any_element(),
-                            Who::Coach => {
-                                coach_turn(turn, live && i == last, &t).into_any_element()
-                            }
-                        }),
-                )
-                .into_any_element()
+            let mut col = div().flex().flex_col().gap(px(34.0));
+            for (i, turn) in self.turns.iter().enumerate() {
+                col = col.child(match turn.who {
+                    Who::You => user_bubble(&turn.text, &t).into_any_element(),
+                    Who::Coach => coach_turn(turn, live && i == last, &t)
+                        .children(
+                            turn.draft
+                                .as_ref()
+                                .map(|(d, save)| draft_card(i, d, save, cx, &t)),
+                        )
+                        .into_any_element(),
+                });
+            }
+            col.into_any_element()
         };
 
         let thread = self
@@ -687,6 +829,27 @@ mod tests {
         ];
         let roles: Vec<_> = history(&turns).into_iter().map(|m| m.role).collect();
         assert_eq!(roles, ["user", "assistant", "user"]);
+    }
+
+    #[test]
+    fn a_repeat_reads_as_n_times() {
+        let work = ExecStep {
+            kind: StepKind::Interval,
+            end: EndCondition::Time { seconds: 180.0 },
+            target: Target::HrZone { zone: 4 },
+            note: None,
+        };
+        let rest = ExecStep {
+            kind: StepKind::Recovery,
+            end: EndCondition::Distance { metres: 400.0 },
+            target: Target::None,
+            note: None,
+        };
+        let lines = step_lines(&[DraftStep::Repeat {
+            times: 4,
+            steps: vec![work, rest],
+        }]);
+        assert_eq!(lines, ["4 x Interval 3 min, zone 4, Recovery 400 m"]);
     }
 
     #[test]
