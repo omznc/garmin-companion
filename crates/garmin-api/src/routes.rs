@@ -43,6 +43,46 @@ pub struct RouteRow {
     pub trace: Vec<[f32; 2]>,
     /// Listed only when the route repeats. One outing would repeat the card.
     pub outings: Vec<OutingRow>,
+    /// The fastest outing on the route. `None` when no outing has a time.
+    #[serde(default)]
+    pub best_time: Option<BestTime>,
+    /// Metres climbed, as the mean over the outings that have it.
+    #[serde(default)]
+    pub elevation_m: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BestTime {
+    pub activity_id: i64,
+    pub duration_s: f64,
+    /// For example `42 min` or `1h 05m`.
+    pub text: String,
+    pub date: String,
+}
+
+/// The longest route by its mean distance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LongestRoute {
+    pub name: String,
+    pub distance_m: f64,
+    pub distance: String,
+}
+
+/// A course that the athlete saved in Garmin Connect.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CourseRow {
+    pub course_id: i64,
+    pub name: String,
+    pub sport: String,
+    pub distance: Option<String>,
+    pub elevation_m: Option<f64>,
+    pub favorite: bool,
+    /// The shape in a unit square, as for a route. Empty until the track is
+    /// fetched.
+    pub trace: Vec<[f32; 2]>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +94,10 @@ pub struct RoutesView {
     pub notes: Vec<String>,
     pub total: usize,
     pub routes: Vec<RouteRow>,
+    #[serde(default)]
+    pub longest: Option<LongestRoute>,
+    #[serde(default)]
+    pub courses: Vec<CourseRow>,
 }
 
 /// Scale a trace into the unit square. Longitude shrinks by cos(latitude), so
@@ -114,7 +158,73 @@ fn row_of(r: &Route) -> RouteRow {
         } else {
             Vec::new()
         },
+        best_time: best_time(&r.outings),
+        elevation_m: mean_elevation(&r.outings),
     }
+}
+
+/// The outing with the shortest positive time. A tie goes to the older one.
+pub fn best_time(outings: &[query::RouteOuting]) -> Option<BestTime> {
+    outings
+        .iter()
+        .filter(|o| o.duration_s.is_some_and(|s| s > 0.0))
+        .min_by(|a, b| {
+            a.duration_s
+                .partial_cmp(&b.duration_s)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.local_date.cmp(&b.local_date))
+        })
+        .map(|o| {
+            let secs = o.duration_s.unwrap_or(0.0);
+            BestTime {
+                activity_id: o.activity_id,
+                duration_s: secs,
+                text: crate::reports::duration(secs),
+                date: o.local_date.clone().unwrap_or_default(),
+            }
+        })
+}
+
+/// The mean climb over the outings that have one above zero.
+pub fn mean_elevation(outings: &[query::RouteOuting]) -> Option<f64> {
+    let climbs: Vec<f64> = outings
+        .iter()
+        .filter_map(|o| o.elevation_gain_m.filter(|m| *m > 0.0))
+        .collect();
+    (!climbs.is_empty()).then(|| climbs.iter().sum::<f64>() / climbs.len() as f64)
+}
+
+/// The route with the greatest mean distance.
+pub fn longest_route(routes: &[Route]) -> Option<LongestRoute> {
+    routes
+        .iter()
+        .filter_map(|r| Some((r, r.avg_distance_m.filter(|m| *m > 0.0)?)))
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(r, m)| LongestRoute {
+            name: r.outings[0]
+                .name
+                .clone()
+                .unwrap_or_else(|| "Untitled".into()),
+            distance_m: m,
+            distance: km_text(m),
+        })
+}
+
+/// The saved courses, with a drawn shape for each one that has a track.
+fn course_rows(db: &Db) -> Result<Vec<CourseRow>, ApiError> {
+    Ok(db
+        .courses()?
+        .into_iter()
+        .map(|c| CourseRow {
+            course_id: c.summary.course_id,
+            name: c.summary.name.unwrap_or_else(|| "Untitled".into()),
+            sport: sport_label(c.summary.activity_type.as_deref()),
+            distance: c.summary.distance_m.filter(|m| *m > 0.0).map(km_text),
+            elevation_m: c.summary.elevation_gain_m.filter(|m| *m > 0.0),
+            favorite: c.summary.favorite,
+            trace: shape(&c.points),
+        })
+        .collect())
 }
 
 fn outing_of(o: &query::RouteOuting) -> OutingRow {
@@ -208,6 +318,8 @@ pub fn routes_view(db: &Db, sort: RouteSort) -> Result<RoutesView, ApiError> {
             notes: Vec::new(),
             total: 0,
             routes: Vec::new(),
+            longest: None,
+            courses: course_rows(db)?,
         });
     }
     let total = all.len();
@@ -224,6 +336,8 @@ pub fn routes_view(db: &Db, sort: RouteSort) -> Result<RoutesView, ApiError> {
         ],
         notes: notes_of(&all, &shown, total),
         total,
+        longest: longest_route(&all),
+        courses: course_rows(db)?,
         routes: shown,
     })
 }
@@ -341,6 +455,100 @@ mod tests {
         let v = routes_view(&db, RouteSort::default()).unwrap();
         let _ = std::fs::remove_dir_all(dir);
         assert!(v.empty.unwrap().body.contains("Motor sports are not shown"));
+    }
+
+    fn outing(id: i64, date: &str, secs: Option<f64>, climb: Option<f64>) -> query::RouteOuting {
+        query::RouteOuting {
+            activity_id: id,
+            name: Some("Loop".into()),
+            local_date: Some(date.into()),
+            distance_m: Some(5_000.0),
+            duration_s: secs,
+            points: Vec::new(),
+            elevation_gain_m: climb,
+        }
+    }
+
+    #[test]
+    fn the_best_time_is_the_shortest_positive_one_and_the_older_wins_a_tie() {
+        let outings = [
+            outing(1, "2026-03-10", Some(1_500.0), Some(40.0)),
+            outing(2, "2026-03-05", Some(1_400.0), Some(60.0)),
+            outing(3, "2026-03-01", Some(1_400.0), None),
+            outing(4, "2026-02-01", Some(0.0), Some(0.0)),
+            outing(5, "2026-01-01", None, None),
+        ];
+        let best = best_time(&outings).unwrap();
+        assert_eq!(
+            (best.activity_id, best.text.as_str(), best.date.as_str()),
+            (3, "23 min", "2026-03-01")
+        );
+        assert_eq!(mean_elevation(&outings), Some(50.0));
+        assert_eq!(best_time(&outings[3..]), None);
+        assert_eq!(mean_elevation(&outings[3..]), None);
+    }
+
+    #[test]
+    fn the_longest_route_is_by_mean_distance() {
+        let route = |name: &str, avg: Option<f64>| Route {
+            name: None,
+            type_key: None,
+            times: 1,
+            avg_distance_m: avg,
+            outings: vec![query::RouteOuting {
+                name: Some(name.into()),
+                ..outing(1, "2026-03-10", None, None)
+            }],
+        };
+        let longest = longest_route(&[
+            route("Short", Some(3_000.0)),
+            route("Far", Some(21_100.0)),
+            route("None", None),
+        ])
+        .unwrap();
+        assert_eq!(
+            (longest.name.as_str(), longest.distance.as_str()),
+            ("Far", "21.1 km")
+        );
+        assert_eq!(longest_route(&[route("None", None)]), None);
+    }
+
+    #[test]
+    fn a_course_shows_with_its_shape_even_with_no_activity_track() {
+        let dir = std::env::temp_dir().join(format!("garmin-api-courses-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&dir.join("cache.sqlite3")).unwrap();
+        db.upsert_course(&garmin_core::courses::CourseSummary {
+            course_id: 1,
+            name: Some("Loop".into()),
+            activity_type: Some("running".into()),
+            distance_m: Some(5_000.0),
+            elevation_gain_m: Some(30.0),
+            favorite: true,
+            ..Default::default()
+        })
+        .unwrap();
+        db.save_course_track(1, &[[50.0, 10.0], [50.1, 10.1], [50.0, 10.2]])
+            .unwrap();
+        db.upsert_course(&garmin_core::courses::CourseSummary {
+            course_id: 2,
+            ..Default::default()
+        })
+        .unwrap();
+        let v = routes_view(&db, RouteSort::default()).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        assert!(v.empty.is_some() && v.longest.is_none());
+        assert_eq!(v.courses.len(), 2);
+        let c = &v.courses[0];
+        assert_eq!(
+            (c.name.as_str(), c.sport.as_str(), c.distance.as_deref()),
+            ("Loop", "Running", Some("5.0 km"))
+        );
+        assert_eq!(c.trace.len(), 4);
+        assert_eq!(
+            (v.courses[1].name.as_str(), v.courses[1].trace.is_empty()),
+            ("Untitled", true)
+        );
     }
 
     #[test]

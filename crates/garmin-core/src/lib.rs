@@ -5,11 +5,16 @@
 
 pub mod analysis;
 pub mod auth;
+pub mod calendar;
 pub mod client;
 pub mod coach;
+pub mod courses;
 pub mod db;
+pub mod devices;
 pub mod findings;
 pub mod goals;
+pub mod intraday;
+pub mod nutrition;
 pub mod paths;
 pub mod query;
 pub mod records;
@@ -21,7 +26,9 @@ pub mod stats;
 pub mod store;
 pub mod strength;
 pub mod sync;
+mod sync_extra;
 pub mod theme;
+pub mod vo2;
 pub mod workout;
 
 pub use analysis::ActivityAnalysis;

@@ -72,6 +72,10 @@ pub struct InsightItem {
     /// The first and the last label under the chart. Empty for no labels.
     pub ends: Vec<String>,
     pub rows: Vec<InsightRow>,
+    /// The first day this finding showed in the cache, `YYYY-MM-DD`. The view
+    /// sets it. A UI turns it into an age such as "new this week".
+    #[serde(default)]
+    pub first_seen: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,6 +145,19 @@ fn finding_item(f: &Finding) -> InsightItem {
                 accent: r.accent,
             })
             .collect(),
+        first_seen: None,
+    }
+}
+
+/// Record each item as seen today and set its first day. It reuses the nudge
+/// table, under the key `insight:<id>`, so a finding that leaves and comes back
+/// keeps its first day. A failed write leaves the item without a day.
+fn stamp_first_seen(db: &Db, today: &str, sections: &mut [InsightSection]) {
+    for item in sections.iter_mut().flat_map(|s| s.items.iter_mut()) {
+        item.first_seen = db
+            .saw_nudge(&format!("insight:{}", item.id), today)
+            .ok()
+            .map(|n| n.first_seen);
     }
 }
 
@@ -337,6 +354,7 @@ fn load_item(l: &Load, shape: Option<&[WeekLoad]>) -> InsightItem {
             vec![label(&s[0]), label(&s[s.len() - 1])]
         }),
         rows: Vec::new(),
+        first_seen: None,
     }
 }
 
@@ -353,6 +371,7 @@ fn flag(id: &str, accent: bool, claim: &str, detail: String) -> InsightItem {
         series: Vec::new(),
         ends: Vec::new(),
         rows: Vec::new(),
+        first_seen: None,
     }
 }
 
@@ -469,7 +488,8 @@ pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError
     } else {
         Vec::new()
     };
-    let sections = sections(found, extra, flags);
+    let mut sections = sections(found, extra, flags);
+    stamp_first_seen(db, &date_key(today), &mut sections);
     Ok(InsightsView {
         date: date_key(today),
         eyebrow: "Last 365 days".into(),
@@ -502,6 +522,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         }
     }
 
@@ -584,5 +605,26 @@ mod tests {
             act("2026-03-06", "running", 30.0),
         ];
         assert!(runs_now(&runner, today()));
+    }
+
+    #[test]
+    fn a_finding_keeps_the_first_day_it_showed() {
+        let db = Db::open(&std::env::temp_dir().join(format!(
+            "garmin-api-insights-{}/cache.sqlite3",
+            std::process::id()
+        )))
+        .unwrap();
+        let section = |id: &str| InsightSection {
+            key: "k".into(),
+            title: "T".into(),
+            items: vec![flag(id, false, "c", String::new())],
+        };
+        let mut first = [section("a")];
+        stamp_first_seen(&db, "2026-03-01", &mut first);
+        let mut later = [section("a"), section("b")];
+        stamp_first_seen(&db, "2026-03-11", &mut later);
+        assert_eq!(first[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
+        assert_eq!(later[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
+        assert_eq!(later[1].items[0].first_seen.as_deref(), Some("2026-03-11"));
     }
 }

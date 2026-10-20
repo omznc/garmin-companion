@@ -26,7 +26,7 @@ const PAGE: u32 = 50;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncProgress {
-    /// Which stage: `activities`, `wellness`, `workouts`, `tracks`, `done`.
+    /// Which stage: `activities`, `wellness`, `workouts`, `tracks`, `extras`, `done`.
     pub phase: &'static str,
     /// What that stage is doing right now, e.g. `2025-11-04`.
     pub detail: String,
@@ -196,6 +196,19 @@ pub async fn sync_daily(
                 metrics.hrv_last_night = num(&v, &["hrvSummary", "lastNightAvg"]);
                 metrics.hrv_weekly_avg = num(&v, &["hrvSummary", "weeklyAvg"]);
                 metrics.hrv_status = text(&v, &["hrvSummary", "status"]);
+                metrics.hrv_low_upper = num(&v, &["hrvSummary", "baseline", "lowUpper"]);
+                metrics.hrv_balanced_low = num(&v, &["hrvSummary", "baseline", "balancedLow"]);
+                metrics.hrv_balanced_upper = num(&v, &["hrvSummary", "baseline", "balancedUpper"]);
+                // The same response holds the night's readings. Only the recent
+                // days keep them, so the full history import stays as it was.
+                if is_recent(*date) {
+                    let readings = crate::intraday::parse_hrv_readings(&v);
+                    if let Err(e) = db.save_hrv_readings(&date_str, &readings) {
+                        report
+                            .warnings
+                            .push(format!("hrv readings {date_str}: {e}"));
+                    }
+                }
             }
             Err(e) => warn_or_abort(report, "hrv", &date_str, e, &mut had_5xx)?,
         }
@@ -277,6 +290,15 @@ pub async fn sync_daily(
     Ok(())
 }
 
+/// How many days back (today counts) the per-day curves are kept. The history
+/// import never reaches further than this for them.
+const CURVE_DAYS: i64 = 3;
+
+/// Whether `date` is inside the window of the per-day curves.
+fn is_recent(date: NaiveDate) -> bool {
+    (Utc::now().date_naive() - date).num_days() < CURVE_DAYS
+}
+
 /// A reply that says "no data" is a warning. A failed request is not a reply:
 /// a dropped network would count every day as empty, end the walk early and
 /// report success. So a transport error, a 429 or a dead token stops the walk.
@@ -289,18 +311,48 @@ fn warn_or_abort(
     e: anyhow::Error,
     had_5xx: &mut bool,
 ) -> Result<()> {
-    let status = e
-        .downcast_ref::<crate::client::HttpStatus>()
-        .map(|h| h.status);
-    let fatal = status == Some(429)
-        || e.downcast_ref::<reqwest::Error>().is_some()
-        || e.downcast_ref::<crate::auth::AuthFailed>().is_some();
-    if fatal {
+    if is_fatal(&e) {
         return Err(e.context(format!("{what} {date}")));
     }
-    *had_5xx |= status.is_some_and(|s| s >= 500);
+    *had_5xx |= http_status(&e).is_some_and(|s| s >= 500);
     report.warnings.push(format!("{what} {date}: {e}"));
     Ok(())
+}
+
+pub(crate) fn http_status(e: &anyhow::Error) -> Option<u16> {
+    e.downcast_ref::<crate::client::HttpStatus>()
+        .map(|h| h.status)
+}
+
+/// A failure that must stop a sync: a 429, a dropped network or a dead token.
+pub(crate) fn is_fatal(e: &anyhow::Error) -> bool {
+    http_status(e) == Some(429)
+        || e.downcast_ref::<reqwest::Error>().is_some()
+        || e.downcast_ref::<crate::auth::AuthFailed>().is_some()
+}
+
+/// The reply of an optional endpoint, as data or as "no data".
+///
+/// A 404, a 403, an empty body and a JSON null are all "no data" and give
+/// `None` with no warning. Any other status gives `None` and a warning. Only
+/// the failures in [`is_fatal`] give an error, as for the older calls. A server
+/// error is never counted toward the outage streak of the wellness walk.
+pub(crate) fn optional(
+    report: &mut SyncReport,
+    what: &str,
+    reply: Result<Value>,
+) -> Result<Option<Value>> {
+    match reply {
+        Ok(Value::Null) => Ok(None),
+        Ok(v) => Ok(Some(v)),
+        Err(e) if is_fatal(&e) => Err(e.context(what.to_string())),
+        Err(e) => {
+            if !matches!(http_status(&e), Some(403 | 404 | 204)) {
+                report.warnings.push(format!("{what}: {e}"));
+            }
+            Ok(None)
+        }
+    }
 }
 
 /// A per-item failure is a warning, but a dead network stops the loop. Each
@@ -676,6 +728,11 @@ pub async fn sync_all_with(
     // Same shape, and a smaller backlog — strength sessions are a fraction of
     // the activities that carry GPS.
     sync_strength(client, db, if full { 200 } else { 25 }, &mut report, on).await?;
+
+    // Last, so that no optional endpoint can come between the sync and the
+    // steps above. A "no data" reply is quiet there, and only the failures
+    // that stop the other steps stop this one.
+    crate::sync_extra::sync_extras(client, db, &mut report, on).await?;
 
     db.set_sync_state("last_sync", &Utc::now().to_rfc3339())?;
     on(SyncProgress {

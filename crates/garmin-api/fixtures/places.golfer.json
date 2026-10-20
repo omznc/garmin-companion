@@ -325,9 +325,22 @@
             "date": "09 Feb",
             "detail": "7.1 km · 4h 38m"
           }
-        ]
+        ],
+        "bestTime": {
+          "activityId": 9100000,
+          "durationS": 15000.0,
+          "text": "4h 10m",
+          "date": "2026-03-09"
+        },
+        "elevationM": null
       }
-    ]
+    ],
+    "longest": {
+      "name": "Golf",
+      "distanceM": 6987.5,
+      "distance": "7.0 km"
+    },
+    "courses": []
   },
   "gear": {
     "empty": null,

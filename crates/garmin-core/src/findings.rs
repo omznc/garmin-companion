@@ -1240,6 +1240,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0, mins * 60.0 * 0.6, mins * 60.0 * 0.4, 0.0, 0.0],
+            training_load: None,
         }
     }
 

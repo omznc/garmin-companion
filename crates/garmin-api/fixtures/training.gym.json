@@ -44,7 +44,8 @@
               "09 Feb",
               "09 Mar"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11"
           }
         ]
       }
@@ -207,7 +208,15 @@
           "distance": "",
           "duration": "57 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.0,
+        "priorAvgHrv": 54.0,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -303,7 +312,15 @@
           "distance": "",
           "duration": "1h 03m"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.0,
+        "priorAvgHrv": 53.714285714285715,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -399,7 +416,15 @@
           "distance": "",
           "duration": "59 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.714285714285715,
+        "priorAvgHrv": 54.142857142857146,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -495,7 +520,15 @@
           "distance": "",
           "duration": "55 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.142857142857146,
+        "priorAvgHrv": 53.857142857142854,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -575,7 +608,15 @@
           "distance": "",
           "duration": "57 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.857142857142854,
+        "priorAvgHrv": 54.285714285714285,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     }
   ]
 }

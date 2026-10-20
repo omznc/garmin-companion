@@ -62,7 +62,8 @@
               "2025-09-30",
               "2026-03-11"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11"
           }
         ]
       },
@@ -96,7 +97,8 @@
               "Sep",
               "Mar"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11"
           }
         ]
       },
@@ -146,7 +148,8 @@
               "22 Dec",
               "09 Mar"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11"
           }
         ]
       },
@@ -163,7 +166,8 @@
             "figures": [],
             "series": [],
             "ends": [],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11"
           }
         ]
       }
@@ -370,7 +374,15 @@
           "distance": "6.5 km",
           "duration": "37 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 41.0,
+        "priorAvgHrv": 50.285714285714285,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -476,7 +488,15 @@
           "distance": "7.8 km",
           "duration": "41 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 50.285714285714285,
+        "priorAvgHrv": 53.714285714285715,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -590,7 +610,15 @@
           "distance": "6.6 km",
           "duration": "37 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.714285714285715,
+        "priorAvgHrv": 54.142857142857146,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -675,7 +703,15 @@
           "distance": "7.0 km",
           "duration": "39 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.142857142857146,
+        "priorAvgHrv": 53.857142857142854,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -768,7 +804,15 @@
           "distance": "7.0 km",
           "duration": "42 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.857142857142854,
+        "priorAvgHrv": 54.285714285714285,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -853,7 +897,15 @@
           "distance": "8.0 km",
           "duration": "49 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.285714285714285,
+        "priorAvgHrv": 54.0,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -938,7 +990,15 @@
           "distance": "6.0 km",
           "duration": "36 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.0,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1018,7 +1078,15 @@
           "distance": "7.0 km",
           "duration": "43 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1098,7 +1166,15 @@
           "distance": "8.0 km",
           "duration": "50 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1178,7 +1254,15 @@
           "distance": "6.0 km",
           "duration": "38 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1266,7 +1350,15 @@
           "distance": "8.0 km",
           "duration": "52 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1346,7 +1438,15 @@
           "distance": "6.0 km",
           "duration": "39 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1426,7 +1526,15 @@
           "distance": "7.0 km",
           "duration": "46 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1506,7 +1614,15 @@
           "distance": "8.0 km",
           "duration": "53 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1586,7 +1702,15 @@
           "distance": "6.0 km",
           "duration": "40 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1666,7 +1790,15 @@
           "distance": "7.0 km",
           "duration": "47 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1754,7 +1886,15 @@
           "distance": "6.0 km",
           "duration": "41 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     }
   ]
 }

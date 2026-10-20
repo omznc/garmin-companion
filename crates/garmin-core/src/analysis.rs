@@ -1591,6 +1591,7 @@ mod tests {
             aerobic_te: Some(3.0),
             anaerobic_te: Some(1.0),
             zone_secs: [60.0, 240.0, 900.0, 500.0, 100.0],
+            training_load: None,
         }
     }
 

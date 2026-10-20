@@ -337,7 +337,14 @@
             "date": "05 Mar",
             "detail": "7.3 km · 0h 40m"
           }
-        ]
+        ],
+        "bestTime": {
+          "activityId": 9000000,
+          "durationS": 2100.0,
+          "text": "35 min",
+          "date": "2026-03-11"
+        },
+        "elevationM": null
       },
       {
         "name": "Morning Run",
@@ -602,9 +609,22 @@
             "date": "01 Mar",
             "detail": "8.2 km · 0h 43m"
           }
-        ]
+        ],
+        "bestTime": {
+          "activityId": 9000004,
+          "durationS": 2460.0,
+          "text": "41 min",
+          "date": "2026-03-03"
+        },
+        "elevationM": null
       }
-    ]
+    ],
+    "longest": {
+      "name": "Morning Run",
+      "distanceM": 8025.0,
+      "distance": "8.0 km"
+    },
+    "courses": []
   },
   "gear": {
     "empty": null,
