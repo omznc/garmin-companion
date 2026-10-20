@@ -44,6 +44,15 @@ fn backoff(attempt: u32, retry_after: Option<u64>) -> std::time::Duration {
     std::time::Duration::from_secs(secs)
 }
 
+/// A write is never repeated: a lost reply could hide a created workout.
+fn max_attempts(method: &reqwest::Method) -> u32 {
+    if *method == reqwest::Method::GET {
+        MAX_ATTEMPTS
+    } else {
+        1
+    }
+}
+
 fn is_busy(status: reqwest::StatusCode) -> bool {
     status.as_u16() == 429 || status.is_server_error()
 }
@@ -186,12 +195,7 @@ impl GarminClient {
         let mut attempted_refresh = false;
         let mut attempts = 0;
 
-        // A write is never repeated: a lost reply could hide a created workout.
-        let max_attempts = if method == reqwest::Method::GET {
-            MAX_ATTEMPTS
-        } else {
-            1
-        };
+        let max_attempts = max_attempts(&method);
 
         loop {
             attempts += 1;
@@ -657,4 +661,32 @@ pub struct HrZoneBucket {
     pub secs_in_zone: Option<f64>,
     #[serde(default)]
     pub zone_low_boundary: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::{Method, StatusCode};
+
+    #[test]
+    fn only_a_read_is_retried() {
+        assert_eq!(max_attempts(&Method::GET), 3);
+        assert_eq!(max_attempts(&Method::POST), 1);
+    }
+
+    #[test]
+    fn backoff_grows_and_honours_retry_after() {
+        assert_eq!(backoff(1, None).as_secs(), 1);
+        assert_eq!(backoff(2, None).as_secs(), 3);
+        assert_eq!(backoff(1, Some(7)).as_secs(), 7);
+        assert_eq!(backoff(1, Some(600)).as_secs(), 30);
+    }
+
+    #[test]
+    fn busy_means_429_or_5xx() {
+        assert!(is_busy(StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_busy(StatusCode::BAD_GATEWAY));
+        assert!(!is_busy(StatusCode::NOT_FOUND));
+        assert!(!is_busy(StatusCode::OK));
+    }
 }

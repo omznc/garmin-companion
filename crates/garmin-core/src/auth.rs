@@ -198,6 +198,20 @@ pub async fn exchange_service_ticket(
     ))
 }
 
+/// The token endpoint refused a refresh. The type lets a sync abort at once,
+/// because every later request would fail the same way. The text is unchanged
+/// so callers that match on it keep working.
+#[derive(Debug)]
+pub struct AuthFailed(pub String);
+
+impl std::fmt::Display for AuthFailed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for AuthFailed {}
+
 /// Exchange the refresh token for a fresh access token.
 ///
 /// Garmin may or may not rotate the refresh token on each call; when it does
@@ -227,11 +241,12 @@ pub async fn refresh(client: &reqwest::Client, tokens: &Tokens) -> Result<Tokens
         // 400/401 here means the refresh token is dead and the user has to log
         // in again; anything else is likely transient. The caller distinguishes
         // these to decide whether to surface a re-login prompt.
-        return Err(anyhow!(
+        return Err(AuthFailed(format!(
             "DI token refresh failed: {} {}",
             status,
             body.chars().take(200).collect::<String>()
-        ));
+        ))
+        .into());
     }
 
     let parsed: TokenResponse =

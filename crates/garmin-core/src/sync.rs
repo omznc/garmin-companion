@@ -3,7 +3,7 @@
 //! Sync is incremental and idempotent: activities upsert by id, daily metrics
 //! upsert by date. Re-running it is always safe.
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{Duration, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -152,6 +152,7 @@ pub async fn sync_daily(
 ) -> Result<()> {
     let total = dates.len() as u32;
     let mut empty_streak = 0u32;
+    let mut outage_streak = 0u32;
 
     for (i, date) in dates.iter().enumerate() {
         let offset = i as u32;
@@ -160,6 +161,7 @@ pub async fn sync_daily(
             date: date_str.clone(),
             ..Default::default()
         };
+        let mut had_5xx = false;
 
         // Announced before the five requests rather than after, so the date on
         // screen is the one currently being waited on.
@@ -186,7 +188,7 @@ pub async fn sync_daily(
                 metrics.bmr_kcal = num(&v, &["bmrKilocalories"]);
                 metrics.net_calorie_goal = num(&v, &["netCalorieGoal"]);
             }
-            Err(e) => warn_or_abort(report, "user summary", &date_str, e)?,
+            Err(e) => warn_or_abort(report, "user summary", &date_str, e, &mut had_5xx)?,
         }
 
         match client.hrv(&date_str).await {
@@ -195,7 +197,7 @@ pub async fn sync_daily(
                 metrics.hrv_weekly_avg = num(&v, &["hrvSummary", "weeklyAvg"]);
                 metrics.hrv_status = text(&v, &["hrvSummary", "status"]);
             }
-            Err(e) => warn_or_abort(report, "hrv", &date_str, e)?,
+            Err(e) => warn_or_abort(report, "hrv", &date_str, e, &mut had_5xx)?,
         }
 
         match client.training_readiness(&date_str).await {
@@ -204,7 +206,7 @@ pub async fn sync_daily(
                 let first = v.as_array().and_then(|a| a.first()).unwrap_or(&v);
                 metrics.training_readiness = num(first, &["score"]);
             }
-            Err(e) => warn_or_abort(report, "training readiness", &date_str, e)?,
+            Err(e) => warn_or_abort(report, "training readiness", &date_str, e, &mut had_5xx)?,
         }
 
         match client.hydration(&date_str).await {
@@ -213,7 +215,7 @@ pub async fn sync_daily(
                 metrics.hydration_goal_ml = num(&v, &["goalInML"]);
                 metrics.sweat_loss_ml = num(&v, &["sweatLossInML"]);
             }
-            Err(e) => warn_or_abort(report, "hydration", &date_str, e)?,
+            Err(e) => warn_or_abort(report, "hydration", &date_str, e, &mut had_5xx)?,
         }
 
         match client.sleep(display_name, &date_str).await {
@@ -242,7 +244,12 @@ pub async fn sync_daily(
                     }
                 }
             }
-            Err(e) => warn_or_abort(report, "sleep", &date_str, e)?,
+            Err(e) => warn_or_abort(report, "sleep", &date_str, e, &mut had_5xx)?,
+        }
+
+        outage_streak = if had_5xx { outage_streak + 1 } else { 0 };
+        if outage_streak >= OUTAGE_DAYS {
+            bail!("Garmin answered with server errors on {OUTAGE_DAYS} days in a row, up to {date_str}");
         }
 
         // The day counts as real if any figure came back with a value in it —
@@ -251,7 +258,8 @@ pub async fn sync_daily(
             db.upsert_daily(&metrics)?;
             report.days_written += 1;
             empty_streak = 0;
-        } else {
+        } else if !had_5xx {
+            // A day with a server error is unknown, not empty.
             empty_streak += 1;
             // Walking back past the day the watch was first worn means every
             // endpoint returns nothing, forever. The account can predate the
@@ -271,17 +279,43 @@ pub async fn sync_daily(
 
 /// A reply that says "no data" is a warning. A failed request is not a reply:
 /// a dropped network would count every day as empty, end the walk early and
-/// report success. So the walk stops with the error instead.
-fn warn_or_abort(report: &mut SyncReport, what: &str, date: &str, e: anyhow::Error) -> Result<()> {
-    let busy = e
+/// report success. So a transport error, a 429 or a dead token stops the walk.
+/// A 5xx is a warning that sets `had_5xx`, because one bad endpoint on one
+/// day must not end the walk.
+fn warn_or_abort(
+    report: &mut SyncReport,
+    what: &str,
+    date: &str,
+    e: anyhow::Error,
+    had_5xx: &mut bool,
+) -> Result<()> {
+    let status = e
         .downcast_ref::<crate::client::HttpStatus>()
-        .is_some_and(|h| h.status == 429 || h.status >= 500);
-    if busy || e.downcast_ref::<reqwest::Error>().is_some() {
+        .map(|h| h.status);
+    let fatal = status == Some(429)
+        || e.downcast_ref::<reqwest::Error>().is_some()
+        || e.downcast_ref::<crate::auth::AuthFailed>().is_some();
+    if fatal {
         return Err(e.context(format!("{what} {date}")));
     }
+    *had_5xx |= status.is_some_and(|s| s >= 500);
     report.warnings.push(format!("{what} {date}: {e}"));
     Ok(())
 }
+
+/// A per-item failure is a warning, but a dead network stops the loop. Each
+/// failing item costs a full set of retries, so going on would take minutes.
+fn warn_or_stop(report: &mut SyncReport, what: &str, e: anyhow::Error) -> Result<()> {
+    if e.downcast_ref::<reqwest::Error>().is_some() {
+        return Err(e.context(what.to_string()));
+    }
+    report.warnings.push(format!("{what}: {e}"));
+    Ok(())
+}
+
+/// How many days in a row with a 5xx end the walk. One or two bad days are
+/// a flaky endpoint. Three in a row mean Garmin is down.
+const OUTAGE_DAYS: u32 = 3;
 
 /// How many consecutive days with nothing at all end a full wellness walk.
 /// Long enough to ride out a holiday or a month of a broken strap, short
@@ -428,7 +462,7 @@ pub async fn sync_strength(
                 report.sets_written += sets.len();
                 db.save_exercise_sets(id, &sets)?;
             }
-            Err(e) => report.warnings.push(format!("exercise sets {id}: {e}")),
+            Err(e) => warn_or_stop(report, &format!("exercise sets {id}"), e)?,
         }
     }
 
@@ -522,7 +556,7 @@ pub async fn sync_tracks(
         let detail = match client.activity_details(id, TRACK_POINTS as u32).await {
             Ok(d) => d,
             Err(e) => {
-                report.warnings.push(format!("track {id}: {e}"));
+                warn_or_stop(report, &format!("track {id}"), e)?;
                 continue;
             }
         };
@@ -727,6 +761,7 @@ mod tests {
     #[test]
     fn a_failed_request_aborts_but_a_status_error_only_warns() {
         let mut report = SyncReport::default();
+        let mut had_5xx = false;
         let status = |code| {
             anyhow::Error::new(crate::client::HttpStatus {
                 path: "/x".into(),
@@ -734,15 +769,20 @@ mod tests {
                 body: String::new(),
             })
         };
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(404)).is_ok());
+        let mut run = |report: &mut SyncReport, e| {
+            warn_or_abort(report, "hrv", "2025-01-01", e, &mut had_5xx)
+        };
+        assert!(run(&mut report, status(404)).is_ok());
         assert_eq!(report.warnings.len(), 1);
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(503)).is_err());
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status(429)).is_err());
-        assert_eq!(report.warnings.len(), 1);
-
+        assert!(run(&mut report, status(429)).is_err());
+        let dead = anyhow::Error::new(crate::auth::AuthFailed("refresh failed".into()));
+        assert!(run(&mut report, dead).is_err());
         let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
         let wrapped = anyhow::Error::new(transport).context("request to /x failed");
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", wrapped).is_err());
+        assert!(run(&mut report, wrapped).is_err());
         assert_eq!(report.warnings.len(), 1);
+        assert!(run(&mut report, status(503)).is_ok());
+        assert_eq!(report.warnings.len(), 2);
+        assert!(had_5xx);
     }
 }
