@@ -87,13 +87,13 @@ impl Db {
         Ok(())
     }
 
-    /// The VO2 max days on or after `from`, oldest first.
+    /// The VO2 max days from `from` up to the as-of date, oldest first.
     pub fn vo2_since(&self, from: &str) -> Result<Vec<Vo2Day>> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT date, vo2 FROM vo2_days WHERE date >= ?1 ORDER BY date")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT date, vo2 FROM vo2_days WHERE date >= ?1 AND date <= ?2 ORDER BY date",
+        )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(Vo2Day {
                     date: r.get(0)?,
                     vo2: r.get(1)?,
@@ -112,14 +112,14 @@ impl Db {
         Ok(())
     }
 
-    /// The newest fitness age.
+    /// The newest fitness age on or before the as-of date.
     pub fn latest_fitness_age(&self) -> Result<Option<FitnessAge>> {
         Ok(self
             .conn
             .query_row(
                 "SELECT date, fitness_age, chronological_age, achievable_age
-                 FROM fitness_age ORDER BY date DESC LIMIT 1",
-                [],
+                 FROM fitness_age WHERE date <= ?1 ORDER BY date DESC LIMIT 1",
+                params![crate::until()],
                 |r| {
                     Ok(FitnessAge {
                         date: r.get(0)?,
@@ -190,5 +190,25 @@ mod tests {
         let got = db.vo2_since("2026-03-02").unwrap();
         assert_eq!(got, vec![day("2026-03-02", 52.0)]);
         assert_eq!(db.vo2_since("2026-01-01").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn the_vo2_reads_stop_at_the_as_of_date() {
+        let db = crate::db::scratch_db("vo2-as-of");
+        let day = |d: &str, v| Vo2Day {
+            date: d.into(),
+            vo2: v,
+        };
+        db.save_vo2_days(&[day("2026-03-01", 50.0), day("2026-03-09", 51.0)])
+            .unwrap();
+        let age = |d: &str, a| parse_fitness_age(d, &json!({ "fitnessAge": a })).unwrap();
+        db.save_fitness_age(&age("2026-03-01", 38.0)).unwrap();
+        db.save_fitness_age(&age("2026-03-09", 37.0)).unwrap();
+        let as_of = chrono::NaiveDate::from_ymd_opt(2026, 3, 5).unwrap();
+        crate::with_as_of(as_of, || {
+            assert_eq!(db.vo2_since("2026-01-01").unwrap().len(), 1);
+            let latest = db.latest_fitness_age().unwrap().unwrap();
+            assert_eq!(latest.date, "2026-03-01");
+        });
     }
 }

@@ -648,7 +648,7 @@ impl Db {
         let sql = format!(
             "SELECT {ACTIVITY_COLS}
              FROM activities
-             WHERE {NOT_NOISE} AND local_date <= ?2 {}
+             WHERE {NOT_NOISE} AND (local_date IS NULL OR local_date <= ?2) {}
              ORDER BY start_time_local DESC
              LIMIT ?1",
             if type_key.is_some() {
@@ -1295,7 +1295,7 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT activity_id FROM activity_tags WHERE tag = ?1)
-               AND local_date <= ?3
+               AND (local_date IS NULL OR local_date <= ?3)
              ORDER BY start_time_local DESC LIMIT ?2"
         ))?;
         let rows = stmt.query_map(
@@ -1417,7 +1417,7 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT DISTINCT activity_id FROM exercise_sets)
-               AND local_date <= ?2
+               AND (local_date IS NULL OR local_date <= ?2)
              ORDER BY start_time_local DESC LIMIT ?1"
         ))?;
         let rows = stmt
@@ -2201,6 +2201,56 @@ mod tests {
             "activityType": { "typeKey": type_key },
         }))
         .expect("activity fixture")
+    }
+
+    #[test]
+    fn an_as_of_date_keeps_a_row_with_no_local_date() {
+        let db = scratch("null-local-date");
+        db.upsert_activity(&activity(
+            1,
+            "running",
+            "2026-03-10",
+            30.0,
+            serde_json::json!(140),
+        ))
+        .unwrap();
+        db.upsert_activity(&activity(
+            2,
+            "running",
+            "2026-03-10",
+            30.0,
+            serde_json::json!(140),
+        ))
+        .unwrap();
+        db.conn
+            .execute(
+                "UPDATE activities SET local_date = NULL WHERE activity_id = 2",
+                [],
+            )
+            .unwrap();
+        db.set_activity_tags(2, &["easy".to_string()]).unwrap();
+        db.save_exercise_sets(
+            2,
+            &[crate::ExerciseSet {
+                activity_id: 2,
+                set_index: 0,
+                active: true,
+                duration_s: None,
+                reps: Some(5),
+                exercise: None,
+                exercise_confidence: None,
+                weight_kg: None,
+                start_time: None,
+            }],
+        )
+        .unwrap();
+        let as_of = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        crate::with_as_of(as_of, || {
+            let ids = |v: Vec<CachedActivity>| v.iter().map(|a| a.activity_id).collect::<Vec<_>>();
+            assert_eq!(ids(db.recent_activities(10, None).unwrap()), vec![2]);
+            assert_eq!(ids(db.activities_with_tag("easy", 10).unwrap()), vec![2]);
+            assert_eq!(ids(db.strength_activities(10).unwrap()), vec![2]);
+        });
     }
 
     #[test]
