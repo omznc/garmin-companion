@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { type KeyboardTypeOptions, Platform, TextInput, View } from "react-native";
 import { isSampleData } from "../data/source";
+import { toggled } from "../ui/haptics";
 import { SAMPLE_KEY_NOTE, needsSetup, saveKey, useCoachConfig } from "../data/useAsk";
 import {
   type CloudAccount,
@@ -193,6 +194,7 @@ export function CoachPage() {
   const { problem, run } = useJob();
   const choose = (p: "cloud" | "openrouter") =>
     run(async () => {
+      toggled();
       await chooseProvider(p);
       await config.refetch();
     });

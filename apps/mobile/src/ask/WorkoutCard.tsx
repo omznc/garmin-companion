@@ -4,6 +4,8 @@ import { Platform, Pressable, Text, type TextStyle, View } from "react-native";
 import type { DraftEntry, DraftExec } from "../data/chatTypes";
 import { queryClient } from "../data/queryClient";
 import { callJson } from "../data/source";
+import { committed } from "../ui/haptics";
+import { showSnackbar } from "../ui/snackbar-store";
 import { Glyph } from "./Glyph";
 import { Spinner } from "./Spinner";
 import { SportGlyph } from "./SportGlyph";
@@ -62,6 +64,8 @@ function useSave(turnId: string, entry: DraftEntry): Save {
     })
       .then((result) => {
         setWorkoutId(result.workoutId);
+        committed();
+        showSnackbar("Workout saved to Garmin");
         void queryClient.invalidateQueries({ queryKey: threadKey(sessionId) });
       })
       .catch((error: Error & { kind?: string }) =>
