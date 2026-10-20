@@ -413,7 +413,7 @@ mod tests {
 
     const FONT: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../apps/desktop/assets/fonts/InstrumentSans-Regular.ttf"
+        "/../../apps/desktop/assets/fonts/IBMPlexSans-Regular.ttf"
     ));
 
     fn today() -> NaiveDate {
