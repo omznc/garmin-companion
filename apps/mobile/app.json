@@ -46,10 +46,15 @@
       "expo-system-ui",
       "./plugins/self-update",
       "./plugins/data-extraction",
+      "./plugins/night-mode",
       [
         "expo-build-properties",
         {
-          "android": { "buildArchs": ["arm64-v8a", "x86_64"], "minSdkVersion": 24 }
+          "android": {
+            "buildArchs": ["arm64-v8a", "x86_64"],
+            "minSdkVersion": 24,
+            "extraProguardRules": "-keepclassmembers class com.facebook.react.ReactActivity {\n    private androidx.activity.OnBackPressedCallback *;\n    public void invokeDefaultOnBackPressed();\n}\n"
+          }
         }
       ]
     ],

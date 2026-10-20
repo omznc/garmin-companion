@@ -4,12 +4,23 @@
 import { File, Paths } from "expo-file-system";
 import { useSyncExternalStore } from "react";
 import { Appearance } from "react-native";
+import { NightMode } from "../../modules/night-mode";
 import { type ThemeId, THEMES } from "./themes";
 
 export type SchemePref = "system" | "light" | "dark";
-export type ThemePrefs = { scheme: SchemePref; theme: ThemeId; materialYou: boolean };
+export type ThemePrefs = {
+  scheme: SchemePref;
+  theme: ThemeId;
+  materialYou: boolean;
+  highContrast: boolean;
+};
 
-const DEFAULTS: ThemePrefs = { scheme: "system", theme: "ember", materialYou: true };
+const DEFAULTS: ThemePrefs = {
+  scheme: "system",
+  theme: "ember",
+  materialYou: true,
+  highContrast: false,
+};
 const file = () => new File(Paths.document, "theme.json");
 
 const read = (): ThemePrefs => {
@@ -21,6 +32,7 @@ const read = (): ThemePrefs => {
         : DEFAULTS.scheme,
       theme: THEMES.some((t) => t.id === p.theme) ? (p.theme as ThemeId) : DEFAULTS.theme,
       materialYou: typeof p.materialYou === "boolean" ? p.materialYou : DEFAULTS.materialYou,
+      highContrast: typeof p.highContrast === "boolean" ? p.highContrast : DEFAULTS.highContrast,
     };
   } catch {
     // No file yet, or an unreadable one: the defaults are a complete theme.
@@ -29,8 +41,12 @@ const read = (): ThemePrefs => {
 };
 
 // "system" clears the override, so the phone setting rules again.
-const applyScheme = (scheme: SchemePref) =>
+// On Android a copy goes to the native side. The next cold start reads it before
+// the first frame (modules/night-mode).
+const applyScheme = (scheme: SchemePref) => {
+  NightMode?.save(scheme);
   Appearance.setColorScheme(scheme === "system" ? "unspecified" : scheme);
+};
 
 let current = read();
 applyScheme(current.scheme);
