@@ -41,7 +41,7 @@ pub fn render(root: &Root, coach: Option<&str>, narrow: bool, t: &Theme) -> Div 
     let coach = coach
         .filter(|_| !narrow)
         .map(|name| item(format!("Coach: {name}"), false, false, t));
-    let version = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let version = format!("v{}", crate::updater::VERSION);
     div()
         .flex_none()
         .flex()

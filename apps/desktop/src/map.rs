@@ -5,6 +5,7 @@
 //! formatting from `app/src/lib/format.ts` lives here.
 
 use chrono::{Datelike, Duration, NaiveDate};
+use garmin_api::headline::HeadlineTone;
 use garmin_api::TodayView;
 use garmin_core::analysis::Discipline;
 use garmin_core::CachedActivity;
@@ -334,12 +335,17 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
     let eyebrow = day.map_or(String::new(), |d| {
         format!("{}, {} {}", weekday, d.day(), d.format("%B"))
     });
+    // The headline reads the signals. With no data it has nothing to say.
+    let (title, lede) = match &view.headline {
+        h if h.tone != HeadlineTone::NoData => (h.verdict.clone(), h.detail.clone()),
+        _ => (format!("{weekday}."), view.lede.clone()),
+    };
     Today {
         who,
         synced_ago: None,
         eyebrow,
-        title: format!("{weekday}."),
-        lede: view.lede.clone(),
+        title,
+        lede,
         empty: view.empty,
         sections: view.sections.clone(),
         metrics: metrics(view),
