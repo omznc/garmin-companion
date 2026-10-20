@@ -40,9 +40,9 @@ pub(crate) async fn handle(
         return None;
     }
     Some(if fixture {
-        create(args, true, |_| async { Ok(SAMPLE_WORKOUT_ID) }).await
+        create(args, true, |_| async { Ok(SAMPLE_WORKOUT_ID) }, || {}).await
     } else {
-        create(args, false, save_to_garmin).await
+        create(args, false, save_to_garmin, refresh_in_background).await
     })
 }
 
@@ -60,9 +60,22 @@ async fn save_to_garmin(draft: WorkoutDraft) -> Result<i64, FfiError> {
     }
 }
 
+/// Refresh the cached workouts on a worker thread. A failure is ignored.
+fn refresh_in_background() {
+    drop(tokio::task::spawn_blocking(
+        garmin_api::workouts::refresh_workouts,
+    ));
+}
+
 /// Read the stored draft, save it when it has no id, and store the id in that
-/// one turn. `save` is the call to Garmin.
-async fn create<F, Fut>(args: &Value, fixture: bool, save: F) -> Result<String, FfiError>
+/// one turn. `save` is the call to Garmin. `refresh` runs after the id is
+/// stored and must not wait for the network.
+async fn create<F, Fut>(
+    args: &Value,
+    fixture: bool,
+    save: F,
+    refresh: impl FnOnce(),
+) -> Result<String, FfiError>
 where
     F: FnOnce(WorkoutDraft) -> Fut,
     Fut: Future<Output = Result<i64, FfiError>>,
@@ -81,8 +94,10 @@ where
         Some(id) => id,
         None => {
             let id = save(entry.draft).await?;
+            // Store the id before any other call, so a kill cannot lose it.
             chat::set_saved(fixture, key, id).map_err(failed)?;
             mark_saved(key.0, key.1, key.2, id);
+            refresh();
             id
         }
     };
@@ -128,10 +143,15 @@ mod tests {
     async fn a_saved_draft_returns_its_id_and_does_not_call_garmin() {
         let args = thread("wk-saved", Some(77));
         let calls = AtomicUsize::new(0);
-        let out = create(&args, true, |_| async {
-            calls.fetch_add(1, Ordering::Relaxed);
-            Ok(1)
-        })
+        let out = create(
+            &args,
+            true,
+            |_| async {
+                calls.fetch_add(1, Ordering::Relaxed);
+                Ok(1)
+            },
+            || {},
+        )
         .await;
         assert_eq!(id_of(out), 77);
         assert_eq!(calls.load(Ordering::Relaxed), 0);
@@ -145,12 +165,44 @@ mod tests {
             calls.fetch_add(1, Ordering::Relaxed);
             Ok(55)
         };
-        assert_eq!(id_of(create(&args, true, save).await), 55);
-        assert_eq!(id_of(create(&args, true, save).await), 55);
+        let refreshes = AtomicUsize::new(0);
+        let refresh = || {
+            // The id is already stored when the refresh runs.
+            let key = ("wk-new", args["turnId"].as_str().unwrap(), "c1");
+            let stored = chat::find_draft(true, key).unwrap().unwrap();
+            assert_eq!(stored.saved_workout_id, Some(55));
+            refreshes.fetch_add(1, Ordering::Relaxed);
+        };
+        assert_eq!(id_of(create(&args, true, save, refresh).await), 55);
+        assert_eq!(id_of(create(&args, true, save, || {}).await), 55);
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(refreshes.load(Ordering::Relaxed), 1);
         let key = ("wk-new", args["turnId"].as_str().unwrap(), "c1");
         let stored = chat::find_draft(true, key).unwrap().unwrap();
         assert_eq!(stored.saved_workout_id, Some(55));
+    }
+
+    #[tokio::test]
+    async fn saving_the_second_draft_marks_only_the_second() {
+        let mut turn = chat::begin_turn(true, "wk-two", "plan").unwrap();
+        turn.status = Status::Done;
+        turn.drafts = ["c1", "c1-1"]
+            .map(|id| DraftEntry {
+                call_id: id.into(),
+                draft: draft(),
+                saved_workout_id: None,
+            })
+            .to_vec();
+        chat::finish_turn(true, "wk-two", &turn).unwrap();
+        let turn_id = turn.id.as_str();
+        let args2 = json!({ "sessionId": "wk-two", "turnId": turn_id, "callId": "c1-1" });
+        assert_eq!(
+            id_of(create(&args2, true, |_| async { Ok(8) }, || {}).await),
+            8
+        );
+        let find = |call: &str| chat::find_draft(true, ("wk-two", turn_id, call)).unwrap();
+        assert_eq!(find("c1").unwrap().saved_workout_id, None);
+        assert_eq!(find("c1-1").unwrap().saved_workout_id, Some(8));
     }
 
     /// The turn in memory is older than the store. Its end must keep the id.
@@ -182,7 +234,9 @@ mod tests {
     async fn an_unknown_call_id_is_a_bad_argument() {
         let mut args = thread("wk-unknown", None);
         args["callId"] = "nope".into();
-        let err = create(&args, true, |_| async { Ok(1) }).await.unwrap_err();
+        let err = create(&args, true, |_| async { Ok(1) }, || {})
+            .await
+            .unwrap_err();
         assert!(matches!(err, FfiError::BadArgs { .. }));
         let err = handle("workout_create", &json!({}), true).await;
         assert!(matches!(err, Some(Err(FfiError::BadArgs { .. }))));

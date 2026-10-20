@@ -473,6 +473,55 @@ mod tests {
         assert_eq!(turn.steps[0].label, "Real.");
     }
 
+    fn running_sink(session: &str) -> TurnSink {
+        let turn = Turn {
+            id: format!("{session}:0"),
+            question: "q".into(),
+            answer: String::new(),
+            steps: Vec::new(),
+            status: Status::Running,
+            error: None,
+            drafts: Vec::new(),
+        };
+        TurnSink(Arc::new(SinkState {
+            session_id: session.into(),
+            turn_id: format!("{session}:0"),
+            discarded: AtomicBool::new(false),
+            fixture: true,
+            flag: Arc::new(AtomicBool::new(false)),
+            turn: Mutex::new(turn),
+        }))
+    }
+
+    fn draft_event(call_id: &str) -> Event {
+        Event::Draft {
+            call_id: call_id.into(),
+            draft: garmin_core::workout::parse_draft(&sample_draft()).unwrap(),
+        }
+    }
+
+    #[test]
+    fn a_draft_is_stored_at_once_while_the_turn_runs() {
+        let sink = running_sink("s-draft");
+        assert!(sink.apply(&Event::Delta { text: "x".into() }).is_none());
+        let stored = sink.apply(&draft_event("d1")).expect("draft is stored");
+        assert_eq!(stored.drafts.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_save_marks_only_its_draft_in_the_live_turn() {
+        let _seq = crate::TEST_LOCK.lock().await;
+        let sink = running_sink("s-mark");
+        sink.apply(&draft_event("c1"));
+        sink.apply(&draft_event("c1-1"));
+        *RUNNING.lock().unwrap() = Some(sink.0.clone());
+        mark_saved("s-mark", "s-mark:0", "c1-1", 42);
+        let live = live_turn("s-mark").unwrap();
+        *RUNNING.lock().unwrap() = None;
+        let saved: Vec<_> = live.drafts.iter().map(|d| d.saved_workout_id).collect();
+        assert_eq!(saved, vec![None, Some(42)]);
+    }
+
     #[tokio::test]
     async fn a_panicking_turn_ends_with_an_error_event() {
         let rec = Rec::default();

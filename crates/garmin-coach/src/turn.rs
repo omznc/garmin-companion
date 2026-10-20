@@ -142,6 +142,7 @@ async fn rounds<T: Transport>(
 
     let schemas = tools::schemas(drafts);
     let mut sources = Vec::new();
+    let mut used_ids = std::collections::HashSet::new();
 
     for round in 0..=MAX_TOOL_ROUNDS {
         if stop.load(Ordering::Relaxed) {
@@ -151,7 +152,7 @@ async fn rounds<T: Transport>(
         // has. The schemas stay in the request: the messages hold tool calls.
         let last = round == MAX_TOOL_ROUNDS;
         let choice = last.then_some("none");
-        let stream = transport
+        let mut stream = transport
             .complete(&messages, Some(&schemas), choice, sink, stop)
             .await?;
 
@@ -161,6 +162,8 @@ async fn rounds<T: Transport>(
         if last || stream.tool_calls.is_empty() {
             return answered(&stream.content, sources);
         }
+
+        make_ids_unique(&mut stream.tool_calls, &mut used_ids);
 
         // This text was narration, not the answer. Say so before the tools run.
         // Whitespace sends an empty note: the host clears it from the answer.
@@ -201,6 +204,19 @@ async fn rounds<T: Transport>(
         }
     }
     Err(no_answer())
+}
+
+/// Give each call an id that is unique in the turn. A provider can leave the id
+/// out or reuse it in a later round. The app finds a draft by this id.
+fn make_ids_unique(calls: &mut [ToolCall], used: &mut std::collections::HashSet<String>) {
+    for call in calls {
+        let base = call.id.clone();
+        let mut n = 1;
+        while !used.insert(call.id.clone()) {
+            call.id = format!("{base}-{n}");
+            n += 1;
+        }
+    }
 }
 
 /// Run one tool call. A host with drafts off does not know `draft_workout`,
@@ -627,6 +643,30 @@ mod tests {
         assert_eq!(json["type"], "draft");
         assert_eq!(json["callId"], "c1");
         assert_eq!(json["draft"]["name"], "Easy 30");
+    }
+
+    #[tokio::test]
+    async fn two_drafts_in_one_turn_get_distinct_ids() {
+        let args = good_draft_args();
+        let mock = Mock::new(&[
+            &call("draft_workout", &args),
+            &call("draft_workout", &args),
+            &text("Here."),
+        ]);
+        let sink = Rec::default();
+        let stop = AtomicBool::new(false);
+        run_turn(&mock, &sink, &stop, user("plan"), &empty_db, true)
+            .await
+            .unwrap();
+        let ids: Vec<_> = sink
+            .events()
+            .into_iter()
+            .filter_map(|e| match e {
+                Event::Draft { call_id, .. } => Some(call_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, vec!["c1", "c1-1"]);
     }
 
     #[tokio::test]
