@@ -71,7 +71,8 @@
         800.0,
         0.0,
         0.0
-      ]
+      ],
+      "trainingLoad": null
     },
     "hasZoneData": true,
     "aboveZ2Pct": 5.405405405405405,

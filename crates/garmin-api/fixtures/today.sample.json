@@ -139,7 +139,8 @@
         300.0,
         100.0,
         0.0
-      ]
+      ],
+      "trainingLoad": null
     },
     "hasZoneData": true,
     "aboveZ2Pct": 25.806451612903224,

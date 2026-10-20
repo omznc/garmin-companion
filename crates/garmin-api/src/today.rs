@@ -392,6 +392,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         };
         let one = [
             run(1, "2026-03-10", "running"),
@@ -423,6 +424,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [100.0 - hard, 0.0, hard, 0.0, 0.0],
+            training_load: None,
         };
         // Newest first, as the database returns them.
         let d = zone_drift(&[mk(3, 60.0), mk(2, 30.0), mk(1, 0.0), mk(0, 0.0)]);
@@ -453,6 +455,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         };
         let w = week(
             &[mk("2026-03-11"), mk("2026-03-10"), mk("2026-03-02")],

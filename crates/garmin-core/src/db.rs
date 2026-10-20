@@ -22,7 +22,7 @@ pub struct Db {
 const ACTIVITY_COLS: &str = "activity_id, name, type_key, start_time_local, local_date,
      distance_m, duration_s, moving_duration_s, avg_hr, max_hr, avg_cadence,
      calories, elevation_gain, steps, aerobic_te, anaerobic_te,
-     z1_secs, z2_secs, z3_secs, z4_secs, z5_secs";
+     z1_secs, z2_secs, z3_secs, z4_secs, z5_secs, training_load";
 
 /// Rows that are in the table but are not sessions.
 ///
@@ -88,6 +88,7 @@ fn map_activity(r: &rusqlite::Row) -> rusqlite::Result<CachedActivity> {
         aerobic_te: r.get(14)?,
         anaerobic_te: r.get(15)?,
         zone_secs: [r.get(16)?, r.get(17)?, r.get(18)?, r.get(19)?, r.get(20)?],
+        training_load: r.get(21)?,
     })
 }
 
@@ -459,6 +460,9 @@ impl Db {
             // session can legitimately have no sets and asking Garmin again on
             // every sync forever is the alternative.
             "ALTER TABLE activities ADD COLUMN sets_synced INTEGER",
+            // Garmin's load for the session. It stays null on an old row
+            // until a full sync writes the row again.
+            "ALTER TABLE activities ADD COLUMN training_load REAL",
         ] {
             match self.conn.execute(ddl, []) {
                 Ok(_) => {}
@@ -479,11 +483,12 @@ impl Db {
                 distance_m, duration_s, avg_hr, max_hr, avg_cadence, max_cadence,
                 avg_speed, calories, aerobic_te, anaerobic_te,
                 z1_secs, z2_secs, z3_secs, z4_secs, z5_secs, raw,
-                elevation_gain, moving_duration_s, steps, has_polyline
+                elevation_gain, moving_duration_s, steps, has_polyline,
+                training_load
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                 ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21,
-                ?22, ?23, ?24, ?25
+                ?22, ?23, ?24, ?25, ?26
             )
             ON CONFLICT(activity_id) DO UPDATE SET
                 name=excluded.name, type_key=excluded.type_key,
@@ -499,7 +504,8 @@ impl Db {
                 z5_secs=excluded.z5_secs, raw=excluded.raw,
                 elevation_gain=excluded.elevation_gain,
                 moving_duration_s=excluded.moving_duration_s,
-                steps=excluded.steps, has_polyline=excluded.has_polyline
+                steps=excluded.steps, has_polyline=excluded.has_polyline,
+                training_load=excluded.training_load
             "#,
             params![
                 a.activity_id,
@@ -529,6 +535,7 @@ impl Db {
                 a.moving_duration,
                 a.steps,
                 a.has_polyline,
+                a.activity_training_load,
             ],
         )?;
         Ok(())
@@ -1823,6 +1830,9 @@ pub struct CachedActivity {
     pub anaerobic_te: Option<f64>,
     /// Seconds in HR zones 1–5.
     pub zone_secs: [f64; 5],
+    /// Garmin's load for the session, if it sent one.
+    #[serde(default)]
+    pub training_load: Option<f64>,
 }
 
 impl CachedActivity {
@@ -2137,6 +2147,23 @@ mod tests {
         assert_eq!(cadence(1), Some(88.0));
         assert_eq!(cadence(2), Some(88.0));
         assert_eq!(cadence(3), None);
+    }
+
+    #[test]
+    fn the_training_load_of_a_session_is_kept_and_read_back() {
+        let db = scratch("training-load");
+        let row = |id: i64, load: Option<f64>| {
+            serde_json::from_value::<ActivitySummary>(serde_json::json!({
+                "activityId": id,
+                "startTimeLocal": "2026-03-10 07:00:00",
+                "activityTrainingLoad": load,
+            }))
+            .unwrap()
+        };
+        db.upsert_activity(&row(1, Some(87.5))).unwrap();
+        db.upsert_activity(&row(2, None)).unwrap();
+        assert_eq!(db.activity(1).unwrap().unwrap().training_load, Some(87.5));
+        assert_eq!(db.activity(2).unwrap().unwrap().training_load, None);
     }
 
     fn hours_since(db: &Db, from: &str) -> f64 {

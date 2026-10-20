@@ -591,6 +591,9 @@ pub struct ActivitySummary {
     pub aerobic_training_effect: Option<f64>,
     #[serde(default)]
     pub anaerobic_training_effect: Option<f64>,
+    /// Garmin's load for the session. Old activities do not have it.
+    #[serde(default)]
+    pub activity_training_load: Option<f64>,
     #[serde(default)]
     pub activity_type: Option<ActivityType>,
     /// Metres climbed. Absent on treadmill and indoor activities.
