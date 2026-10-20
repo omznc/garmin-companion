@@ -128,6 +128,14 @@ impl Root {
                 .await;
             let _ = this.update(cx, |root, cx| match result {
                 Ok(Outcome::Installed) => cx.quit(),
+                Ok(Outcome::Cancelled) => {
+                    // The user closed the password dialog: keep the offer, show no error.
+                    let state = &mut root.account.update;
+                    state.installing = false;
+                    state.dismissed = false;
+                    state.note = None;
+                    cx.notify();
+                }
                 Ok(Outcome::Declined(why)) => {
                     // No install without the system's permission: the user does it by hand.
                     cx.open_url(updater::RELEASE_PAGE);

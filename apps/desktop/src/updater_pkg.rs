@@ -17,9 +17,10 @@ const PACKAGE: &str = "garmin-companion";
 pub const BINARY: &str = "/usr/bin/garmin-companion";
 /// Folders for the tools. Not `PATH`: the user's `PATH` must not choose what runs as root.
 const TOOL_DIRS: [&str; 4] = ["/usr/bin", "/usr/sbin", "/bin", "/sbin"];
-/// `pkexec` exits with 126 when the user closes the prompt, and with 127 when
-/// it cannot ask (no polkit agent).
-const NOT_ALLOWED: [i32; 2] = [126, 127];
+/// `pkexec` exits with 126 when the user closes the prompt.
+const DISMISSED: i32 = 126;
+/// `pkexec` exits with 127 when it cannot ask (no polkit agent).
+const NO_AGENT: i32 = 127;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageKind {
@@ -31,6 +32,8 @@ pub enum PackageKind {
 #[derive(Debug, PartialEq)]
 pub enum Outcome {
     Installed,
+    /// The user closed the password dialog. The offer stays, with no error.
+    Cancelled,
     /// The system did not allow it. The text says why; the user installs by hand.
     Declined(String),
 }
@@ -138,7 +141,8 @@ fn run(kind: PackageKind, file: &Path) -> Result<Outcome> {
 fn outcome(code: Option<i32>, stderr: &[u8], stdout: &[u8]) -> Result<Outcome> {
     match code {
         Some(0) => Ok(Outcome::Installed),
-        Some(code) if NOT_ALLOWED.contains(&code) => Ok(Outcome::Declined(
+        Some(DISMISSED) => Ok(Outcome::Cancelled),
+        Some(NO_AGENT) => Ok(Outcome::Declined(
             "the system did not allow the install".into(),
         )),
         _ => Err(anyhow!(
@@ -266,12 +270,11 @@ mod tests {
     #[test]
     fn exit_codes_map_to_outcomes() {
         assert_eq!(outcome(Some(0), b"", b"").unwrap(), Outcome::Installed);
-        for code in NOT_ALLOWED {
-            assert!(matches!(
-                outcome(Some(code), b"", b"").unwrap(),
-                Outcome::Declined(_)
-            ));
-        }
+        assert_eq!(outcome(Some(126), b"", b"").unwrap(), Outcome::Cancelled);
+        assert!(matches!(
+            outcome(Some(127), b"", b"").unwrap(),
+            Outcome::Declined(_)
+        ));
         let e = outcome(Some(100), b"E: first\nE: broken\n", b"out").unwrap_err();
         assert!(e.to_string().ends_with("E: broken"), "{e}");
         let e = outcome(None, b"", b"only out\n").unwrap_err();
