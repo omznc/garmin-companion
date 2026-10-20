@@ -53,6 +53,12 @@ icons! {
     Spinner => "duotone/circle-notch",
     Light => "duotone/sun",
     Dark => "duotone/moon",
+    SignOut => "duotone/sign-out",
+    Check => "duotone/check",
+    Warning => "duotone/warning",
+    Info => "duotone/info",
+    Desktop => "duotone/desktop",
+    Search => "duotone/magnifying-glass",
 
     NavToday => "duotone/house",
     NavActivities => "duotone/sneaker-move",

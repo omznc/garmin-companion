@@ -9,9 +9,11 @@ use gpui::{div, prelude::*, px, ClickEvent, Context, Div};
 
 use crate::cloud::on_thread;
 use crate::controls::quiet;
+use crate::icons::Icon;
+use crate::panel::{self, Tone};
 use crate::shell::Root;
 use crate::theme::{Theme, FS_SMALL};
-use crate::ui::{body, SANS};
+use crate::ui::body;
 use crate::updater::{self, Kind, Offer, Outcome};
 
 /// The wait after the start, so the check does not compete with the first draw.
@@ -245,43 +247,48 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     )
 }
 
-/// A row for the About section of Settings.
+
+/// The status note of the Updates row: a result, an error, or the offer.
+fn status(state: &UpdateState, t: &Theme) -> Option<Div> {
+    let (text, tone) = match (&state.note, &state.offer) {
+        (Some((text, true)), _) => (text.clone(), Tone::Err),
+        (Some((text, false)), _) if state.busy() => (text.clone(), Tone::Run),
+        (Some((text, false)), _) => (text.clone(), Tone::Ok),
+        (None, Some(offer)) => (headline(offer), Tone::Info),
+        _ => return None,
+    };
+    Some(panel::note(tone, text, t))
+}
+
+/// The Updates row of the About panel.
 pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
     let state = &root.account.update;
-    let status = match (&state.note, &state.offer) {
-        (Some((text, bad)), _) => Some((text.clone(), *bad)),
-        (None, Some(offer)) => Some((headline(offer), false)),
-        _ => None,
-    };
-    let mut row = div()
-        .mt(px(12.0))
-        .flex()
-        .items_baseline()
-        .gap(px(22.0))
-        .font_family(SANS)
-        .child(
-            quiet(
-                "update-check",
-                "Check for updates",
-                !state.busy() && !root.account.demo,
-                false,
-                t,
-            )
-            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.check_for_updates(cx))),
-        );
-    if state.offer.is_some() {
-        row = row.child(
-            quiet("update-install-row", "Install", !state.busy(), false, t)
-                .text_color(t.acc)
+    let lead = state.checking.then_some(Icon::Spinner);
+    let mut buttons = panel::actions().child(
+        panel::button(
+            "update-check",
+            "Check for updates",
+            panel::Kind::Plain,
+            !state.busy() && !root.account.demo,
+            lead,
+            t,
+        )
+        .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.check_for_updates(cx))),
+    );
+    if let Some(offer) = &state.offer {
+        let label = if offer.kind == Kind::Manual {
+            "Open the release page"
+        } else {
+            "Install and restart"
+        };
+        buttons = buttons.child(
+            panel::button("update-install-row", label, panel::Kind::Primary, !state.busy(), None, t)
                 .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx))),
         );
     }
-    if let Some((text, bad)) = status {
-        row = row.child(
-            body(text, FS_SMALL, if bad { t.warn } else { t.mutd })
-                .flex_1()
-                .min_w_0(),
-        );
+    let mut value = panel::stack().child(buttons);
+    if let Some(note) = status(state, t) {
+        value = value.child(note);
     }
-    row
+    panel::row(false, "Updates", None, value, t)
 }

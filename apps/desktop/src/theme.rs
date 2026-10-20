@@ -43,6 +43,16 @@ pub struct Theme {
     pub icon2: Hsla,
     /// The hairline lift under the lit nav row. The stylesheet fixes it for every palette.
     pub shadow: Hsla,
+    /// The accent as a wash, and as a hairline.
+    pub acctint: Hsla,
+    pub accline: Hsla,
+    /// The warning colour as a wash, and as a hairline.
+    pub warntint: Hsla,
+    pub warnline: Hsla,
+    /// The dim behind a dialog.
+    pub scrim: Hsla,
+    /// The drop shadow of a dialog.
+    pub dshadow: Hsla,
 }
 
 /// The seven authored colours and the one authored alpha.
@@ -281,6 +291,8 @@ fn derive(a: &Authored) -> Theme {
     // On a dark page the accent is lifted toward the foreground first,
     // or the tint reads as a smudge. See the `--icon2` note in `styles.css`.
     let icon2 = if a.dark { mix(a.acc, a.fg, 0.74) } else { acc };
+    let warn = hex(a.warn);
+    let (acc_tint, warn_tint) = if a.dark { (0.22, 0.12) } else { (0.12, 0.07) };
     Theme {
         dark: a.dark,
         bg: hex(a.bg),
@@ -291,10 +303,16 @@ fn derive(a: &Authored) -> Theme {
         line: fg.opacity(line),
         line2: fg.opacity(line2),
         acc,
-        warn: hex(a.warn),
+        warn,
         sel: fg.opacity(sel),
         icon2: icon2.opacity(a.icon_alpha.unwrap_or(default_alpha)),
         shadow: hex(0x1b1a17).opacity(0.04),
+        acctint: acc.opacity(acc_tint),
+        accline: acc.opacity(0.4),
+        warntint: warn.opacity(warn_tint),
+        warnline: warn.opacity(0.4),
+        scrim: fg.opacity(0.32),
+        dshadow: fg.opacity(0.18),
     }
 }
 
@@ -313,6 +331,15 @@ mod tests {
             );
             assert!(t.sel.alpha < t.line.alpha, "{}", p.name());
         }
+    }
+
+    #[test]
+    fn the_tints_and_lines_follow_the_design_alphas() {
+        let (paper, ink) = (Palette::Paper.theme(), Palette::Ink.theme());
+        assert!((paper.acctint.alpha - 0.12).abs() < 1e-6 && (ink.acctint.alpha - 0.22).abs() < 1e-6);
+        assert!((paper.warntint.alpha - 0.07).abs() < 1e-6 && (ink.warntint.alpha - 0.12).abs() < 1e-6);
+        assert!((ink.accline.alpha - 0.4).abs() < 1e-6 && (ink.warnline.alpha - 0.4).abs() < 1e-6);
+        assert!((ink.scrim.alpha - 0.32).abs() < 1e-6 && (ink.dshadow.alpha - 0.18).abs() < 1e-6);
     }
 
     #[test]

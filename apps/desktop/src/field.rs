@@ -117,6 +117,10 @@ pub struct Field {
     pub placeholder: &'static str,
     /// Draw dots in place of the characters.
     pub mask: bool,
+    /// Plain text, such as a search, in the sans face. A key or a token stays mono.
+    pub sans: bool,
+    /// The left padding in pixels. An icon that stands over the field needs more.
+    pub pad_left: f32,
 }
 
 impl Field {
@@ -126,6 +130,8 @@ impl Field {
             focus: cx.focus_handle(),
             placeholder,
             mask,
+            sans: false,
+            pad_left: 12.0,
         }
     }
 
@@ -162,7 +168,7 @@ impl Field {
         let mut row = div()
             .flex()
             .items_center()
-            .font_family(if self.mask { SANS } else { MONO })
+            .font_family(if self.mask || self.sans { SANS } else { MONO })
             .text_size(px(FS_SMALL))
             .line_height(relative(1.3))
             .text_color(t.fg)
@@ -188,6 +194,7 @@ impl Field {
             .cursor_text()
             .w_full()
             .px(px(12.0))
+            .pl(px(self.pad_left))
             .py(px(9.0))
             .rounded(px(6.0))
             .border_1()

@@ -25,7 +25,7 @@ use crate::{settings, setup, today};
 
 /// The sidebar and the column, as a pair, are never wider than this.
 /// On an ultrawide the pair stays together in the middle.
-const SHELL_MAX: f32 = 1240.0;
+pub(crate) const SHELL_MAX: f32 = 1240.0;
 /// The reading column's width, and the air above and beside it.
 pub const COLUMN_MAX: f32 = 720.0;
 pub const COLUMN_TOP: f32 = 78.0;
@@ -416,6 +416,11 @@ impl Render for Root {
             self.ask.clone().into_any_element()
         } else {
             let screen = self.screen(&t, window, cx);
+            let cap = if self.sidebar.active == SETTINGS {
+                settings::CONTENT_MAX
+            } else {
+                COLUMN_MAX
+            };
             self.scroll
                 .area(ElementId::NamedInteger("page".into(), self.visits as u64))
                 .flex_1()
@@ -423,7 +428,7 @@ impl Render for Root {
                 .h_full()
                 .px(px(COLUMN_SIDE))
                 .pb(px(COLUMN_BOTTOM))
-                .child(div().max_w(px(COLUMN_MAX)).pt(px(COLUMN_TOP)).child(screen))
+                .child(div().max_w(px(cap)).pt(px(COLUMN_TOP)).child(screen))
                 .into_any_element()
         };
 
@@ -466,6 +471,7 @@ impl Render for Root {
         }
         root.children(crate::update_ui::banner(self, &t, cx))
             .children(self.command_palette.clone())
+            .children(crate::theme_dialog::render(self, &t, window, cx))
             .children(chrome::resize_handles(window))
     }
 }

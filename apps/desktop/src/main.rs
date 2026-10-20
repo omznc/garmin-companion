@@ -18,6 +18,7 @@
 //! composer. `--coach ollama:llama3.2` saves the model into the `--db` copy and exits.
 //! Ctrl+K or Ctrl+Shift+P opens the command palette (Cmd on macOS). A debug build
 //! opens it at start when `GC_OPEN_PALETTE` is set, with its value as the query.
+//! A debug build opens the theme dialog and runs its search when `GC_OPEN_THEMES` is set.
 //! Without `--db`, a persona runs the Ask screen as a canned demo.
 
 // No console window on Windows in a release build.
@@ -25,6 +26,7 @@
 
 mod account;
 mod activities;
+mod appearance;
 mod ask;
 mod body;
 mod chrome;
@@ -43,6 +45,7 @@ mod map;
 mod markdown;
 mod motion;
 mod openvsx;
+mod panel;
 mod places;
 mod scroll;
 mod settings;
@@ -51,6 +54,7 @@ mod shell;
 mod sidebar;
 mod spring;
 mod theme;
+mod theme_dialog;
 mod themes;
 mod today;
 mod training;
@@ -374,6 +378,11 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(debug_assertions)]
                     if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {
                         root.toggle_palette(&query, window, cx);
+                    }
+                    // `GC_OPEN_THEMES=<query>` opens the theme dialog and runs the search.
+                    #[cfg(debug_assertions)]
+                    if let Ok(query) = std::env::var("GC_OPEN_THEMES") {
+                        root.open_themes(&query, window, cx);
                     }
                     root
                 })
