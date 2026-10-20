@@ -51,6 +51,7 @@ pub struct Composer {
     column_w: f32,
     /// The box sits in the side panel: smaller text and a row of buttons under it.
     panel: bool,
+    hint: &'static str,
 }
 
 impl EventEmitter<ComposerEvent> for Composer {}
@@ -114,7 +115,13 @@ impl Composer {
             palette,
             column_w: 720.0,
             panel: false,
+            hint: "Ask about this screen...",
         }
+    }
+
+    /// The line that shows in an empty box.
+    pub fn set_hint(&mut self, hint: &'static str) {
+        self.hint = hint;
     }
 
     pub fn set_panel(&mut self, panel: bool) {
@@ -293,11 +300,7 @@ impl Render for Composer {
             .h(px(height_rows as f32 * line_h + 2.0 * pad))
             .overflow_hidden();
         if text.is_empty() {
-            let hint = if panel {
-                "Ask about this screen..."
-            } else {
-                "Ask about your sleep, training or recovery"
-            };
+            let hint = self.hint;
             area = area.child(
                 div()
                     .absolute()
