@@ -120,6 +120,9 @@ pub fn tab_bar(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
 
 /// The bar with the screen name, the page and the age of the last sync.
 pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -> Div {
+    if root.editing() {
+        return crate::blocks::edit::bar(root, narrow, t, cx);
+    }
     let (hover, fg) = (t.hover, t.fg);
     let screen = root.active;
     let home = div()
@@ -194,6 +197,7 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -
                 .child(pick),
         )
         .children(synced)
+        .children((screen == Screen::Today).then(|| crate::blocks::edit::start_button(t, cx)))
 }
 
 #[cfg(test)]

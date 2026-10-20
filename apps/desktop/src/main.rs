@@ -406,6 +406,12 @@ fn main() -> anyhow::Result<()> {
                     if let Some(name) = &screen {
                         root.open(name, cx);
                     }
+                    // For screenshots: `GC_EDIT_LAYOUT=<n>` starts the edit mode of Today
+                    // with card `n` selected. A value that is not a number selects none.
+                    #[cfg(debug_assertions)]
+                    if let Ok(value) = std::env::var("GC_EDIT_LAYOUT") {
+                        root.start_edit(value.parse().ok(), window, cx);
+                    }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
                     }

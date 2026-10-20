@@ -104,6 +104,10 @@ pub struct Root {
     pub(crate) command_palette: Option<Entity<crate::command_palette::CommandPalette>>,
     /// The saved window size and position. A demo never writes it.
     window_state: window::State,
+    /// The blocks of Today, in order. The user arranges them.
+    pub(crate) today_layout: blocks::layout::Layout,
+    /// The edit mode of Today. `start` makes it.
+    pub(crate) edit: Option<blocks::edit::Edit>,
 }
 
 /// How long the window rests before its new size is saved.
@@ -167,6 +171,8 @@ impl Root {
             account,
             loads: Default::default(),
             command_palette: None,
+            today_layout: blocks::layout::Layout::load(window_state.today_layout.as_deref()),
+            edit: None,
             window_state,
         }
     }
@@ -300,6 +306,7 @@ impl Root {
         let was_empty = self.tabs.is_empty();
         tabs::open(&mut self.tabs, screen);
         if screen != self.active || was_empty {
+            self.stop_edit(cx);
             self.active = screen;
             self.sidebar.select(screen);
             self.enter(screen, cx);
@@ -358,6 +365,9 @@ impl Root {
         self.window_state.coach_w = Some(self.coach_w);
         self.window_state.coach_open = self.coach_open;
         self.window_state.collapsed = self.sidebar.closed_keys();
+        // The shipped layout is not saved, so a later release can change it.
+        self.window_state.today_layout = (self.today_layout != blocks::layout::Layout::standard())
+            .then(|| self.today_layout.to_saved());
         self.window_state.save();
     }
 
@@ -401,6 +411,7 @@ impl Root {
     /// the default screen, which no click opened.
     pub fn start(&mut self, cx: &mut Context<Self>) {
         self.tell_ask_focus(cx);
+        self.edit = Some(blocks::edit::Edit::new(cx));
         cx.set_global(blocks::RootHandle(cx.entity().downgrade()));
         self.enter(self.active, cx);
         let (path, day) = self.places.cache();
@@ -563,14 +574,21 @@ impl Root {
     /// the grid. `None` when the screen file has no layout yet.
     fn block_page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let def = blocks::screen_def(self.active)?;
-        let layout = blocks::default_layout(self.active);
-        if layout.is_empty() {
+        let today = self.active == Screen::Today;
+        // Only Today has a layout that the user arranges.
+        let layout = if today {
+            self.today_layout.pairs()
+        } else {
+            blocks::default_layout(self.active).to_vec()
+        };
+        if layout.is_empty() && !today {
             return None;
         }
+        let editing = self.editing();
         let ctx = self.ctx(t);
         let title = (def.title)(&ctx).unwrap_or_else(|| self.active.label().to_string());
         let heading = page_heading(title, (def.lede)(&ctx), t);
-        if self.active == Screen::Today && self.today.empty {
+        if today && self.today.empty && !editing {
             return Some(
                 div()
                     .child(heading)
@@ -580,12 +598,20 @@ impl Root {
         }
         let available = self.grid_width(window);
         let narrow = available < NARROW_GRID;
-        Some(
-            div()
-                .child(heading)
-                .child(blocks::grid(layout, &ctx, available, narrow, cx))
-                .into_any_element(),
-        )
+        let grid = if layout.is_empty() {
+            blocks::edit::empty_box(editing, t)
+        } else if editing {
+            let selected = self.edit.as_ref().and_then(|e| e.selected);
+            blocks::edit::grid(&self.today_layout, selected, &ctx, available, narrow, cx)
+        } else {
+            blocks::grid(&layout, &ctx, available, narrow, cx)
+        };
+        let page = div().child(heading).child(grid);
+        Some(if editing {
+            blocks::edit::page(self, page, cx).into_any_element()
+        } else {
+            page.into_any_element()
+        })
     }
 
     /// The pages of the Activities screen that are not the block layout.
@@ -685,6 +711,9 @@ impl Render for Root {
 
         // Each screen gets a new `SmoothScroll` in `enter`, so it starts at the top.
         self.scroll.tick(window);
+        if let Some(edit) = self.edit.as_ref().filter(|_| self.editing()) {
+            edit.tick(window);
+        }
         let content = if on_ask {
             // Ask has its own scroll, so it gets the same column without the page.
             div()
@@ -714,7 +743,8 @@ impl Render for Root {
             .child(tabs::tab_bar(self, &t, cx))
             .child(tabs::crumb_bar(self, narrow, &t, cx))
             .child(div().flex_1().min_h_0().flex().child(content));
-        let coach = (layout.coach > 0.0 && !on_ask).then(|| {
+        let editing = self.editing();
+        let coach = (layout.coach > 0.0 && !on_ask && !editing).then(|| {
             div()
                 .relative()
                 .flex_none()
@@ -725,7 +755,13 @@ impl Render for Root {
                 .border_color(t.line)
                 .child(self.ask.clone())
                 .child(panes::handle(self, Side::Coach, &t, cx))
+                .into_any_element()
         });
+        let coach = if editing && layout.coach > 0.0 {
+            blocks::edit::panel(self, layout.coach, &t, window, cx)
+        } else {
+            coach
+        };
         let provider = self.ask.read(cx).provider_label();
 
         div()

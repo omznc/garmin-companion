@@ -96,6 +96,15 @@ pub fn layout(window: f32, sidebar_w: f32, coach_w: f32, coach_open: bool) -> La
 
 impl Root {
     pub(crate) fn layout(&self, window_width: f32) -> Layout {
+        // The Add blocks panel has a fixed width and shows at once.
+        if self.editing() {
+            return layout(
+                window_width,
+                self.sidebar_w,
+                crate::blocks::edit::PANEL_W,
+                true,
+            );
+        }
         layout(window_width, self.sidebar_w, self.coach_w, self.coach_open)
     }
 
