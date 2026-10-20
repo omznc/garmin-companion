@@ -274,5 +274,10 @@
     "last_session",
     "week",
     "zone_drift"
-  ]
+  ],
+  "headline": {
+    "tone": "rest",
+    "verdict": "Take it easy today.",
+    "detail": "Your resting heart rate is 5 bpm above your baseline and your load this week is high against your usual. You slept 7h 00m."
+  }
 }

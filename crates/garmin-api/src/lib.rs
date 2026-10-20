@@ -16,6 +16,7 @@ mod error;
 pub mod extras;
 pub mod fitness;
 pub mod gear;
+pub mod headline;
 pub mod health;
 pub mod insights;
 pub mod personas;

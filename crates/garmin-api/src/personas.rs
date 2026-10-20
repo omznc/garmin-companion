@@ -368,6 +368,8 @@ mod tests {
             v.lede.clone(),
             v.fuel_sentence.clone(),
             v.week.sentence.clone(),
+            v.headline.verdict.clone(),
+            v.headline.detail.clone(),
         ];
         all.extend(v.attention.iter().map(|o| o.text.clone()));
         all.join(" ").to_lowercase()

@@ -12,7 +12,8 @@ use crate::derive::{
     daily_series, date_key, days_since, fuel, has_zone_data, hydration, is_run, latest, mean, Fuel,
     Hydration, Latest, Observation,
 };
-use crate::insights::runs_now;
+use crate::headline::{headline, Headline, HeadlineInput, HrvRead};
+use crate::insights::{load, runs_now};
 use crate::profile::{activity_profile, ActivityProfile, WINDOW_DAYS};
 use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence, weight_sentence};
 use crate::ApiError;
@@ -62,6 +63,9 @@ pub struct TodayView {
     /// does not know. Keys: `health_tiles`, `attention`, `fuel`, `weight`,
     /// `last_session`, `week`, `zone_drift`.
     pub sections: Vec<String>,
+    /// The verdict and the sentence under it. Built from readiness, resting
+    /// heart rate, HRV, sleep and load.
+    pub headline: Headline,
 }
 
 /// This morning's overnight resting HR against the 30-day mean.
@@ -155,6 +159,10 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
 
     let empty = stored.is_empty() && activities.is_empty();
     let data_days = stored.len();
+    let oldest_day = stored
+        .iter()
+        .filter_map(|d| NaiveDate::parse_from_str(&d.date, "%Y-%m-%d").ok())
+        .min();
     let rows = daily_series(stored, DAILY_DAYS, today);
     let comparable = comparable_resting_hr(&rows);
     let food = fuel(&rows, 7);
@@ -195,9 +203,61 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
         week: week(&activities, today),
         profile,
         sections: Vec::new(),
+        headline: headline(&headline_input(
+            &rows,
+            &comparable,
+            &activities,
+            oldest_day,
+            today,
+        )),
     };
     view.sections = sections(&view);
     Ok(view)
+}
+
+/// A reading counts for the headline when it is from today or yesterday. An
+/// older one says nothing about this morning.
+fn fresh(l: Option<Latest>, today: NaiveDate) -> Option<Latest> {
+    l.filter(|l| {
+        NaiveDate::parse_from_str(&l.date, "%Y-%m-%d").is_ok_and(|d| (today - d).num_days() <= 1)
+    })
+}
+
+/// A session counts as hard when much of it was above Z2, or when Garmin
+/// rates its aerobic effect as high.
+fn is_hard(a: &CachedActivity) -> bool {
+    (has_zone_data(a) && above_z2_pct(a) >= 40.0) || a.aerobic_te.is_some_and(|te| te >= 4.0)
+}
+
+fn headline_input(
+    rows: &[garmin_core::DailyMetrics],
+    comparable: &[garmin_core::DailyMetrics],
+    activities: &[CachedActivity],
+    oldest_day: Option<NaiveDate>,
+    today: NaiveDate,
+) -> HeadlineInput {
+    let hrv = fresh(latest(rows, |d| d.hrv_last_night), today).map(|l| {
+        let row = rows.iter().find(|d| d.date == l.date);
+        HrvRead {
+            value: l.value,
+            balanced_low: row.and_then(|d| d.hrv_balanced_low),
+            balanced_high: row.and_then(|d| d.hrv_balanced_upper),
+        }
+    });
+    let yesterday = date_key(today - chrono::Duration::days(1));
+    HeadlineInput {
+        readiness: fresh(latest(rows, |d| d.training_readiness), today).map(|l| l.value),
+        resting_delta: fresh(latest(comparable, |d| d.resting_hr), today)
+            .zip(mean(comparable.iter().map(|d| d.resting_hr)))
+            .map(|(l, baseline)| l.value - baseline),
+        hrv,
+        sleep_secs: fresh(latest(rows, |d| d.sleep_secs), today).map(|l| l.value),
+        load_ratio: load(activities, oldest_day, today).map(|l| l.ratio),
+        hard_yesterday: activities
+            .iter()
+            .find(|a| a.local_date.as_deref() == Some(yesterday.as_str()) && is_hard(a))
+            .map(|a| sport_label(a.type_key.as_deref())),
+    }
 }
 
 /// The sessions that run-only copy may read. A run counts only when the user
