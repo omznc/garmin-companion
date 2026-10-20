@@ -77,13 +77,19 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
   return inflight;
 }
 
+// startSync joins a run that is active, for example a pull-to-refresh. A pass of the import must run itself.
+async function ownSync(args: Args): Promise<SyncSummary> {
+  while (inflight) await inflight.catch(() => {});
+  return startSync(args);
+}
+
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
 export async function importHistory(quick = true) {
   set({ importing: true });
   try {
-    if (quick) await startSync({ days: 14 });
+    if (quick) await ownSync({ days: 14 });
     markHistoryPending();
-    await startSync({ full: true, days: 365 });
+    await ownSync({ full: true, days: 365 });
     clearHistoryPending();
     set({ importing: false });
   } catch {

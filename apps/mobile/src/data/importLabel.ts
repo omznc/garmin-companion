@@ -15,7 +15,7 @@ export function importLabel(s: ImportLabelInput): string | null {
   if (s.phase === "wellness" && s.total) {
     const months = Math.max(1, Math.round(s.total / DAYS_PER_MONTH));
     const done = Math.min(months, Math.floor(s.done / DAYS_PER_MONTH));
-    return `Your history · ${done} of ${months} months`;
+    return `Your history · ${done} of ${months} ${months === 1 ? "month" : "months"}`;
   }
   return s.line ?? "Getting your history";
 }

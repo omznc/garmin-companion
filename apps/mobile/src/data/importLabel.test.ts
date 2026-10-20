@@ -15,6 +15,7 @@ test("the quick pass names the last 14 days", () => {
 test("the wellness phase counts months from the total", () => {
   assert.equal(importLabel(base), "Your history · 3 of 12 months");
   assert.equal(importLabel({ ...base, done: 400 }), "Your history · 12 of 12 months");
+  assert.equal(importLabel({ ...base, done: 4, total: 4 }), "Your history · 0 of 1 month");
 });
 
 test("other phases show the line", () => {

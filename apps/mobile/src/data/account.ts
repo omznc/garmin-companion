@@ -4,7 +4,12 @@ import { Appearance } from "react-native";
 import { callJson, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
-export const getStatus = () => callJson<Status>("status");
+// The core ignores the sample flag when it has tokens, for example after a stop before the first sync.
+export const getStatus = async () => {
+  const status = await callJson<Status>("status");
+  if (status.connected) leaveSampleData();
+  return status;
+};
 export const getSignInUrl = () => callJson<string>("sign_in_url");
 export const redeemTicket = async (ticket: string) => {
   const status = await callJson<Status>("redeem_ticket", { ticket });

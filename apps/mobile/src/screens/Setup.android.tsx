@@ -83,7 +83,8 @@ export function SetupScreen() {
         </Column>
       </Host>
       <T v="labelSmall" color={md.onSurfaceVariant} align="center">
-        Your data stays on this phone. Your Garmin password goes only to Garmin.
+        Your Garmin password goes only to Garmin. Your data stays on this phone, except what you
+        send to the coach.
       </T>
     </ScrollView>
   );
