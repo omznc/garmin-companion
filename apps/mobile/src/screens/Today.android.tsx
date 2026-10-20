@@ -2,7 +2,7 @@
 // The core sends the sections in order. A section that has no data is not drawn.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import { Pressable, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { AskFab, FAB_CLEARANCE, useFabExtended } from "../components/AskFab";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
@@ -18,10 +18,11 @@ import {
   T,
 } from "../components/MdKit";
 import { Cookie, FitText, sportIcon, VitalGrid, zoneTones } from "../components/TodayKit";
+import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { metricRoute } from "../data/present";
 import { useGreeting } from "../data/useGreeting";
 import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
-import { useSync } from "../data/useSync";
+import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 import { useMd } from "../theme/md";
 
@@ -270,6 +271,35 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
   );
 }
 
+// The history import: the first 14 days, then the months. An error offers a retry.
+function ImportRow({ sync }: { sync: SyncState }) {
+  const md = useMd();
+  const failed = sync.importError !== null;
+  const label = failed ? sync.importError : importLabel(sync);
+  if (!label) return null;
+  return (
+    <View style={{ paddingHorizontal: 16 }}>
+      <Card tone={failed ? "error" : "high"} gap={8}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          {failed ? null : <ActivityIndicator size="small" color={md.primary} />}
+          <View style={{ flex: 1 }}>
+            <T v="label" color={failed ? md.onErrorContainer : md.onSurface}>
+              {label}
+            </T>
+          </View>
+          {failed ? (
+            <Pressable accessibilityRole="button" onPress={() => importHistory()} hitSlop={8}>
+              <T v="label" color={md.onErrorContainer}>
+                Retry
+              </T>
+            </Pressable>
+          ) : null}
+        </View>
+      </Card>
+    </View>
+  );
+}
+
 function SyncLine({ line, error }: { line: string | null; error: string | null }) {
   const md = useMd();
   if (!line && !error) return null;
@@ -292,13 +322,23 @@ export function TodayScreen() {
     <View style={{ flex: 1 }}>
       <LargeAppBarScreen
         title={data ? greeting : "Today"}
-        refreshing={sync.busy}
+        refreshing={isPulling(sync)}
         onRefresh={() => sync.refresh()}
         onScrollOffset={fab.onScroll}
         bottomSpace={FAB_CLEARANCE}
       >
-        <SyncLine line={sync.line} error={sync.error} />
-        {data ? <TodayBody today={data} busy={sync.busy} onSync={() => sync.refresh()} /> : null}
+        {sync.importing || sync.importError ? (
+          <ImportRow sync={sync} />
+        ) : (
+          <SyncLine line={sync.line} error={sync.error} />
+        )}
+        {data ? (
+          <TodayBody
+            today={importLede(sync.importing, !!data.hero, data)}
+            busy={sync.busy}
+            onSync={() => sync.refresh()}
+          />
+        ) : null}
         {!data && !error ? <Loading /> : null}
         {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
       </LargeAppBarScreen>

@@ -4,7 +4,12 @@ import { Appearance } from "react-native";
 import { callJson, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
-export const getStatus = () => callJson<Status>("status");
+// The core ignores the sample flag when it has tokens, for example after a stop before the first sync.
+export const getStatus = async () => {
+  const status = await callJson<Status>("status");
+  if (status.connected) leaveSampleData();
+  return status;
+};
 export const getSignInUrl = () => callJson<string>("sign_in_url");
 export const redeemTicket = async (ticket: string) => {
   const status = await callJson<Status>("redeem_ticket", { ticket });
@@ -34,3 +39,13 @@ export const clearSkipSetup = () => {
   if (skipMarker().exists) skipMarker().delete();
 };
 export const setupSkipped = () => process.env.EXPO_PUBLIC_FIXTURE === "1" || skipMarker().exists;
+
+// The full history import is long. The marker lets the app resume it after the app stops.
+const historyMarker = () => new File(Paths.document, "history-import");
+export const markHistoryPending = () => {
+  if (!historyMarker().exists) historyMarker().create();
+};
+export const clearHistoryPending = () => {
+  if (historyMarker().exists) historyMarker().delete();
+};
+export const historyPending = () => historyMarker().exists;

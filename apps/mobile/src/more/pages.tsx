@@ -33,7 +33,12 @@ export function GarminPage() {
           <Section>
             <Item title={s.accountLine} />
             {s.connected ? (
-              <Item title="Sign out" tone="danger" disabled={a.sync.busy} onPress={a.disconnect} />
+              <Item
+                title="Sign out"
+                tone="danger"
+                disabled={a.sync.busy || a.sync.importing}
+                onPress={a.disconnect}
+              />
             ) : (
               <Item title="Sign in" tone="action" onPress={() => router.push("/sign-in")} />
             )}
@@ -49,7 +54,7 @@ export function GarminPage() {
 export function SyncPage() {
   const a = useSettingsActions();
   const s = a.settings.data;
-  const busy = a.sync.busy;
+  const busy = a.sync.busy || a.sync.importing;
   return (
     <Page title="Sync">
       <Section>

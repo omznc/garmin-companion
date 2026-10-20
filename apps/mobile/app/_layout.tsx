@@ -3,7 +3,9 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { AppState, useColorScheme } from "react-native";
+import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
+import { importHistory } from "../src/data/useSync";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
 import { useRootColor } from "../src/theme/useRootColor";
@@ -19,6 +21,18 @@ export default function RootLayout() {
       focusManager.setFocused(status === "active"),
     );
     return () => sub.remove();
+  }, []);
+
+  // The app stopped during the history import: take it up again.
+  useEffect(() => {
+    if (!historyPending()) return;
+    getStatus().then(
+      (s) => {
+        if (s.connected) importHistory();
+      },
+      // The marker stays, so the next start tries again.
+      () => {},
+    );
   }, []);
 
   return (
