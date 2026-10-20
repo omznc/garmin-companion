@@ -147,6 +147,19 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.7" date="2026-10-20">
+      <description>
+        <p>
+          The computer app has a new design and a new logo. Each screen is a
+          grid of cards that you can arrange. A calendar in the sidebar sets
+          the day or the range of days that all screens and the coach use.
+          The panels change size, the interface has a scale setting, and the
+          status bar has menus to sync, to pick the coach and the palette, and
+          to update. The coach can now use your own Claude Code login. You
+          can export activities to CSV and reports to PDF.
+        </p>
+      </description>
+    </release>
     <release version="1.0.6" date="2026-10-20">
       <description>
         <p>
