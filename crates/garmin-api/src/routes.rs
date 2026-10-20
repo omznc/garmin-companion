@@ -49,6 +49,12 @@ pub struct RouteRow {
     /// Metres climbed, as the mean over the outings that have it.
     #[serde(default)]
     pub elevation_m: Option<f64>,
+    /// The mean distance of one outing, in metres. 0 when unknown.
+    #[serde(default)]
+    pub distance_m: f64,
+    /// The distance of all outings together, in metres. 0 when unknown.
+    #[serde(default)]
+    pub total_m: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,6 +106,25 @@ pub struct RoutesView {
     pub courses: Vec<CourseRow>,
 }
 
+/// The smallest span of a drawn shape, in degrees.
+const MIN_SPAN_DEG: f64 = 0.0008;
+
+/// Average each point with its two neighbours. The ends stay. This removes
+/// the small jumps of a GPS fix and keeps the shape of the route.
+fn smooth(points: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut out = points.to_vec();
+    // A short trace is a hand-made shape with corners. Leave it as it is.
+    if points.len() < 12 {
+        return out;
+    }
+    for i in 1..points.len().saturating_sub(1) {
+        for axis in 0..2 {
+            out[i][axis] = (points[i - 1][axis] + points[i][axis] + points[i + 1][axis]) / 3.0;
+        }
+    }
+    out
+}
+
 /// Scale a trace into the unit square. Longitude shrinks by cos(latitude), so
 /// the shape keeps the proportions that it has on the ground.
 pub fn shape(points: &[[f64; 2]]) -> Vec<[f32; 2]> {
@@ -117,6 +142,7 @@ pub fn shape(points: &[[f64; 2]]) -> Vec<[f32; 2]> {
     if let Some(last) = points.last() {
         kept.push(*last);
     }
+    let kept = smooth(&kept);
     let fold = |pick: fn(&[f64; 2]) -> f64| {
         kept.iter()
             .map(pick)
@@ -127,8 +153,9 @@ pub fn shape(points: &[[f64; 2]]) -> Vec<[f32; 2]> {
     let span_lat = (max_lat - min_lat).max(1e-6);
     let span_lon = ((max_lon - min_lon) * k).max(1e-6);
     let span = span_lat.max(span_lon);
-    // A trace that never moved has no shape to draw.
-    if span <= 1e-6 {
+    // A trace that never moved has no shape to draw. A span under about 90 m
+    // is GPS jitter around one place, so it would draw as spikes.
+    if span <= MIN_SPAN_DEG {
         return Vec::new();
     }
     kept.iter()
@@ -160,6 +187,8 @@ fn row_of(r: &Route) -> RouteRow {
         },
         best_time: best_time(&r.outings),
         elevation_m: mean_elevation(&r.outings),
+        distance_m: r.avg_distance_m.unwrap_or(0.0),
+        total_m: r.avg_distance_m.unwrap_or(0.0) * r.times as f64,
     }
 }
 
@@ -380,6 +409,19 @@ mod tests {
             .iter()
             .flatten()
             .all(|v| v.is_finite() && (0.0..=1.0).contains(v)));
+    }
+
+    #[test]
+    fn gps_jitter_around_one_place_has_no_shape() {
+        let jitter: Vec<[f64; 2]> = (0..50)
+            .map(|i| {
+                [
+                    43.0 + f64::from(i % 3) * 1e-5,
+                    17.0 + f64::from(i % 5) * 1e-5,
+                ]
+            })
+            .collect();
+        assert!(shape(&jitter).is_empty());
     }
 
     #[test]

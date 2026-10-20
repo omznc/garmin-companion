@@ -150,6 +150,11 @@ fn pack(cols: &[u8]) -> Vec<Vec<Lane>> {
         let mut lanes = start_lanes(cols, i);
         let started = lanes.len();
         i = fill_lanes(cols, i + started, &mut lanes);
+        // A lone lane has no partner, because the partner hid. It takes the
+        // full width, so no hole stands beside it.
+        if let [only] = lanes.as_mut_slice() {
+            only.cols = 12;
+        }
         segments.push(lanes);
     }
     segments
@@ -432,6 +437,11 @@ mod tests {
             [vec![vec![0], vec![1]], vec![vec![2], vec![3], vec![4]]]
         );
         assert!(pack(&[]).is_empty());
+        // A block whose partner hid takes the full width.
+        assert_eq!(
+            pack(&[6]).iter().map(|s| s[0].cols).collect::<Vec<_>>(),
+            [12]
+        );
     }
 
     #[test]

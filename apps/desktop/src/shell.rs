@@ -417,6 +417,12 @@ impl Root {
     }
 
     /// The page under the screen name in the breadcrumb bar.
+    /// Whether the breadcrumb page is a button for the focus picker. The
+    /// detail page of a session shows its own name and date as plain text.
+    pub(crate) fn crumb_picks(&self) -> bool {
+        self.active.follows_focus() && !matches!(self.page, Page::Detail(_))
+    }
+
     pub(crate) fn crumb(&self, t: &Theme) -> String {
         match (&self.page, self.active) {
             (Page::Detail(view), Screen::Activities) => activities::crumb(view),

@@ -71,6 +71,15 @@ impl Screen {
         Screen::Settings,
     ];
 
+    /// Whether the content of the screen follows the focus day or range. Only
+    /// such a screen gets the date picker in the breadcrumb.
+    pub fn follows_focus(self) -> bool {
+        !matches!(
+            self,
+            Screen::Settings | Screen::Ask | Screen::Routes | Screen::Gear
+        )
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Screen::Today => "Today",

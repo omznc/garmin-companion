@@ -5,7 +5,7 @@
 use crate::scale::px;
 use gpui::{
     canvas, div, fill, linear_color_stop, linear_gradient, point, prelude::*, relative, size,
-    Bounds, BoxShadow, ColorExt as _, Corners, Div, Hsla, PathBuilder, Pixels, Point, SharedString,
+    Bounds, ColorExt as _, Corners, Div, Hsla, PathBuilder, Pixels, Point, SharedString,
 };
 
 use crate::theme::Theme;
@@ -140,6 +140,13 @@ fn meter_fill(tone: Tone, t: &Theme) -> (Hsla, Hsla) {
 /// `.mrow`: the rows of a meter, with the room that the design gives them.
 pub fn meter_rows(rows: Vec<MeterRow>, t: &Theme) -> Div {
     let mut col = div().flex().flex_col().gap(px(7.0));
+    // Every row takes the width of the longest name, value and share, so the
+    // bars start and end at the same place. A character is about 6.6 px wide
+    // in the name font and 7 px in the mono font.
+    let widest = |f: fn(&MeterRow) -> usize| rows.iter().map(f).max().unwrap_or(0) as f32;
+    let name_w = (widest(|r| r.name.chars().count()) * 6.6).max(52.0);
+    let value_w = widest(|r| r.value.chars().count()) * 7.0;
+    let share_w = (widest(|r| r.share.chars().count()) * 7.0).max(30.0);
     for row in rows {
         let (from, to) = meter_fill(row.tone, t);
         let fraction = row.fraction.clamp(0.0, 1.0);
@@ -162,7 +169,7 @@ pub fn meter_rows(rows: Vec<MeterRow>, t: &Theme) -> Div {
                 .child(
                     div()
                         .flex_none()
-                        .min_w(px(52.0))
+                        .w(px(name_w))
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .font_family(SANS)
@@ -183,6 +190,7 @@ pub fn meter_rows(rows: Vec<MeterRow>, t: &Theme) -> Div {
                 .child(
                     div()
                         .flex_none()
+                        .w(px(value_w))
                         .text_color(t.fg)
                         .text_right()
                         .child(row.value),
@@ -190,7 +198,7 @@ pub fn meter_rows(rows: Vec<MeterRow>, t: &Theme) -> Div {
                 .child(
                     div()
                         .flex_none()
-                        .min_w(px(30.0))
+                        .w(px(share_w))
                         .text_color(t.faint)
                         .text_right()
                         .child(row.share),
@@ -213,8 +221,12 @@ const BAR_CHART_H: f32 = 132.0;
 /// The room above the tallest bar for its value label.
 const BAR_LABEL_ROOM: f32 = 18.0;
 
-/// `bars`: a chart 132 px high. The last bar is lit with the accent and a
-/// glow. A dashed line marks the average.
+/// The alpha of the bar fill. It reads well on all palettes.
+const BAR_ALPHA: f32 = 0.6;
+
+/// `bars`: a chart 132 px high. All bars have one solid fill. The bold axis
+/// label marks the last day. A dashed line marks the average. The average
+/// label sits above the plot, so no bar or label covers it.
 pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div {
     bar_chart_sized(bars, average, BAR_CHART_H, None, t)
 }
@@ -242,35 +254,15 @@ pub fn bar_chart_sized(
         .flex()
         .items_end()
         .gap(px(gap));
-    for (i, bar) in bars.iter().enumerate() {
-        let lit = i == last;
+    for bar in bars {
         // A bar of zero keeps a stub of 1.5 per cent, so the day is not blank.
         let height = (bar.value / max * room).max(chart_h * 0.015);
-        let (top, bottom) = if bar.value <= 0.0 {
-            (t.fg.opacity(0.1), t.fg.opacity(0.1))
-        } else if lit {
-            (t.acc, t.acc.opacity(0.55))
+        let fill = if bar.value <= 0.0 {
+            t.fg.opacity(0.1)
         } else {
-            (t.acc.opacity(0.55), t.acc.opacity(0.12))
+            t.acc.opacity(BAR_ALPHA)
         };
-        let body = div()
-            .w_full()
-            .h(px(height))
-            .rounded_t(px(3.0))
-            .bg(linear_gradient(
-                180.0,
-                linear_color_stop(top, 0.0),
-                linear_color_stop(bottom, 1.0),
-            ))
-            .when(lit, |d| {
-                d.shadow(vec![BoxShadow {
-                    color: t.acc.opacity(0.35),
-                    offset: point(px(0.0), px(0.0)),
-                    blur_radius: px(16.0),
-                    spread_radius: px(0.0),
-                    inset: false,
-                }])
-            });
+        let body = div().w_full().h(px(height)).rounded_t(px(3.0)).bg(fill);
         columns = columns.child(
             div()
                 .flex_1()
@@ -284,7 +276,7 @@ pub fn bar_chart_sized(
                     div()
                         .font_family(MONO)
                         .text_size(px(10.0))
-                        .text_color(if lit { t.fg } else { t.mutd })
+                        .text_color(t.mutd)
                         .text_center()
                         .whitespace_nowrap()
                         .overflow_hidden()
@@ -317,43 +309,45 @@ pub fn bar_chart_sized(
                 .h(px(1.0))
                 .bg(t.line2),
         );
+    let mut key = None;
     if let Some((value, label)) = average {
         let bottom = value / max * room;
-        plot = plot
-            .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom(px(bottom))
-                    .border_t_1()
-                    .border_dashed()
-                    .border_color(t.faint.opacity(0.7)),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .right_0()
-                    .bottom(px(bottom + 2.0))
-                    .px(px(3.0))
-                    .bg(t.bg)
-                    .font_family(MONO)
-                    .text_size(px(10.0))
-                    .text_color(t.faint)
-                    .child(label),
-            );
+        plot = plot.child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom(px(bottom))
+                .border_t_1()
+                .border_dashed()
+                .border_color(t.faint.opacity(0.7)),
+        );
+        key = Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .px(px(4.0))
+                .font_family(MONO)
+                .text_size(px(10.0))
+                .text_color(t.faint)
+                .child(div().w(px(14.0)).h(px(1.0)).bg(t.faint.opacity(0.7)))
+                .child(label),
+        );
     }
     plot = plot.child(columns);
 
     let mut days = div().flex().gap(px(gap)).px(px(4.0));
     for (i, bar) in bars.iter().enumerate() {
+        let today = i == last;
         days = days.child(
             div()
                 .flex_1()
                 .min_w_0()
                 .font_family(MONO)
                 .text_size(px(10.5))
-                .text_color(if i == last { t.fg } else { t.faint })
+                .text_color(if today { t.fg } else { t.faint })
+                .when(today, |d| d.font_weight(gpui::FontWeight::BOLD))
                 .text_center()
                 .whitespace_nowrap()
                 .child(bar.day.clone()),
@@ -366,6 +360,7 @@ pub fn bar_chart_sized(
         .px(px(12.0))
         .pt(px(14.0))
         .pb(px(10.0))
+        .children(key)
         .child(plot)
         .child(days)
 }

@@ -45,7 +45,12 @@ impl Store {
     pub fn persona(name: &str) -> Result<Self> {
         let persona = garmin_api::personas::Persona::from_name(name)
             .with_context(|| format!("no persona {name}"))?;
-        let dir = std::env::temp_dir().join(format!("gc-desktop-{name}-{}", std::process::id()));
+        // A counter keeps two stores in one process apart. Tests run in parallel
+        // and one store removed the folder of the other.
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("gc-desktop-{name}-{}-{n}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("cache.sqlite3");
         let db = garmin_api::open_db(&path)?;

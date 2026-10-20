@@ -17,7 +17,7 @@ use crate::theme::Theme;
 /// The height of the title bar and of the strip that drags the window.
 pub const STRIP: f32 = 38.0;
 /// The width of the grab strip along each window edge.
-const GRAB: f32 = 5.0;
+const GRAB: f32 = 7.0;
 
 /// Whether the app draws the three buttons.
 fn buttons_are_ours(window: &Window) -> bool {
@@ -173,6 +173,9 @@ pub fn resize_handles(window: &Window) -> Vec<AnyElement> {
             place(div().absolute(), g)
                 .id(id)
                 .cursor(cursor)
+                // Occlude: the title bar under the strip gets no mouse down, so
+                // its window move does not replace the resize.
+                .occlude()
                 .on_mouse_down(MouseButton::Left, move |_, window, _| {
                     window.start_window_resize(edge)
                 })
@@ -212,28 +215,28 @@ pub fn resize_handles(window: &Window) -> Vec<AnyElement> {
         "rs-tl",
         ResizeEdge::TopLeft,
         CursorStyle::ResizeUpLeftDownRight,
-        |d, g| d.top_0().left_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.top_0().left_0().w(g * 1.5).h(g * 1.5),
         tiling.top || tiling.left,
     );
     edge(
         "rs-tr",
         ResizeEdge::TopRight,
         CursorStyle::ResizeUpRightDownLeft,
-        |d, g| d.top_0().right_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.top_0().right_0().w(g * 1.5).h(g * 1.5),
         tiling.top || tiling.right,
     );
     edge(
         "rs-bl",
         ResizeEdge::BottomLeft,
         CursorStyle::ResizeUpRightDownLeft,
-        |d, g| d.bottom_0().left_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.bottom_0().left_0().w(g * 1.5).h(g * 1.5),
         tiling.bottom || tiling.left,
     );
     edge(
         "rs-br",
         ResizeEdge::BottomRight,
         CursorStyle::ResizeUpLeftDownRight,
-        |d, g| d.bottom_0().right_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.bottom_0().right_0().w(g * 1.5).h(g * 1.5),
         tiling.bottom || tiling.right,
     );
     out

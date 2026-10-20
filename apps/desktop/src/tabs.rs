@@ -157,10 +157,19 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -
                     .child(SharedString::from(root.crumb(t))),
             )
             .child(icon(Icon::ChevronDown, 10.0, t, t.faint));
-    let pick = div()
-        .min_w_0()
-        .child(pick)
-        .children(crate::calendar::popover(root, t, cx));
+    let pick = if root.crumb_picks() {
+        div()
+            .min_w_0()
+            .child(pick)
+            .children(crate::calendar::popover(root, t, cx))
+    } else {
+        div()
+            .min_w_0()
+            .overflow_hidden()
+            .text_ellipsis()
+            .text_color(t.fg)
+            .child(SharedString::from(root.crumb(t)))
+    };
     let synced = root
         .account
         .synced_ago

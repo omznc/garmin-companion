@@ -148,7 +148,7 @@ fn cells(m: &MonthCompare) -> Vec<Cell> {
     if a.distance_km > 0.0 || b.distance_km > 0.0 {
         out.push(cell(
             "Distance",
-            format!("{:.0}", a.distance_km),
+            crate::ui::fixed(a.distance_km, 0),
             Some("km"),
             delta(a.distance_km - b.distance_km, "km", 0, true),
         ));

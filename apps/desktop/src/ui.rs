@@ -14,6 +14,21 @@ use crate::theme::{Theme, FS_CAPTION, FS_H1, FS_MICRO};
 pub const SANS: &str = "IBM Plex Sans";
 pub const MONO: &str = "IBM Plex Mono";
 
+/// `v` with `decimals` places. A value that rounds to zero prints as `0`, never
+/// as `-0`.
+pub fn fixed(v: f64, decimals: usize) -> String {
+    let text = format!("{v:.decimals$}");
+    if text
+        .trim_start_matches('-')
+        .trim_matches(['0', '.'])
+        .is_empty()
+    {
+        text.trim_start_matches('-').to_string()
+    } else {
+        text
+    }
+}
+
 /// The base line height of the design.
 pub const LH_NORMAL: f32 = 1.45;
 
@@ -145,5 +160,19 @@ pub(crate) fn stroke(
         if let Ok(path) = path.build() {
             window.paint_path(path, colour);
         }
+    }
+}
+
+#[cfg(test)]
+mod fixed_tests {
+    use super::fixed;
+
+    #[test]
+    fn a_value_that_rounds_to_zero_has_no_sign() {
+        assert_eq!(fixed(-0.0, 0), "0");
+        assert_eq!(fixed(-0.3, 0), "0");
+        assert_eq!(fixed(-0.04, 1), "0.0");
+        assert_eq!(fixed(-7.0, 0), "-7");
+        assert_eq!(fixed(12.4, 0), "12");
     }
 }
