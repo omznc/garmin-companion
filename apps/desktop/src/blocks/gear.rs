@@ -48,7 +48,7 @@ pub fn title(_ctx: &Ctx) -> Option<String> {
 }
 
 pub fn lede(_ctx: &Ctx) -> Option<String> {
-    Some("The distance on your shoes, and the devices on your account.".into())
+    Some("The distance on your gear, and the devices on your account.".into())
 }
 
 pub fn crumb(_ctx: &Ctx) -> Option<String> {

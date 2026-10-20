@@ -144,6 +144,11 @@ impl Places {
         }
     }
 
+    /// True when the gear could not be read and none was kept.
+    pub fn gear_failed(&self) -> bool {
+        matches!(self.gear, Gear::Failed)
+    }
+
     /// The number of saved routes, for the sidebar.
     pub fn route_count(&self) -> Option<i64> {
         self.routes.as_ref().ok().map(|r| r.total as i64)

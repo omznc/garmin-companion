@@ -585,6 +585,7 @@ mod tests {
             today: &today,
             wellness: None,
             focus: crate::focus::Focus::today(),
+            screen: crate::screen::Screen::Today,
             charts_view: None,
             tiles_view: None,
             extras_view: None,

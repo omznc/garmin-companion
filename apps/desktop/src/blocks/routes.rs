@@ -24,7 +24,7 @@ pub const BLOCKS: &[BlockDef] = &[
     },
     BlockDef {
         id: "routes_most_run",
-        title: "Most run",
+        title: "Most used",
         group: Screen::Routes,
         default_width: Width::TwoThirds,
         render: most_run,
@@ -239,10 +239,15 @@ fn saved(ctx: &Ctx) -> Option<Block> {
     for _ in 0..8 {
         grid = grid.child(div().h(px(0.0)).flex_basis(px(TILE_WIDTH)).flex_grow(1.0));
     }
-    block(Some(format!("{} routes", items.len())), grid)
+    let meta = if items.len() == 1 {
+        "1 route".to_string()
+    } else {
+        format!("{} routes", items.len())
+    };
+    block(Some(meta), grid)
 }
 
-/* --------------------------------------------------------------- most run --- */
+/* --------------------------------------------------------------- most used --- */
 
 fn most_run(ctx: &Ctx) -> Option<Block> {
     let view = ctx.places.routes()?;

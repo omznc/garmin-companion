@@ -168,7 +168,7 @@ impl Screen {
             Screen::Weight => "Last 90 days".into(),
             Screen::Fitness => "Today".into(),
             Screen::Routes => "Saved routes".into(),
-            Screen::Gear => "Shoes and devices".into(),
+            Screen::Gear => "Gear and devices".into(),
             Screen::Ask => "Conversation".into(),
             Screen::Insights => "New this week".into(),
             Screen::Reports => "All reports".into(),
