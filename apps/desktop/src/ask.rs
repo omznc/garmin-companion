@@ -232,7 +232,8 @@ impl Ask {
     pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
         self.focus = (!focus.is_live()).then_some(focus);
         let hint = self.focus.map(|f| f.label());
-        self.composer.update(cx, |c, cx| c.set_hint(hint, cx));
+        self.composer
+            .update(cx, |c, cx| c.set_focus_label(hint, cx));
     }
 
     /// The name of the provider for the status bar.

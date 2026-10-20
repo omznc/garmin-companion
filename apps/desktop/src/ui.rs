@@ -265,18 +265,3 @@ pub fn line_chart(values: &[f32], height: f32, pad: f32, t: &Theme) -> impl Into
     .w_full()
     .h(px(height))
 }
-
-/// The labels under a chart, spread across its width.
-pub fn axis_labels(labels: &[String], t: &Theme) -> Div {
-    labels.iter().fold(
-        div()
-            .flex()
-            .justify_between()
-            .mt(px(9.0))
-            .font_family(SANS)
-            .text_size(px(FS_MICRO))
-            .line_height(relative(1.0))
-            .text_color(t.faint),
-        |row, label| row.child(label.clone()),
-    )
-}

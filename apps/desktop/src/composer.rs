@@ -132,7 +132,7 @@ impl Composer {
     }
 
     /// The label of the focus period, when the focus is not the live day.
-    pub fn set_hint(&mut self, focus: Option<String>, cx: &mut Context<Self>) {
+    pub fn set_focus_label(&mut self, focus: Option<String>, cx: &mut Context<Self>) {
         self.focus_label = focus;
         cx.notify();
     }
