@@ -243,7 +243,7 @@ function AskCard() {
   const router = useRouter();
   const md = useMd();
   return (
-    <Card gap={0} onPress={() => router.push("/ask/new")}>
+    <Card gap={0} onPress={() => router.push("/ask")}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
         <IconTile name="chat" tone="secondary" />
         <View style={{ flex: 1 }}>
@@ -302,7 +302,7 @@ export function TodayScreen() {
         {!data && !error ? <Loading /> : null}
         {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}
       </LargeAppBarScreen>
-      <AskFab extended={fab.extended} onPress={() => router.push("/ask/new")} />
+      <AskFab extended={fab.extended} onPress={() => router.push("/ask")} />
     </View>
   );
 }
