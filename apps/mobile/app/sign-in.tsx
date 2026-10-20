@@ -7,9 +7,9 @@ import { ActivityIndicator, Button, Text, useColorScheme, View } from "react-nat
 import { WebView } from "react-native-webview";
 import { getSignInUrl, redeemTicket } from "../src/data/account";
 import { ticketIn } from "../src/data/ticket";
-import { useSync } from "../src/data/useSync";
+import { importHistory } from "../src/data/useSync";
 
-type Step = "page" | "redeeming" | "syncing" | "failed";
+type Step = "page" | "redeeming" | "failed";
 
 function Message({ children, action }: { children: string; action?: React.ReactNode }) {
   const dark = useColorScheme() === "dark";
@@ -35,7 +35,6 @@ function Message({ children, action }: { children: string; action?: React.ReactN
 export default function SignIn() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const sync = useSync();
   const url = useQuery({ queryKey: ["sign-in-url"], queryFn: getSignInUrl, retry: false });
   const [step, setStep] = useState<Step>("page");
   const [problem, setProblem] = useState("");
@@ -51,35 +50,23 @@ export default function SignIn() {
     } catch (e) {
       return fail(`Sign-in did not work. ${e instanceof Error ? e.message : String(e)}`);
     }
-    try {
-      setStep("syncing");
-      await sync.run({ full: true, days: 365 });
-      finish();
-    } catch (e) {
-      fail(`You are signed in, but the first sync did not finish. ${String(e)}`, true);
-    }
+    // Today opens at once. The import runs on and shows its progress there.
+    importHistory();
+    finish();
   };
 
-  const fail = (text: string, signedIn = false) => {
+  const fail = (text: string) => {
     setProblem(text);
     setStep("failed");
-    used.current = signedIn;
+    used.current = false;
   };
 
   if (url.error) return <Message>{`The sign-in page is not available. ${url.error}`}</Message>;
   if (!url.data) return <Message>Loading the sign-in page.</Message>;
   if (step === "redeeming") return <Message>Signing in. This takes a few seconds.</Message>;
-  if (step === "syncing") return <Message>{sync.line ?? "Starting the first sync."}</Message>;
   if (step === "failed") {
     return (
-      <Message
-        action={
-          <Button
-            title={used.current ? "Continue" : "Try again"}
-            onPress={() => (used.current ? finish() : setStep("page"))}
-          />
-        }
-      >
+      <Message action={<Button title="Try again" onPress={() => setStep("page")} />}>
         {problem}
       </Message>
     );

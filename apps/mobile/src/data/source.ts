@@ -183,9 +183,9 @@ function bridgeSource(): Source | null {
       require("react-native-garmin-bridge") as typeof import("react-native-garmin-bridge");
     const root = dataRoot();
     const base = root.uri.replace(/^file:\/\//, "").replace(/\/$/, "");
-    // Sample data only in a dev build or with EXPO_PUBLIC_FIXTURE=1. A release build fakes data only when that flag is set.
+    // No cache means no sync yet, so the core offers sample data. It writes nothing and sends nothing.
     const noCache = !new File(root, "cache.sqlite3").exists;
-    sampleData = noCache && fixtureAllowed;
+    sampleData = noCache;
     bridge.init(base, sampleData);
     return {
       version: () => bridge.version(),

@@ -15,7 +15,8 @@ import {
 } from "react-native";
 import { metricRoute } from "../data/present";
 import type { Section, Today } from "../data/types";
-import { useSync } from "../data/useSync";
+import { importLabel } from "../data/importLabel";
+import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 
 const label = PlatformColor("label");
@@ -243,6 +244,24 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
   );
 }
 
+// The history import: the first 14 days, then the months. An error offers a retry.
+function ImportRow({ sync }: { sync: SyncState }) {
+  const text = importLabel(sync);
+  if (!text) return null;
+  const failed = sync.error !== null && !sync.busy;
+  return (
+    <Group>
+      <View style={{ padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}>
+        {failed ? null : <ActivityIndicator />}
+        <Text style={{ flex: 1, fontSize: 15, color: failed ? PlatformColor("systemRed") : label }}>
+          {failed ? sync.error : text}
+        </Text>
+        {failed ? <Button title="Retry" onPress={() => importHistory()} /> : null}
+      </View>
+    </Group>
+  );
+}
+
 export function TodayScreen() {
   const router = useRouter();
   const { data, error, refetch } = useToday();
@@ -261,7 +280,9 @@ export function TodayScreen() {
           onPress={() => router.push("/ask")}
         />
       </Stack.Toolbar>
-      {sync.line || sync.error ? (
+      {sync.importing ? (
+        <ImportRow sync={sync} />
+      ) : sync.line || sync.error ? (
         <Text style={{ fontSize: 13, color: secondary, marginTop: 8, marginHorizontal: 32 }}>
           {sync.error ?? sync.line}
         </Text>

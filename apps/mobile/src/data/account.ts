@@ -34,3 +34,13 @@ export const clearSkipSetup = () => {
   if (skipMarker().exists) skipMarker().delete();
 };
 export const setupSkipped = () => process.env.EXPO_PUBLIC_FIXTURE === "1" || skipMarker().exists;
+
+// The full history import is long. The marker lets the app resume it after the app stops.
+const historyMarker = () => new File(Paths.document, "history-import");
+export const markHistoryPending = () => {
+  if (!historyMarker().exists) historyMarker().create();
+};
+export const clearHistoryPending = () => {
+  if (historyMarker().exists) historyMarker().delete();
+};
+export const historyPending = () => historyMarker().exists;
