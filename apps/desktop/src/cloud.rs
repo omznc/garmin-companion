@@ -77,6 +77,11 @@ impl Cloud {
         }
     }
 
+    /// A provider that cannot work yet: the own key is not saved. A demo has no keyring.
+    pub fn needs_key(&self, provider: Provider) -> bool {
+        self.live && provider == Provider::Openrouter && !self.has_key
+    }
+
     pub fn say(&mut self, text: impl Into<String>, bad: bool) {
         self.note = Some(Note {
             text: text.into(),
@@ -218,9 +223,18 @@ impl Root {
             }
         }
         cloud.provider = provider;
+        let live = cloud.live;
         if provider == Provider::Cloud {
             self.cloud_refresh(cx);
         }
+        // The status bar and the coach panel read the provider from Ask.
+        self.ask.update(cx, |ask, cx| {
+            if live {
+                ask.refresh_credits(cx)
+            } else {
+                ask.set_provider(provider)
+            }
+        });
         cx.notify();
     }
 
@@ -233,10 +247,13 @@ impl Root {
             Ok((true, models)) if !models.is_empty() => {
                 root.cloud_keep(Provider::Ollama, &models[0], cx)
             }
-            _ => root
-                .account
-                .cloud
-                .say("Ollama is not running here, or it has no model.", true),
+            _ => {
+                root.account
+                    .cloud
+                    .say("Ollama is not running here, or it has no model.", true);
+                // The note is drawn in the Coach section of Settings.
+                root.show_settings_section(1, cx);
+            }
         });
     }
 
@@ -448,7 +465,7 @@ impl Cloud {
 /* ---------------------------------------------------------------- drawing --- */
 
 /// The three choices: the name and what the choice means.
-const CHOICES: [(&str, &str, &str, Provider); 3] = [
+pub(crate) const CHOICES: [(&str, &str, &str, Provider); 3] = [
     (
         "coach-cloud",
         "Cloud",

@@ -32,7 +32,7 @@ pub struct UpdateState {
 }
 
 impl UpdateState {
-    fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.checking || self.installing
     }
 }
