@@ -33,7 +33,7 @@ fn some(values: &[f32]) -> Vec<Option<f32>> {
 }
 
 /// A filled round dot with a soft ring, at the end of a line.
-fn end_dot(window: &mut gpui::Window, at: Point<Pixels>, colour: Hsla, ring: Hsla) {
+pub(crate) fn end_dot(window: &mut gpui::Window, at: Point<Pixels>, colour: Hsla, ring: Hsla) {
     for (side, tint) in [(13.0, ring), (7.0, colour)] {
         let bounds = Bounds::centered_at(at, size(px(side), px(side)));
         window.paint_quad(fill(bounds, tint).corner_radii(Corners::all(px(side / 2.0))));
@@ -41,7 +41,7 @@ fn end_dot(window: &mut gpui::Window, at: Point<Pixels>, colour: Hsla, ring: Hsl
 }
 
 /// The wash under a line, from the colour at the top to nothing at the bottom.
-fn area_wash(
+pub(crate) fn area_wash(
     window: &mut gpui::Window,
     points: &[Point<Pixels>],
     floor: Pixels,
@@ -215,12 +215,22 @@ const BAR_LABEL_ROOM: f32 = 18.0;
 /// `bars`: a chart 132 px high. The last bar is lit with the accent and a
 /// glow. A dashed line marks the average.
 pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div {
-    let max = bars
-        .iter()
-        .map(|b| b.value)
-        .fold(0.0_f32, f32::max)
-        .max(1.0);
-    let room = BAR_CHART_H - BAR_LABEL_ROOM;
+    bar_chart_sized(bars, average, BAR_CHART_H, None, t)
+}
+
+/// `bars` with a set height. `full` is the value of a full bar: `None` takes
+/// the tallest bar or the line, whichever is higher.
+pub fn bar_chart_sized(
+    bars: &[Bar],
+    average: Option<(f32, String)>,
+    chart_h: f32,
+    full: Option<f32>,
+    t: &Theme,
+) -> Div {
+    let tallest = bars.iter().map(|b| b.value).fold(0.0_f32, f32::max);
+    let line = average.as_ref().map_or(0.0, |a| a.0);
+    let max = full.unwrap_or_else(|| tallest.max(line)).max(1.0);
+    let room = chart_h - BAR_LABEL_ROOM;
     let gap = if bars.len() > 9 { 5.0 } else { 10.0 };
     let last = bars.len().saturating_sub(1);
 
@@ -234,7 +244,7 @@ pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div
     for (i, bar) in bars.iter().enumerate() {
         let lit = i == last;
         // A bar of zero keeps a stub of 1.5 per cent, so the day is not blank.
-        let height = (bar.value / max * room).max(BAR_CHART_H * 0.015);
+        let height = (bar.value / max * room).max(chart_h * 0.015);
         let (top, bottom) = if bar.value <= 0.0 {
             (t.fg.opacity(0.1), t.fg.opacity(0.1))
         } else if lit {
@@ -285,7 +295,7 @@ pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div
 
     let mut plot = div()
         .relative()
-        .h(px(BAR_CHART_H))
+        .h(px(chart_h))
         .border_b_1()
         .border_color(t.line)
         .child(
@@ -293,7 +303,7 @@ pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div
                 .absolute()
                 .left_0()
                 .right_0()
-                .bottom(px(BAR_CHART_H / 3.0))
+                .bottom(px(chart_h / 3.0))
                 .h(px(1.0))
                 .bg(t.line2),
         )
@@ -302,7 +312,7 @@ pub fn bar_chart(bars: &[Bar], average: Option<(f32, String)>, t: &Theme) -> Div
                 .absolute()
                 .left_0()
                 .right_0()
-                .bottom(px(BAR_CHART_H * 2.0 / 3.0))
+                .bottom(px(chart_h * 2.0 / 3.0))
                 .h(px(1.0))
                 .bg(t.line2),
         );
