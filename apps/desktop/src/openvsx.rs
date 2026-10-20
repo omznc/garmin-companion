@@ -27,6 +27,12 @@ const SEARCH_CEILING: u64 = 2 * 1024 * 1024;
 const VSIX_CEILING: u64 = 24 * 1024 * 1024;
 /// One file in the archive. The claimed size and the real read are both bounded.
 const ENTRY_CEILING: u64 = 4 * 1024 * 1024;
+/// All the JSON read from one archive. Many small entries must not add up to a flood.
+const TOTAL_CEILING: u64 = 32 * 1024 * 1024;
+/// One extension saves at most this many themes.
+const MAX_THEMES: usize = 40;
+/// The only place that a download may come from.
+const DOWNLOAD_PREFIX: &str = "https://open-vsx.org/";
 /// One screen of results, not a catalogue.
 const RESULTS: usize = 25;
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -126,14 +132,26 @@ pub async fn search(query: &str) -> Result<Vec<Found>> {
 }
 
 /// Download one extension and save each theme in it. Answers with the saved
-/// names. One theme that cannot be read does not stop the others.
+/// names. One theme that cannot be read does not stop the others. A theme with
+/// the name of a saved theme replaces it, and its name ends with "(replaced)".
 pub async fn install(found: &Found) -> Result<Vec<String>> {
     let url = download_url(found).await?;
     let archive = fetch(&url, VSIX_CEILING, INSTALL_TIMEOUT).await?;
     let themes = convert(&unpack(&archive)?, found)?;
+    let taken: Vec<String> = theme::list()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| t.slug)
+        .collect();
     let mut names = Vec::new();
     for t in themes {
-        names.push(theme::save(t)?.name);
+        let replaced = taken.contains(&theme::slugify(&t.name));
+        let name = theme::save(t)?.name;
+        names.push(if replaced {
+            format!("{name} (replaced)")
+        } else {
+            name
+        });
     }
     Ok(names)
 }
@@ -174,6 +192,11 @@ async fn download_url(found: &Found) -> Result<String> {
         "open-vsx has no download for {}",
         found.name
     );
+    ensure!(
+        url.starts_with(DOWNLOAD_PREFIX),
+        "the download for {} is not on open-vsx.org",
+        found.name
+    );
     Ok(url)
 }
 
@@ -183,6 +206,7 @@ fn unpack(bytes: &[u8]) -> Result<HashMap<String, String>> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .context("open-vsx sent something that is not an extension")?;
     let mut files = HashMap::new();
+    let mut total = 0u64;
     for at in 0..archive.len() {
         let entry = archive
             .by_index(at)
@@ -206,6 +230,8 @@ fn unpack(bytes: &[u8]) -> Result<HashMap<String, String>> {
         if !path.to_ascii_lowercase().ends_with(".json") || entry.size() > ENTRY_CEILING {
             continue;
         }
+        total += entry.size();
+        ensure!(total <= TOTAL_CEILING, "the extension holds too much JSON");
         let mut text = String::new();
         if entry.take(ENTRY_CEILING).read_to_string(&mut text).is_ok() {
             files.insert(path.to_string(), text);
@@ -234,6 +260,7 @@ fn convert(files: &HashMap<String, String>, found: &Found) -> Result<Vec<Theme>>
         .contributes
         .themes
         .iter()
+        .take(MAX_THEMES)
         .filter_map(|c| one_theme(c, files, &nls, found))
         .collect();
     ensure!(
@@ -521,5 +548,10 @@ mod tests {
         keys.sort();
         assert_eq!(keys, ["package.json", "themes/d.json"]);
         assert!(unpack(b"not a zip").is_err());
+        // Nine entries under the entry ceiling are over the total ceiling.
+        let chunk = vec![b' '; ENTRY_CEILING as usize];
+        let names: Vec<String> = (0..9).map(|i| format!("extension/{i}.json")).collect();
+        let many: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), &chunk[..])).collect();
+        assert!(unpack(&zip_of(&many)).is_err());
     }
 }
