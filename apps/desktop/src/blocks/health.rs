@@ -6,7 +6,7 @@ use super::daily::{
     block, change_words, date_labels, dated, day_points, ends, has_line, line_chart, newest,
     thousands, weekday_initial, window_meta, Line,
 };
-use super::{Block, BlockDef, Ctx, Go, Width};
+use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::{self, Bar};
 use crate::screen::Screen;
 
@@ -159,9 +159,7 @@ fn trend_block(ctx: &Ctx, key: &str, unit: &str, decimals: usize) -> Option<Bloc
 }
 
 fn resting_hr(ctx: &Ctx) -> Option<Block> {
-    let mut b = trend_block(ctx, "resting_hr", "bpm", 0)?;
-    b.link = Some(("Details".into(), Go::Screen(Screen::Health)));
-    Some(b)
+    trend_block(ctx, "resting_hr", "bpm", 0)
 }
 
 fn spo2(ctx: &Ctx) -> Option<Block> {
