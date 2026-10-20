@@ -61,6 +61,8 @@ pub struct Account {
     /// The search field of Settings, and the section that it shows.
     pub settings_search: Field,
     pub settings_page: usize,
+    /// The window y of the top of each section, from the last layout.
+    pub settings_tops: std::rc::Rc<std::cell::RefCell<Vec<f32>>>,
     pub token_path_default: Option<String>,
     /// The coach settings and the cloud account.
     pub cloud: Cloud,
@@ -102,6 +104,7 @@ impl Account {
                 f
             },
             settings_page: 0,
+            settings_tops: Default::default(),
             token_path_default: status.and_then(|s| s.importable_token_path),
             cloud: Cloud::new(cx),
             update: Default::default(),
