@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { committed } from "../ui/haptics";
 import { clearHistoryPending, markHistoryPending, runSync } from "./account";
 import { QUICK_DAYS } from "./importLabel";
 import { queryClient } from "./queryClient";
@@ -114,7 +115,7 @@ export function useSync() {
   const refresh = useCallback(
     () =>
       startSync().then(
-        () => {},
+        () => committed(),
         () => {},
       ),
     [],

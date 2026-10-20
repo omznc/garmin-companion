@@ -1,16 +1,24 @@
-import { ActionSheetIOS, Alert, Platform } from "react-native";
+import { ActionSheetIOS, Platform } from "react-native";
 import type { ThreadMeta } from "../data/chatTypes";
+import { showDialog } from "../ui/dialog";
+import { removed } from "../ui/haptics";
+import { notifyError } from "../ui/notify-error";
+import { showSnackbar } from "../ui/snackbar-store";
 import { deleteThread } from "./useThreads";
 
 function confirmDelete(thread: ThreadMeta) {
-  Alert.alert("Delete the chat?", `"${thread.title}" and its messages go. This cannot be undone.`, [
+  showDialog("Delete the chat?", `"${thread.title}" and its messages go. This cannot be undone.`, [
     { text: "Cancel", style: "cancel" },
     {
       text: "Delete",
       style: "destructive",
       onPress: () =>
-        void deleteThread(thread.sessionId).catch((error: Error) =>
-          Alert.alert("The chat was not deleted", error.message),
+        void deleteThread(thread.sessionId).then(
+          () => {
+            removed();
+            showSnackbar("Chat deleted");
+          },
+          (error: Error) => notifyError("The chat was not deleted", error),
         ),
     },
   ]);
@@ -33,7 +41,7 @@ export function showThreadMenu(thread: ThreadMeta, onRename: () => void) {
     );
     return;
   }
-  Alert.alert(thread.title, undefined, [
+  showDialog(thread.title, undefined, [
     { text: "Rename", onPress: onRename },
     { text: "Delete", onPress: () => confirmDelete(thread) },
     { text: "Cancel", style: "cancel" },
