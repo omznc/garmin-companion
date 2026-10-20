@@ -391,25 +391,55 @@ fn records(ctx: &Ctx) -> Option<Block> {
 
 /* ------------------------------------------------------------------- sport --- */
 
+/// The seconds and share of each sport in a range, longest first.
+fn sport_in_range(rows: &[ActivityRow], focus: &Focus) -> Vec<(String, f64, f64)> {
+    let mut sums: Vec<(String, f64)> = Vec::new();
+    for r in rows {
+        let (Some(day), Some(secs)) = (parse_day(&r.date), r.duration_s) else {
+            continue;
+        };
+        if !focus.contains(day) || secs <= 0.0 {
+            continue;
+        }
+        match sums.iter_mut().find(|(label, _)| *label == r.sport_label) {
+            Some(entry) => entry.1 += secs,
+            None => sums.push((r.sport_label.clone(), secs)),
+        }
+    }
+    sums.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let total: f64 = sums.iter().map(|s| s.1).sum();
+    sums.into_iter()
+        .map(|(label, secs)| (label, secs, secs / total * 100.0))
+        .collect()
+}
+
 fn sport(ctx: &Ctx) -> Option<Block> {
-    let list = &ctx.charts_view?.time_by_sport;
-    let longest = list.iter().map(|s| s.secs).fold(0.0, f64::max);
+    let list: Vec<(String, f64, f64)> = if ctx.focus.days() > 1 {
+        let view = ctx.activities.as_ref().ok()?;
+        sport_in_range(&view.rows, &ctx.focus)
+    } else {
+        let all = &ctx.charts_view?.time_by_sport;
+        all.iter()
+            .map(|s| (s.label.clone(), s.secs, s.share_pct))
+            .collect()
+    };
+    let longest = list.iter().map(|s| s.1).fold(0.0, f64::max);
     if longest <= 0.0 {
         return None;
     }
     let rows = list
         .iter()
         .enumerate()
-        .map(|(i, s)| MeterRow {
-            name: s.label.clone().into(),
-            fraction: (s.secs / longest) as f32,
-            value: hours_minutes(s.secs).into(),
-            share: format!("{:.0}%", s.share_pct).into(),
+        .map(|(i, (label, secs, share))| MeterRow {
+            name: label.clone().into(),
+            fraction: (secs / longest) as f32,
+            value: hours_minutes(*secs).into(),
+            share: format!("{share:.0}%").into(),
             tone: if i == 0 { Tone::Accent } else { Tone::Muted },
         })
         .collect();
     block(
-        Some("last 30 days".into()),
+        Some(meta_for(&ctx.focus, "last 30 days")),
         None,
         padded(charts::meter_rows(rows, ctx.t)),
     )
