@@ -51,7 +51,36 @@ use std::sync::Arc;
 /// athlete's data is stamped in local dates by Garmin, so a UTC "today" is the
 /// wrong day for anyone west of London for part of every evening.
 pub fn today() -> chrono::NaiveDate {
-    chrono::Local::now().date_naive()
+    AS_OF
+        .with(std::cell::Cell::get)
+        .unwrap_or_else(|| chrono::Local::now().date_naive())
+}
+
+thread_local! {
+    static AS_OF: std::cell::Cell<Option<chrono::NaiveDate>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run `f` with "today" set to `date` on this thread. A read in `f` then ends
+/// on `date`: `today()` returns it, and `until()` hides the rows after it.
+/// Use it only for a synchronous read, because the setting is per thread.
+pub fn with_as_of<R>(date: chrono::NaiveDate, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<chrono::NaiveDate>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            AS_OF.with(|c| c.set(self.0));
+        }
+    }
+    let _restore = Restore(AS_OF.with(|c| c.replace(Some(date))));
+    f()
+}
+
+/// The last `YYYY-MM-DD` date a windowed read may return. Without `with_as_of`
+/// no date is hidden.
+pub fn until() -> String {
+    match AS_OF.with(std::cell::Cell::get) {
+        Some(d) => d.format("%Y-%m-%d").to_string(),
+        None => "9999-12-31".into(),
+    }
 }
 
 /// The `YYYY-MM-DD` cutoff for a window of `days` ending today, inclusive of

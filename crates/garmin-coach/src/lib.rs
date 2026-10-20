@@ -26,5 +26,6 @@ pub use config::{
     load_config, probe_ollama, save_config, ChatConfig, Provider, DEFAULT_OPENROUTER_MODEL,
 };
 pub use sse::{SseParser, StreamResult, ToolCall};
+pub use tools::Period;
 pub use transport::{HttpTransport, Transport};
-pub use turn::{ask, run_turn, Event, EventSink, HistoryMessage};
+pub use turn::{ask, run_turn, run_turn_in, Event, EventSink, HistoryMessage};

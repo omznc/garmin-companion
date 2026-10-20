@@ -311,7 +311,11 @@ impl Ask {
 
         let (tx, rx) = async_channel::unbounded();
         let (source, stop) = (self.source.clone(), self.stop.clone());
-        std::thread::spawn(move || run_on_thread(source, history, tx, stop));
+        let period = self.focus.map(|f| garmin_coach::Period {
+            start: f.start,
+            end: f.end,
+        });
+        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period));
         self.task = Some(cx.spawn(async move |this, cx| {
             while let Ok(event) = rx.recv().await {
                 if this.update(cx, |ask, cx| ask.apply(event, cx)).is_err() {
@@ -461,6 +465,7 @@ fn run_on_thread(
     history: Vec<HistoryMessage>,
     tx: async_channel::Sender<Event>,
     stop: Arc<AtomicBool>,
+    period: Option<garmin_coach::Period>,
 ) {
     let sink = ChannelSink(tx);
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -478,8 +483,8 @@ fn run_on_thread(
                 let memory = || Db::open(std::path::Path::new(":memory:"));
                 let _ = garmin_coach::run_turn(&Demo, &sink, &stop, history, &memory, false).await;
             }
-            Source::Db(path) => real_turn(&path, false, history, &sink, &stop).await,
-            Source::Copy(path) => real_turn(&path, true, history, &sink, &stop).await,
+            Source::Db(path) => real_turn(&path, false, history, &sink, &stop, period).await,
+            Source::Copy(path) => real_turn(&path, true, history, &sink, &stop, period).await,
         }
     });
 }
@@ -490,6 +495,7 @@ async fn real_turn(
     history: Vec<HistoryMessage>,
     sink: &ChannelSink,
     stop: &AtomicBool,
+    period: Option<garmin_coach::Period>,
 ) {
     let open = || Db::open(path);
     let transport = open().and_then(|db| {
@@ -500,7 +506,8 @@ async fn real_turn(
     });
     match transport {
         Ok(transport) => {
-            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open, true).await;
+            let _ = garmin_coach::run_turn_in(&transport, sink, stop, history, &open, true, period)
+                .await;
         }
         Err(e) => sink.emit(Event::Error {
             text: format!("{e:#}"),
@@ -1168,7 +1175,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gc-ask-copy-{}.db", std::process::id()));
         setup(&path, "cloud").unwrap();
         let (tx, rx) = async_channel::unbounded();
-        run_on_thread(Source::Copy(path), vec![], tx, Arc::default());
+        run_on_thread(Source::Copy(path), vec![], tx, Arc::default(), None);
         let events: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(matches!(&events[..], [Event::Error { text }] if text == CLOUD_OFF));
     }

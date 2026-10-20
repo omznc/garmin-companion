@@ -7,6 +7,7 @@
 //! the coach must not lean on one sport. They return when the data gates them.
 
 use anyhow::Result;
+use chrono::NaiveDate;
 use garmin_core::{db::Db, plural, query};
 use serde_json::{json, Value};
 
@@ -239,13 +240,44 @@ pub(crate) fn describe(name: &str, args: &Value) -> String {
 
 /// Run one tool against the cache. An error goes back as JSON and does not end
 /// the turn: the model can explain "that failed" better than a stack trace.
-pub(crate) fn run(name: &str, args: &Value, open_db: &dyn Fn() -> Result<Db>) -> Value {
+pub(crate) fn run(
+    name: &str,
+    args: &Value,
+    open_db: &dyn Fn() -> Result<Db>,
+    period: Option<Period>,
+) -> Value {
     let db = match open_db() {
         Ok(db) => db,
         Err(e) => return json!({ "error": format!("could not open the cache: {e}") }),
     };
-    let out = read(&db, name, args).unwrap_or_else(|e| json!({ "error": e.to_string() }));
-    capped(out)
+    let result = match period {
+        None => read(&db, name, args),
+        Some(p) => {
+            // The window ends on the last day of the period. A call without
+            // `days` reads the whole period.
+            let mut args = args.clone();
+            if args["days"].is_null() {
+                args["days"] = json!(p.days());
+            }
+            garmin_core::with_as_of(p.end, || read(&db, name, &args))
+        }
+    };
+    capped(result.unwrap_or_else(|e| json!({ "error": e.to_string() })))
+}
+
+/// A span of days that bounds what the tools read. With a period, "today" for
+/// every tool is `end`, and no row after `end` is returned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Period {
+    pub start: NaiveDate,
+    pub end: NaiveDate,
+}
+
+impl Period {
+    /// The days from `start` to `end`, both ends counted. At least 1.
+    pub fn days(&self) -> u64 {
+        ((self.end - self.start).num_days() + 1).max(1) as u64
+    }
 }
 
 /// Room for the note that says rows were dropped.
@@ -351,16 +383,13 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
         "workouts" => to(db.workouts()?)?,
         "personal_records" => to(query::personal_records(db)?)?,
         "fitness" => to(query::fitness(db, window(args, "days", 30, MAX_ROW_DAYS))?)?,
-        "coach" => to(garmin_core::coach::for_today(
-            db,
-            chrono::Local::now().date_naive(),
-        )?)?,
+        "coach" => to(garmin_core::coach::for_today(db, garmin_core::today())?)?,
         "findings" => {
             let from = garmin_core::days_ago(window(args, "days", 365, MAX_DAYS));
             to(garmin_core::findings::all(
                 &db.daily_since(&from)?,
                 &db.activities_since(&from)?,
-                chrono::Local::now().date_naive(),
+                garmin_core::today(),
             ))?
         }
         "cache_status" => to(cache_status(db)?)?,
@@ -496,9 +525,71 @@ mod tests {
         assert!(bad["error"].as_str().unwrap().contains("step 1"));
     }
 
+    /// Ten days in March 2026, one a day, `resting_hr` 1 to 10.
+    fn march_db(tag: &str) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("coach-period-{tag}-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).unwrap();
+        for d in 1..=10 {
+            db.upsert_daily(&garmin_core::db::DailyMetrics {
+                date: format!("2026-03-{d:02}"),
+                resting_hr: Some(d as f64),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        path
+    }
+
+    fn dates(out: &Value) -> Vec<String> {
+        out.as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["date"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn a_period_ends_and_starts_the_window() {
+        let path = march_db("window");
+        let open = || Db::open(&path);
+        let day = |d| NaiveDate::from_ymd_opt(2026, 3, d).unwrap();
+        let period = Period {
+            start: day(4),
+            end: day(7),
+        };
+        // No `days`: the whole period, and nothing after its end.
+        let out = run("recovery", &json!({}), &open, Some(period));
+        assert_eq!(
+            dates(&out),
+            ["2026-03-07", "2026-03-06", "2026-03-05", "2026-03-04"]
+        );
+        // An explicit `days` is honoured and still ends at `end`.
+        let out = run("recovery", &json!({ "days": 6 }), &open, Some(period));
+        assert_eq!(dates(&out).first().unwrap(), "2026-03-07");
+        assert_eq!(dates(&out).last().unwrap(), "2026-03-02");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn no_period_keeps_the_window_on_the_real_today() {
+        let path = march_db("none");
+        let open = || Db::open(&path);
+        // March 2026 is far behind the real today: the old window is empty.
+        let out = run("recovery", &json!({ "days": 14 }), &open, None);
+        let db = open().unwrap();
+        let direct = read(&db, "recovery", &json!({ "days": 14 })).unwrap();
+        assert_eq!(out, direct);
+        assert!(out.as_array().unwrap().is_empty());
+        assert_eq!(garmin_core::today(), chrono::Local::now().date_naive());
+        assert_eq!(garmin_core::until(), "9999-12-31");
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn an_unopenable_cache_is_an_error_value() {
-        let out = run("recovery", &json!({}), &|| Err(anyhow::anyhow!("no")));
+        let out = run("recovery", &json!({}), &|| Err(anyhow::anyhow!("no")), None);
         assert!(out["error"].as_str().unwrap().contains("could not open"));
     }
 }
