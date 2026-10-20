@@ -58,6 +58,9 @@ pub struct Account {
     /// The light and dark palette, the themes folder and the theme store.
     pub themes: Themes,
     pub token_path: Field,
+    /// The search field of Settings, and the section that it shows.
+    pub settings_search: Field,
+    pub settings_page: usize,
     pub token_path_default: Option<String>,
     /// The coach settings and the cloud account.
     pub cloud: Cloud,
@@ -93,6 +96,12 @@ impl Account {
             },
             themes: Themes::new(demo, cx),
             token_path: Field::new("Path to garmin_tokens.json", false, cx),
+            settings_search: {
+                let mut f = Field::new("Search settings", false, cx);
+                f.sans = true;
+                f
+            },
+            settings_page: 0,
             token_path_default: status.and_then(|s| s.importable_token_path),
             cloud: Cloud::new(cx),
             update: Default::default(),

@@ -20,7 +20,7 @@ use crate::data::Source;
 use crate::field::Field;
 use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
-use crate::theme::{Theme, FS_BASE};
+use crate::theme::Theme;
 use crate::ui::body;
 
 /// The checkout page is watched for 2 minutes: every 3 seconds for the first
@@ -446,40 +446,46 @@ impl Cloud {
 
 /* ---------------------------------------------------------------- drawing --- */
 
-/// The three cards: the name, a short tag and what the choice means.
-const CHOICES: [(&str, &str, &str, &str, Provider); 3] = [
+/// The three choices: the name and what the choice means.
+const CHOICES: [(&str, &str, &str, Provider); 3] = [
     (
         "coach-cloud",
         "Cloud",
-        "Free credits",
-        "Only the rows that a question needs leave this computer.",
+        "Cloud: only the rows that a question needs leave this computer.",
         Provider::Cloud,
     ),
     (
         "coach-key",
         "Your own key",
-        "OpenRouter",
-        "Questions go to OpenRouter with your key. OpenRouter bills you.",
+        "Your own key: questions go to OpenRouter. OpenRouter bills you.",
         Provider::Openrouter,
     ),
     (
         "coach-ollama",
         "Ollama",
-        "Local",
-        "A model on this computer. No data leaves it.",
+        "Ollama: a model on this computer. No data leaves it.",
         Provider::Ollama,
     ),
 ];
 
 fn choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let mut cards = panel::opts();
-    for (id, name, tag, desc, provider) in CHOICES {
-        let on = root.account.cloud.provider == provider;
-        cards = cards.child(panel::opt(id, name, Some(tag), desc, on, t).on_click(
-            cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
-        ));
+    let current = root.account.cloud.provider;
+    let mut control = panel::seg(t);
+    for (id, name, _, provider) in CHOICES {
+        control = control.child(
+            panel::seg_item(id, name, current == provider, None, t).on_click(
+                cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
+            ),
+        );
     }
-    panel::padded(div()).child(cards)
+    let help = CHOICES.iter().find(|c| c.3 == current).map_or("", |c| c.2);
+    panel::row(
+        true,
+        "Where the model runs",
+        Some(help),
+        panel::stack().child(control),
+        t,
+    )
 }
 
 /// The cloud account section of a demo. No sign-in form: nothing is sent.
@@ -490,7 +496,7 @@ fn form_head(label: &str, help: &str, t: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .child(body(label.to_string(), 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body(label.to_string(), 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(help.to_string(), t))
 }
 
@@ -504,7 +510,7 @@ fn credits(view: &AccountView, t: &Theme) -> Div {
         .items_baseline()
         .gap_x(px(16.0))
         .gap_y(px(6.0))
-        .child(body(view.credits_line.clone(), FS_BASE, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body(view.credits_line.clone(), 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(view.plan_line.clone(), t))
 }
 
@@ -561,7 +567,7 @@ fn signed_in_part(root: &Root, email: &str, t: &Theme, cx: &mut Context<Root>) -
         .flex()
         .flex_col()
         .gap(px(12.0))
-        .child(body(format!("Signed in as {email}."), 14.5, t.fg))
+        .child(body(format!("Signed in as {email}."), 13.0, t.fg))
         .child(panel::actions().child(main).child(out))
 }
 
@@ -636,7 +642,7 @@ fn key_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) ->
         .items_center()
         .gap_x(px(12.0))
         .gap_y(px(8.0))
-        .child(body("OpenRouter API key", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body("OpenRouter API key", 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::chip(state, cloud.has_key, t));
     let form = panel::field_line()
         .child(panel::input_box(cloud.key.render(
@@ -676,7 +682,7 @@ fn ollama_block(t: &Theme) -> Div {
         .flex()
         .flex_col()
         .gap(px(10.0))
-        .child(body("Ollama", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body("Ollama", 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(
             "A model on this computer. No data leaves it.",
             t,
@@ -699,12 +705,24 @@ fn detail(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Di
     area
 }
 
-/// The Coach section of Settings.
-pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
-    let rows = panel::panel(t)
-        .child(choice(root, t, cx))
-        .child(detail(root, t, window, cx));
-    panel::section("Coach", Some("Choose where the coach model runs."), t).child(rows)
+/// The rows of the Coach section of Settings, each with the words that the
+/// search of Settings matches.
+pub fn rows(
+    root: &Root,
+    t: &Theme,
+    window: &Window,
+    cx: &mut Context<Root>,
+) -> Vec<(&'static str, Div)> {
+    vec![
+        (
+            "where the model runs cloud your own key ollama openrouter",
+            choice(root, t, cx),
+        ),
+        (
+            "account credits sign in email code premium billing api key",
+            detail(root, t, window, cx),
+        ),
+    ]
 }
 
 #[cfg(test)]
