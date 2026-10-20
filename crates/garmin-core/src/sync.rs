@@ -280,23 +280,6 @@ fn warn_or_abort(report: &mut SyncReport, what: &str, date: &str, e: anyhow::Err
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_failed_request_aborts_but_a_status_error_only_warns() {
-        let mut report = SyncReport::default();
-        let status = anyhow::anyhow!("/x returned 404 Not Found: ");
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status).is_ok());
-        assert_eq!(report.warnings.len(), 1);
-
-        let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
-        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", transport.into()).is_err());
-        assert_eq!(report.warnings.len(), 1);
-    }
-}
-
 /// How many consecutive days with nothing at all end a full wellness walk.
 /// Long enough to ride out a holiday or a month of a broken strap, short
 /// enough that it doesn't cost thousands of pointless requests.
@@ -730,4 +713,21 @@ fn history_days(db: &Db) -> u32 {
     };
     // +1 so the day of the first activity is itself included.
     (Utc::now().date_naive() - date).num_days().max(0) as u32 + 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_request_aborts_but_a_status_error_only_warns() {
+        let mut report = SyncReport::default();
+        let status = anyhow::anyhow!("/x returned 404 Not Found: ");
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", status).is_ok());
+        assert_eq!(report.warnings.len(), 1);
+
+        let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
+        assert!(warn_or_abort(&mut report, "hrv", "2025-01-01", transport.into()).is_err());
+        assert_eq!(report.warnings.len(), 1);
+    }
 }
