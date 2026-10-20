@@ -1,8 +1,9 @@
 //! The blocks of the Fitness screen. Each one hides when its data is missing.
 
+use crate::scale::px;
 use chrono::{Duration, NaiveDate};
 use garmin_api::fitness::LoadBar;
-use gpui::{div, prelude::*, px, relative, Div};
+use gpui::{div, prelude::*, relative, Div};
 
 use super::activities::{block, meta_for, padded, parse_day};
 use super::{Block, BlockDef, Ctx, Width};

@@ -2,9 +2,10 @@
 //!
 //! The markup follows the Appearance part of the Settings design.
 
+use crate::scale::px;
 use garmin_api::settings::ThemeMode;
 use gpui::{
-    div, prelude::*, px, BoxShadow, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
+    div, prelude::*, BoxShadow, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
     SharedString, Stateful,
 };
 
@@ -253,11 +254,38 @@ fn store_row(t: &Theme, cx: &mut Context<Root>) -> Div {
     )
 }
 
+/// `Interface scale`: the size of the whole window, in steps.
+fn scale_row(t: &Theme, cx: &mut Context<Root>) -> Div {
+    let now = (crate::scale::get() * 100.0).round() as u32;
+    let mut control = panel::seg(t);
+    for pct in crate::scale::STEPS {
+        let item = panel::seg_item(
+            format!("scale-{pct}"),
+            format!("{pct}%"),
+            pct == now,
+            None,
+            t,
+        );
+        control = control.child(item.on_click(
+            cx.listener(move |root, _: &ClickEvent, _, cx| root.set_scale(pct as f32 / 100.0, cx)),
+        ));
+    }
+    let help = "Size of text and controls.";
+    panel::row(
+        false,
+        "Interface scale",
+        Some(help),
+        panel::stack().child(control),
+        t,
+    )
+}
+
 /// The rows of the Appearance section of Settings, each with the words that
 /// the search of Settings matches.
 pub fn rows(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Vec<(&'static str, Div)> {
     vec![
         ("mode match system light dark theme", mode_row(root, t, cx)),
+        ("interface scale zoom size text controls", scale_row(t, cx)),
         (
             "light palette colours theme",
             palette_row(root, false, t, cx),

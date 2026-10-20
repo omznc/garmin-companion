@@ -9,8 +9,9 @@
 
 use std::{cell::Cell, rc::Rc};
 
+use crate::scale::px;
 use gpui::{
-    canvas, div, font, prelude::*, px, relative, App, ClipboardItem, Context, Div, FocusHandle,
+    canvas, div, font, prelude::*, relative, App, ClipboardItem, Context, Div, FocusHandle,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, TextRun,
     Window,
 };

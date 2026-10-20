@@ -8,8 +8,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::scale::px;
 use gpui::{
-    anchored, deferred, div, point, prelude::*, px, relative, AnyElement, BoxShadow, ClickEvent,
+    anchored, deferred, div, point, prelude::*, relative, AnyElement, BoxShadow, ClickEvent,
     Context, Div, DragMoveEvent, FontWeight, MouseButton, Pixels, Point, Render, SharedString,
     Stateful, Window,
 };
@@ -428,7 +429,7 @@ fn entry<V: 'static>(
     })
     .on_mouse_down(MouseButton::Left, {
         let shared = shared.clone();
-        move |event, _, _| shared.borrow_mut().press_y = f32::from(event.position.y)
+        move |event, _, _| shared.borrow_mut().press_y = crate::scale::dp(event.position.y)
     })
     .on_mouse_down(MouseButton::Right, move |event, window, _| {
         shared.borrow_mut().menu = Some(Menu {
@@ -628,7 +629,7 @@ pub fn render<V: 'static>(
             };
             let (first, last) = shared.drag.map_or((0, 0), |d| d.span);
             let to = shared
-                .position_at(f32::from(event.event.position.y), from)
+                .position_at(crate::scale::dp(event.event.position.y), from)
                 .clamp(first, last);
             if let Some(d) = shared.drag.as_mut().filter(|d| d.to != to) {
                 d.to = to;

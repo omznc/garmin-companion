@@ -5,10 +5,11 @@
 //! A day after today is not selectable. The functions at the top are pure
 //! date math. The `Root` methods and the render functions follow them.
 
+use crate::scale::px;
 use chrono::{Datelike, Months, NaiveDate};
 use gpui::{
-    anchored, deferred, div, point, prelude::*, px, ClickEvent, Context, Div, ElementId,
-    FocusHandle, FontWeight, MouseButton, SharedString, Window,
+    anchored, deferred, div, point, prelude::*, ClickEvent, Context, Div, ElementId, FocusHandle,
+    FontWeight, MouseButton, SharedString, Window,
 };
 
 use crate::focus::{real_today, Focus};

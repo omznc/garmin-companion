@@ -4,7 +4,7 @@
 //! for the edit mode.
 
 use gpui::{
-    div, point, prelude::*, px, AnyElement, App, BorderStyle, BoxShadow, ClickEvent, Context, Div,
+    div, point, prelude::*, AnyElement, App, BorderStyle, BoxShadow, ClickEvent, Context, Div,
     FocusHandle, FontWeight, Hsla, KeyDownEvent, MouseButton, SharedString, Stateful, Window,
 };
 
@@ -14,6 +14,7 @@ use crate::field::Field;
 use crate::icons::{icon, Icon};
 use crate::kit::{self, Look};
 use crate::motion;
+use crate::scale::px;
 use crate::screen::Screen;
 use crate::scroll::SmoothScroll;
 use crate::shell::Root;

@@ -14,6 +14,9 @@ pub enum Action {
     /// Show the Ask screen with an empty conversation.
     NewChat,
     ToggleTheme,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
     /// Focus the pages and the coach on a ready range.
     Focus(Preset),
 }
@@ -37,6 +40,9 @@ pub fn all() -> Vec<Command> {
         command("New chat", Action::NewChat),
         command("Check for updates", Action::CheckUpdates),
         command("Toggle light and dark", Action::ToggleTheme),
+        command("Zoom in", Action::ZoomIn),
+        command("Zoom out", Action::ZoomOut),
+        command("Reset zoom", Action::ZoomReset),
         command("Focus today", Action::Focus(Preset::Today)),
         command("Focus last 7 days", Action::Focus(Preset::Days7)),
         command("Focus this month", Action::Focus(Preset::Month)),
@@ -56,6 +62,9 @@ pub fn all() -> Vec<Command> {
 /// keeps all of them in their order.
 pub fn filter(commands: &[Command], query: &str) -> Vec<usize> {
     let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return (0..commands.len()).collect();
+    }
     let mut hits: Vec<(usize, i32)> = commands
         .iter()
         .enumerate()

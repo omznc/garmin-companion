@@ -5,9 +5,10 @@
 //! asks for client side decorations, and draws the buttons only while the
 //! compositor leaves them to the app. macOS keeps its own traffic lights.
 
+use crate::scale::px;
 use gpui::{
-    div, prelude::*, px, AnyElement, CursorStyle, Decorations, Div, MouseButton, ResizeEdge,
-    Stateful, Window, WindowControlArea,
+    div, prelude::*, AnyElement, CursorStyle, Decorations, Div, MouseButton, ResizeEdge, Stateful,
+    Window, WindowControlArea,
 };
 
 use crate::icons::{icon_hover, Icon};

@@ -1,8 +1,9 @@
 //! The blocks of the Sleep screen. Each one hides when its data is missing.
 
+use crate::scale::px;
 use chrono::NaiveDate;
 use garmin_api::sleep_view::{NightView, SleepWindow, StageSpan};
-use gpui::{div, prelude::*, px, relative, ColorExt as _, Div, Hsla};
+use gpui::{div, prelude::*, relative, ColorExt as _, Div, Hsla};
 
 use super::daily::{
     block, cell, dated, head_row, hm, key_figures as grid, label_row, padded, weekday_initial,

@@ -1,6 +1,7 @@
 //! Buttons for the account screens. From `.cta` and `.quiet` in `styles.css`.
 
-use gpui::{div, prelude::*, px, relative, Div, ElementId, SharedString, Stateful};
+use crate::scale::px;
+use gpui::{div, prelude::*, relative, Div, ElementId, SharedString, Stateful};
 
 use crate::icons::{icon, Icon};
 use crate::theme::{Theme, FS_SMALL};

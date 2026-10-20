@@ -1,6 +1,7 @@
 //! The blocks of the Today screen. Each one hides when its data is missing.
 
-use gpui::{div, prelude::*, px, ColorExt as _, Div};
+use crate::scale::px;
+use gpui::{div, prelude::*, ColorExt as _, Div};
 
 use super::{Block, BlockDef, Ctx, Go, Width};
 use crate::charts::{self, AreaChart, Bar, MeterRow, Tone};

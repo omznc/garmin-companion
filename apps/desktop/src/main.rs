@@ -53,6 +53,7 @@ mod openvsx;
 mod panel;
 mod panes;
 mod places;
+mod scale;
 mod screen;
 mod scroll;
 mod settings;
@@ -80,9 +81,10 @@ use std::borrow::Cow;
 
 use anyhow::Context as _;
 
+use crate::scale::px;
 use gpui::{
-    point, px, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds,
-    WindowDecorations, WindowOptions,
+    point, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations,
+    WindowOptions,
 };
 
 use data::Source;
@@ -345,10 +347,17 @@ fn main() -> anyhow::Result<()> {
             } else {
                 window::State::load()
             };
+            scale::set(saved.scale);
+            // For screenshots: `GC_SCALE=1.25` starts at a scale.
+            #[cfg(debug_assertions)]
+            if let Some(factor) = std::env::var("GC_SCALE").ok().and_then(|v| v.parse().ok()) {
+                scale::set(factor);
+            }
+            let min = (MIN_SIZE.0 * scale::get(), MIN_SIZE.1 * scale::get());
             let visible = cx
                 .primary_display()
                 .map_or(Bounds::default(), |d| d.visible_bounds());
-            let bounds = window::start_bounds(&saved, wanted_size, visible, MIN_SIZE);
+            let bounds = window::start_bounds(&saved, wanted_size, visible, min);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
@@ -412,6 +421,14 @@ fn main() -> anyhow::Result<()> {
                     if let Ok(value) = std::env::var("GC_EDIT_LAYOUT") {
                         root.start_edit(value.parse().ok(), window, cx);
                     }
+                    // For screenshots: `GC_SETTINGS_PAGE=2` picks the Appearance section.
+                    #[cfg(debug_assertions)]
+                    if let Some(at) = std::env::var("GC_SETTINGS_PAGE")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                    {
+                        root.account.settings_page = at;
+                    }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
                     }
@@ -444,6 +461,15 @@ fn main() -> anyhow::Result<()> {
             command_palette::bind_keys(cx);
             cx.on_action(move |_: &command_palette::OpenPalette, cx| {
                 let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomIn, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(Some(true), cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomOut, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(Some(false), cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomReset, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(None, cx));
             });
             cx.on_action(move |_: &command_palette::OpenSettings, cx| {
                 let _ = handle.update(cx, |root, _, cx| root.show_settings(cx));

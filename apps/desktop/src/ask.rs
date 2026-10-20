@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::scale::px;
 use anyhow::Result;
 use garmin_coach::{
     AccountView, Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
@@ -30,7 +31,7 @@ use garmin_core::workout::{
     EndCondition, ExecStep, Sport, Step as DraftStep, StepKind, Target, WorkoutDraft,
 };
 use gpui::{
-    div, linear_color_stop, linear_gradient, prelude::*, px, relative, ClickEvent, ColorExt as _,
+    div, linear_color_stop, linear_gradient, prelude::*, relative, ClickEvent, ColorExt as _,
     Context, Div, ElementId, Entity, IntoElement, Render, SharedString, Subscription, Task, Window,
 };
 use serde_json::Value;
@@ -845,7 +846,7 @@ impl Ask {
     /// The Ask screen: a reading column with the composer docked under it.
     fn screen_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let t = self.palette.theme();
-        let width = column_width(f32::from(window.viewport_size().width));
+        let width = column_width(crate::scale::viewport_w(window));
         self.composer.update(cx, |c, _| {
             c.set_column_width(width);
             c.set_panel(true);

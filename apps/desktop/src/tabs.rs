@@ -5,7 +5,8 @@
 //! the user picks the screen. At most eight tabs stay open: a new one closes
 //! the oldest tab.
 
-use gpui::{div, prelude::*, px, ClickEvent, Context, Div, MouseButton, SharedString};
+use crate::scale::px;
+use gpui::{div, prelude::*, ClickEvent, Context, Div, MouseButton, SharedString};
 
 use crate::icons::{icon, icon_hover, Icon};
 use crate::screen::Screen;

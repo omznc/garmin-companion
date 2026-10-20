@@ -5,13 +5,14 @@
 
 use std::path::PathBuf;
 
+use crate::scale::px;
 use anyhow::{Context as _, Result};
 use chrono::NaiveDate;
 use garmin_api::activities::{
     ActivityDetailView, Chart, ExerciseSummary, LapRow, SetRow, StrengthBlock, ZoneBlock,
 };
 use garmin_api::ActivitiesView;
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, SharedString};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Div, SharedString};
 
 use crate::blocks::{self, Width};
 use crate::charts::{self, AreaChart, MeterRow, Tone};

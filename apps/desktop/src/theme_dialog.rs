@@ -4,9 +4,10 @@
 //! and the network jobs live in `themes.rs`. The dialog covers the window like
 //! the command palette does, and it takes the keys that the field leaves.
 
+use crate::scale::px;
 use garmin_core::theme as folder;
 use gpui::{
-    div, hsla, point, prelude::*, px, relative, AnyElement, BoxShadow, ClickEvent, Context, Div,
+    div, hsla, point, prelude::*, relative, AnyElement, BoxShadow, ClickEvent, Context, Div,
     FontWeight, Hsla, KeyDownEvent, Stateful, TextTransform, Window,
 };
 
@@ -43,7 +44,7 @@ struct Fit {
 
 fn fit(window: &Window) -> Fit {
     let size = window.viewport_size();
-    let (width, height) = (f32::from(size.width), f32::from(size.height));
+    let (width, height) = (crate::scale::dp(size.width), crate::scale::dp(size.height));
     let narrow = width <= NARROW_AT;
     let air = if narrow { (12.0, 12.0) } else { (24.0, 48.0) };
     Fit {

@@ -4,9 +4,10 @@
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::scale::px;
 use chrono::{Datelike, Months, NaiveDate};
 use garmin_api::reports::ReportView;
-use gpui::{div, prelude::*, px, App, ClickEvent, Div, SharedString};
+use gpui::{div, prelude::*, App, ClickEvent, Div, SharedString};
 
 use super::{Block, BlockDef, Ctx, Width};
 use crate::activities::Store;

@@ -4,7 +4,8 @@
 //! A drag changes the width live. A double click on a handle sets the
 //! default width. The widths are saved in `window.json`.
 
-use gpui::{div, prelude::*, px, AnyElement, Context, MouseButton};
+use crate::scale::px;
+use gpui::{div, prelude::*, AnyElement, Context, MouseButton};
 
 use crate::shell::Root;
 use crate::theme::Theme;
@@ -181,7 +182,12 @@ pub fn handle(root: &Root, side: Side, t: &Theme, cx: &mut Context<Root>) -> Any
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(move |root, event: &gpui::MouseDownEvent, _, cx| {
-                root.pane_press(side, f32::from(event.position.x), event.click_count, cx)
+                root.pane_press(
+                    side,
+                    crate::scale::dp(event.position.x),
+                    event.click_count,
+                    cx,
+                )
             }),
         );
     match side {

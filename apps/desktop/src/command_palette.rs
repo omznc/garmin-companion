@@ -1,8 +1,9 @@
 //! The command palette: a text field and a filtered list over the window.
 //! Ctrl+K and Ctrl+Shift+P open it (Cmd on macOS).
 
+use crate::scale::px;
 use gpui::{
-    actions, div, prelude::*, px, ClickEvent, ColorExt as _, Context, Entity, EventEmitter,
+    actions, div, prelude::*, ClickEvent, ColorExt as _, Context, Entity, EventEmitter,
     FocusHandle, IntoElement, KeyBinding, KeyDownEvent, Render, Window,
 };
 
@@ -12,7 +13,10 @@ use crate::shell::Root;
 use crate::theme::{Palette, FS_SMALL};
 use crate::ui::SANS;
 
-actions!(garmin_companion, [OpenPalette, OpenSettings]);
+actions!(
+    garmin_companion,
+    [OpenPalette, OpenSettings, ZoomIn, ZoomOut, ZoomReset]
+);
 
 /// How many rows show at once. The list scrolls by moving this window.
 const ROWS: usize = 8;
@@ -23,6 +27,11 @@ pub fn bind_keys(cx: &mut gpui::App) {
         KeyBinding::new("secondary-k", OpenPalette, None),
         KeyBinding::new("secondary-shift-p", OpenPalette, None),
         KeyBinding::new("secondary-,", OpenSettings, None),
+        KeyBinding::new("secondary-=", ZoomIn, None),
+        KeyBinding::new("secondary-+", ZoomIn, None),
+        KeyBinding::new("secondary-shift-=", ZoomIn, None),
+        KeyBinding::new("secondary--", ZoomOut, None),
+        KeyBinding::new("secondary-0", ZoomReset, None),
     ]);
 }
 
@@ -248,6 +257,9 @@ impl Root {
                 self.select_screen(crate::screen::Screen::Ask, cx);
             }
             Action::ToggleTheme => self.toggle_theme(window, cx),
+            Action::ZoomIn => self.zoom(Some(true), cx),
+            Action::ZoomOut => self.zoom(Some(false), cx),
+            Action::ZoomReset => self.zoom(None, cx),
             Action::Focus(preset) => self.set_focus(preset.focus(crate::focus::real_today()), cx),
         }
     }

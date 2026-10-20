@@ -2,7 +2,8 @@
 //! the sync and coach buttons, and the window buttons. From the `header` of
 //! the design. The whole bar drags the window.
 
-use gpui::{div, prelude::*, px, ClickEvent, Context, Stateful, Window};
+use crate::scale::px;
+use gpui::{div, prelude::*, ClickEvent, Context, Stateful, Window};
 
 use crate::chrome;
 use crate::icons::{icon, icon_spin, Icon};

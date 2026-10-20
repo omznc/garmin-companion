@@ -3,8 +3,9 @@
 //! Each function matches a piece of `app/src/components/ui.tsx` and the
 //! classes in `styles.css`. The sizes and the spacing are the same numbers.
 
+use crate::scale::px;
 use gpui::{
-    div, point, prelude::*, px, relative, Bounds, Div, ElementId, FontWeight, Hsla, PathBuilder,
+    div, point, prelude::*, relative, Bounds, Div, ElementId, FontWeight, Hsla, PathBuilder,
     Pixels, Point, SharedString, TextTransform,
 };
 
@@ -99,7 +100,10 @@ pub(crate) fn scale(
     let (lo, hi) = present().fold((f32::MAX, f32::MIN), |(l, h), v| (l.min(*v), h.max(*v)));
     let range = if hi > lo { hi - lo } else { 1.0 };
     let last = values.len().saturating_sub(1).max(1) as f32;
-    let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+    let (w, h) = (
+        crate::scale::dp(bounds.size.width),
+        crate::scale::dp(bounds.size.height),
+    );
     values
         .iter()
         .enumerate()

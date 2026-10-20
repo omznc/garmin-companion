@@ -5,8 +5,9 @@
 //! right. A search shows the rows of every section that match the words. A
 //! change applies at once.
 
+use crate::scale::px;
 use garmin_api::settings::SettingsView;
-use gpui::{div, prelude::*, px, AnyElement, ClickEvent, Context, Div, Stateful, Window};
+use gpui::{div, prelude::*, AnyElement, ClickEvent, Context, Div, Stateful, Window};
 
 use crate::account::Sync;
 use crate::icons::Icon;
@@ -275,7 +276,7 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
     let Some(view) = root.account.settings.clone() else {
         return div().into_any_element();
     };
-    let narrow = content_width(f32::from(window.viewport_size().width)) <= NARROW_AT;
+    let narrow = content_width(crate::scale::viewport_w(window)) <= NARROW_AT;
     panel::set_narrow(narrow);
     let query = root
         .account
