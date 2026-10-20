@@ -14,7 +14,8 @@ pub struct SpringConfig {
     pub response: f32,
 }
 
-/// A row that moves out of the way. It was not thrown, so it does not overshoot.
+/// A spring that does not overshoot. Only the tests use it.
+#[cfg(test)]
 pub const SETTLE: SpringConfig = SpringConfig {
     damping: 1.0,
     response: 0.32,

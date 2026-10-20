@@ -507,32 +507,40 @@ impl Root {
             return settings::render(self, t, window, cx);
         }
         let label = self.active.label();
-        if let Some(screen) = places::screen(label, self, t, cx) {
-            return screen;
-        }
-        if let Some(screen) = body::screen(label, &self.body, t) {
-            return screen;
-        }
-        if let Some(data) = &self.training {
-            if let Some(screen) = training::screen(label, data, t, cx) {
-                return screen;
-            }
-        }
-        div()
-            .child(eyebrow_lg("Not built yet", t))
-            .child(h1(label).mt(px(18.0)))
-            .child(
-                body(
-                    "This screen comes in a later phase of the rewrite.",
-                    16.0,
-                    t.mutd,
-                )
-                .mt(px(28.0))
-                .max_w(ch(62.0, 16.0)),
-            )
-            .into_any_element()
+        self.old_body(label, t, cx)
+            .unwrap_or_else(|| not_built(label, t))
     }
 
+    /// The old bodies of Plan, Routes, Gear, Food, Weight, Strength, Insights,
+    /// Fitness and Reports. A screen leaves this path when its file has a layout.
+    fn old_body(&self, label: &str, t: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
+        places::screen(label, self, t, cx)
+            .or_else(|| body::screen(label, &self.body, t))
+            .or_else(|| {
+                let data = self.training.as_ref()?;
+                training::screen(label, data, t, cx)
+            })
+    }
+}
+
+/// The page of a screen that nothing draws yet.
+fn not_built(label: &str, t: &Theme) -> AnyElement {
+    div()
+        .child(eyebrow_lg("Not built yet", t))
+        .child(h1(label).mt(px(18.0)))
+        .child(
+            body(
+                "This screen comes in a later phase of the rewrite.",
+                16.0,
+                t.mutd,
+            )
+            .mt(px(28.0))
+            .max_w(ch(62.0, 16.0)),
+        )
+        .into_any_element()
+}
+
+impl Root {
     /// The width that the page gives to a grid of blocks.
     fn grid_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.viewport_size().width);
@@ -553,7 +561,8 @@ impl Root {
     /// the grid. `None` when the screen file has no layout yet.
     fn block_page(&self, t: &Theme, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let def = blocks::screen_def(self.active)?;
-        if def.layout.is_empty() {
+        let layout = blocks::default_layout(self.active);
+        if layout.is_empty() {
             return None;
         }
         let ctx = self.ctx(t);
@@ -587,7 +596,7 @@ impl Root {
         Some(
             div()
                 .child(heading)
-                .child(blocks::grid(def.layout, &ctx, available, narrow, cx))
+                .child(blocks::grid(layout, &ctx, available, narrow, cx))
                 .into_any_element(),
         )
     }

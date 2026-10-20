@@ -66,16 +66,89 @@ impl Width {
         }
     }
 
+    #[cfg(test)]
     /// The width in pixels in a grid that is `available` pixels wide. A
     /// narrow window gives each block the whole row.
     pub fn pixels(self, available: f32, narrow: bool) -> f32 {
-        if narrow {
-            return available;
-        }
-        let column = (available - GAP * (COLUMNS - 1.0)) / COLUMNS;
-        let span = f32::from(self.columns());
-        column * span + GAP * (span - 1.0)
+        span_pixels(self.columns(), available, narrow)
     }
+}
+
+/// The width in pixels of `cols` columns of the 12 column grid.
+fn span_pixels(cols: u8, available: f32, narrow: bool) -> f32 {
+    if narrow {
+        return available;
+    }
+    let column = (available - GAP * (COLUMNS - 1.0)) / COLUMNS;
+    let span = f32::from(cols);
+    column * span + GAP * (span - 1.0)
+}
+
+/// One lane of a segment: its width in columns, and the indexes of its cards.
+#[derive(Debug, PartialEq)]
+struct Lane {
+    cols: u8,
+    items: Vec<usize>,
+}
+
+/// The first blocks of a segment that fill 12 columns. Each one starts a lane.
+fn start_lanes(cols: &[u8], from: usize) -> Vec<Lane> {
+    let mut lanes: Vec<Lane> = Vec::new();
+    let mut sum = 0;
+    for (i, &c) in cols.iter().enumerate().skip(from) {
+        if c >= 12 || sum + c > 12 {
+            break;
+        }
+        lanes.push(Lane {
+            cols: c,
+            items: vec![i],
+        });
+        sum += c;
+        if sum == 12 {
+            break;
+        }
+    }
+    lanes
+}
+
+/// Put the blocks from `from` on, in order, into the next lane of the same
+/// width. Returns the index of the first block that fits no lane.
+fn fill_lanes(cols: &[u8], from: usize, lanes: &mut [Lane]) -> usize {
+    let mut next = 0;
+    for (i, &c) in cols.iter().enumerate().skip(from) {
+        let count = lanes.len();
+        let Some(at) = (0..count)
+            .map(|step| (next + step) % count)
+            .find(|&at| lanes[at].cols == c)
+        else {
+            return i;
+        };
+        lanes[at].items.push(i);
+        next = (at + 1) % count;
+    }
+    cols.len()
+}
+
+/// Split the widths into segments of lanes. A full width block is a segment of
+/// its own. The blocks keep their order inside a lane.
+fn pack(cols: &[u8]) -> Vec<Vec<Lane>> {
+    let mut segments = Vec::new();
+    let mut i = 0;
+    while i < cols.len() {
+        if cols[i] >= 12 {
+            segments.push(vec![Lane {
+                cols: 12,
+                items: vec![i],
+            }]);
+            i += 1;
+            continue;
+        }
+        let mut lanes = start_lanes(cols, i);
+        let started = lanes.len();
+        i = fill_lanes(cols, i + started, &mut lanes);
+        segments.push(lanes);
+    }
+    segments
 }
 
 /// The shared data that a block draws from.
@@ -238,7 +311,7 @@ pub fn grid(
     narrow: bool,
     cx: &mut Context<Root>,
 ) -> Div {
-    let mut grid = div().flex().flex_wrap().items_start().gap(px(GAP));
+    let mut cards: Vec<(u8, Option<Div>)> = Vec::new();
     for (n, (id, width)) in layout.iter().enumerate() {
         let Some(def) = def(id) else {
             continue;
@@ -250,11 +323,39 @@ pub fn grid(
             kit::link(("block-link", n), label, ctx.t)
                 .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.go(go, cx)))
         });
-        grid = grid.child(
-            div()
-                .w(px(width.pixels(available, narrow)))
-                .child(kit::card(def.title, block.meta, link, block.body, ctx.t)),
-        );
+        let card = kit::card(def.title, block.meta, link, block.body, ctx.t);
+        cards.push((width.columns(), Some(card)));
+    }
+    let widths: Vec<u8> = cards.iter().map(|(c, _)| *c).collect();
+    // A narrow window has one lane with every block, in order.
+    let segments = if narrow {
+        vec![vec![Lane {
+            cols: 12,
+            items: (0..cards.len()).collect(),
+        }]]
+    } else {
+        pack(&widths)
+    };
+    let mut grid = div().flex().flex_col().gap(px(GAP));
+    for segment in segments {
+        let mut row = div().flex().items_stretch().gap(px(GAP));
+        for lane in segment {
+            let last = lane.items.len().saturating_sub(1);
+            let mut column = div()
+                .flex_none()
+                .w(px(span_pixels(lane.cols, available, narrow)))
+                .flex()
+                .flex_col()
+                .gap(px(GAP));
+            for (at, i) in lane.items.into_iter().enumerate() {
+                if let Some(card) = cards[i].1.take() {
+                    // The last card grows, so the bottoms of the lanes line up.
+                    column = column.child(card.when(at == last, |c| c.flex_grow(1.0)));
+                }
+            }
+            row = row.child(column);
+        }
+        grid = grid.child(row);
     }
     grid
 }
@@ -271,6 +372,38 @@ mod tests {
         assert!((halves - 1080.0).abs() < 1e-3);
         assert_eq!(Width::Full.pixels(1080.0, false), 1080.0);
         assert_eq!(Width::Third.pixels(500.0, true), 500.0);
+    }
+
+    fn items(segments: &[Vec<Lane>]) -> Vec<Vec<Vec<usize>>> {
+        segments
+            .iter()
+            .map(|s| s.iter().map(|l| l.items.clone()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn the_blocks_pack_into_lanes() {
+        // 8,4,8,4 gives two lanes that take the blocks in turn.
+        assert_eq!(items(&pack(&[8, 4, 8, 4])), [[vec![0, 2], vec![1, 3]]]);
+        // A full block is a segment of its own.
+        assert_eq!(
+            items(&pack(&[12, 4, 4, 4, 12])),
+            [
+                vec![vec![0]],
+                vec![vec![1], vec![2], vec![3]],
+                vec![vec![4]]
+            ]
+        );
+        // The first blocks that fill 12 columns set the lanes: 4,8 here.
+        let lanes = pack(&[4, 8, 8, 4]);
+        assert_eq!(lanes[0].iter().map(|l| l.cols).collect::<Vec<_>>(), [4, 8]);
+        assert_eq!(items(&lanes), [[vec![0, 3], vec![1, 2]]]);
+        // A width with no lane starts a new segment at that block.
+        assert_eq!(
+            items(&pack(&[6, 6, 4, 4, 4])),
+            [vec![vec![0], vec![1]], vec![vec![2], vec![3], vec![4]]]
+        );
+        assert!(pack(&[]).is_empty());
     }
 
     #[test]
