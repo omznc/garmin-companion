@@ -270,7 +270,7 @@ The three vectors under `gen/android/.../res/drawable/` are that adaptive icon,
 plus a `monochrome` layer for Android 13's themed icons, and
 `mipmap-anydpi-v26/ic_launcher.xml` binds them. They are written by hand, no
 tool regenerates them, and if the mark in `icon.svg` ever changes they need the
-same edit — the arc paths are copied across verbatim. See the comments in
+same edit — the four mark paths are copied across verbatim. See the comments in
 `ic_launcher_foreground.xml` for the sizing, which is the part that isn't
 obvious.
 
