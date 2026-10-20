@@ -9,7 +9,7 @@ import { Spinner } from "./Spinner";
 import { SportGlyph } from "./SportGlyph";
 import { threadKey } from "./runs";
 import { type ChatTheme, useChatTheme } from "./theme";
-import { endLabel, flatCount, KIND_LABEL, subline, targetLabel } from "./workout";
+import { endLabel, KIND_LABEL, subline, targetLabel } from "./workout";
 
 const ANDROID = Platform.OS === "android";
 // Android: a large tonal container and a full-radius button. iOS: an inset grouped radius.
@@ -142,7 +142,6 @@ function Steps({ entry, theme }: { entry: DraftEntry; theme: ChatTheme }) {
   const rows = rowsOf(entry);
   const folded = rows.length > FOLDED_ROWS;
   const shown = folded && !all ? rows.slice(0, FOLDED_ROWS) : rows;
-  const count = flatCount(entry.draft);
   return (
     <View style={{ gap: 6 }}>
       {shown.map((row) => (
@@ -167,10 +166,10 @@ function Steps({ entry, theme }: { entry: DraftEntry; theme: ChatTheme }) {
           accessibilityRole="button"
           accessibilityState={{ expanded: all }}
           onPress={() => setAll((current) => !current)}
-          hitSlop={8}
+          style={{ minHeight: 48, justifyContent: "center" }}
         >
           <Text style={{ color: theme.accent, fontSize: 14, lineHeight: 20, fontWeight: SEMIBOLD }}>
-            {all ? "Show fewer steps" : `Show all ${count} steps`}
+            {all ? "Show fewer steps" : "Show all steps"}
           </Text>
         </Pressable>
       ) : null}
