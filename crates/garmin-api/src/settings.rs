@@ -36,6 +36,11 @@ pub struct Prefs {
     /// The sidebar entries in the order the user chose, as stable keys. The
     /// first key is the screen the app opens on. Empty means the shipped order.
     pub nav_order: Vec<String>,
+    /// The palette for light mode, as a stable id. Empty means the shipped one.
+    /// The desktop app reads it. The mobile apps ignore it.
+    pub theme_light: String,
+    /// The palette for dark mode. The same form as `theme_light`.
+    pub theme_dark: String,
 }
 
 fn prefs_path() -> Result<PathBuf, ApiError> {
@@ -59,6 +64,15 @@ pub fn set_theme(theme: ThemeMode) -> Result<Prefs, ApiError> {
 pub fn set_nav_order(nav_order: Vec<String>) -> Result<Prefs, ApiError> {
     save(Prefs {
         nav_order,
+        ..prefs()
+    })
+}
+
+/// Save the light and the dark palette. The other settings stay as they were.
+pub fn set_palettes(theme_light: String, theme_dark: String) -> Result<Prefs, ApiError> {
+    save(Prefs {
+        theme_light,
+        theme_dark,
         ..prefs()
     })
 }
@@ -260,6 +274,12 @@ mod tests {
         assert_eq!(prefs().theme, ThemeMode::Dark);
         set_theme(ThemeMode::Light).unwrap();
         assert_eq!(prefs().nav_order, vec!["sleep".to_string()]);
+        // An old file has no palette keys. The defaults fill them.
+        std::fs::write(base.join(PREFS_FILE), r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(prefs().theme_dark, "");
+        set_palettes("linen".into(), "custom:x".into()).unwrap();
+        assert_eq!(prefs().theme, ThemeMode::Dark);
+        assert_eq!(prefs().theme_dark, "custom:x");
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
         let _ = std::fs::remove_file(base.join(PREFS_FILE));
