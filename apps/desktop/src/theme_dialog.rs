@@ -7,11 +7,10 @@
 use crate::scale::px;
 use garmin_core::theme as folder;
 use gpui::{
-    div, hsla, point, prelude::*, relative, AnyElement, BoxShadow, ClickEvent, Context, Div,
-    FontWeight, Hsla, KeyDownEvent, Stateful, TextTransform, Window,
+    div, point, prelude::*, relative, AnyElement, BoxShadow, ClickEvent, Context, Div, FontWeight,
+    Hsla, KeyDownEvent, Stateful, TextTransform, Window,
 };
 
-use crate::appearance::ring;
 use crate::icons::{icon, Icon};
 use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
@@ -21,7 +20,7 @@ use crate::ui::{body, eyebrow, MONO, SANS};
 
 /// At or below this window width the design's narrow rule applies.
 const NARROW_AT: f32 = 860.0;
-const DIALOG_MAX: f32 = 940.0;
+const DIALOG_MAX: f32 = 880.0;
 /// A dialog narrower than this stacks the two columns.
 const STACK_BELOW: f32 = 680.0;
 const PREVIEW_MIN: f32 = 250.0;
@@ -48,7 +47,7 @@ fn fit(window: &Window) -> Fit {
     let narrow = width <= NARROW_AT;
     let air = if narrow { (12.0, 12.0) } else { (24.0, 48.0) };
     Fit {
-        pad: if narrow { 16.0 } else { 24.0 },
+        pad: if narrow { 12.0 } else { 16.0 },
         air,
         stacked: (width - 2.0 * air.0).min(DIALOG_MAX) < STACK_BELOW,
         height: height - 2.0 * air.1,
@@ -61,44 +60,48 @@ fn header(fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Div {
         .flex_1()
         .min_w_0()
         .flex()
-        .flex_col()
-        .gap(px(4.0))
+        .items_baseline()
+        .gap(px(10.0))
         .child(
-            div()
-                .font_family(SANS)
-                .text_size(px(28.0))
-                .line_height(relative(1.1))
-                .child("VS Code themes"),
+            body("VS Code themes", 14.0, t.fg)
+                .flex_none()
+                .font_weight(FontWeight::MEDIUM),
         )
-        .child(panel::help(
-            "From open-vsx.org. A theme is saved on this computer as seven colours.",
-            t,
-        ));
+        .child(
+            body(
+                "From open-vsx.org. A theme is saved on this computer as seven colours.",
+                12.0,
+                t.faint,
+            )
+            .truncate(),
+        );
     let close = div()
         .id("themes-close")
         .flex_none()
-        .size(px(36.0))
+        .size(px(24.0))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(9.0))
+        .rounded(px(5.0))
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
-        .child(icon(Icon::Close, 16.0, t, t.mutd))
+        .child(icon(Icon::Close, 13.0, t, t.mutd))
         .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.close_themes(cx)));
     div()
         .flex()
-        .items_start()
-        .gap(px(16.0))
+        .items_center()
+        .gap(px(12.0))
         .px(px(fit.pad))
-        .pt(px(22.0))
+        .py(px(8.0))
+        .border_b_1()
+        .border_color(t.line2)
         .child(titles)
         .child(close)
 }
 
-fn search_row(root: &Root, fit: &Fit, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
-    let themes = &root.account.themes;
-    let field = themes.search.render(
+/// The flat search row at the top of the list, with a hairline below it.
+fn search_row(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
+    let field = root.account.themes.search.render(
         "theme-search",
         t,
         cx,
@@ -109,20 +112,16 @@ fn search_row(root: &Root, fit: &Fit, t: &Theme, window: &Window, cx: &mut Conte
     let mark =
         div()
             .absolute()
-            .left(px(12.0))
-            .top(px(12.0))
-            .child(icon(Icon::Search, 15.0, t, t.mutd));
-    let busy = matches!(themes.store.phase, Phase::Searching(_));
-    let mut go = panel::button("theme-search-go", "Search", Kind::Plain, !busy, None, t);
-    if !busy {
-        go = go.on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.search_themes(cx)));
-    }
-    panel::field_line()
-        .px(px(fit.pad))
-        .py(px(18.0))
-        .w_auto()
-        .child(panel::input_box(div().relative().child(field).child(mark)))
-        .child(go)
+            .left(px(14.0))
+            .top(px(11.0))
+            .child(icon(Icon::Search, 14.0, t, t.mutd));
+    div()
+        .relative()
+        .flex_none()
+        .border_b_1()
+        .border_color(t.line2)
+        .child(field)
+        .child(mark)
 }
 
 /// A strip of the page, the text and the accent of a theme.
@@ -131,14 +130,14 @@ fn strip(colours: Option<&Theme>, t: &Theme) -> Div {
         Some(p) => [p.bg, p.fg, p.acc],
         None => [t.line2; 3],
     };
-    let span = |colour: Hsla| div().w(px(9.0)).h(px(22.0)).bg(colour);
+    let span = |colour: Hsla| div().w(px(5.0)).h(px(14.0)).bg(colour);
     div()
         .flex()
         .flex_none()
-        .rounded(px(6.0))
+        .rounded(px(3.0))
         .overflow_hidden()
         .border_1()
-        .border_color(hsla(0.0, 0.0, 0.5, 0.25))
+        .border_color(t.line)
         .child(span(bg))
         .child(span(fg))
         .child(span(acc))
@@ -157,27 +156,28 @@ fn result_row(index: usize, store: &Store, t: &Theme, cx: &mut Context<Root>) ->
         .flex_1()
         .min_w_0()
         .child(
-            body(found.display.clone(), 14.5, t.fg)
-                .font_weight(FontWeight::MEDIUM)
+            body(found.display.clone(), 13.0, t.fg)
+                .line_height(relative(1.3))
                 .truncate(),
         )
         .child(
             body(
                 format!("{} · {}", found.namespace, downloads(found.downloads)),
-                12.5,
+                11.5,
                 t.mutd,
             )
+            .line_height(relative(1.3))
             .truncate(),
         );
     let mut row = div()
         .id(("theme-result", index))
         .flex()
         .items_center()
-        .gap(px(12.0))
-        .px(px(12.0))
-        .py(px(11.0))
-        .rounded(px(10.0))
-        .border_1()
+        .gap(px(10.0))
+        .mx(px(6.0))
+        .px(px(10.0))
+        .py(px(6.0))
+        .rounded(px(6.0))
         .cursor_pointer()
         .child(strip(colours.as_ref(), t))
         .child(main)
@@ -187,66 +187,96 @@ fn result_row(index: usize, store: &Store, t: &Theme, cx: &mut Context<Root>) ->
             root.account.themes.search.focus.focus(window, cx);
         }));
     if let Some(list) = themes {
-        row = row.child(panel::tag(mode_tag(list), false, t));
+        row = row.child(mode_label(mode_tag(list), t));
     }
     if on {
-        row.border_color(t.acc).bg(t.bg).shadow(ring(t.acc))
+        row.bg(sel)
     } else {
-        row.border_color(gpui::transparent_black())
-            .hover(move |s| s.bg(sel))
+        row.hover(move |s| s.bg(sel))
     }
 }
 
+/// The small muted mode label at the end of a row.
+fn mode_label(text: impl Into<gpui::SharedString>, t: &Theme) -> Div {
+    div()
+        .flex_none()
+        .font_family(MONO)
+        .text_size(px(10.0))
+        .letter_spacing(px(10.0 * 0.04))
+        .text_color(t.faint)
+        .text_transform(TextTransform::Uppercase)
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
 /// The left column: the state of the search, then the results.
-fn results(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful<Div> {
+fn results(
+    root: &Root,
+    fit: &Fit,
+    t: &Theme,
+    window: &Window,
+    cx: &mut Context<Root>,
+) -> Stateful<Div> {
     let store = &root.account.themes.store;
-    let air = |d: Div| d.px(px(8.0)).py(px(12.0));
-    let mut col = div()
-        .id("theme-results")
-        .bg(t.bg2)
-        .flex_grow(1.0)
-        .flex_shrink(1.0)
-        .px(px(fit.pad.min(16.0)))
-        .py(px(14.0))
+    let air = |d: Div| d.px(px(16.0)).py(px(10.0));
+    let mut list = div()
+        .id("theme-list")
         .flex()
         .flex_col()
-        .gap(px(4.0))
+        .py(px(6.0))
         .min_w_0();
-    col = if fit.stacked {
-        col.flex_none()
+    list = if fit.stacked {
+        list.flex_none()
     } else {
-        col.flex_basis(px(300.0))
+        list.flex_1()
+            .min_h_0()
             .overflow_y_scroll()
             .track_scroll(&store.scroll)
     };
-    match &store.phase {
-        Phase::Idle => col.child(air(panel::help("Type a name and press Enter.", t))),
-        Phase::Searching(text) => col.child(air(panel::note(
+    list = match &store.phase {
+        Phase::Idle => list.child(air(panel::help("Type a name and press Enter.", t))),
+        Phase::Searching(text) => list.child(air(panel::note(
             Tone::Run,
             format!("Searching open-vsx.org for \u{201c}{text}\u{201d}."),
             t,
         ))),
-        Phase::Empty => {
-            col.child(panel::note(Tone::Info, "No theme matches that search.", t).my(px(8.0)))
-        }
-        Phase::Failed(e) => col.child(panel::note(Tone::Err, e.clone(), t).my(px(8.0))),
+        Phase::Empty => list.child(air(panel::note(
+            Tone::Info,
+            "No theme matches that search.",
+            t,
+        ))),
+        Phase::Failed(e) => list.child(air(panel::note(Tone::Err, e.clone(), t))),
         Phase::List => {
-            col = col.child(
+            list = list.child(
                 eyebrow(format!("{} themes", store.found.len()), t)
-                    .px(px(8.0))
-                    .pt(px(6.0))
-                    .pb(px(4.0)),
+                    .px(px(16.0))
+                    .pt(px(4.0))
+                    .pb(px(6.0)),
             );
             for index in 0..store.found.len() {
-                col = col.child(result_row(index, store, t, cx));
+                list = list.child(result_row(index, store, t, cx));
             }
-            col
+            list
         }
+    };
+    let col = div()
+        .id("theme-results")
+        .flex_grow(1.0)
+        .flex_shrink(1.0)
+        .flex()
+        .flex_col()
+        .min_w_0()
+        .child(search_row(root, t, window, cx))
+        .child(list);
+    if fit.stacked {
+        col.flex_none()
+    } else {
+        col.flex_basis(px(320.0)).min_h_0()
     }
 }
 
 /// The page that a theme would paint: the nav and a short Today.
-fn preview(p: &Theme) -> Div {
+fn preview(p: &Theme, line: Hsla) -> Div {
     let label =
         |text: &str, colour: Hsla| body(text.to_string(), 12.5, colour).px(px(6.0)).py(px(5.0));
     let current = div()
@@ -333,10 +363,10 @@ fn preview(p: &Theme) -> Div {
     div()
         .flex()
         .min_h(px(PREVIEW_MIN))
-        .rounded(px(12.0))
+        .rounded(px(6.0))
         .overflow_hidden()
         .border_1()
-        .border_color(hsla(0.0, 0.0, 0.5, 0.18))
+        .border_color(line)
         .bg(p.bg)
         .child(nav)
         .child(page)
@@ -351,7 +381,7 @@ fn placeholder(inner: impl IntoElement, t: &Theme) -> Div {
         .items_center()
         .justify_center()
         .p(px(24.0))
-        .rounded(px(12.0))
+        .rounded(px(6.0))
         .border_1()
         .border_dashed()
         .border_color(t.line)
@@ -403,7 +433,7 @@ fn facts(
         .flex_basis(px(200.0))
         .min_w_0()
         .child(
-            body(found.display.clone(), 16.0, t.fg)
+            body(found.display.clone(), 14.0, t.fg)
                 .font_weight(FontWeight::MEDIUM)
                 .truncate(),
         )
@@ -451,11 +481,13 @@ fn detail(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful
         .id("theme-detail")
         .flex_grow(1.5)
         .flex_shrink(1.0)
-        .px(px(fit.pad))
-        .py(px(20.0))
+        .border_l_1()
+        .border_color(t.line2)
+        .px(px(16.0))
+        .py(px(16.0))
         .flex()
         .flex_col()
-        .gap(px(16.0))
+        .gap(px(12.0))
         .min_w_0();
     col = if fit.stacked {
         col.flex_none()
@@ -474,7 +506,7 @@ fn detail(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful
         Some(Fetch::Ready(themes)) => {
             let shown = themes.first().and_then(derived);
             let picture = match shown {
-                Some(p) => preview(&p),
+                Some(p) => preview(&p, t.line),
                 None => placeholder(
                     panel::note(Tone::Err, "The colours of this theme cannot be read.", t),
                     t,
@@ -498,14 +530,13 @@ fn detail(root: &Root, fit: &Fit, t: &Theme, cx: &mut Context<Root>) -> Stateful
 
 fn kbd(label: &str, t: &Theme) -> Div {
     div()
-        .px(px(5.0))
-        .rounded(px(5.0))
+        .px(px(4.0))
+        .rounded(px(4.0))
         .border_1()
-        .border_b_2()
         .border_color(t.line)
         .font_family(MONO)
-        .text_size(px(11.5))
-        .text_color(t.fg)
+        .text_size(px(10.5))
+        .text_color(t.mutd)
         .child(label.to_string())
 }
 
@@ -521,14 +552,15 @@ fn footer(fit: &Fit, t: &Theme) -> Div {
     div()
         .flex()
         .flex_wrap()
-        .gap_x(px(18.0))
-        .gap_y(px(8.0))
+        .gap_x(px(16.0))
+        .gap_y(px(6.0))
         .px(px(fit.pad))
-        .py(px(12.0))
+        .py(px(7.0))
         .border_t_1()
         .border_color(t.line2)
-        .text_size(px(12.5))
-        .text_color(t.mutd)
+        .font_family(SANS)
+        .text_size(px(11.5))
+        .text_color(t.faint)
         .child(hint(&["Enter"], "searches"))
         .child(hint(&["\u{2191}", "\u{2193}"], "choose a result"))
         .child(hint(&["Esc"], "closes"))
@@ -545,18 +577,16 @@ pub fn render(
         return None;
     }
     let fit = fit(window);
-    // The header, the search row and the footer take about 200px. The body gets
-    // the rest at most, so the dialog fits the window and the columns scroll.
-    let body_max = (fit.height - 200.0).max(160.0);
+    // The header and the footer take about 80px. The body gets the rest at
+    // most, so the dialog fits the window and the columns scroll.
+    let body_max = (fit.height - 80.0).max(160.0);
     let columns = div()
         .id("themes-body")
         .flex()
         .flex_shrink(1.0)
-        .min_h(px(body_max.min(420.0)))
+        .min_h(px(body_max.min(440.0)))
         .max_h(px(body_max))
-        .border_t_1()
-        .border_color(t.line2)
-        .child(results(root, &fit, t, cx))
+        .child(results(root, &fit, t, window, cx))
         .child(detail(root, &fit, t, cx));
     let columns = if fit.stacked {
         columns.flex_col().overflow_y_scroll()
@@ -578,15 +608,14 @@ pub fn render(
         .flex()
         .flex_col()
         .overflow_hidden()
-        .rounded(px(16.0))
+        .rounded(px(10.0))
         .border_1()
         .border_color(t.line)
-        .bg(t.bg)
+        .bg(t.bg2)
         .shadow(vec![shadow])
         // A click on the dialog must not reach the scrim.
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(header(&fit, t, cx))
-        .child(search_row(root, &fit, t, window, cx))
         .child(columns)
         .child(footer(&fit, t));
     // The scrim takes every click and key that the page under it would take.

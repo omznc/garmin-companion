@@ -6,10 +6,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::scale::px;
-use gpui::{
-    div, prelude::*, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful,
-    TextTransform,
-};
+use gpui::{div, prelude::*, relative, Div, ElementId, FontWeight, Hsla, SharedString, Stateful};
 
 use crate::icons::{icon, Icon};
 use crate::theme::Theme;
@@ -239,29 +236,6 @@ pub fn dot(on: bool, t: &Theme) -> Div {
 /// `.chip`: a small label in a hairline box. `on` gives it the accent.
 pub fn chip(label: impl Into<SharedString>, on: bool, t: &Theme) -> Div {
     crate::kit::chip(label, on, false, t)
-}
-
-/// `.tag`: a small uppercase label. The accent form is for a beta mark.
-pub fn tag(label: impl Into<SharedString>, accent: bool, t: &Theme) -> Div {
-    let d = div()
-        .flex_none()
-        .px(px(6.0))
-        .py(px(1.0))
-        .rounded(px(5.0))
-        .border_1()
-        .font_family(SANS)
-        .text_size(px(11.0))
-        .line_height(relative(1.5))
-        .font_weight(FontWeight::MEDIUM)
-        .letter_spacing(px(11.0 * 0.06))
-        .text_transform(TextTransform::Uppercase)
-        .whitespace_nowrap();
-    let d = if accent {
-        d.text_color(t.acc).border_color(t.accline).bg(t.acctint)
-    } else {
-        d.text_color(t.mutd).border_color(t.line)
-    };
-    d.child(label.into())
 }
 
 #[derive(Clone, Copy, PartialEq)]
