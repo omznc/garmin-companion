@@ -235,9 +235,16 @@ pub fn mcp_args(db: Option<&Path>, period: Option<Period>) -> Vec<String> {
 /// A new folder in the temp folder, with a random name and mode 0700. It is
 /// removed when it goes out of scope. Put the files of a turn in it.
 pub fn temp_dir(name: &str) -> std::io::Result<tempfile::TempDir> {
-    tempfile::Builder::new()
-        .prefix(&format!("garmin-companion-{name}-"))
-        .tempdir()
+    let prefix = format!("garmin-companion-{name}-");
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(&prefix);
+    // The default mode is 0777 minus the umask, so set 0700 on Unix.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(std::fs::Permissions::from_mode(0o700));
+    }
+    builder.tempdir()
 }
 
 /// What every turn needs before it builds the flags.
@@ -618,6 +625,15 @@ pub mod script_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn temp_dir_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("test").unwrap();
+        let mode = std::fs::metadata(dir.path()).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+    }
 
     const TEST_CLI: Cli = Cli {
         name: "Test",
