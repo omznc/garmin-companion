@@ -71,6 +71,8 @@ pub struct Root {
     pub(crate) views: Views,
     /// The day or the range that every page looks at.
     pub(crate) focus: Focus,
+    /// True while the focus is the live "today". Then it follows the midnight rollover.
+    follows_today: bool,
     /// The month on show and the drag of the calendar.
     pub(crate) calendar: crate::calendar::Calendar,
     /// The open menu of the status bar.
@@ -139,12 +141,17 @@ impl Root {
             _ => Focus::today(),
         };
         // A demo shows the shipped order and leaves the saved one alone.
-        let saved_order = if account.demo {
-            Vec::new()
+        let prefs = if account.demo {
+            Default::default()
         } else {
-            garmin_api::settings::prefs().nav_order
+            garmin_api::settings::prefs()
         };
-        let sidebar = Sidebar::new(motion::reduced(), &saved_order, &window_state.collapsed);
+        let sidebar = Sidebar::new(
+            motion::reduced(),
+            &prefs.nav_order,
+            &prefs.default_screen,
+            &window_state.collapsed,
+        );
         let mut tabs = vec![Screen::Today];
         tabs::open(&mut tabs, sidebar.active);
         Self {
@@ -159,6 +166,7 @@ impl Root {
             calendar: crate::calendar::Calendar::new(focus, window_state.calendar_closed),
             status_menu: Default::default(),
             focus,
+            follows_today: focus.is_live(),
             sidebar_w: clamp_width(Side::Sidebar, window_state.sidebar_w),
             coach_w: clamp_width(Side::Coach, window_state.coach_w),
             pane_drag: None,
@@ -488,6 +496,7 @@ impl Root {
     /// Look at another day or range. Every view that takes a day reads again
     /// with `focus.end`. The pages keep the old data until the new data comes.
     pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
+        self.follows_today = focus.is_live();
         if focus == self.focus {
             return;
         }
@@ -496,6 +505,24 @@ impl Root {
         self.tell_ask_focus(cx);
         self.reload(cx);
         cx.notify();
+    }
+
+    /// True when the focus is "today" and the real day has moved on.
+    pub(crate) fn focus_is_stale(&self) -> bool {
+        self.focus
+            != self
+                .focus
+                .rolled(self.follows_today, crate::focus::real_today())
+    }
+
+    /// Move a "today" focus to the real today. `reload` calls this first.
+    pub(crate) fn roll_focus(&mut self, cx: &mut Context<Self>) {
+        if !self.focus_is_stale() {
+            return;
+        }
+        self.focus = Focus::today();
+        self.calendar.month = crate::calendar::first_of_month(self.focus.end);
+        self.tell_ask_focus(cx);
     }
 
     /// The coach hears the focus with each question.
@@ -542,7 +569,8 @@ impl Root {
         if self.account.demo {
             return;
         }
-        if let Err(e) = garmin_api::settings::set_nav_order(self.sidebar.keys()) {
+        let (keys, default) = (self.sidebar.keys(), self.sidebar.default_key());
+        if let Err(e) = garmin_api::settings::set_nav_order(keys, default) {
             eprintln!("could not save the sidebar order: {e}");
         }
     }
