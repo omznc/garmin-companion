@@ -44,11 +44,18 @@ pub struct Places {
     today: NaiveDate,
     sort: RouteSort,
     plan: Result<PlanView, String>,
+    /// Always in the default order. Every card but the grid reads this.
     routes: Result<RoutesView, String>,
+    /// The routes in the chosen order, only for the grid. `None` in the default order.
+    ordered: Option<RoutesView>,
     gear: Gear,
 }
 
-type PlacesRead = (Result<PlanView, String>, Result<RoutesView, String>);
+type PlacesRead = (
+    Result<PlanView, String>,
+    Result<RoutesView, String>,
+    Option<RoutesView>,
+);
 
 /// A persona is a made-up cache that the app seeds in a temp folder.
 fn persona_cache(name: &str) -> Result<(PathBuf, Persona), String> {
@@ -110,6 +117,7 @@ impl Places {
             sort: RouteSort::Recent,
             plan: Err(String::new()),
             routes: Err(String::new()),
+            ordered: None,
             gear: Gear::Idle,
         };
         places.reload();
@@ -136,6 +144,16 @@ impl Places {
     /// The saved routes. `None` until they have loaded, and when the read fails.
     pub fn routes(&self) -> Option<&RoutesView> {
         self.routes.as_ref().ok()
+    }
+
+    /// The routes for the grid, in the order that the user chose.
+    pub fn ordered_routes(&self) -> Option<&RoutesView> {
+        self.ordered.as_ref().or_else(|| self.routes())
+    }
+
+    /// The order that the user chose for the grid.
+    pub fn sort(&self) -> RouteSort {
+        self.sort
     }
 
     /// The gear, once Garmin has answered.
@@ -171,7 +189,7 @@ impl Places {
 
     /// Read the routes again, after a sync.
     pub fn reload(&mut self) {
-        (self.plan, self.routes) = self.reader()();
+        (self.plan, self.routes, self.ordered) = self.reader()();
     }
 
     /// A job that reads the plan and the routes. It owns its inputs, so it can run on a thread.
@@ -181,10 +199,14 @@ impl Places {
             Ok(db) => garmin_core::with_as_of(today, || {
                 (
                     plan_view(&db, today).map_err(|e| e.to_string()),
-                    routes_view(&db, sort).map_err(|e| e.to_string()),
+                    routes_view(&db, RouteSort::Recent).map_err(|e| e.to_string()),
+                    // A failed read here leaves the grid in the default order.
+                    (sort != RouteSort::Recent)
+                        .then(|| routes_view(&db, sort).ok())
+                        .flatten(),
                 )
             }),
-            Err(e) => (Err(e.clone()), Err(e)),
+            Err(e) => (Err(e.clone()), Err(e), None),
         }
     }
 }
@@ -194,11 +216,18 @@ impl Root {
     /// figures until the new ones arrive.
     pub fn reload_places(&mut self, cx: &mut Context<Self>) {
         let read = self.places.reader();
-        crate::account::load_async(self, "places", cx, read, |root, (plan, routes), cx| {
-            root.places.plan = plan;
-            root.places.routes = routes;
-            cx.notify();
-        });
+        crate::account::load_async(
+            self,
+            "places",
+            cx,
+            read,
+            |root, (plan, routes, ordered), cx| {
+                root.places.plan = plan;
+                root.places.routes = routes;
+                root.places.ordered = ordered;
+                cx.notify();
+            },
+        );
     }
 
     /// Choose the order of the routes and read them again.
@@ -287,7 +316,16 @@ mod tests {
         let mut places = Places::load(&Source::Persona("sample".into()));
         places.sort = RouteSort::Distance;
         places.reload();
-        let first = places.routes.unwrap().routes[0].distance.clone();
+        let first = places.ordered_routes().unwrap().routes[0].distance.clone();
         assert_eq!(first.as_deref(), Some("8.0 km"));
+    }
+
+    #[test]
+    fn a_new_order_leaves_the_outings_and_the_counts_alone() {
+        let mut places = Places::load(&Source::Persona("sample".into()));
+        let before = format!("{:?}", places.routes().unwrap());
+        places.sort = RouteSort::Distance;
+        places.reload();
+        assert_eq!(format!("{:?}", places.routes().unwrap()), before);
     }
 }

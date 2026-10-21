@@ -226,26 +226,28 @@ fn tile(s: &Saved, t: &Theme) -> gpui::Div {
 
 fn saved(ctx: &Ctx) -> Option<Block> {
     let view = ctx.places.routes()?;
-    let items = saved_routes(view);
-    if items.is_empty() {
+    // The count comes from the default order, so a tab never changes it.
+    let count = saved_routes(view).len();
+    if count == 0 {
         return None;
     }
+    let ordered = saved_routes(ctx.places.ordered_routes()?);
     let mut grid = div().flex().flex_wrap().gap(px(10.0)).p(px(12.0));
-    for s in items.iter().take(MAX_TILES) {
+    for s in ordered.iter().take(MAX_TILES) {
         grid = grid.child(tile(s, ctx.t));
     }
     // Empty tiles of the same size keep the last row from stretching.
     for _ in 0..8 {
         grid = grid.child(div().h(px(0.0)).flex_basis(px(TILE_WIDTH)).flex_grow(1.0));
     }
-    let meta = if items.len() == 1 {
+    let meta = if count == 1 {
         "1 route".to_string()
     } else {
-        format!("{} routes", items.len())
+        format!("{count} routes")
     };
     block(
         Some(meta),
-        div().child(sort_tabs(view.sort, ctx.t)).child(grid),
+        div().child(sort_tabs(ctx.places.sort(), ctx.t)).child(grid),
     )
 }
 
