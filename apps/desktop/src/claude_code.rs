@@ -6,28 +6,40 @@
 //!
 //! The command writes stream-json on stdout. [`Parser`] turns each line into
 //! the same `garmin_coach::Event`s as the other providers, so Ask needs no change.
+//! The parts that every local command shares are in `cli_agent.rs`.
 
 use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::ffi::OsString;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
 
-use garmin_coach::external;
 use garmin_coach::{Event, EventSink, HistoryMessage, Period, DEFAULT_CLAUDE_MODEL};
-use garmin_core::db::Db;
 use serde_json::{json, Value};
+
+use crate::cli_agent::{self as cli, error, is_batch, Cli, Run, Status, Stream};
+
+pub const CLI: Cli = Cli {
+    name: "Claude Code",
+    bin: "claude",
+    login_hint: "Run `claude` once.",
+    home_dirs: &[".local/bin"],
+    // The variables that mark a parent Claude Code session. The other
+    // `CLAUDE_CODE_*` variables stay: a login setup can need them
+    // (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`). So does `CLAUDE_CONFIG_DIR`.
+    env_remove: &[
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SSE_PORT",
+    ],
+};
 
 const NOT_INSTALLED: &str = "Claude Code is not installed. Install it from https://code.claude.com and run `claude` once to log in.";
 const NOT_LOGGED_IN: &str = "Claude Code is not logged in. Run `claude` in a terminal and log in.";
 const NO_TOOLS: &str =
     "Claude Code could not start the Garmin tools of this app. Restart the app and ask again.";
 const TOOL_PREFIX: &str = "mcp__garmin__";
-/// How much of the error output of the command the person sees.
-const STDERR_LINES: usize = 5;
 
 /* ------------------------------------------------------------------ parser --- */
 
@@ -40,7 +52,7 @@ struct Call {
 
 /// Turns the lines of the stream into events. It holds the state between lines.
 #[derive(Default)]
-pub struct Parser {
+struct Parser {
     /// The text of the message that streams now. A tool-use message makes it a note.
     text: String,
     /// Tool blocks that stream, by block index.
@@ -51,17 +63,13 @@ pub struct Parser {
     /// The `assistant` message of a failed login says so before the `result`.
     logged_out: bool,
     /// The `result` line came: the turn is over.
-    pub finished: bool,
+    finished: bool,
     /// The turn ended before the `result` line, and the process still runs.
     aborted: bool,
 }
 
-impl Parser {
-    pub fn sources(&self) -> Vec<String> {
-        self.sources.clone()
-    }
-
-    pub fn feed(&mut self, line: &Value) -> Vec<Event> {
+impl Stream for Parser {
+    fn feed(&mut self, line: &Value) -> Vec<Event> {
         match line["type"].as_str() {
             Some("stream_event") => self.stream(&line["event"]),
             Some("assistant") => {
@@ -75,6 +83,20 @@ impl Parser {
         }
     }
 
+    fn finished(&self) -> bool {
+        self.finished
+    }
+
+    fn aborted(&self) -> bool {
+        self.aborted
+    }
+
+    fn sources(&self) -> Vec<String> {
+        self.sources.clone()
+    }
+}
+
+impl Parser {
     /// Without the garmin server the model has no tools, and it writes tool
     /// calls as text. So stop the turn.
     fn init(&mut self, line: &Value) -> Vec<Event> {
@@ -201,9 +223,7 @@ impl Parser {
             return vec![error(text)];
         }
         if self.text.trim().is_empty() {
-            return vec![error(
-                "The model finished without writing an answer. Ask again, or try a different model.",
-            )];
+            return vec![error(cli::NO_ANSWER)];
         }
         vec![Event::Done {
             sources: self.sources(),
@@ -211,135 +231,33 @@ impl Parser {
     }
 }
 
-fn error(text: &str) -> Event {
-    Event::Error { text: text.into() }
-}
-
 /// A tool event. The label reads the finished input, when the call has one.
 fn tool_event(call: &Call, done: bool, ok: bool) -> Event {
     let name = call.name.strip_prefix(TOOL_PREFIX).unwrap_or(&call.name);
     let args: Value = serde_json::from_str(&call.input).unwrap_or(json!({}));
-    Event::Tool {
-        call_id: call.id.clone(),
-        label: external::tool_label(name, &args),
-        running: !done,
-        ok,
-    }
+    cli::tool_event(&call.id, name, &args, done, ok)
 }
 
 /* ----------------------------------------------------------------- command --- */
 
-/// Where the `claude` command can be. A GUI start has a small PATH, so the
-/// usual install folders come first.
-fn candidates(home: Option<PathBuf>, npm: Option<PathBuf>, path: Option<OsString>) -> Vec<PathBuf> {
-    // On Windows, an npm install makes `claude.cmd`, and Rust finds no file
-    // without its extension.
-    let names: &[&str] = if cfg!(windows) {
-        &["claude.exe", "claude.cmd"]
-    } else {
-        &["claude"]
-    };
-    let mut list = Vec::new();
-    if let Some(home) = home {
-        list.push(home.join(".local").join("bin").join(names[0]));
-    }
-    if !cfg!(windows) {
-        list.push("/opt/homebrew/bin/claude".into());
-        list.push("/usr/local/bin/claude".into());
-    }
-    // The npm global folder: the default prefix, `%APPDATA%\npm`.
-    list.extend(npm.iter().flat_map(|dir| names.iter().map(|n| dir.join(n))));
-    if let Some(path) = path {
-        list.extend(
-            std::env::split_paths(&path).flat_map(|dir| names.iter().map(move |n| dir.join(n))),
-        );
-    }
-    list
-}
-
-pub fn find_claude() -> Option<PathBuf> {
-    let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    let home = std::env::var_os(var).map(PathBuf::from);
-    let npm = std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("npm"));
-    candidates(home, npm, std::env::var_os("PATH"))
-        .into_iter()
-        .find(|p| p.is_file())
-}
-
-/// A `.cmd` or `.bat` file runs through `cmd.exe`, which reads the arguments
-/// in its own way. Rust refuses a newline in them, and a quote is risky.
-fn is_batch(bin: &Path) -> bool {
-    bin.extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
-}
-
-/// The variables that mark a parent Claude Code session. The other
-/// `CLAUDE_CODE_*` variables stay: a login setup can need them
-/// (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`). So does `CLAUDE_CONFIG_DIR`.
-const PARENT_SESSION_VARS: [&str; 4] = [
-    "CLAUDECODE",
-    "CLAUDE_CODE_ENTRYPOINT",
-    "CLAUDE_CODE_CHILD_SESSION",
-    "CLAUDE_CODE_SSE_PORT",
-];
-
-/// The command for a run: no window on Windows, and none of the variables that
-/// a parent Claude Code session sets for its children.
-fn command(bin: &Path) -> Command {
-    let mut cmd = Command::new(bin);
-    for key in PARENT_SESSION_VARS {
-        cmd.env_remove(key);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-    }
-    cmd
-}
-
-/// The app itself is the MCP server: the AppImage file when there is one.
-fn app_path() -> Option<PathBuf> {
-    std::env::var_os("APPIMAGE")
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_exe().ok().map(live_path))
-}
-
-/// After an update replaces the binary, Linux names the running file
-/// "<path> (deleted)". The new binary at <path> serves the tools as well.
-fn live_path(exe: PathBuf) -> PathBuf {
-    match exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
-        Some(path) => PathBuf::from(path),
-        None => exe,
-    }
-}
-
 fn mcp_config(app: &Path, db: Option<&Path>, period: Option<Period>) -> String {
-    let mut args = vec!["mcp".to_string()];
-    if let Some(db) = db {
-        args.extend(["--db".into(), db.to_string_lossy().into()]);
-    }
-    if let Some(p) = period {
-        args.extend(["--focus".into(), format!("{}..{}", p.start, p.end)]);
-    }
     json!({ "mcpServers": { "garmin": {
         "type": "stdio",
         "command": app.to_string_lossy(),
-        "args": args,
+        "args": cli::mcp_args(db, period),
     } } })
     .to_string()
 }
 
 /// The flags of 1.1 in CLI-AGENTS.md. Each empty string is its own item.
-/// Without a `question`, the command reads it from stdin.
-fn flags(prompt_file: &Path, model: &str, mcp: String, question: Option<String>) -> Vec<OsString> {
+/// The question goes on stdin: `-p` with no prompt argument reads it there.
+fn flags(prompt_file: &Path, model: &str, mcp: String) -> Vec<OsString> {
     let model = if model.is_empty() {
         DEFAULT_CLAUDE_MODEL
     } else {
         model
     };
     let mut args: Vec<OsString> = vec!["-p".into()];
-    args.extend(question.map(OsString::from));
     let pairs = [
         ("--mcp-config", mcp.as_str()),
         ("--tools", ""),
@@ -364,15 +282,6 @@ fn flags(prompt_file: &Path, model: &str, mcp: String, question: Option<String>)
         args.push(flag.into());
     }
     args
-}
-
-/// A file that is removed when it goes out of scope.
-struct TempFile(PathBuf);
-
-impl Drop for TempFile {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
-    }
 }
 
 /* -------------------------------------------------------------------- turn --- */
@@ -400,259 +309,61 @@ fn turn(
     sink: &dyn EventSink,
     stop: &AtomicBool,
 ) -> Result<(), String> {
-    let bin = find_claude().ok_or(NOT_INSTALLED)?;
-    let app = app_path().ok_or("Could not find this app's own path.")?;
-    let open = || match db {
-        Some(path) => Db::open(path),
-        None => Db::open_default(),
-    };
-    let system = external::mcp_system_prompt(&open().map_err(|e| format!("{e:#}"))?, period)
-        .map_err(|e| format!("{e:#}"))?;
-    let prompt_file = TempFile(
-        std::env::temp_dir().join(format!("garmin-companion-coach-{}.md", std::process::id())),
-    );
-    std::fs::write(&prompt_file.0, system)
+    let setup = cli::setup(&CLI, NOT_INSTALLED, db, period)?;
+    let dir =
+        cli::temp_dir("claude").map_err(|e| format!("Could not make the work folder: {e}"))?;
+    let prompt_file = dir.path().join("claude-prompt.md");
+    std::fs::write(&prompt_file, &setup.system)
         .map_err(|e| format!("Could not write the prompt: {e}"))?;
-    let cwd = work_dir(db).map_err(|e| format!("Could not make the work folder: {e}"))?;
 
-    let mut mcp = mcp_config(&app, db, period);
-    let mut question = Some(external::transcript(history));
-    let batch = is_batch(&bin);
-    // A batch file cannot take the question or the JSON in its arguments.
-    let config_file = TempFile(prompt_file.0.with_extension("json"));
-    if batch {
-        std::fs::write(&config_file.0, &mcp)
+    let mut mcp = mcp_config(&setup.app, db, period);
+    // A batch file cannot take the JSON in its arguments.
+    if is_batch(&setup.bin) {
+        let config_file = dir.path().join("claude-mcp.json");
+        std::fs::write(&config_file, &mcp)
             .map_err(|e| format!("Could not write the tool config: {e}"))?;
-        mcp = config_file.0.to_string_lossy().into();
+        mcp = config_file.to_string_lossy().into();
     }
-    let stdin_text = if batch { question.take() } else { None };
-
-    let mut cmd = command(&bin);
-    cmd.args(flags(&prompt_file.0, model, mcp, question))
-        .current_dir(cwd)
-        .stdin(if batch { Stdio::piped() } else { Stdio::null() })
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Could not start Claude Code: {e}"))?;
-    if let (Some(mut stdin), Some(text)) = (child.stdin.take(), stdin_text) {
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(text.as_bytes());
-        });
-    }
-    watch(&mut child, sink, stop)
-}
-
-/// An empty folder that the app owns. The command finds no project files in it.
-fn work_dir(db: Option<&Path>) -> std::io::Result<PathBuf> {
-    let base = match db {
-        None => garmin_core::paths::ensure_base_dir().map_err(std::io::Error::other)?,
-        // A demo copy must not write in the data folder of the real cache.
-        Some(_) => std::env::temp_dir(),
+    let run = Run {
+        cli: &CLI,
+        bin: setup.bin,
+        args: flags(&prompt_file, model, mcp),
+        cwd: setup.cwd,
+        env: Vec::new(),
+        stdin: Some(garmin_coach::external::transcript(history)),
+        limit: None,
     };
-    let dir = base.join("claude-code-cwd");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
-}
-
-/// Read the stream until the turn ends, the person stops it, or the command dies.
-fn watch(child: &mut Child, sink: &dyn EventSink, stop: &AtomicBool) -> Result<(), String> {
-    let stdout = child.stdout.take().ok_or("The command has no output.")?;
-    let (tx, rx) = mpsc::channel::<Value>();
-    std::thread::spawn(move || {
-        for line in lossy_lines(stdout) {
-            if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                if tx.send(v).is_err() {
-                    break;
-                }
-            }
-        }
-    });
-    let stderr = tail_of(child.stderr.take());
-
-    let mut parser = Parser::default();
-    while !parser.finished {
-        if stop.load(Ordering::Relaxed) {
-            end(child);
-            sink.emit(Event::Done {
-                sources: parser.sources(),
-            });
-            return Ok(());
-        }
-        match rx.recv_timeout(Duration::from_millis(100)) {
-            Ok(line) => parser.feed(&line).into_iter().for_each(|e| sink.emit(e)),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
-        }
-    }
-    if parser.aborted {
-        end(child);
-        return Ok(());
-    }
-    let status = reap(child);
-    if parser.finished {
-        return Ok(());
-    }
-    let tail = stderr.lock().map(|s| s.clone()).unwrap_or_default();
-    let code = status.map_or("none".into(), |c| c.to_string());
-    Err(if tail.trim().is_empty() {
-        format!("Claude Code stopped without an answer (exit code {code}).")
-    } else {
-        tail
-    })
-}
-
-/// The lines of a stream. A line that is not UTF-8 gets replacement
-/// characters, and the reader goes on. It stops only at a read error.
-fn lossy_lines(stream: impl Read) -> impl Iterator<Item = String> {
-    let mut reader = BufReader::new(stream);
-    std::iter::from_fn(move || {
-        let mut buf = Vec::new();
-        match reader.read_until(b'\n', &mut buf) {
-            Ok(0) | Err(_) => None,
-            Ok(_) => Some(
-                String::from_utf8_lossy(&buf)
-                    .trim_end_matches(['\r', '\n'])
-                    .to_string(),
-            ),
-        }
-    })
-}
-
-/// Collect the last lines of the error output on a thread.
-fn tail_of(stream: Option<impl Read + Send + 'static>) -> Arc<Mutex<String>> {
-    let tail = Arc::new(Mutex::new(String::new()));
-    if let Some(stream) = stream {
-        let tail = tail.clone();
-        std::thread::spawn(move || {
-            let mut lines: Vec<String> = Vec::new();
-            for line in lossy_lines(stream) {
-                lines.push(line);
-                let from = lines.len().saturating_sub(STDERR_LINES);
-                if let Ok(mut t) = tail.lock() {
-                    *t = lines[from..].join("\n");
-                }
-            }
-        });
-    }
-    tail
-}
-
-/// Kill the command. Its MCP child ends when its stdin closes.
-fn end(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-/// Wait a moment for a clean exit, then kill. Returns the exit code.
-fn reap(child: &mut Child) -> Option<i32> {
-    let until = Instant::now() + Duration::from_secs(2);
-    while Instant::now() < until {
-        if let Ok(Some(status)) = child.try_wait() {
-            return status.code();
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    end(child);
-    None
+    cli::run_child(run, &mut Parser::default(), sink, stop)
 }
 
 /* ------------------------------------------------------------------ status --- */
-
-/// What Settings shows about the local command.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Status {
-    NotInstalled,
-    LoggedOut,
-    /// The command did not answer within `PROBE_LIMIT`.
-    TimedOut,
-    LoggedIn {
-        version: String,
-        email: String,
-    },
-}
-
-impl Status {
-    pub fn line(&self) -> String {
-        match self {
-            Self::NotInstalled => "Claude Code is not installed.".into(),
-            Self::TimedOut => "Claude Code did not answer in time. Try again.".into(),
-            Self::LoggedOut => "Claude Code: not logged in. Run `claude` once.".into(),
-            Self::LoggedIn { version, email } => {
-                format!("Claude Code {version}, logged in as {email}")
-            }
-        }
-    }
-
-    pub fn ready(&self) -> bool {
-        matches!(self, Self::LoggedIn { .. })
-    }
-}
 
 fn parse_status(version: &str, auth_json: &str) -> Status {
     let auth: Value = serde_json::from_str(auth_json).unwrap_or_default();
     if auth["loggedIn"] != true {
         return Status::LoggedOut;
     }
-    Status::LoggedIn {
-        version: version.split_whitespace().next().unwrap_or_default().into(),
-        email: auth["email"].as_str().unwrap_or("your account").into(),
-    }
-}
-
-/// How long one probe call may run before the command is killed.
-const PROBE_LIMIT: Duration = Duration::from_secs(10);
-
-/// Run `bin` and return what it wrote on stdout. A call that runs longer than
-/// `limit` is killed and gives a `TimedOut` error.
-fn output_of(bin: &Path, args: &[&str], limit: Duration) -> std::io::Result<String> {
-    let mut child = command(bin)
-        .args(args.iter().map(OsStr::new))
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
-    let stdout = child.stdout.take();
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(mut out) = stdout {
-            let _ = out.read_to_end(&mut buf);
-        }
-        let _ = tx.send(buf);
-    });
-    match rx.recv_timeout(limit) {
-        Ok(buf) => {
-            let _ = child.wait();
-            Ok(String::from_utf8_lossy(&buf).into_owned())
-        }
-        Err(_) => {
-            end(&mut child);
-            Err(std::io::ErrorKind::TimedOut.into())
-        }
+    Status::Ready {
+        version: cli::version_of(version),
+        who: auth["email"].as_str().unwrap_or("your account").into(),
     }
 }
 
 /// Ask the command for its version and login. It blocks, so call it off the UI thread.
 pub fn probe() -> Status {
-    let Some(bin) = find_claude() else {
-        return Status::NotInstalled;
-    };
-    probe_with(&bin, PROBE_LIMIT)
+    match cli::find(&CLI) {
+        Some(bin) => probe_with(&bin, cli::PROBE_LIMIT),
+        None => Status::NotInstalled,
+    }
 }
 
 fn probe_with(bin: &Path, limit: Duration) -> Status {
-    let read = |args: &[&str]| match output_of(bin, args, limit) {
-        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(Status::TimedOut),
-        out => Ok(out.unwrap_or_default()),
-    };
-    let version = match read(&["--version"]) {
-        Ok(v) => v,
+    let version = match cli::read(bin, &CLI, &["--version"], limit) {
+        Ok(v) => v.text,
         Err(status) => return status,
     };
-    match read(&["auth", "status"]) {
-        Ok(auth) => parse_status(&version, &auth),
+    match cli::read(bin, &CLI, &["auth", "status"], limit) {
+        Ok(auth) => parse_status(&version, &auth.text),
         Err(status) => status,
     }
 }
@@ -660,6 +371,8 @@ fn probe_with(bin: &Path, limit: Duration) -> Status {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
 
     fn events(fixture: &str) -> Vec<Event> {
         let mut parser = Parser::default();
@@ -717,13 +430,6 @@ mod tests {
     }
 
     #[test]
-    fn a_replaced_binary_points_to_the_new_file() {
-        let path = PathBuf::from("/opt/gc/garmin-companion");
-        assert_eq!(live_path("/opt/gc/garmin-companion (deleted)".into()), path);
-        assert_eq!(live_path(path.clone()), path);
-    }
-
-    #[test]
     fn narration_before_a_tool_call_becomes_a_note() {
         let mut p = Parser::default();
         let mut feed = |v: Value| p.feed(&v);
@@ -750,7 +456,7 @@ mod tests {
 
     #[test]
     fn the_flags_keep_the_empty_values_as_items() {
-        let args = flags(Path::new("p.md"), "", "{}".into(), Some("User: hi".into()));
+        let args = flags(Path::new("p.md"), "", "{}".into());
         let text: Vec<String> = args.iter().map(|a| a.to_string_lossy().into()).collect();
         let at = |flag: &str| text.iter().position(|a| a == flag).unwrap();
         assert_eq!(text[at("--tools") + 1], "");
@@ -758,22 +464,9 @@ mod tests {
         assert_eq!(text[at("--model") + 1], "sonnet");
         assert_eq!(text[at("--allowedTools") + 1], "mcp__garmin__*");
         assert_eq!(text[at("--max-turns") + 1], "8");
-        assert_eq!(&text[..2], ["-p", "User: hi"]);
+        assert_eq!(text[0], "-p");
+        assert_eq!(text[1], "--mcp-config");
         assert!(text.contains(&"--strict-mcp-config".to_string()));
-    }
-
-    #[test]
-    fn the_command_drops_only_the_parent_session_vars() {
-        let cmd = command(Path::new("claude"));
-        let mut removed: Vec<String> = cmd
-            .get_envs()
-            .filter(|(_, v)| v.is_none())
-            .map(|(k, _)| k.to_string_lossy().into())
-            .collect();
-        removed.sort();
-        let mut want = PARENT_SESSION_VARS.to_vec();
-        want.sort();
-        assert_eq!(removed, want);
     }
 
     #[test]
@@ -784,13 +477,6 @@ mod tests {
         };
         let out = p.result(&json!({ "type": "result", "result": "Not logged in" }));
         assert!(matches!(out[0], Event::Done { .. }));
-    }
-
-    #[test]
-    fn a_line_that_is_not_utf8_does_not_stop_the_reader() {
-        let data: &[u8] = b"one\n\xff\xfe bad\r\nthree";
-        let lines: Vec<String> = lossy_lines(data).collect();
-        assert_eq!(lines, ["one", "\u{fffd}\u{fffd} bad", "three"]);
     }
 
     #[test]
@@ -807,45 +493,6 @@ mod tests {
             server["args"],
             json!(["mcp", "--focus", "2026-03-05..2026-03-05"])
         );
-    }
-
-    #[test]
-    fn the_install_folders_come_before_the_path() {
-        let list = candidates(Some("/h".into()), None, Some("/usr/bin:/bin".into()));
-        assert_eq!(list[0], Path::new("/h/.local/bin/claude"));
-        let path_at = list.iter().position(|p| p == Path::new("/usr/bin/claude"));
-        assert!(path_at.unwrap() > 0);
-    }
-
-    #[test]
-    fn the_npm_folder_is_searched_before_the_path() {
-        let list = candidates(None, Some("/n/npm".into()), Some("/usr/bin".into()));
-        let at = |p: &str| list.iter().position(|x| x == Path::new(p)).unwrap();
-        assert!(at("/n/npm/claude") < at("/usr/bin/claude"));
-    }
-
-    #[test]
-    fn a_cmd_or_bat_file_is_a_batch_file() {
-        assert!(is_batch(Path::new("C:/npm/claude.cmd")));
-        assert!(is_batch(Path::new("x.BAT")));
-        assert!(!is_batch(Path::new("claude.exe")));
-        assert!(!is_batch(Path::new("claude")));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_probe_that_hangs_is_killed_and_reported() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("gc-probe-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let bin = dir.join("claude");
-        std::fs::write(&bin, "#!/bin/sh\nexec sleep 30\n").unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let start = Instant::now();
-        let status = probe_with(&bin, Duration::from_millis(300));
-        let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(status, Status::TimedOut);
-        assert!(start.elapsed() < Duration::from_secs(5));
     }
 
     struct Rec(Mutex<Vec<Event>>);
@@ -892,7 +539,7 @@ mod tests {
             "2.1.304 (Claude Code)\n",
             r#"{"loggedIn":true,"email":"a@b.c"}"#,
         );
-        assert_eq!(ok.line(), "Claude Code 2.1.304, logged in as a@b.c");
+        assert_eq!(ok.line(&CLI), "Claude Code 2.1.304, logged in as a@b.c");
         assert_eq!(
             parse_status("2.1.304", r#"{"loggedIn":false}"#),
             Status::LoggedOut

@@ -34,7 +34,9 @@ mod calendar;
 mod charts;
 mod chrome;
 mod claude_code;
+mod cli_agent;
 mod cloud;
+mod codex;
 mod command_palette;
 mod commands;
 mod composer;
@@ -52,6 +54,7 @@ mod map;
 mod markdown;
 mod mcp;
 mod motion;
+mod opencode;
 mod openvsx;
 mod panel;
 mod panes;
@@ -347,6 +350,8 @@ fn main() -> anyhow::Result<()> {
                 }
             })
             .detach();
+            // A CLI coach run must not outlive the app: it spends model quota.
+            cx.on_app_quit(|_| async { cli_agent::kill_all() }).detach();
 
             // A demo reads and writes no saved state.
             let demo = !matches!(source, data::Source::Default);

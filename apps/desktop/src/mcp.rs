@@ -1,5 +1,6 @@
 //! `garmin-companion mcp [--db PATH] [--focus A..B]`: the read-only coach tools
-//! as an MCP server on stdio. Claude Code starts it (see `claude_code.rs`).
+//! as an MCP server on stdio. Claude Code, OpenCode and Codex start it for one
+//! turn (see `cli_agent.rs`).
 //!
 //! Stdout is the transport, so nothing else may print there. The loop is
 //! single-threaded on purpose: `garmin_core::with_as_of` is thread-local.

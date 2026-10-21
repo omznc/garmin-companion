@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"0199a213-81c0-7800-8aa1-bbab2a035a53"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Let me check."}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"garmin","tool":"recovery","arguments":{"days":2},"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"garmin","tool":"recovery","arguments":{"days":2},"result":{"content":[{"type":"text","text":"{\"days\":[{\"date\":\"2026-10-19\",\"resting_hr\":48}]}"}]},"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Your resting HR yesterday was **48 bpm**."}}
+{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":0,"output_tokens":40,"reasoning_output_tokens":0}}
