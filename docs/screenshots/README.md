@@ -1,52 +1,65 @@
 # Screenshots
 
-Desktop, 1280×900, real data out of the local cache — nothing mocked and nothing
-posed. Each screen shot in both themes where both are worth showing.
+The desktop app at 1280x900. The images use real data from a copy of the local cache. Nothing is mocked.
+The dark images use the palette `ink`. The light images use the palette `paper`.
 
-Two forms of every shot:
+Each image has two forms:
 
-- `*.png` — the window on a backdrop, with the 12px corner radius and the shadow
-  a Linux compositor would draw. Use these anywhere the image stands alone: a
-  README hero, a release post, a store listing.
-- `plain/*.png` — the same window with transparent rounded corners and no
-  backdrop, for dropping onto a background of your own.
+- `*.png`: the window on a backdrop, with a 12 px corner radius and a shadow.
+  Use it where the image is alone, for example in a README or a release post.
+- `plain/*.png`: the same window with transparent rounded corners and no backdrop.
+  Use it on a background of your own.
 
 | Screen | Dark | Light |
 |---|---|---|
 | Today | `today-dark.png` | `today-light.png` |
 | Activities | `activities-dark.png` | `activities-light.png` |
-| Activity | `activity-dark.png` | `activity-light.png` |
-| Activity — zones and HR | `activity-zones-dark.png` | — |
-| Activity — route and elevation | `activity-route-dark.png` | — |
-| Ask | `ask-dark.png` | `ask-light.png` |
+| Activity (a run, with zones) | `activity-dark.png` | `activity-light.png` |
+| Activity (a strength session) | `activity-strength-dark.png` | - |
+| Ask (empty state) | `ask-dark.png` | `ask-light.png` |
 | Insights | `insights-dark.png` | `insights-light.png` |
 | Health | `health-dark.png` | `health-light.png` |
 | Reports | `reports-dark.png` | `reports-light.png` |
 | Weight | `weight-dark.png` | `weight-light.png` |
-| Food | `food-dark.png` | — |
-| Plan | `plan-dark.png` | — |
-| Routes | `routes-dark.png` | — |
+| Food (empty state) | `food-dark.png` | - |
+| Plan | `plan-dark.png` | - |
+| Routes | `routes-dark.png` | - |
+| Setup | `setup-dark.png` | `setup-light.png` |
 
-Gear is not here: the account has no gear registered, so the screen only has its
-empty state to show.
+Limits of the cache data:
+
+- The cache has no analysis rows. The Activity page has no route map, no chart and no laps.
+- The cache has no meal and no chat session. Food and Ask show their empty states.
+- The account has no gear. Gear is not here.
 
 ## Retaking them
 
-The app is undecorated and GNOME refuses screenshots to unsandboxed clients, so
-these were taken in a nested X server, where the window can be sized exactly and
-captured by id:
+Use a debug build and a copy of the cache. Never open the live cache.
 
 ```sh
-Xwayland :99 -geometry 1560x1020 -noreset &
-env -u WAYLAND_DISPLAY DISPLAY=:99 GDK_BACKEND=x11 ./target/debug/app &
+sqlite3 ~/.local/share/garmin-coach/cache.sqlite3 ".backup /tmp/shots/cache.sqlite3"
+APP=target/debug/garmin-companion SIZE=1280x900 WAIT=10 ~/.claude/helpers/gc-vshoot raw.png \
+  --db /tmp/shots/cache.sqlite3 --palette ink --screen health
 ```
 
-With no window manager on that display the window sits at (0,0) and can be
-resized straight through `XConfigureWindow`, which is what makes every shot the
-same size. Two consequences worth knowing: nothing composites the transparent
-corners, so the capture is square and the radius is added afterwards, and GTK
-draws its own resize grip into the bottom-right corner, which is painted out.
+- `gc-vshoot` runs the app in a private virtual KWin. The user's screen is not used.
+- `--screen <name>` opens a screen. `--activity <id>` opens one session.
+- `GC_SHOW_SETUP=1` shows the Setup screen. Only a debug build reads it.
+- `--palette paper` gives the light image.
 
-The folder `desktop/` holds images of the gpui desktop app. They come from the synthetic fixture only. Never add a screenshot of real data.
+Add the frame with ImageMagick. `raw.png` is the capture:
 
-To take a desktop image, run `apps/desktop/scripts/shoot.sh <out.png> [app args]` on the real Wayland session (KDE). A nested Xwayland or Xvfb gives black frames, because the app draws with Vulkan. The script runs the app natively and captures the active window with spectacle. It fails if the image is not the shape of the app window, for example when another window took the focus. Run it again, and keep other windows still while it runs.
+```sh
+magick -size 1280x900 xc:black -fill white -draw "roundrectangle 0,0 1279,899 12,12" mask.png
+magick raw.png -alpha off mask.png -compose CopyOpacity -composite plain/NAME.png
+magick -size 1440x1060 gradient:"#3d3629-#1a1613" \
+  \( plain/NAME.png -background black -shadow 55x28+0+14 \) -geometry +60+44 -compose over -composite \
+  plain/NAME.png -geometry +80+58 -compose over -composite NAME.png
+```
+
+For a light image, use the gradient `#e8dfd0-#cfc2ad`.
+
+## desktop/
+
+The folder `desktop/` holds images of the app from the synthetic fixture only. Never add real data here.
+Take them with `--persona golfer` in place of `--db`.

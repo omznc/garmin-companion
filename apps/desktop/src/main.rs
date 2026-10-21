@@ -437,6 +437,11 @@ fn main() -> anyhow::Result<()> {
                     {
                         root.account.settings_page = at;
                     }
+                    // For screenshots: `GC_SHOW_SETUP=1` shows the Setup screen on a demo run.
+                    #[cfg(debug_assertions)]
+                    if std::env::var("GC_SHOW_SETUP").is_ok() {
+                        root.account.connected = false;
+                    }
                     // For screenshots: `GC_OPEN_INSIGHT=<id>` opens the detail of an item.
                     #[cfg(debug_assertions)]
                     if let Ok(id) = std::env::var("GC_OPEN_INSIGHT") {
