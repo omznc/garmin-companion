@@ -74,8 +74,10 @@ pub fn clickable_rows(rows: Vec<(ListRow, Option<RowClick>)>, t: &Theme) -> Div 
             .when(i > 0, |d| d.border_t_1().border_color(t.line2))
             .child(kit::list_rows(vec![row], t));
         if let Some(click) = click {
+            let hover = t.hover;
             line = line
                 .cursor_pointer()
+                .hover(move |s| s.bg(hover))
                 .on_click(move |_, window, cx| click(window, cx));
         }
         col = col.child(line);

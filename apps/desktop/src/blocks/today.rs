@@ -360,10 +360,13 @@ fn week(ctx: &Ctx) -> Option<Block> {
     let w = ctx.today.week.as_ref().filter(|w| !w.minutes.is_empty())?;
     let average = w.minutes.iter().sum::<f32>() / w.minutes.len() as f32;
     let avg = (average > 0.0).then(|| (average, format!("avg {}", minutes_label(average))));
+    let summary = (!w.summary.is_empty()).then(|| padded(w.summary.clone()));
     block(
         Some(week_meta(w)),
         None,
-        charts::bar_chart(&week_bars(w), avg, ctx.t),
+        div()
+            .child(charts::bar_chart(&week_bars(w), avg, ctx.t))
+            .children(summary),
     )
 }
 
@@ -517,16 +520,23 @@ fn fuel_rows(eaten: f32, burned: f32) -> Vec<MeterRow> {
     ]
 }
 
-fn fuel(ctx: &Ctx) -> Option<Block> {
-    let f: &Fuel = ctx.today.fuel.as_ref()?;
+/// A sentence that the core built. The block only draws it.
+fn sentence(text: &str, t: &Theme) -> Div {
+    div()
+        .mt(px(12.0))
+        .text_size(px(13.0))
+        .text_color(t.mutd)
+        .child(text.to_string())
+}
+
+fn fuel_figures(f: &Fuel, t: &Theme) -> Option<Div> {
     let (eaten, burned) = (f.eaten?, f.burned?);
-    let t = ctx.t;
     let pct = if burned > 0.0 {
         format!("{:.0}%", eaten / burned * 100.0)
     } else {
         String::new()
     };
-    let body = padded(
+    Some(
         div()
             .child(head(
                 &kcal(eaten),
@@ -539,9 +549,26 @@ fn fuel(ctx: &Ctx) -> Option<Block> {
                     .mt(px(12.0))
                     .child(charts::meter_rows(fuel_rows(eaten, burned), t)),
             ),
+    )
+}
+
+fn fuel(ctx: &Ctx) -> Option<Block> {
+    let (f, weight) = (ctx.today.fuel.as_ref(), ctx.today.weight_note.as_deref());
+    let t = ctx.t;
+    let figures = f.and_then(|f| fuel_figures(f, t));
+    // The block hides when the day has no figures and no core sentence to show.
+    if figures.is_none() && weight.is_none() {
+        return None;
+    }
+    let notes = f.map(|f| f.note.as_str()).filter(|n| !n.is_empty());
+    let body = padded(
+        div()
+            .children(figures)
+            .children(notes.map(|n| sentence(n, t)))
+            .children(weight.map(|w| sentence(w, t))),
     );
     block(
-        Some(f.when.clone()),
+        f.map(|f| f.when.clone()),
         Some(("Food", Go::Screen(Screen::Food))),
         body,
     )
