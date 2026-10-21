@@ -685,7 +685,7 @@ impl Root {
 }
 
 impl Root {
-    /// One screen in the whole window, with no title bar: the window buttons only.
+    /// One screen in the whole window, under a bare title bar: the brand and the window buttons.
     fn framed(&self, body: AnyElement, t: &Theme, window: &Window) -> gpui::Div {
         div()
             .relative()

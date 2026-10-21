@@ -1,4 +1,4 @@
-//! Window chrome: the drag strip, the three window buttons and the resize
+//! Window chrome: the drag handle, the three window buttons and the resize
 //! edges. From `app/src/components/WindowChrome.tsx`.
 //!
 //! The window has no system frame, as in the current app. On Linux the app

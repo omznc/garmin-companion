@@ -55,6 +55,12 @@ fn found_file(path: &str, t: &Theme, cx: &mut Context<Root>) -> impl IntoElement
         .child(div().mt(px(8.0)).child(button))
 }
 
+/// A debug screenshot run with `GC_SHOW_SETUP` shows the button as enabled.
+/// A click stays a no-op, because a demo run blocks the sign-in.
+fn preview_enabled() -> bool {
+    cfg!(debug_assertions) && std::env::var("GC_SHOW_SETUP").is_ok()
+}
+
 /// The card with the one primary action.
 fn sign_in_card(root: &Root, t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
     let waiting = matches!(root.account.sign_in, SignIn::Waiting(_));
@@ -67,7 +73,7 @@ fn sign_in_card(root: &Root, t: &Theme, cx: &mut Context<Root>) -> impl IntoElem
         "sign-in",
         label,
         Look::Primary,
-        !waiting && !root.account.demo,
+        !waiting && (!root.account.demo || preview_enabled()),
         t,
     )
     .h(px(30.0))
@@ -141,8 +147,10 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         .child(token_card(root, t, window, cx));
 
     div()
+        .id("setup")
         .flex_1()
         .min_h_0()
+        .overflow_y_scroll()
         .flex()
         .justify_center()
         .px(px(32.0))
