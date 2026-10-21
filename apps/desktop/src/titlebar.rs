@@ -31,7 +31,6 @@ fn brand(t: &Theme) -> impl IntoElement {
         .child(layer(Icon::LogoLines, t.faint));
     div()
         .flex_1()
-        .min_w_0()
         .flex()
         .items_center()
         .gap(px(8.0))
@@ -131,7 +130,6 @@ fn actions(root: &Root, window: &Window, t: &Theme, cx: &mut Context<Root>) -> i
         .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.toggle_coach(cx)));
     div()
         .flex_1()
-        .min_w_0()
         .flex()
         .items_center()
         .justify_end()
