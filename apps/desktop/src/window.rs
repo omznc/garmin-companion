@@ -132,10 +132,18 @@ pub fn shrink_when_screen_known(
             let fits = cx.update(|cx| {
                 handle
                     .update(cx, |_, window, cx| {
-                        let display = window
-                            .display(cx)
-                            .or_else(|| cx.displays().into_iter().next());
-                        let Some(display) = display else {
+                        // A resize breaks a maximized or fullscreen window.
+                        if window.is_maximized() || window.is_fullscreen() {
+                            return true;
+                        }
+                        // The Wayland output size is wrong at a fractional
+                        // scale (the scale is rounded up), so do not trust it.
+                        if window.scale_factor().fract() != 0.0 {
+                            return true;
+                        }
+                        // Only the window's own display counts. Another
+                        // output can have a different size.
+                        let Some(display) = window.display(cx) else {
                             return false;
                         };
                         let visible = display.visible_bounds().size;
