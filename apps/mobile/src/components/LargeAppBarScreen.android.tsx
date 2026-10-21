@@ -78,7 +78,9 @@ export function LargeAppBarScreen({
     <View style={{ flex: 1, backgroundColor: md.surface }}>
       <Animated.ScrollView
         onScroll={onScroll}
-        scrollEventThrottle={16}
+        // One event per frame. 16 ms holds the bar to 60 Hz on a 90 or 120 Hz
+        // screen, where it steps unevenly against the list under it.
+        scrollEventThrottle={1}
         refreshControl={
           onRefresh ? (
             <RefreshControl
