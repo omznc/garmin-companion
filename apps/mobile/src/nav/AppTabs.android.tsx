@@ -2,7 +2,6 @@
 import { Host } from "@expo/ui";
 import { Icon, NavigationBar, NavigationBarItem, Text } from "@expo/ui/jetpack-compose";
 import { Tabs, useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostTheme, useMd } from "../theme/md";
@@ -31,7 +30,6 @@ function TabBar({ index }: { index: number }) {
               selected={index === i}
               onClick={() => {
                 if (index !== i) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   router.navigate(`/${tab.name}`);
                 }
               }}
