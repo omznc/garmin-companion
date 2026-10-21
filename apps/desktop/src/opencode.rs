@@ -178,7 +178,9 @@ fn turn(
     let setup = cli::setup(&CLI, NOT_INSTALLED, db, period)?;
     let home = Temp::new("opencode");
     let folder = home.0.join("opencode");
-    std::fs::create_dir_all(&folder).map_err(|e| format!("Could not make the config: {e}"))?;
+    home.make_dir()
+        .and_then(|()| std::fs::create_dir(&folder))
+        .map_err(|e| format!("Could not make the config: {e}"))?;
     let write = |name: &str, text: String| {
         std::fs::write(folder.join(name), text)
             .map_err(|e| format!("Could not write the config: {e}"))

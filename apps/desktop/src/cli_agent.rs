@@ -46,6 +46,10 @@ pub trait Stream {
     fn aborted(&self) -> bool {
         false
     }
+    /// What went wrong, when the command ends with no final line.
+    fn failure(&self) -> Option<String> {
+        None
+    }
     fn sources(&self) -> Vec<String>;
 }
 
@@ -211,6 +215,18 @@ impl Temp {
     }
 }
 
+impl Temp {
+    /// Make the folder, for this user only. It must not exist: another user
+    /// could have made it in the shared temp folder, and then owns its files.
+    pub fn make_dir(&self) -> std::io::Result<()> {
+        let _ = std::fs::remove_dir_all(&self.0);
+        let mut dir = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut dir, 0o700);
+        dir.create(&self.0)
+    }
+}
+
 impl Drop for Temp {
     fn drop(&mut self) {
         if self.0.is_dir() {
@@ -370,7 +386,10 @@ fn watch(
     if parser.finished() {
         return Ok(());
     }
-    let tail = stderr.lock().map(|s| s.clone()).unwrap_or_default();
+    let tail = parser
+        .failure()
+        .or_else(|| stderr.lock().ok().map(|s| s.clone()))
+        .unwrap_or_default();
     let code = status.map_or("none".into(), |c| c.to_string());
     Err(if tail.trim().is_empty() {
         format!("{} stopped without an answer (exit code {code}).", cli.name)

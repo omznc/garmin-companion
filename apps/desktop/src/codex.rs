@@ -44,6 +44,9 @@ struct Parser {
     answer: Answer,
     sources: Vec<String>,
     finished: bool,
+    /// The last `error` event. Codex also sends it while it retries a request,
+    /// and `will_retry` is not in the JSON. Only `turn.failed` ends the turn.
+    last_error: Option<String>,
 }
 
 impl Stream for Parser {
@@ -56,13 +59,20 @@ impl Stream for Parser {
                 self.answer.done(self.sources())
             }
             Some("turn.failed") => self.fail(&line["error"]["message"]),
-            Some("error") => self.fail(&line["message"]),
+            Some("error") => {
+                self.last_error = line["message"].as_str().map(Into::into);
+                Vec::new()
+            }
             _ => Vec::new(),
         }
     }
 
     fn finished(&self) -> bool {
         self.finished
+    }
+
+    fn failure(&self) -> Option<String> {
+        self.last_error.clone()
     }
 
     fn sources(&self) -> Vec<String> {
@@ -288,15 +298,22 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_turn_and_an_error_event_end_the_turn() {
+    fn a_failed_turn_ends_the_turn() {
         let failed = events(r#"{"type":"turn.failed","error":{"message":"Not logged in"}}"#);
         assert_eq!(failed, vec![error("Not logged in")]);
-        let flat = events(r#"{"type":"error","message":"stream closed"}"#);
-        assert_eq!(flat, vec![error("stream closed")]);
         assert_eq!(
-            events(r#"{"type":"error"}"#),
+            events(r#"{"type":"turn.failed"}"#),
             vec![error("Codex reported an error.")]
         );
+    }
+
+    #[test]
+    fn an_error_event_during_a_retry_does_not_end_the_turn() {
+        let mut parser = Parser::default();
+        let retry = json!({"type": "error", "message": "Reconnecting... 1/5"});
+        assert!(parser.feed(&retry).is_empty());
+        assert!(!parser.finished());
+        assert_eq!(parser.failure().as_deref(), Some("Reconnecting... 1/5"));
     }
 
     #[test]
