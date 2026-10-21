@@ -173,7 +173,8 @@ impl Root {
 }
 
 /// The title bar button: its label, and whether a click works. `None` hides it.
-/// It shows only an offer that the app can install itself, as the menu does.
+/// It shows only an offer that the app can install itself. It hides a manual
+/// offer, a check in progress and a demo run.
 pub fn title_button(state: &UpdateState, demo: bool) -> Option<(String, bool)> {
     let offer = state.offer.as_ref().filter(|_| !demo && !state.checking)?;
     if offer.kind == Kind::Manual {
@@ -331,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn title_button_follows_the_menu_rule() {
+    fn title_button_shows_only_an_installable_offer() {
         let mut s = state(Kind::Windows);
         assert_eq!(
             title_button(&s, false),
