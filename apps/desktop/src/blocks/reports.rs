@@ -220,16 +220,14 @@ fn build(kind: Export, store: &Store, font: &[u8]) -> Result<(Vec<u8>, String), 
             Export::Week(offset) => {
                 let view = garmin_api::reports::report_view(&db, today, offset).map_err(bad)?;
                 (
-                    garmin_api::export::weekly_report_pdf(&db, today, offset, font)
-                        .map_err(bad)?,
+                    garmin_api::export::weekly_report_pdf(&db, today, offset, font).map_err(bad)?,
                     format!("garmin-week-{}.pdf", week_start(&view.eyebrow, today)),
                 )
             }
             Export::Month(back) => {
                 let month = today.with_day(1).unwrap_or(today) - Months::new(back);
                 (
-                    garmin_api::export::monthly_report_pdf(&db, today, back, font)
-                        .map_err(bad)?,
+                    garmin_api::export::monthly_report_pdf(&db, today, back, font).map_err(bad)?,
                     format!("garmin-{}.pdf", month.format("%Y-%m")),
                 )
             }
