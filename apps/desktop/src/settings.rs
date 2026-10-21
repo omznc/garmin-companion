@@ -213,17 +213,11 @@ fn nav_item(at: usize, on: bool, t: &Theme, cx: &mut Context<Root>) -> Stateful<
 }
 
 fn nav(root: &Root, narrow: bool, searching: bool, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let mut list = div().flex().gap(px(2.0));
-    // The page scrolls, so a wide list follows the offset and stays in view.
-    // This is a measured offset in window pixels, not a design size.
-    list = if narrow {
+    let list = div().flex().gap(px(2.0));
+    let mut list = if narrow {
         list.flex_wrap()
     } else {
         list.flex_col()
-            .w(px(NAV_W))
-            .flex_none()
-            .relative()
-            .top(gpui::px(-root.scroll.offset_y()))
     };
     for at in 0..SECTIONS.len() {
         let on = !searching && root.account.settings_page == at;
@@ -324,31 +318,62 @@ pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -
         |root: &mut Root| &mut root.account.settings_search,
         |_, _, _| {},
     );
-    let header = div()
-        .flex()
-        .flex_wrap()
-        .items_center()
-        .justify_between()
-        .gap(px(12.0))
-        .child(
-            div()
-                .text_size(px(20.0))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
-                .child("Settings"),
-        )
-        .child(div().w(px(280.0)).max_w_full().child(search));
-    let body = div()
-        .flex()
-        .gap(px(24.0))
-        .when(narrow, |d| d.flex_col().gap(px(10.0)))
-        .child(nav(root, narrow, !query.is_empty(), t, cx))
-        .child(content(root, &view, &query, t, window, cx));
-    div()
+    let title = div()
+        .text_size(px(20.0))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .child("Settings");
+    let nav = nav(root, narrow, !query.is_empty(), t, cx);
+    let content = content(root, &view, &query, t, window, cx);
+    if narrow {
+        let header = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .justify_between()
+            .gap(px(12.0))
+            .child(title)
+            .child(div().w(px(280.0)).max_w_full().child(search));
+        return div()
+            .flex()
+            .flex_col()
+            .max_w(px(860.0))
+            .gap(px(14.0))
+            .child(header)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.0))
+                    .child(nav)
+                    .child(content),
+            )
+            .into_any_element();
+    }
+    // The page scrolls, so the title and the list follow the offset and stay
+    // in view. This is a measured offset in window pixels, not a design size.
+    let side = div()
         .flex()
         .flex_col()
-        .max_w(px(860.0))
         .gap(px(14.0))
-        .child(header)
-        .child(body)
+        .w(px(NAV_W))
+        .flex_none()
+        .relative()
+        .top(gpui::px(-root.scroll.offset_y()))
+        .child(title)
+        .child(nav);
+    let main = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .gap(px(14.0))
+        .child(div().w(px(280.0)).max_w_full().child(search))
+        .child(content);
+    div()
+        .flex()
+        .max_w(px(860.0))
+        .gap(px(24.0))
+        .child(side)
+        .child(main)
         .into_any_element()
 }

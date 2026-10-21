@@ -229,14 +229,17 @@ pub struct RootHandle(pub gpui::WeakEntity<Root>);
 
 impl gpui::Global for RootHandle {}
 
+/// Run `f` on the root, from a click in a block. Nothing happens before `start` sets the handle.
+pub fn with_root(cx: &mut gpui::App, f: impl FnOnce(&mut Root, &mut Context<Root>)) {
+    let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
+        return;
+    };
+    let _ = root.update(cx, f);
+}
+
 /// A click on a row that opens the detail of one session.
 pub fn open_activity(id: i64) -> kit::RowClick {
-    Box::new(move |_, cx| {
-        let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
-            return;
-        };
-        let _ = root.update(cx, |root, cx| root.open_activity(id, cx));
-    })
+    Box::new(move |_, cx| with_root(cx, |root, cx| root.open_activity(id, cx)))
 }
 
 /// What a block returns: the header text and the body. The registry adds the
@@ -356,13 +359,24 @@ pub fn grid(
             kit::link(("block-link", n), label, ctx.t)
                 .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.go(go, cx)))
         });
-        let card = kit::card(def.title, block.meta, link, block.body, ctx.t);
+        let card = kit::card(def.title, block.meta, link, scoped(n, block.body), ctx.t);
         cards.push((width.columns(), card));
     }
     if cards.is_empty() {
         return nothing_to_show(ctx);
     }
     lay_out(cards, available, narrow)
+}
+
+/// The body of the card at `n` under its own id. Rows in two cards can have the
+/// same id, and gpui gives elements with the same id one click state.
+fn scoped(n: usize, body: AnyElement) -> gpui::Stateful<Div> {
+    div()
+        .id(("block", n))
+        .flex_1()
+        .flex()
+        .flex_col()
+        .child(body)
 }
 
 /// True when the data of the screen has loaded, so an empty page is a real state.
@@ -372,7 +386,7 @@ fn loaded(ctx: &Ctx) -> bool {
         Screen::Fitness | Screen::Insights | Screen::Reports => ctx.training.is_some(),
         Screen::Plan => ctx.places.plan().is_some(),
         Screen::Routes => ctx.places.routes().is_some(),
-        Screen::Gear => ctx.places.gear().is_some() || ctx.places.gear_failed(),
+        Screen::Gear => ctx.places.gear().is_some() || ctx.places.gear_error().is_some(),
         Screen::Activities => ctx.activities.is_ok(),
         _ => true,
     }
@@ -399,11 +413,35 @@ fn nothing_to_show(ctx: &Ctx) -> Div {
     if !loaded(ctx) {
         return div();
     }
+    if let Some(why) = ctx
+        .places
+        .gear_error()
+        .filter(|_| ctx.screen == Screen::Gear)
+    {
+        return gear_failed(why, ctx.t);
+    }
     let note = screen_note(ctx);
     let Some(block) = daily::empty_note(&note, ctx.t) else {
         return div();
     };
     div().child(kit::card("Nothing to show", None, None, block.body, ctx.t))
+}
+
+/// The Gear screen when Garmin gave no gear: the reason, and a button to ask again.
+fn gear_failed(why: &str, t: &Theme) -> Div {
+    let retry = kit::link("gear-retry", "Try again", t)
+        .on_click(|_, _, cx| with_root(cx, |root, cx| root.load_gear(cx)));
+    let body = div()
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(px(10.0))
+        .p(px(12.0))
+        .text_size(px(13.0))
+        .text_color(t.mutd)
+        .child(why.to_string())
+        .child(retry);
+    div().child(kit::card("Gear", None, None, body, t))
 }
 
 /// The grid for cards that are built already, each with its width in columns.
@@ -509,6 +547,58 @@ mod tests {
             for (id, _) in default_layout(screen) {
                 assert!(def(id).is_some(), "{id}");
             }
+        }
+    }
+
+    /// Two cards with a clickable list each, as Today draws them.
+    struct TwoLists(std::rc::Rc<std::cell::Cell<[u32; 2]>>);
+
+    impl Render for TwoLists {
+        fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
+            let t = crate::theme::Palette::Paper.theme();
+            let list = |n: usize| {
+                let hits = self.0.clone();
+                let row = kit::ListRow {
+                    glyph: crate::icons::Icon::NavStrength,
+                    tone: crate::charts::Tone::Muted,
+                    title: "Row".into(),
+                    sub: None,
+                    right: None,
+                    right_sub: None,
+                };
+                let click: kit::RowClick = Box::new(move |_, _| {
+                    let mut h = hits.get();
+                    h[n] += 1;
+                    hits.set(h);
+                });
+                scoped(
+                    n,
+                    kit::list_rows_click(vec![(row, Some(click))], &t).into_any_element(),
+                )
+            };
+            div()
+                .size_full()
+                .child(div().h(gpui::px(100.0)).child(list(0)))
+                .child(list(1))
+        }
+    }
+
+    #[gpui::test]
+    fn a_click_on_the_second_list_opens_its_row(cx: &mut gpui::TestAppContext) {
+        let hits = std::rc::Rc::new(std::cell::Cell::new([0; 2]));
+        let (_, cx) = cx.add_window_view(|_, _| TwoLists(hits.clone()));
+        let frame = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        };
+        let none = gpui::Modifiers::default();
+        for (y, want) in [(110.0, [0, 1]), (10.0, [1, 1])] {
+            let at = gpui::point(gpui::px(40.0), gpui::px(y));
+            cx.simulate_mouse_move(at, None, none);
+            frame(cx);
+            cx.simulate_mouse_down(at, gpui::MouseButton::Left, none);
+            cx.simulate_mouse_up(at, gpui::MouseButton::Left, none);
+            frame(cx);
+            assert_eq!(hits.get(), want, "click at y {y}");
         }
     }
 }

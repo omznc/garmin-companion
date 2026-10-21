@@ -10,7 +10,7 @@ use gpui::{div, prelude::*, Div};
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::Tone;
 use crate::icons::Icon;
-use crate::insight::{clickable_rows, open_insight};
+use crate::insight::open_insight;
 use crate::kit::{self, Cell, ListRow};
 use crate::screen::Screen;
 
@@ -106,7 +106,7 @@ fn list(ctx: &Ctx) -> Option<Block> {
     Some(Block {
         meta: (fresh > 0).then(|| format!("{fresh} new").into()),
         link: None,
-        body: clickable_rows(rows, ctx.t).into_any_element(),
+        body: kit::list_rows_click(rows, ctx.t).into_any_element(),
     })
 }
 

@@ -321,7 +321,7 @@ fn attention(ctx: &Ctx) -> Option<Block> {
         1 => Some("1 warning".to_string()),
         n => Some(format!("{n} warnings")),
     };
-    block(meta, None, crate::insight::clickable_rows(rows, ctx.t))
+    block(meta, None, kit::list_rows_click(rows, ctx.t))
 }
 
 /* ------------------------------------------------------------------- week --- */

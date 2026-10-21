@@ -205,7 +205,7 @@ fn weighins(ctx: &Ctx) -> Option<Block> {
         return None;
     }
     rows.reverse();
-    rows.truncate(10);
+    rows.truncate(60);
     let columns = [
         ("Date", false),
         ("Weight (kg)", true),
