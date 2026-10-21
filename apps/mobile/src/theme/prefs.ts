@@ -1,4 +1,5 @@
 // How the app looks on this phone: light or dark, the theme colour and Material You.
+// The file also keeps the "No vibration" choice.
 // The choices live in a small file on the phone. The file is read before the first
 // screen draws, so the first frame has the right colours.
 import { File, Paths } from "expo-file-system";

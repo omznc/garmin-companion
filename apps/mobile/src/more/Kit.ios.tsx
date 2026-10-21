@@ -143,6 +143,14 @@ function toneColor(tone: ItemProps["tone"]): ColorValue {
   return PlatformColor(tone === "action" ? "systemOrange" : "label");
 }
 
+// VoiceOver reads a row with a switch as one element, so the row must report the switch state.
+function a11y(on: boolean | undefined, disabled: boolean | undefined, pressable: boolean) {
+  if (on !== undefined) {
+    return { accessibilityRole: "switch", accessibilityState: { checked: on, disabled } } as const;
+  }
+  return { accessibilityRole: pressable ? "button" : "text" } as const;
+}
+
 export function Item({
   title,
   value,
@@ -157,7 +165,7 @@ export function Item({
   const color = disabled ? PlatformColor("tertiaryLabel") : toneColor(tone);
   return (
     <Pressable
-      accessibilityRole={onPress ? "button" : "text"}
+      {...a11y(on, disabled, !!onPress)}
       disabled={disabled || !onPress}
       onPress={onPress}
       style={({ pressed }) => ({
@@ -177,7 +185,9 @@ export function Item({
           {value}
         </Text>
       ) : null}
-      {on !== undefined ? <Switch value={on} onValueChange={() => onPress?.()} /> : null}
+      {on !== undefined ? (
+        <Switch value={on} disabled={disabled} onValueChange={() => onPress?.()} />
+      ) : null}
       {checked ? (
         <SymbolView name="checkmark" size={15} tintColor={PlatformColor("systemOrange")} />
       ) : null}
