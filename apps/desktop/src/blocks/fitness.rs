@@ -185,7 +185,7 @@ fn predictions(ctx: &Ctx) -> Option<Block> {
     block(
         Some("Garmin estimate".into()),
         None,
-        div().child(grid).children(intro),
+        div().flex_1().flex().flex_col().child(grid).children(intro),
     )
 }
 

@@ -5,7 +5,7 @@ use chrono::{Datelike, NaiveDate};
 use garmin_api::charts::{MonthCompare, MonthStats};
 use garmin_api::insights::InsightItem;
 use garmin_core::findings::Tone as FindingTone;
-use gpui::{div, prelude::*, Div};
+use gpui::{prelude::*, Div};
 
 use super::{Block, BlockDef, Ctx, Width};
 use crate::charts::Tone;
@@ -186,6 +186,6 @@ fn month(ctx: &Ctx) -> Option<Block> {
     Some(Block {
         meta: Some(format!("vs {}", month_name(ctx.focus.end, 1)).into()),
         link: None,
-        body: div().child(grid).into_any_element(),
+        body: grid.into_any_element(),
     })
 }
