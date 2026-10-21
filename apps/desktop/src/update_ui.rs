@@ -172,6 +172,21 @@ impl Root {
     }
 }
 
+/// The title bar button: its label, and whether a click works. `None` hides it.
+/// It shows only an offer that the app can install itself. It hides a manual
+/// offer, a check in progress and a demo run.
+pub fn title_button(state: &UpdateState, demo: bool) -> Option<(String, bool)> {
+    let offer = state.offer.as_ref().filter(|_| !demo && !state.checking)?;
+    if offer.kind == Kind::Manual {
+        return None;
+    }
+    Some(if state.installing {
+        ("Installing...".into(), false)
+    } else {
+        (format!("Update to {}", offer.version), true)
+    })
+}
+
 async fn check_job() -> Result<Option<Offer>, String> {
     updater::check().await.map_err(|e| format!("{e:#}"))
 }
@@ -298,4 +313,41 @@ pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
         value = value.child(note);
     }
     panel::row(false, "Updates", None, value, t)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(kind: Kind) -> UpdateState {
+        UpdateState {
+            offer: Some(Offer {
+                version: "1.0.9".into(),
+                notes: None,
+                kind,
+                download: None,
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn title_button_shows_only_an_installable_offer() {
+        let mut s = state(Kind::Windows);
+        assert_eq!(
+            title_button(&s, false),
+            Some(("Update to 1.0.9".into(), true))
+        );
+        assert_eq!(title_button(&s, true), None);
+        s.installing = true;
+        assert_eq!(
+            title_button(&s, false),
+            Some(("Installing...".into(), false))
+        );
+        s.installing = false;
+        s.checking = true;
+        assert_eq!(title_button(&s, false), None);
+        assert_eq!(title_button(&state(Kind::Manual), false), None);
+        assert_eq!(title_button(&UpdateState::default(), false), None);
+    }
 }
