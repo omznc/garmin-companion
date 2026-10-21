@@ -150,7 +150,10 @@
     <release version="1.0.9" date="2026-10-21">
       <description>
         <p>
-          The Android app icon now has its logo optically centred.
+          The title bar shows a button when a new version is available, and
+          the sync icon turns the same way as its arrows. Figure grids now
+          reach the bottom of their card. The Android app icon has its logo
+          optically centred.
         </p>
       </description>
     </release>
