@@ -253,12 +253,11 @@ pub(crate) fn run(
     let result = match period {
         None => read(&db, name, args),
         Some(p) => {
-            // The window ends on the last day of the period. A call without
-            // `days` reads the whole period.
+            // The window ends on the last day of the period. `days` never
+            // goes past the period, and a call without `days` reads all of it.
             let mut args = args.clone();
-            if args["days"].is_null() {
-                args["days"] = json!(p.days());
-            }
+            let asked = args["days"].as_u64().unwrap_or(u64::MAX);
+            args["days"] = json!(asked.min(p.days()));
             garmin_core::with_as_of(p.end, || read(&db, name, &args))
         }
     };
@@ -383,7 +382,10 @@ fn read(db: &Db, name: &str, args: &Value) -> Result<Value> {
         "workouts" => to(db.workouts()?)?,
         "personal_records" => to(query::personal_records(db)?)?,
         "fitness" => to(query::fitness(db, window(args, "days", 30, MAX_ROW_DAYS))?)?,
-        "coach" => to(garmin_core::coach::for_today(db, garmin_core::today())?)?,
+        "coach" => to(garmin_core::coach::for_today(
+            db,
+            chrono::Local::now().date_naive(),
+        )?)?,
         "findings" => {
             let from = garmin_core::days_ago(window(args, "days", 365, MAX_DAYS));
             to(garmin_core::findings::all(
@@ -565,10 +567,13 @@ mod tests {
             dates(&out),
             ["2026-03-07", "2026-03-06", "2026-03-05", "2026-03-04"]
         );
-        // An explicit `days` is honoured and still ends at `end`.
+        // A smaller `days` is honoured and still ends at `end`.
+        let out = run("recovery", &json!({ "days": 2 }), &open, Some(period));
+        assert_eq!(dates(&out), ["2026-03-07", "2026-03-06"]);
+        // A larger `days` is cut to the period.
         let out = run("recovery", &json!({ "days": 6 }), &open, Some(period));
         assert_eq!(dates(&out).first().unwrap(), "2026-03-07");
-        assert_eq!(dates(&out).last().unwrap(), "2026-03-02");
+        assert_eq!(dates(&out).last().unwrap(), "2026-03-04");
         let _ = std::fs::remove_file(&path);
     }
 

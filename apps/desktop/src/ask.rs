@@ -452,11 +452,8 @@ fn with_context(
     if let Some(f) = focus {
         last.content = format!(
             "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
-             The tools count days back from today, {}: ask for enough days to reach the start of the period, then ignore older rows.",
-            last.content,
-            f.start,
-            f.end,
-            crate::focus::real_today()
+             The tools read this period: they count days back from its last day.",
+            last.content, f.start, f.end
         );
     }
     messages
