@@ -22,6 +22,7 @@ use crate::data::Source;
 use crate::field::Field;
 use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
+use crate::statusmenu::COACH_SECTION;
 use crate::theme::Theme;
 use crate::ui::body;
 use crate::{claude_code, codex, opencode};
@@ -51,6 +52,8 @@ pub struct Cloud {
     /// The email that a code went to. `None` while no code is waiting.
     pending_email: Option<String>,
     busy: bool,
+    /// Counts the provider choices. A slow probe result for an older choice is dropped.
+    choice: u32,
     /// The running checkout poll. A new one replaces it: dropping a task stops it.
     watch: Option<gpui::Task<()>>,
     /// The poll has not ended. A window that comes back reads the balance once.
@@ -74,6 +77,7 @@ impl Cloud {
             note: None,
             pending_email: None,
             busy: false,
+            choice: 0,
             watch: None,
             watching: false,
             has_key: false,
@@ -225,8 +229,12 @@ impl Root {
     /// Ask the local command of the provider for its version and login, off the UI thread.
     fn cli_probe(&mut self, cx: &mut Context<Self>) {
         let provider = self.account.cloud.provider;
+        let choice = self.account.cloud.choice;
         let probe = async move { Ok(probe_cli(provider)) };
         self.cloud_call(cx, probe, move |root, out, _| {
+            if root.account.cloud.choice != choice {
+                return;
+            }
             root.account.cloud.cli = out.ok().map(|status| (provider, status));
         });
     }
@@ -276,11 +284,13 @@ impl Root {
     pub fn cloud_choose(&mut self, provider: Provider, cx: &mut Context<Self>) {
         let cloud = &mut self.account.cloud;
         cloud.note = None;
+        cloud.choice += 1;
+        let choice = cloud.choice;
         if provider == Provider::Ollama && cloud.live {
-            return self.cloud_choose_ollama(cx);
+            return self.cloud_choose_ollama(choice, cx);
         }
         if provider.is_cli() && cloud.live {
-            return self.cloud_choose_cli(provider, cx);
+            return self.cloud_choose_cli(provider, choice, cx);
         }
         let model = model_for(provider, cloud.provider);
         self.cloud_keep(provider, model, cx);
@@ -291,9 +301,12 @@ impl Root {
 
     /// Save the choice only when the local command works. Else keep the old
     /// provider and say why.
-    fn cloud_choose_cli(&mut self, provider: Provider, cx: &mut Context<Self>) {
+    fn cloud_choose_cli(&mut self, provider: Provider, choice: u32, cx: &mut Context<Self>) {
         let probe = async move { Ok(probe_cli(provider)) };
         self.cloud_call(cx, probe, move |root, out, cx| {
+            if root.account.cloud.choice != choice {
+                return;
+            }
             let status = out.unwrap_or(Status::TimedOut);
             if status.ready() {
                 let model = model_for(provider, root.account.cloud.provider);
@@ -303,7 +316,7 @@ impl Root {
             root.account.cloud.say(status.line(cli_of(provider)), true);
             root.account.cloud.cli = Some((provider, status));
             // The note is drawn in the Coach section of Settings.
-            root.show_settings_section(1, cx);
+            root.show_settings_section(COACH_SECTION, cx);
         });
     }
 
@@ -335,21 +348,26 @@ impl Root {
         cx.notify();
     }
 
-    fn cloud_choose_ollama(&mut self, cx: &mut Context<Self>) {
+    fn cloud_choose_ollama(&mut self, choice: u32, cx: &mut Context<Self>) {
         let probe = async {
             let http = reqwest::Client::new();
             Ok(garmin_coach::probe_ollama(&http).await)
         };
-        self.cloud_call(cx, probe, |root, out, cx| match out {
-            Ok((true, models)) if !models.is_empty() => {
-                root.cloud_keep(Provider::Ollama, &models[0], cx)
+        self.cloud_call(cx, probe, move |root, out, cx| {
+            if root.account.cloud.choice != choice {
+                return;
             }
-            _ => {
-                root.account
-                    .cloud
-                    .say("Ollama is not running here, or it has no model.", true);
-                // The note is drawn in the Coach section of Settings.
-                root.show_settings_section(1, cx);
+            match out {
+                Ok((true, models)) if !models.is_empty() => {
+                    root.cloud_keep(Provider::Ollama, &models[0], cx)
+                }
+                _ => {
+                    root.account
+                        .cloud
+                        .say("Ollama is not running here, or it has no model.", true);
+                    // The note is drawn in the Coach section of Settings.
+                    root.show_settings_section(COACH_SECTION, cx);
+                }
             }
         });
     }

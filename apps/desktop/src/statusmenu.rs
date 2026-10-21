@@ -20,7 +20,7 @@ use crate::ui::{MONO, SANS};
 
 /// The Settings sections that the menus open: the index in `settings::SECTIONS`.
 const GARMIN_SECTION: usize = 0;
-const COACH_SECTION: usize = 1;
+pub(crate) const COACH_SECTION: usize = 1;
 /// The height of an item: the bar is 26 px with a 1 px border.
 const BAR_H: f32 = 25.0;
 /// A click on the item that just closed its menu must not open it again.
