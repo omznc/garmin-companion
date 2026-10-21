@@ -43,36 +43,6 @@ pub fn draggable(bar: Stateful<Div>) -> Stateful<Div> {
         })
 }
 
-/// The strip that drags the window, over a screen that has no title bar.
-pub fn drag_strip() -> impl IntoElement {
-    draggable(
-        div()
-            .id("drag-strip")
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .h(px(STRIP)),
-    )
-}
-
-/// The window buttons in the top right corner of a screen with no title bar.
-pub fn corner_controls(window: &Window, t: &Theme) -> Option<AnyElement> {
-    let row = controls(window, t)?;
-    Some(
-        div()
-            .absolute()
-            .top_0()
-            .right_0()
-            .h(px(STRIP))
-            .pr(px(6.0))
-            .flex()
-            .items_center()
-            .child(row)
-            .into_any_element(),
-    )
-}
-
 fn button(
     id: &'static str,
     glyph: Icon,

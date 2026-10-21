@@ -114,21 +114,22 @@ fn actions(root: &Root, window: &Window, t: &Theme, cx: &mut Context<Root>) -> i
         .gap(px(2.0))
         .child(sync_button(root.account.syncing(), t, cx))
         .child(coach)
-        .children(chrome::controls(window, t).map(|controls| {
-            div()
-                .flex()
-                .items_center()
-                .child(div().w(px(1.0)).h(px(16.0)).mx(px(6.0)).bg(t.line))
-                .child(controls)
-        }))
+        .children(window_buttons(window, t))
 }
 
-pub fn render(
-    root: &Root,
-    window: &Window,
-    t: &Theme,
-    cx: &mut Context<Root>,
-) -> Stateful<gpui::Div> {
+/// The window buttons behind a hairline, when this window draws its own.
+fn window_buttons(window: &Window, t: &Theme) -> Option<impl IntoElement> {
+    chrome::controls(window, t).map(|controls| {
+        div()
+            .flex()
+            .items_center()
+            .child(div().w(px(1.0)).h(px(16.0)).mx(px(6.0)).bg(t.line))
+            .child(controls)
+    })
+}
+
+/// The empty bar: the shell of every title bar.
+fn bar(t: &Theme) -> Stateful<gpui::Div> {
     chrome::draggable(
         div()
             .id("titlebar")
@@ -144,7 +145,21 @@ pub fn render(
             .border_color(t.line)
             .text_color(t.fg),
     )
-    .child(brand(t))
-    .child(search(t, cx))
-    .child(actions(root, window, t, cx))
+}
+
+/// The bar of a screen that has no app yet: the brand and the window buttons.
+pub fn render_bare(window: &Window, t: &Theme) -> Stateful<gpui::Div> {
+    bar(t).child(brand(t)).children(window_buttons(window, t))
+}
+
+pub fn render(
+    root: &Root,
+    window: &Window,
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> Stateful<gpui::Div> {
+    bar(t)
+        .child(brand(t))
+        .child(search(t, cx))
+        .child(actions(root, window, t, cx))
 }

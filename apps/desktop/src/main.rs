@@ -441,6 +441,7 @@ fn main() -> anyhow::Result<()> {
                     #[cfg(debug_assertions)]
                     if std::env::var("GC_SHOW_SETUP").is_ok() {
                         root.account.connected = false;
+                        root.account.demo = false;
                     }
                     // For screenshots: `GC_OPEN_INSIGHT=<id>` opens the detail of an item.
                     #[cfg(debug_assertions)]

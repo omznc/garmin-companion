@@ -691,13 +691,13 @@ impl Root {
             .relative()
             .size_full()
             .flex()
+            .flex_col()
             .bg(t.bg)
             .text_color(t.fg)
             .font_family(SANS)
             .line_height(relative(LH_NORMAL))
+            .child(titlebar::render_bare(window, t))
             .child(body)
-            .child(chrome::drag_strip())
-            .children(chrome::corner_controls(window, t))
             .children(chrome::resize_handles(window))
     }
 
