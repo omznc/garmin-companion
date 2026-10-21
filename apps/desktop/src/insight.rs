@@ -11,7 +11,7 @@ use gpui::{
 
 use crate::blocks::{self, insights::age};
 use crate::charts::{self, Bar};
-use crate::kit::{self, ListRow, Look, RowClick};
+use crate::kit::{self, Look, RowClick};
 use crate::scale::px;
 use crate::shell::{page_heading, Root};
 use crate::theme::Theme;
@@ -63,24 +63,6 @@ pub fn open_insight(id: String) -> RowClick {
         let id = id.clone();
         let _ = root.update(cx, |root, cx| root.open_insight(id, cx));
     })
-}
-
-/// The rows of a list, and a click on a row that has one. The kit list has no click.
-pub fn clickable_rows(rows: Vec<(ListRow, Option<RowClick>)>, t: &Theme) -> Div {
-    let mut col = div().flex().flex_col();
-    for (i, (row, click)) in rows.into_iter().enumerate() {
-        let mut line = div()
-            .id(("insight-row", i))
-            .when(i > 0, |d| d.border_t_1().border_color(t.line2))
-            .child(kit::list_rows(vec![row], t));
-        if let Some(click) = click {
-            line = line
-                .cursor_pointer()
-                .on_click(move |_, window, cx| click(window, cx));
-        }
-        col = col.child(line);
-    }
-    col
 }
 
 /* ----------------------------------------------------------------- figures --- */
