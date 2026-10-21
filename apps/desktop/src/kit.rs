@@ -251,6 +251,23 @@ pub struct Cell {
     pub big: bool,
 }
 
+/// The box of one grid cell. An empty filler cell uses it too, so the dividers
+/// of every row line up.
+fn cell_box(big: bool, t: &Theme) -> Div {
+    let (x, y) = if big { (14.0, 12.0) } else { (12.0, 10.0) };
+    div()
+        .flex_1()
+        .min_w_0()
+        .px(px(x))
+        .py(px(y))
+        .flex()
+        .flex_col()
+        .gap(px(2.0))
+        .border_r_1()
+        .border_b_1()
+        .border_color(t.line2)
+}
+
 /// `.metrics` and `.kv`: cells in `columns` columns, with a hairline between
 /// them. The hairlines of the last column and the last row fall outside the card.
 pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
@@ -260,6 +277,7 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
     let mut grid = div().flex().flex_col().mr(px(-1.0)).mb(px(-1.0));
     let mut row = div().flex_1().flex();
     let mut in_row = 0;
+    let mut last_big = false;
     for cell in cells {
         let size = if cell.big { 21.0 } else { 15.0 };
         let value = div()
@@ -277,19 +295,9 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
                     .text_color(t.mutd)
                     .child(u)
             }));
-        let padding = if cell.big { (14.0, 12.0) } else { (12.0, 10.0) };
+        last_big = cell.big;
         row = row.child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .px(px(padding.0))
-                .py(px(padding.1))
-                .flex()
-                .flex_col()
-                .gap(px(2.0))
-                .border_r_1()
-                .border_b_1()
-                .border_color(t.line2)
+            cell_box(cell.big, t)
                 .child(
                     div()
                         .overflow_hidden()
@@ -324,7 +332,7 @@ pub fn stat_grid(cells: Vec<Cell>, columns: usize, t: &Theme) -> Div {
     }
     if in_row > 0 {
         // Empty cells keep the 1/n width of the cells in the last row.
-        grid = grid.child(row.children((in_row..columns).map(|_| div().flex_1())));
+        grid = grid.child(row.children((in_row..columns).map(|_| cell_box(last_big, t))));
     }
     // In a stretched card the rows grow, so the dividers reach the bottom edge.
     div()
