@@ -168,7 +168,8 @@ impl Parser {
     fn result(&mut self, line: &Value) -> Vec<Event> {
         self.finished = true;
         let text = line["result"].as_str().unwrap_or_default();
-        if self.logged_out || text.contains("Not logged in") {
+        // A normal answer can contain the phrase. Only an error result counts.
+        if self.logged_out || (line["is_error"] == true && text.contains("Not logged in")) {
             return vec![error(NOT_LOGGED_IN)];
         }
         if line["is_error"] == true {
@@ -238,15 +239,22 @@ pub fn find_claude() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The variables that mark a parent Claude Code session. The other
+/// `CLAUDE_CODE_*` variables stay: a login setup can need them
+/// (`CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`). So does `CLAUDE_CONFIG_DIR`.
+const PARENT_SESSION_VARS: [&str; 4] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SSE_PORT",
+];
+
 /// The command for a run: no window on Windows, and none of the variables that
-/// a Claude Code session sets for its children. `CLAUDE_CONFIG_DIR` stays.
+/// a parent Claude Code session sets for its children.
 fn command(bin: &Path) -> Command {
     let mut cmd = Command::new(bin);
-    cmd.env_remove("CLAUDECODE");
-    for (key, _) in std::env::vars_os() {
-        if key.to_string_lossy().starts_with("CLAUDE_CODE_") {
-            cmd.env_remove(key);
-        }
+    for key in PARENT_SESSION_VARS {
+        cmd.env_remove(key);
     }
     #[cfg(windows)]
     {
@@ -295,6 +303,7 @@ fn flags(prompt_file: &Path, model: &str, mcp: String, question: String) -> Vec<
         ("--setting-sources", ""),
         ("--output-format", "stream-json"),
         ("--model", model),
+        ("--max-turns", "8"),
     ];
     for (flag, value) in pairs {
         args.extend([flag.into(), value.into()]);
@@ -395,7 +404,7 @@ fn watch(child: &mut Child, sink: &dyn EventSink, stop: &AtomicBool) -> Result<(
     let stdout = child.stdout.take().ok_or("The command has no output.")?;
     let (tx, rx) = mpsc::channel::<Value>();
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        for line in lossy_lines(stdout) {
             if let Ok(v) = serde_json::from_str::<Value>(&line) {
                 if tx.send(v).is_err() {
                     break;
@@ -433,6 +442,23 @@ fn watch(child: &mut Child, sink: &dyn EventSink, stop: &AtomicBool) -> Result<(
     })
 }
 
+/// The lines of a stream. A line that is not UTF-8 gets replacement
+/// characters, and the reader goes on. It stops only at a read error.
+fn lossy_lines(stream: impl Read) -> impl Iterator<Item = String> {
+    let mut reader = BufReader::new(stream);
+    std::iter::from_fn(move || {
+        let mut buf = Vec::new();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(
+                String::from_utf8_lossy(&buf)
+                    .trim_end_matches(['\r', '\n'])
+                    .to_string(),
+            ),
+        }
+    })
+}
+
 /// Collect the last lines of the error output on a thread.
 fn tail_of(stream: Option<impl Read + Send + 'static>) -> Arc<Mutex<String>> {
     let tail = Arc::new(Mutex::new(String::new()));
@@ -440,7 +466,7 @@ fn tail_of(stream: Option<impl Read + Send + 'static>) -> Arc<Mutex<String>> {
         let tail = tail.clone();
         std::thread::spawn(move || {
             let mut lines: Vec<String> = Vec::new();
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+            for line in lossy_lines(stream) {
                 lines.push(line);
                 let from = lines.len().saturating_sub(STDERR_LINES);
                 if let Ok(mut t) = tail.lock() {
@@ -607,8 +633,40 @@ mod tests {
         assert_eq!(text[at("--setting-sources") + 1], "");
         assert_eq!(text[at("--model") + 1], "sonnet");
         assert_eq!(text[at("--allowedTools") + 1], "mcp__garmin__*");
+        assert_eq!(text[at("--max-turns") + 1], "8");
         assert_eq!(&text[..2], ["-p", "User: hi"]);
         assert!(text.contains(&"--strict-mcp-config".to_string()));
+    }
+
+    #[test]
+    fn the_command_drops_only_the_parent_session_vars() {
+        let cmd = command(Path::new("claude"));
+        let mut removed: Vec<String> = cmd
+            .get_envs()
+            .filter(|(_, v)| v.is_none())
+            .map(|(k, _)| k.to_string_lossy().into())
+            .collect();
+        removed.sort();
+        let mut want = PARENT_SESSION_VARS.to_vec();
+        want.sort();
+        assert_eq!(removed, want);
+    }
+
+    #[test]
+    fn a_reply_with_the_login_phrase_is_not_a_login_error() {
+        let mut p = Parser {
+            text: "Say \"Not logged in\" if you see it.".into(),
+            ..Parser::default()
+        };
+        let out = p.result(&json!({ "type": "result", "result": "Not logged in" }));
+        assert!(matches!(out[0], Event::Done { .. }));
+    }
+
+    #[test]
+    fn a_line_that_is_not_utf8_does_not_stop_the_reader() {
+        let data: &[u8] = b"one\n\xff\xfe bad\r\nthree";
+        let lines: Vec<String> = lossy_lines(data).collect();
+        assert_eq!(lines, ["one", "\u{fffd}\u{fffd} bad", "three"]);
     }
 
     #[test]
