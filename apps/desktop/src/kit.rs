@@ -349,9 +349,14 @@ pub struct ListRow {
 
 /// `.row`: the rows of a list, each under a hairline but the first.
 pub fn list_rows(rows: Vec<ListRow>, t: &Theme) -> Div {
+    list_rows_click(rows.into_iter().map(|row| (row, None)).collect(), t)
+}
+
+/// As `list_rows`, and a row with a `RowClick` opens something when clicked.
+pub fn list_rows_click(rows: Vec<(ListRow, Option<RowClick>)>, t: &Theme) -> Div {
     let hover = t.hover;
     let mut col = div().flex().flex_col();
-    for (i, row) in rows.into_iter().enumerate() {
+    for (i, (row, click)) in rows.into_iter().enumerate() {
         let colour = match row.tone {
             Tone::Muted => t.mutd,
             tone => tone.colour(t),
@@ -387,7 +392,14 @@ pub fn list_rows(rows: Vec<ListRow>, t: &Theme) -> Div {
                     ),
             );
         }
-        col = col.child(line);
+        col = col.child(match click {
+            Some(click) => line
+                .id(("list-row", i))
+                .cursor_pointer()
+                .on_click(move |_, window, cx| click(window, cx))
+                .into_any_element(),
+            None => line.into_any_element(),
+        });
     }
     col
 }

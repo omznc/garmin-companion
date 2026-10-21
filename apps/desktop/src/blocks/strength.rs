@@ -124,19 +124,22 @@ fn recent(ctx: &Ctx) -> Option<Block> {
     let rows = sessions
         .iter()
         .take(10)
-        .map(|s| ListRow {
-            glyph: Icon::NavStrength,
-            tone: Tone::Muted,
-            title: s.label.clone().into(),
-            sub: s.movements.clone().map(Into::into),
-            right: Some(s.summary.clone().into()),
-            right_sub: None,
+        .map(|s| {
+            let row = ListRow {
+                glyph: Icon::NavStrength,
+                tone: Tone::Muted,
+                title: s.label.clone().into(),
+                sub: s.movements.clone().map(Into::into),
+                right: Some(s.summary.clone().into()),
+                right_sub: None,
+            };
+            (row, Some(super::open_activity(s.activity_id)))
         })
         .collect();
     block(
         Some(meta_for(&ctx.focus, "last 14 days")),
         None,
-        kit::list_rows(rows, ctx.t),
+        kit::list_rows_click(rows, ctx.t),
     )
 }
 

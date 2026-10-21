@@ -2,7 +2,7 @@
 //! a few figures.
 
 use crate::scale::px;
-use garmin_api::routes::RoutesView;
+use garmin_api::routes::{RouteSort, RoutesView};
 use gpui::{canvas, div, fill, point, prelude::*, size, Bounds, Hsla, PathBuilder, Pixels, Window};
 
 use super::{Block, BlockDef, Ctx, Width};
@@ -99,8 +99,8 @@ struct Saved<'a> {
 /// A route shorter than this is a walk round the block, not a route.
 const MIN_ROUTE_M: f64 = 1000.0;
 
-/// The courses that the user saved, then the routes that have a trace. The
-/// routes that repeat most come first, and short ones are left out.
+/// The courses that the user saved, then the routes that have a trace, in
+/// the order that the user chose. Short ones are left out.
 fn saved_routes(view: &RoutesView) -> Vec<Saved<'_>> {
     let courses = view.courses.iter().map(|c| Saved {
         name: &c.name,
@@ -110,20 +110,18 @@ fn saved_routes(view: &RoutesView) -> Vec<Saved<'_>> {
         tag: "Course".into(),
         course: true,
     });
-    let mut long: Vec<_> = view
+    let routes = view
         .routes
         .iter()
         .filter(|r| r.distance_m >= MIN_ROUTE_M)
-        .collect();
-    long.sort_by_key(|r| std::cmp::Reverse(r.times));
-    let routes = long.into_iter().map(|r| Saved {
-        name: &r.name,
-        distance: r.distance.as_deref(),
-        elevation_m: r.elevation_m,
-        trace: &r.trace,
-        tag: r.times_line.clone(),
-        course: false,
-    });
+        .map(|r| Saved {
+            name: &r.name,
+            distance: r.distance.as_deref(),
+            elevation_m: r.elevation_m,
+            trace: &r.trace,
+            tag: r.times_line.clone(),
+            course: false,
+        });
     courses
         .chain(routes)
         .filter(|s| s.trace.len() >= 2)
@@ -231,6 +229,7 @@ fn saved(ctx: &Ctx) -> Option<Block> {
     if items.is_empty() {
         return None;
     }
+    let view = ctx.places.routes()?;
     let mut grid = div().flex().flex_wrap().gap(px(10.0)).p(px(12.0));
     for s in items.iter().take(MAX_TILES) {
         grid = grid.child(tile(s, ctx.t));
@@ -244,7 +243,49 @@ fn saved(ctx: &Ctx) -> Option<Block> {
     } else {
         format!("{} routes", items.len())
     };
-    block(Some(meta), grid)
+    block(
+        Some(meta),
+        div().child(sort_tabs(view.sort, ctx.t)).child(grid),
+    )
+}
+
+const SORTS: [(RouteSort, &str); 3] = [
+    (RouteSort::Recent, "Latest"),
+    (RouteSort::Repeats, "Most repeated"),
+    (RouteSort::Distance, "Longest"),
+];
+
+/// The tabs that choose the order of the routes.
+fn sort_tabs(active: RouteSort, t: &Theme) -> gpui::Div {
+    SORTS.iter().fold(
+        div()
+            .flex()
+            .gap(px(18.0))
+            .items_baseline()
+            .px(px(12.0))
+            .pt(px(10.0))
+            .text_size(px(12.0)),
+        |tabs, (sort, label)| {
+            let (sort, on) = (*sort, *sort == active);
+            tabs.child(
+                div()
+                    .id(*label)
+                    .cursor_pointer()
+                    .pb(px(3.0))
+                    .border_b_1()
+                    .border_color(if on { t.acc } else { gpui::transparent_black() })
+                    .text_color(if on { t.fg } else { t.faint })
+                    .child(*label)
+                    .on_click(move |_, _, cx| {
+                        let Some(root) = cx.try_global::<super::RootHandle>().map(|h| h.0.clone())
+                        else {
+                            return;
+                        };
+                        let _ = root.update(cx, |root, cx| root.set_route_sort(sort, cx));
+                    }),
+            )
+        },
+    )
 }
 
 /* --------------------------------------------------------------- most used --- */
@@ -323,17 +364,18 @@ fn numbers(ctx: &Ctx) -> Option<Block> {
 /// The outings of the routes that repeat, newest route first.
 fn outings(ctx: &Ctx) -> Option<Block> {
     let view = ctx.places.routes()?;
-    let rows: Vec<Vec<gpui::SharedString>> = view
+    let rows: Vec<(Vec<gpui::SharedString>, Option<kit::RowClick>)> = view
         .routes
         .iter()
         .filter(|r| r.distance_m >= MIN_ROUTE_M)
         .flat_map(|r| {
             r.outings.iter().map(move |o| {
-                vec![
+                let cells = vec![
                     r.name.clone().into(),
                     o.date.clone().into(),
                     o.detail.clone().into(),
-                ]
+                ];
+                (cells, Some(super::open_activity(o.activity_id)))
             })
         })
         .take(MAX_OUTINGS)
@@ -350,7 +392,7 @@ fn outings(ctx: &Ctx) -> Option<Block> {
         column("Date", false),
         column("Outing", true),
     ];
-    block(None, kit::table(&columns, rows, ctx.t))
+    block(None, kit::table_rows(&columns, rows, ctx.t))
 }
 
 #[cfg(test)]

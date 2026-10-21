@@ -372,7 +372,7 @@ fn loaded(ctx: &Ctx) -> bool {
         Screen::Fitness | Screen::Insights | Screen::Reports => ctx.training.is_some(),
         Screen::Plan => ctx.places.plan().is_some(),
         Screen::Routes => ctx.places.routes().is_some(),
-        Screen::Gear => ctx.places.gear().is_some() || ctx.places.gear_failed(),
+        Screen::Gear => ctx.places.gear().is_some() || ctx.places.gear_error().is_some(),
         Screen::Activities => ctx.activities.is_ok(),
         _ => true,
     }
@@ -399,11 +399,35 @@ fn nothing_to_show(ctx: &Ctx) -> Div {
     if !loaded(ctx) {
         return div();
     }
+    if let Some(why) = ctx.places.gear_error() {
+        return gear_failed(why, ctx.t);
+    }
     let note = screen_note(ctx);
     let Some(block) = daily::empty_note(&note, ctx.t) else {
         return div();
     };
     div().child(kit::card("Nothing to show", None, None, block.body, ctx.t))
+}
+
+/// The Gear screen when Garmin gave no gear: the reason, and a button to ask again.
+fn gear_failed(why: &str, t: &Theme) -> Div {
+    let retry = kit::link("gear-retry", "Try again", t).on_click(|_, _, cx| {
+        let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
+            return;
+        };
+        let _ = root.update(cx, |root, cx| root.load_gear(cx));
+    });
+    let body = div()
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(px(10.0))
+        .p(px(12.0))
+        .text_size(px(13.0))
+        .text_color(t.mutd)
+        .child(why.to_string())
+        .child(retry);
+    div().child(kit::card("Gear", None, None, body, t))
 }
 
 /// The grid for cards that are built already, each with its width in columns.
