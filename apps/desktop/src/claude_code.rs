@@ -23,6 +23,8 @@ use serde_json::{json, Value};
 
 const NOT_INSTALLED: &str = "Claude Code is not installed. Install it from https://code.claude.com and run `claude` once to log in.";
 const NOT_LOGGED_IN: &str = "Claude Code is not logged in. Run `claude` in a terminal and log in.";
+const NO_TOOLS: &str =
+    "Claude Code could not start the Garmin tools of this app. Restart the app and ask again.";
 const TOOL_PREFIX: &str = "mcp__garmin__";
 /// How much of the error output of the command the person sees.
 const STDERR_LINES: usize = 5;
@@ -50,6 +52,8 @@ pub struct Parser {
     logged_out: bool,
     /// The `result` line came: the turn is over.
     pub finished: bool,
+    /// The turn ended before the `result` line, and the process still runs.
+    aborted: bool,
 }
 
 impl Parser {
@@ -66,8 +70,24 @@ impl Parser {
             }
             Some("user") => self.results(&line["message"]["content"]),
             Some("result") => self.result(line),
+            Some("system") if line["subtype"] == "init" => self.init(line),
             _ => Vec::new(),
         }
+    }
+
+    /// Without the garmin server the model has no tools, and it writes tool
+    /// calls as text. So stop the turn.
+    fn init(&mut self, line: &Value) -> Vec<Event> {
+        let servers = line["mcp_servers"].as_array().into_iter().flatten();
+        let connected = servers
+            .filter(|s| s["name"] == "garmin")
+            .any(|s| s["status"] == "connected");
+        if connected {
+            return Vec::new();
+        }
+        self.finished = true;
+        self.aborted = true;
+        vec![error(NO_TOOLS)]
     }
 
     fn stream(&mut self, ev: &Value) -> Vec<Event> {
@@ -268,7 +288,16 @@ fn command(bin: &Path) -> Command {
 fn app_path() -> Option<PathBuf> {
     std::env::var_os("APPIMAGE")
         .map(PathBuf::from)
-        .or_else(|| std::env::current_exe().ok())
+        .or_else(|| std::env::current_exe().ok().map(live_path))
+}
+
+/// After an update replaces the binary, Linux names the running file
+/// "<path> (deleted)". The new binary at <path> serves the tools as well.
+fn live_path(exe: PathBuf) -> PathBuf {
+    match exe.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
+        Some(path) => PathBuf::from(path),
+        None => exe,
+    }
 }
 
 fn mcp_config(app: &Path, db: Option<&Path>, period: Option<Period>) -> String {
@@ -428,6 +457,10 @@ fn watch(child: &mut Child, sink: &dyn EventSink, stop: &AtomicBool) -> Result<(
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+    }
+    if parser.aborted {
+        end(child);
+        return Ok(());
     }
     let status = reap(child);
     if parser.finished {
@@ -597,6 +630,27 @@ mod tests {
         assert!(!all
             .iter()
             .any(|e| matches!(e, Event::Note { .. } | Event::Error { .. })));
+    }
+
+    #[test]
+    fn a_turn_without_the_garmin_server_stops() {
+        let init = |status: &str| {
+            json!({ "type": "system", "subtype": "init",
+                    "mcp_servers": [{ "name": "garmin", "status": status }] })
+        };
+        let mut parser = Parser::default();
+        assert!(parser.feed(&init("connected")).is_empty());
+        assert!(!parser.finished);
+        let mut parser = Parser::default();
+        assert_eq!(parser.feed(&init("failed")), vec![error(NO_TOOLS)]);
+        assert!(parser.finished && parser.aborted);
+    }
+
+    #[test]
+    fn a_replaced_binary_points_to_the_new_file() {
+        let path = PathBuf::from("/opt/gc/garmin-companion");
+        assert_eq!(live_path("/opt/gc/garmin-companion (deleted)".into()), path);
+        assert_eq!(live_path(path.clone()), path);
     }
 
     #[test]
