@@ -26,12 +26,7 @@
     "value": 28.0,
     "date": "2026-03-11"
   },
-  "restingHr": {
-    "value": 50.0,
-    "baseline": 51.0,
-    "delta": -1.0,
-    "accent": false
-  },
+  "restingHr": null,
   "fuel": {
     "day": null,
     "age": null,

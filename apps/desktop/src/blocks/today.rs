@@ -360,7 +360,7 @@ fn week(ctx: &Ctx) -> Option<Block> {
     let w = ctx.today.week.as_ref().filter(|w| !w.minutes.is_empty())?;
     let average = w.minutes.iter().sum::<f32>() / w.minutes.len() as f32;
     let avg = (average > 0.0).then(|| (average, format!("avg {}", minutes_label(average))));
-    let summary = (!w.summary.is_empty()).then(|| padded(w.summary.clone()));
+    let summary = (!w.summary.is_empty()).then(|| sentence(&w.summary, ctx.t));
     block(
         Some(week_meta(w)),
         None,
@@ -556,11 +556,11 @@ fn fuel(ctx: &Ctx) -> Option<Block> {
     let (f, weight) = (ctx.today.fuel.as_ref(), ctx.today.weight_note.as_deref());
     let t = ctx.t;
     let figures = f.and_then(|f| fuel_figures(f, t));
+    let notes = f.map(|f| f.note.as_str()).filter(|n| !n.is_empty());
     // The block hides when the day has no figures and no core sentence to show.
-    if figures.is_none() && weight.is_none() {
+    if figures.is_none() && notes.is_none() && weight.is_none() {
         return None;
     }
-    let notes = f.map(|f| f.note.as_str()).filter(|n| !n.is_empty());
     let body = padded(
         div()
             .children(figures)

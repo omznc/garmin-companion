@@ -373,6 +373,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_recent_days_start_at_the_local_today() {
+        let day = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        let days = crate::with_as_of(day, || recent_days(2));
+        assert_eq!(days, ["2026-01-01", "2025-12-31"]);
+    }
+
+    #[test]
     fn the_month_window_wraps_the_year() {
         let d = |y, m, day| chrono::NaiveDate::from_ymd_opt(y, m, day).unwrap();
         assert_eq!(

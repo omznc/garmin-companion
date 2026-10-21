@@ -251,10 +251,7 @@ fn headline_input(
         readiness: fresh(latest(rows, |d| d.training_readiness), today).map(|l| l.value),
         // A new user has no baseline yet: the delta would be 0 and read as "recovered".
         resting_delta: fresh(latest(comparable, |d| d.resting_hr), today)
-            .filter(|_| {
-                comparable.iter().filter(|d| d.resting_hr.is_some()).count() >= MIN_BASELINE_DAYS
-            })
-            .zip(mean(comparable.iter().map(|d| d.resting_hr)))
+            .zip(resting_baseline(comparable))
             .map(|(l, baseline)| l.value - baseline),
         hrv,
         sleep_secs: fresh(latest(rows, |d| d.sleep_secs), today).map(|l| l.value),
@@ -311,9 +308,17 @@ fn sections(v: &TodayView) -> Vec<String> {
         .collect()
 }
 
+/// The mean resting heart rate, once there are enough days to be a baseline.
+fn resting_baseline(comparable: &[garmin_core::DailyMetrics]) -> Option<f64> {
+    let days = comparable.iter().filter(|d| d.resting_hr.is_some()).count();
+    (days >= MIN_BASELINE_DAYS)
+        .then(|| mean(comparable.iter().map(|d| d.resting_hr)))
+        .flatten()
+}
+
 fn resting_hr(comparable: &[garmin_core::DailyMetrics]) -> Option<RestingHr> {
     let value = latest(comparable, |d| d.resting_hr)?.value;
-    let baseline = mean(comparable.iter().map(|d| d.resting_hr))?;
+    let baseline = resting_baseline(comparable)?;
     let delta = value - baseline;
     Some(RestingHr {
         value,
@@ -415,6 +420,7 @@ mod tests {
     fn seeded_cache_fills_the_view() {
         let db = db();
         for (date, rhr, sleep) in [
+            ("2026-03-07", 50.0, 7.0 * 3600.0),
             ("2026-03-08", 50.0, 7.0 * 3600.0),
             ("2026-03-09", 51.0, 7.0 * 3600.0),
             ("2026-03-10", 56.0, 7.0 * 3600.0),
@@ -445,12 +451,19 @@ mod tests {
             db.upsert_daily(&DailyMetrics {
                 date: date.into(),
                 resting_hr: Some(50.0),
+                // Under 4 h of sleep clears the resting HR as not comparable.
+                sleep_secs: Some(5.0 * 3600.0),
                 ..DailyMetrics::default()
             })
             .unwrap();
         }
-        let h = today_view(&db, today()).unwrap().headline;
-        assert_eq!(h.tone, crate::headline::HeadlineTone::NoData, "{h:?}");
+        let v = today_view(&db, today()).unwrap();
+        assert!(
+            !v.headline.detail.contains("resting heart rate"),
+            "{:?}",
+            v.headline
+        );
+        assert!(v.resting_hr.is_none());
     }
 
     #[test]
