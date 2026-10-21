@@ -22,6 +22,7 @@ use crate::data::Source;
 use crate::field::Field;
 use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
+use crate::statusmenu::COACH_SECTION;
 use crate::theme::Theme;
 use crate::ui::body;
 
@@ -50,6 +51,8 @@ pub struct Cloud {
     /// The email that a code went to. `None` while no code is waiting.
     pending_email: Option<String>,
     busy: bool,
+    /// Counts the provider choices. A slow probe result for an older choice is dropped.
+    choice: u32,
     /// The running checkout poll. A new one replaces it: dropping a task stops it.
     watch: Option<gpui::Task<()>>,
     /// The poll has not ended. A window that comes back reads the balance once.
@@ -72,6 +75,7 @@ impl Cloud {
             note: None,
             pending_email: None,
             busy: false,
+            choice: 0,
             watch: None,
             watching: false,
             has_key: false,
@@ -243,11 +247,13 @@ impl Root {
     pub fn cloud_choose(&mut self, provider: Provider, cx: &mut Context<Self>) {
         let cloud = &mut self.account.cloud;
         cloud.note = None;
+        cloud.choice += 1;
+        let choice = cloud.choice;
         if provider == Provider::Ollama && cloud.live {
-            return self.cloud_choose_ollama(cx);
+            return self.cloud_choose_ollama(choice, cx);
         }
         if provider == Provider::ClaudeCode && cloud.live {
-            return self.cloud_choose_claude(cx);
+            return self.cloud_choose_claude(choice, cx);
         }
         let model = model_for(provider, cloud.provider);
         self.cloud_keep(provider, model, cx);
@@ -258,9 +264,12 @@ impl Root {
 
     /// Save the choice only when the local command works. Else keep the old
     /// provider and say why.
-    fn cloud_choose_claude(&mut self, cx: &mut Context<Self>) {
+    fn cloud_choose_claude(&mut self, choice: u32, cx: &mut Context<Self>) {
         let probe = async { Ok(claude_code::probe()) };
-        self.cloud_call(cx, probe, |root, out, cx| {
+        self.cloud_call(cx, probe, move |root, out, cx| {
+            if root.account.cloud.choice != choice {
+                return;
+            }
             let status = out.unwrap_or(claude_code::Status::TimedOut);
             if status.ready() {
                 let model = model_for(Provider::ClaudeCode, root.account.cloud.provider);
@@ -270,7 +279,7 @@ impl Root {
             root.account.cloud.say(status.line(), true);
             root.account.cloud.claude = Some(status);
             // The note is drawn in the Coach section of Settings.
-            root.show_settings_section(1, cx);
+            root.show_settings_section(COACH_SECTION, cx);
         });
     }
 
@@ -302,21 +311,26 @@ impl Root {
         cx.notify();
     }
 
-    fn cloud_choose_ollama(&mut self, cx: &mut Context<Self>) {
+    fn cloud_choose_ollama(&mut self, choice: u32, cx: &mut Context<Self>) {
         let probe = async {
             let http = reqwest::Client::new();
             Ok(garmin_coach::probe_ollama(&http).await)
         };
-        self.cloud_call(cx, probe, |root, out, cx| match out {
-            Ok((true, models)) if !models.is_empty() => {
-                root.cloud_keep(Provider::Ollama, &models[0], cx)
+        self.cloud_call(cx, probe, move |root, out, cx| {
+            if root.account.cloud.choice != choice {
+                return;
             }
-            _ => {
-                root.account
-                    .cloud
-                    .say("Ollama is not running here, or it has no model.", true);
-                // The note is drawn in the Coach section of Settings.
-                root.show_settings_section(1, cx);
+            match out {
+                Ok((true, models)) if !models.is_empty() => {
+                    root.cloud_keep(Provider::Ollama, &models[0], cx)
+                }
+                _ => {
+                    root.account
+                        .cloud
+                        .say("Ollama is not running here, or it has no model.", true);
+                    // The note is drawn in the Coach section of Settings.
+                    root.show_settings_section(COACH_SECTION, cx);
+                }
             }
         });
     }
