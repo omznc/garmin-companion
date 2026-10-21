@@ -103,6 +103,7 @@ pub fn clamp(wanted: (f32, f32), visible: (f32, f32), min: (f32, f32)) -> (f32, 
 
 /// The smaller size for a window that is too big for its screen, or `None`
 /// when the window fits or the screen is not known.
+#[cfg(target_os = "linux")]
 pub fn shrink_to(current: (f32, f32), visible: (f32, f32), min: (f32, f32)) -> Option<(f32, f32)> {
     let fitted = clamp(current, visible, min);
     (fitted.0 < current.0 || fitted.1 < current.1).then_some(fitted)
@@ -219,6 +220,7 @@ mod tests {
         assert_eq!(clamp(DEFAULT_SIZE, (0.0, 0.0), MIN), DEFAULT_SIZE);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn only_a_window_that_is_too_big_shrinks() {
         let big = (1440.0, 900.0);
