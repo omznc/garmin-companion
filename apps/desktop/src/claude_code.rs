@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -231,22 +231,28 @@ fn tool_event(call: &Call, done: bool, ok: bool) -> Event {
 
 /// Where the `claude` command can be. A GUI start has a small PATH, so the
 /// usual install folders come first.
-fn candidates(home: Option<PathBuf>, path: Option<OsString>) -> Vec<PathBuf> {
-    let exe = if cfg!(windows) {
-        "claude.exe"
+fn candidates(home: Option<PathBuf>, npm: Option<PathBuf>, path: Option<OsString>) -> Vec<PathBuf> {
+    // On Windows, an npm install makes `claude.cmd`, and Rust finds no file
+    // without its extension.
+    let names: &[&str] = if cfg!(windows) {
+        &["claude.exe", "claude.cmd"]
     } else {
-        "claude"
+        &["claude"]
     };
     let mut list = Vec::new();
     if let Some(home) = home {
-        list.push(home.join(".local").join("bin").join(exe));
+        list.push(home.join(".local").join("bin").join(names[0]));
     }
     if !cfg!(windows) {
         list.push("/opt/homebrew/bin/claude".into());
         list.push("/usr/local/bin/claude".into());
     }
+    // The npm global folder: the default prefix, `%APPDATA%\npm`.
+    list.extend(npm.iter().flat_map(|dir| names.iter().map(|n| dir.join(n))));
     if let Some(path) = path {
-        list.extend(std::env::split_paths(&path).map(|dir| dir.join(exe)));
+        list.extend(
+            std::env::split_paths(&path).flat_map(|dir| names.iter().map(move |n| dir.join(n))),
+        );
     }
     list
 }
@@ -254,9 +260,17 @@ fn candidates(home: Option<PathBuf>, path: Option<OsString>) -> Vec<PathBuf> {
 pub fn find_claude() -> Option<PathBuf> {
     let var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     let home = std::env::var_os(var).map(PathBuf::from);
-    candidates(home, std::env::var_os("PATH"))
+    let npm = std::env::var_os("APPDATA").map(|d| PathBuf::from(d).join("npm"));
+    candidates(home, npm, std::env::var_os("PATH"))
         .into_iter()
         .find(|p| p.is_file())
+}
+
+/// A `.cmd` or `.bat` file runs through `cmd.exe`, which reads the arguments
+/// in its own way. Rust refuses a newline in them, and a quote is risky.
+fn is_batch(bin: &Path) -> bool {
+    bin.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
 }
 
 /// The variables that mark a parent Claude Code session. The other
@@ -317,13 +331,15 @@ fn mcp_config(app: &Path, db: Option<&Path>, period: Option<Period>) -> String {
 }
 
 /// The flags of 1.1 in CLI-AGENTS.md. Each empty string is its own item.
-fn flags(prompt_file: &Path, model: &str, mcp: String, question: String) -> Vec<OsString> {
+/// Without a `question`, the command reads it from stdin.
+fn flags(prompt_file: &Path, model: &str, mcp: String, question: Option<String>) -> Vec<OsString> {
     let model = if model.is_empty() {
         DEFAULT_CLAUDE_MODEL
     } else {
         model
     };
-    let mut args: Vec<OsString> = vec!["-p".into(), question.into()];
+    let mut args: Vec<OsString> = vec!["-p".into()];
+    args.extend(question.map(OsString::from));
     let pairs = [
         ("--mcp-config", mcp.as_str()),
         ("--tools", ""),
@@ -399,20 +415,32 @@ fn turn(
         .map_err(|e| format!("Could not write the prompt: {e}"))?;
     let cwd = work_dir(db).map_err(|e| format!("Could not make the work folder: {e}"))?;
 
+    let mut mcp = mcp_config(&app, db, period);
+    let mut question = Some(external::transcript(history));
+    let batch = is_batch(&bin);
+    // A batch file cannot take the question or the JSON in its arguments.
+    let config_file = TempFile(prompt_file.0.with_extension("json"));
+    if batch {
+        std::fs::write(&config_file.0, &mcp)
+            .map_err(|e| format!("Could not write the tool config: {e}"))?;
+        mcp = config_file.0.to_string_lossy().into();
+    }
+    let stdin_text = if batch { question.take() } else { None };
+
     let mut cmd = command(&bin);
-    cmd.args(flags(
-        &prompt_file.0,
-        model,
-        mcp_config(&app, db, period),
-        external::transcript(history),
-    ))
-    .current_dir(cwd)
-    .stdin(Stdio::null())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    cmd.args(flags(&prompt_file.0, model, mcp, question))
+        .current_dir(cwd)
+        .stdin(if batch { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Could not start Claude Code: {e}"))?;
+    if let (Some(mut stdin), Some(text)) = (child.stdin.take(), stdin_text) {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(text.as_bytes());
+        });
+    }
     watch(&mut child, sink, stop)
 }
 
@@ -537,13 +565,19 @@ fn reap(child: &mut Child) -> Option<i32> {
 pub enum Status {
     NotInstalled,
     LoggedOut,
-    LoggedIn { version: String, email: String },
+    /// The command did not answer within `PROBE_LIMIT`.
+    TimedOut,
+    LoggedIn {
+        version: String,
+        email: String,
+    },
 }
 
 impl Status {
     pub fn line(&self) -> String {
         match self {
             Self::NotInstalled => "Claude Code is not installed.".into(),
+            Self::TimedOut => "Claude Code did not answer in time. Try again.".into(),
             Self::LoggedOut => "Claude Code: not logged in. Run `claude` once.".into(),
             Self::LoggedIn { version, email } => {
                 format!("Claude Code {version}, logged in as {email}")
@@ -567,14 +601,37 @@ fn parse_status(version: &str, auth_json: &str) -> Status {
     }
 }
 
-fn output_of(bin: &Path, args: &[&str]) -> Option<String> {
-    let out = command(bin)
+/// How long one probe call may run before the command is killed.
+const PROBE_LIMIT: Duration = Duration::from_secs(10);
+
+/// Run `bin` and return what it wrote on stdout. A call that runs longer than
+/// `limit` is killed and gives a `TimedOut` error.
+fn output_of(bin: &Path, args: &[&str], limit: Duration) -> std::io::Result<String> {
+    let mut child = command(bin)
         .args(args.iter().map(OsStr::new))
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .output()
-        .ok()?;
-    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+        .spawn()?;
+    let stdout = child.stdout.take();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(mut out) = stdout {
+            let _ = out.read_to_end(&mut buf);
+        }
+        let _ = tx.send(buf);
+    });
+    match rx.recv_timeout(limit) {
+        Ok(buf) => {
+            let _ = child.wait();
+            Ok(String::from_utf8_lossy(&buf).into_owned())
+        }
+        Err(_) => {
+            end(&mut child);
+            Err(std::io::ErrorKind::TimedOut.into())
+        }
+    }
 }
 
 /// Ask the command for its version and login. It blocks, so call it off the UI thread.
@@ -582,9 +639,22 @@ pub fn probe() -> Status {
     let Some(bin) = find_claude() else {
         return Status::NotInstalled;
     };
-    let version = output_of(&bin, &["--version"]).unwrap_or_default();
-    let auth = output_of(&bin, &["auth", "status"]).unwrap_or_default();
-    parse_status(&version, &auth)
+    probe_with(&bin, PROBE_LIMIT)
+}
+
+fn probe_with(bin: &Path, limit: Duration) -> Status {
+    let read = |args: &[&str]| match output_of(bin, args, limit) {
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(Status::TimedOut),
+        out => Ok(out.unwrap_or_default()),
+    };
+    let version = match read(&["--version"]) {
+        Ok(v) => v,
+        Err(status) => return status,
+    };
+    match read(&["auth", "status"]) {
+        Ok(auth) => parse_status(&version, &auth),
+        Err(status) => status,
+    }
 }
 
 #[cfg(test)]
@@ -680,7 +750,7 @@ mod tests {
 
     #[test]
     fn the_flags_keep_the_empty_values_as_items() {
-        let args = flags(Path::new("p.md"), "", "{}".into(), "User: hi".into());
+        let args = flags(Path::new("p.md"), "", "{}".into(), Some("User: hi".into()));
         let text: Vec<String> = args.iter().map(|a| a.to_string_lossy().into()).collect();
         let at = |flag: &str| text.iter().position(|a| a == flag).unwrap();
         assert_eq!(text[at("--tools") + 1], "");
@@ -741,10 +811,41 @@ mod tests {
 
     #[test]
     fn the_install_folders_come_before_the_path() {
-        let list = candidates(Some("/h".into()), Some("/usr/bin:/bin".into()));
+        let list = candidates(Some("/h".into()), None, Some("/usr/bin:/bin".into()));
         assert_eq!(list[0], Path::new("/h/.local/bin/claude"));
         let path_at = list.iter().position(|p| p == Path::new("/usr/bin/claude"));
         assert!(path_at.unwrap() > 0);
+    }
+
+    #[test]
+    fn the_npm_folder_is_searched_before_the_path() {
+        let list = candidates(None, Some("/n/npm".into()), Some("/usr/bin".into()));
+        let at = |p: &str| list.iter().position(|x| x == Path::new(p)).unwrap();
+        assert!(at("/n/npm/claude") < at("/usr/bin/claude"));
+    }
+
+    #[test]
+    fn a_cmd_or_bat_file_is_a_batch_file() {
+        assert!(is_batch(Path::new("C:/npm/claude.cmd")));
+        assert!(is_batch(Path::new("x.BAT")));
+        assert!(!is_batch(Path::new("claude.exe")));
+        assert!(!is_batch(Path::new("claude")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_probe_that_hangs_is_killed_and_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("gc-probe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("claude");
+        std::fs::write(&bin, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let start = Instant::now();
+        let status = probe_with(&bin, Duration::from_millis(300));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(status, Status::TimedOut);
+        assert!(start.elapsed() < Duration::from_secs(5));
     }
 
     struct Rec(Mutex<Vec<Event>>);
