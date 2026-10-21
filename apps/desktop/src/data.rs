@@ -191,6 +191,14 @@ pub struct Vital {
     pub accent: bool,
 }
 
+/// The weight figures that the core gives for Today.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WeightGlance {
+    pub sentence: String,
+    pub trend_kg: Option<f32>,
+    pub rate_kg_per_week: Option<f32>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Today {
     /// The athlete's name, for the top of the sidebar.
@@ -209,7 +217,7 @@ pub struct Today {
     /// The vital signs that have a figure, in the order of the Today block.
     pub vitals: Vec<Vital>,
     pub fuel: Option<Fuel>,
-    pub weight_note: Option<String>,
+    pub weight: Option<WeightGlance>,
     pub attention: Vec<Attention>,
     pub last_session: Option<Session>,
     pub zone_drift: Option<Drift>,

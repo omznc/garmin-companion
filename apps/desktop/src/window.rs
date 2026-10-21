@@ -27,6 +27,9 @@ pub struct State {
     pub coach_w: Option<f32>,
     /// The Today blocks that the user arranged. `None` is the shipped layout.
     pub today_layout: Option<Vec<crate::blocks::layout::Saved>>,
+    /// The Today block ids that the layout has offered. A block not in this
+    /// list is new, so a saved layout gets it. A file from 1.0.7 has none.
+    pub today_seen: Vec<String>,
     /// The interface scale as a factor: 1.0 is 100 percent.
     pub scale: f32,
 }
@@ -44,6 +47,7 @@ impl Default for State {
             sidebar_w: None,
             coach_w: None,
             today_layout: None,
+            today_seen: Vec::new(),
             scale: 1.0,
         }
     }

@@ -185,7 +185,10 @@ impl Root {
             account,
             loads: Default::default(),
             command_palette: None,
-            today_layout: blocks::layout::Layout::load(window_state.today_layout.as_deref()),
+            today_layout: blocks::layout::Layout::load(
+                window_state.today_layout.as_deref(),
+                &window_state.today_seen,
+            ),
             edit: None,
             window_state,
         }
@@ -420,6 +423,7 @@ impl Root {
         // The shipped layout is not saved, so a later release can change it.
         self.window_state.today_layout = (self.today_layout != blocks::layout::Layout::standard())
             .then(|| self.today_layout.to_saved());
+        self.window_state.today_seen = blocks::layout::Layout::standard().ids();
         self.window_state.save();
     }
 
