@@ -493,8 +493,19 @@ fn sections(
     out
 }
 
-/// Build the Insights view for `today`.
+/// Build the Insights view for the day `today`. The nudge rows record the real
+/// day, also when `today` is a past day.
 pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError> {
+    insights_view_seen(db, today, chrono::Local::now().date_naive())
+}
+
+/// The same view, with `seen_on` as the day that the nudge rows record. A
+/// fixture uses it, so that its file does not depend on the clock.
+pub fn insights_view_seen(
+    db: &Db,
+    today: NaiveDate,
+    seen_on: NaiveDate,
+) -> Result<InsightsView, ApiError> {
     let from = date_key(today - Duration::days(YEAR - 1));
     let daily = db.daily_since(&from)?;
     let oldest_day = daily
@@ -524,7 +535,7 @@ pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError
         Vec::new()
     };
     let mut sections = sections(found, extra, flags);
-    stamp_first_seen(db, &date_key(today), &mut sections);
+    stamp_first_seen(db, &date_key(seen_on), &mut sections);
     Ok(InsightsView {
         date: date_key(today),
         eyebrow: "Last 365 days".into(),
@@ -661,5 +672,23 @@ mod tests {
         assert_eq!(first[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
         assert_eq!(later[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
         assert_eq!(later[1].items[0].first_seen.as_deref(), Some("2026-03-11"));
+    }
+
+    #[test]
+    fn a_past_focus_writes_the_real_day_to_the_nudges() {
+        let db = Db::open(&std::env::temp_dir().join(format!(
+            "garmin-api-insights-past-{}/cache.sqlite3",
+            std::process::id()
+        )))
+        .unwrap();
+        let sample = crate::personas::sample_day();
+        crate::personas::seed(&db, crate::personas::Persona::Sample, sample).unwrap();
+        let view = insights_view(&db, sample).unwrap();
+        let items: Vec<_> = view.sections.iter().flat_map(|s| &s.items).collect();
+        assert!(!items.is_empty());
+        let real = date_key(chrono::Local::now().date_naive());
+        for item in items {
+            assert_eq!(item.first_seen.as_deref(), Some(real.as_str()));
+        }
     }
 }

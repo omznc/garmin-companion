@@ -5,7 +5,7 @@
 //! and the records) are made up, like every other persona row.
 
 use crate::fitness::{fitness_view, FitnessView};
-use crate::insights::{insights_view, InsightsView};
+use crate::insights::{insights_view_seen, InsightsView};
 use crate::personas::Persona;
 use crate::reports::{report_view, ReportView};
 use crate::ApiError;
@@ -141,7 +141,7 @@ pub fn training_views(db: &Db, today: NaiveDate) -> Result<TrainingViews, ApiErr
         reports.push(report_view(db, today, offset)?);
     }
     Ok(TrainingViews {
-        insights: insights_view(db, today)?,
+        insights: insights_view_seen(db, today, today)?,
         fitness: fitness_view(db, today)?,
         reports,
     })

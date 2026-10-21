@@ -26,12 +26,7 @@
     "value": 28.0,
     "date": "2026-03-11"
   },
-  "restingHr": {
-    "value": 50.0,
-    "baseline": 51.0,
-    "delta": -1.0,
-    "accent": false
-  },
+  "restingHr": null,
   "fuel": {
     "day": null,
     "age": null,
@@ -93,8 +88,8 @@
     "health_tiles"
   ],
   "headline": {
-    "tone": "go",
-    "verdict": "Recovered. Go ahead as planned.",
-    "detail": "Your resting heart rate is at your baseline or below and you slept 7h 00m."
+    "tone": "steady",
+    "verdict": "Nothing holds you back today.",
+    "detail": "You slept 7h 00m."
   }
 }

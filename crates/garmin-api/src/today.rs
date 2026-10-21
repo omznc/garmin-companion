@@ -27,6 +27,8 @@ use serde::{Deserialize, Serialize};
 const DAILY_DAYS: u32 = 45;
 /// Enough rows to cover the 56-day activity profile.
 const ACTIVITY_LIMIT: u32 = 300;
+/// Days of resting heart rate that make a baseline for the headline.
+const MIN_BASELINE_DAYS: usize = 4;
 /// Runs in the zone drift strip. A phone UI can show fewer from the end.
 const DRIFT_RUNS: usize = 8;
 /// The 80/20 model asks for 20% of time above Z2.
@@ -247,8 +249,9 @@ fn headline_input(
     let yesterday = date_key(today - chrono::Duration::days(1));
     HeadlineInput {
         readiness: fresh(latest(rows, |d| d.training_readiness), today).map(|l| l.value),
+        // A new user has no baseline yet: the delta would be 0 and read as "recovered".
         resting_delta: fresh(latest(comparable, |d| d.resting_hr), today)
-            .zip(mean(comparable.iter().map(|d| d.resting_hr)))
+            .zip(resting_baseline(comparable))
             .map(|(l, baseline)| l.value - baseline),
         hrv,
         sleep_secs: fresh(latest(rows, |d| d.sleep_secs), today).map(|l| l.value),
@@ -305,9 +308,17 @@ fn sections(v: &TodayView) -> Vec<String> {
         .collect()
 }
 
+/// The mean resting heart rate, once there are enough days to be a baseline.
+fn resting_baseline(comparable: &[garmin_core::DailyMetrics]) -> Option<f64> {
+    let days = comparable.iter().filter(|d| d.resting_hr.is_some()).count();
+    (days >= MIN_BASELINE_DAYS)
+        .then(|| mean(comparable.iter().map(|d| d.resting_hr)))
+        .flatten()
+}
+
 fn resting_hr(comparable: &[garmin_core::DailyMetrics]) -> Option<RestingHr> {
     let value = latest(comparable, |d| d.resting_hr)?.value;
-    let baseline = mean(comparable.iter().map(|d| d.resting_hr))?;
+    let baseline = resting_baseline(comparable)?;
     let delta = value - baseline;
     Some(RestingHr {
         value,
@@ -409,6 +420,7 @@ mod tests {
     fn seeded_cache_fills_the_view() {
         let db = db();
         for (date, rhr, sleep) in [
+            ("2026-03-07", 50.0, 7.0 * 3600.0),
             ("2026-03-08", 50.0, 7.0 * 3600.0),
             ("2026-03-09", 51.0, 7.0 * 3600.0),
             ("2026-03-10", 56.0, 7.0 * 3600.0),
@@ -430,6 +442,28 @@ mod tests {
         assert_eq!(rhr.value, 56.0);
         assert!(rhr.accent);
         assert!(v.lede.starts_with("You slept"));
+    }
+
+    #[test]
+    fn a_new_user_is_not_told_that_they_are_recovered() {
+        let db = db();
+        for date in ["2026-03-09", "2026-03-10", "2026-03-11"] {
+            db.upsert_daily(&DailyMetrics {
+                date: date.into(),
+                resting_hr: Some(50.0),
+                // Under 4 h of sleep clears the resting HR as not comparable.
+                sleep_secs: Some(5.0 * 3600.0),
+                ..DailyMetrics::default()
+            })
+            .unwrap();
+        }
+        let v = today_view(&db, today()).unwrap();
+        assert!(
+            !v.headline.detail.contains("resting heart rate"),
+            "{:?}",
+            v.headline
+        );
+        assert!(v.resting_hr.is_none());
     }
 
     #[test]

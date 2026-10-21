@@ -352,7 +352,11 @@ pub fn today(view: &TodayView, who: Option<String>) -> Today {
         metrics: metrics(view),
         vitals: vitals(view),
         fuel: fuel(view),
-        weight_note: view.weight.as_ref().map(|w| w.sentence.clone()),
+        weight: view.weight.as_ref().map(|w| crate::data::WeightGlance {
+            sentence: w.sentence.clone(),
+            trend_kg: w.trend_kg.map(|v| v as f32),
+            rate_kg_per_week: w.rate_kg_per_week.map(|v| v as f32),
+        }),
         attention: attention(view),
         last_session: view.last_session.as_ref().map(session),
         zone_drift: drift(view),

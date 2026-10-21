@@ -246,12 +246,41 @@ fn legend(n: &NightView, t: &Theme) -> Div {
     row
 }
 
+/// The stage plot with its clock labels.
+fn timeline(n: &NightView, total: f64, t: &Theme) -> Div {
+    let labels = n
+        .start
+        .as_deref()
+        .map(|s| clock_labels(s, total))
+        .unwrap_or_default();
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .child(
+            div()
+                .flex()
+                .gap(px(8.0))
+                .child(lane_names(t))
+                .child(plot(&n.timeline, total, t)),
+        )
+        .child(
+            div()
+                .flex()
+                .gap(px(8.0))
+                .child(div().flex_none().w(px(44.0)))
+                .child(div().flex_1().child(label_row(labels, t))),
+        )
+}
+
 fn night(ctx: &Ctx) -> Option<Block> {
     let n = night_view(ctx)?;
-    let total = n.timeline.last().map(|s| s.from_mins + s.mins)?;
-    if total <= 0.0 {
-        return None;
-    }
+    // A night with no stage timeline still shows its duration, score and stage totals.
+    let total = n
+        .timeline
+        .last()
+        .map(|s| s.from_mins + s.mins)
+        .filter(|total| *total > 0.0);
     let t = ctx.t;
     let words = [
         n.score.map(|s| format!("score {s:.0}")),
@@ -261,31 +290,14 @@ fn night(ctx: &Ctx) -> Option<Block> {
     .flatten()
     .collect::<Vec<_>>()
     .join(" · ");
-    let labels = n
-        .start
-        .as_deref()
-        .map(|s| clock_labels(s, total))
-        .unwrap_or_default();
-    let body =
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.0))
-            .p(px(12.0))
-            .child(head_row(n.duration_text.clone(), String::new(), words, t))
-            .child(div().flex().gap(px(8.0)).child(lane_names(t)).child(plot(
-                &n.timeline,
-                total,
-                t,
-            )))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(8.0))
-                    .child(div().flex_none().w(px(44.0)))
-                    .child(div().flex_1().child(label_row(labels, t))),
-            )
-            .child(legend(n, t));
+    let body = div()
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .p(px(12.0))
+        .child(head_row(n.duration_text.clone(), String::new(), words, t))
+        .children(total.map(|total| timeline(n, total, t)))
+        .child(legend(n, t));
     let meta = n
         .start
         .clone()

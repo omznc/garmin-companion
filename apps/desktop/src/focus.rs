@@ -44,6 +44,16 @@ impl Focus {
         self.start == self.end && self.end == real_today()
     }
 
+    /// The focus after a day rollover. A focus that follows "today" moves to
+    /// the real today. Any other focus stays.
+    pub fn rolled(self, follows_today: bool, today: NaiveDate) -> Self {
+        if follows_today {
+            Self::day(today)
+        } else {
+            self
+        }
+    }
+
     /// The number of days in the range, with both ends. A single day is 1.
     pub fn days(&self) -> i64 {
         (self.end - self.start).num_days() + 1
@@ -96,6 +106,14 @@ mod tests {
         assert_eq!(label_for(months, today), "28 Sep - 4 Oct 2026");
         let years = Focus::range(d(2026, 12, 30), d(2027, 1, 5));
         assert_eq!(label_for(years, today), "30 Dec 2026 - 5 Jan 2027");
+    }
+
+    #[test]
+    fn a_live_focus_follows_the_day_rollover() {
+        let tomorrow = d(2026, 10, 21);
+        let yesterday = Focus::day(d(2026, 10, 20));
+        assert_eq!(yesterday.rolled(true, tomorrow), Focus::day(tomorrow));
+        assert_eq!(yesterday.rolled(false, tomorrow), yesterday);
     }
 
     #[test]

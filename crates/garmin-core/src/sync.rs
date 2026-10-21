@@ -296,7 +296,7 @@ const CURVE_DAYS: i64 = 3;
 
 /// Whether `date` is inside the window of the per-day curves.
 fn is_recent(date: NaiveDate) -> bool {
-    (Utc::now().date_naive() - date).num_days() < CURVE_DAYS
+    (crate::today() - date).num_days() < CURVE_DAYS
 }
 
 /// A reply that says "no data" is a warning. A failed request is not a reply:
@@ -449,7 +449,7 @@ pub async fn sync_weight(
         total: None,
     });
 
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let start = today - Duration::days(days.saturating_sub(1) as i64);
 
     match client
@@ -562,7 +562,7 @@ pub async fn sync_fitness(
         Err(e) => report.warnings.push(format!("personal records: {e}")),
     }
 
-    let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
+    let today = crate::today().format("%Y-%m-%d").to_string();
 
     let status = match client.training_status(&today).await {
         Ok(v) => crate::records::parse_training_status(&v),
@@ -779,7 +779,7 @@ const RECHECK_DAYS: u32 = 3;
 /// yet when the last sync ran, are holes rather than stale rows, and they get
 /// filled without making every ordinary refresh pay for a month of requests.
 fn wellness_dates(db: &Db, days: u32, full: bool) -> Result<Vec<NaiveDate>> {
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let all = (0..days).map(|o| today - Duration::days(o as i64));
 
     if full {
@@ -821,7 +821,7 @@ fn history_days(db: &Db) -> u32 {
         return 0;
     };
     // +1 so the day of the first activity is itself included.
-    (Utc::now().date_naive() - date).num_days().max(0) as u32 + 1
+    (crate::today() - date).num_days().max(0) as u32 + 1
 }
 
 #[cfg(test)]

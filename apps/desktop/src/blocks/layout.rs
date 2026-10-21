@@ -2,12 +2,17 @@
 //! block ids, each with a width. It has no view code, so the tests cover it.
 //!
 //! The list is saved in `window.json`. A saved id that no block has is dropped
-//! on load, so a block can get a new id later.
+//! on load, so a block can get a new id later. A standard block that the
+//! user has not seen is added on load, so a new block reaches old files.
 
 use serde::{Deserialize, Serialize};
 
 use super::{def, default_layout, Width};
 use crate::screen::Screen;
+
+/// The Today blocks that 1.0.7 did not have. A saved layout without a
+/// seen list gets them.
+const ADDED_AFTER_1_0_7: &[&str] = &["weight_today"];
 
 /// One block in the saved file: the id and the width in columns.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,7 +66,7 @@ impl Layout {
     /// An unknown id, a repeated id and a bad width are dropped. A saved list
     /// that has nothing left gives the standard layout, but an empty list
     /// stays empty: the user removed every block.
-    pub fn load(saved: Option<&[Saved]>) -> Self {
+    pub fn load(saved: Option<&[Saved]>, seen: &[String]) -> Self {
         let Some(saved) = saved else {
             return Self::standard();
         };
@@ -76,7 +81,39 @@ impl Layout {
         if blocks.is_empty() && !saved.is_empty() {
             return Self::standard();
         }
-        Self(blocks)
+        let mut layout = Self(blocks);
+        if !saved.is_empty() {
+            layout.add_new_blocks(seen);
+        }
+        layout
+    }
+
+    /// Add each standard block that the user has not seen yet, after Fuel
+    /// or at the end. A block that the user removed is in `seen`, so it
+    /// stays out. With no `seen` list (a file from 1.0.7), only the blocks
+    /// in `ADDED_AFTER_1_0_7` count as new.
+    fn add_new_blocks(&mut self, seen: &[String]) {
+        for (id, width) in default_layout(Screen::Today) {
+            let old = if seen.is_empty() {
+                !ADDED_AFTER_1_0_7.contains(id)
+            } else {
+                seen.iter().any(|s| s == id)
+            };
+            if old || self.contains(id) {
+                continue;
+            }
+            let at = self.0.iter().position(|(b, _)| b == "fuel");
+            let entry = (id.to_string(), *width);
+            match at {
+                Some(i) => self.0.insert(i + 1, entry),
+                None => self.0.push(entry),
+            }
+        }
+    }
+
+    /// The block ids in order.
+    pub fn ids(&self) -> Vec<String> {
+        self.0.iter().map(|(id, _)| id.clone()).collect()
     }
 
     pub fn to_saved(&self) -> Vec<Saved> {
@@ -232,23 +269,51 @@ mod tests {
                 cols: 6,
             },
         ];
-        let layout = Layout::load(Some(&saved));
+        let seen = standard_ids()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        let layout = Layout::load(Some(&saved), &seen);
         assert_eq!(
             layout.pairs(),
             [("week", Width::Full), ("fuel", Width::Half)]
         );
-        assert_eq!(Layout::load(Some(&layout.to_saved())), layout);
+        assert_eq!(Layout::load(Some(&layout.to_saved()), &seen), layout);
+    }
+
+    #[test]
+    fn a_layout_from_1_0_7_gets_the_weight_block_after_fuel() {
+        let entry = |id: &str| Saved {
+            id: id.into(),
+            cols: 4,
+        };
+        let saved = [entry("fuel"), entry("week")];
+        // No seen list: the weight block is new.
+        let layout = Layout::load(Some(&saved), &[]);
+        assert_eq!(ids(&layout), ["fuel", "weight_today", "week"]);
+        // Without a fuel block it goes to the end.
+        let layout = Layout::load(Some(&[entry("week")]), &[]);
+        assert_eq!(ids(&layout), ["week", "weight_today"]);
+        // A user who removed it keeps it out once the block is seen.
+        let seen = standard_ids()
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        let layout = Layout::load(Some(&saved), &seen);
+        assert_eq!(ids(&layout), ["fuel", "week"]);
+        // An empty list stays empty.
+        assert!(Layout::load(Some(&[]), &[]).is_empty());
     }
 
     #[test]
     fn a_missing_file_gives_the_standard_layout_and_an_empty_one_stays() {
-        assert_eq!(Layout::load(None), Layout::standard());
-        assert!(Layout::load(Some(&[])).is_empty());
+        assert_eq!(Layout::load(None, &[]), Layout::standard());
+        assert!(Layout::load(Some(&[]), &[]).is_empty());
         let junk = [Saved {
             id: "gone".into(),
             cols: 4,
         }];
-        assert_eq!(Layout::load(Some(&junk)), Layout::standard());
+        assert_eq!(Layout::load(Some(&junk), &[]), Layout::standard());
     }
 
     #[test]
