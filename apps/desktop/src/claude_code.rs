@@ -17,7 +17,7 @@ use std::time::Duration;
 use garmin_coach::{Event, EventSink, HistoryMessage, Period, DEFAULT_CLAUDE_MODEL};
 use serde_json::{json, Value};
 
-use crate::cli_agent::{self as cli, error, is_batch, Cli, Run, Status, Stream, Temp};
+use crate::cli_agent::{self as cli, error, is_batch, Cli, Run, Status, Stream};
 
 pub const CLI: Cli = Cli {
     name: "Claude Code",
@@ -250,15 +250,14 @@ fn mcp_config(app: &Path, db: Option<&Path>, period: Option<Period>) -> String {
 }
 
 /// The flags of 1.1 in CLI-AGENTS.md. Each empty string is its own item.
-/// Without a `question`, the command reads it from stdin.
-fn flags(prompt_file: &Path, model: &str, mcp: String, question: Option<String>) -> Vec<OsString> {
+/// The question goes on stdin: `-p` with no prompt argument reads it there.
+fn flags(prompt_file: &Path, model: &str, mcp: String) -> Vec<OsString> {
     let model = if model.is_empty() {
         DEFAULT_CLAUDE_MODEL
     } else {
         model
     };
     let mut args: Vec<OsString> = vec!["-p".into()];
-    args.extend(question.map(OsString::from));
     let pairs = [
         ("--mcp-config", mcp.as_str()),
         ("--tools", ""),
@@ -311,28 +310,27 @@ fn turn(
     stop: &AtomicBool,
 ) -> Result<(), String> {
     let setup = cli::setup(&CLI, NOT_INSTALLED, db, period)?;
-    let prompt_file = Temp::new("claude-prompt.md");
-    std::fs::write(&prompt_file.0, &setup.system)
+    let dir =
+        cli::temp_dir("claude").map_err(|e| format!("Could not make the work folder: {e}"))?;
+    let prompt_file = dir.path().join("claude-prompt.md");
+    std::fs::write(&prompt_file, &setup.system)
         .map_err(|e| format!("Could not write the prompt: {e}"))?;
 
     let mut mcp = mcp_config(&setup.app, db, period);
-    let mut question = Some(garmin_coach::external::transcript(history));
-    let batch = is_batch(&setup.bin);
-    // A batch file cannot take the question or the JSON in its arguments.
-    let config_file = Temp::new("claude-mcp.json");
-    if batch {
-        std::fs::write(&config_file.0, &mcp)
+    // A batch file cannot take the JSON in its arguments.
+    if is_batch(&setup.bin) {
+        let config_file = dir.path().join("claude-mcp.json");
+        std::fs::write(&config_file, &mcp)
             .map_err(|e| format!("Could not write the tool config: {e}"))?;
-        mcp = config_file.0.to_string_lossy().into();
+        mcp = config_file.to_string_lossy().into();
     }
-    let stdin = if batch { question.take() } else { None };
     let run = Run {
         cli: &CLI,
         bin: setup.bin,
-        args: flags(&prompt_file.0, model, mcp, question),
+        args: flags(&prompt_file, model, mcp),
         cwd: setup.cwd,
         env: Vec::new(),
-        stdin,
+        stdin: Some(garmin_coach::external::transcript(history)),
         limit: None,
     };
     cli::run_child(run, &mut Parser::default(), sink, stop)
@@ -458,7 +456,7 @@ mod tests {
 
     #[test]
     fn the_flags_keep_the_empty_values_as_items() {
-        let args = flags(Path::new("p.md"), "", "{}".into(), Some("User: hi".into()));
+        let args = flags(Path::new("p.md"), "", "{}".into());
         let text: Vec<String> = args.iter().map(|a| a.to_string_lossy().into()).collect();
         let at = |flag: &str| text.iter().position(|a| a == flag).unwrap();
         assert_eq!(text[at("--tools") + 1], "");
@@ -466,7 +464,8 @@ mod tests {
         assert_eq!(text[at("--model") + 1], "sonnet");
         assert_eq!(text[at("--allowedTools") + 1], "mcp__garmin__*");
         assert_eq!(text[at("--max-turns") + 1], "8");
-        assert_eq!(&text[..2], ["-p", "User: hi"]);
+        assert_eq!(text[0], "-p");
+        assert_eq!(text[1], "--mcp-config");
         assert!(text.contains(&"--strict-mcp-config".to_string()));
     }
 

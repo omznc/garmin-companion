@@ -173,7 +173,34 @@ fn command(bin: &Path, cli: &Cli) -> Command {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
+    // Its own process group, so `end` can kill the whole tree.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
     cmd
+}
+
+/// Kill the command and every process that it started: a launcher script, a
+/// native binary, an MCP child. Then wait for the command.
+fn end(child: &mut Child) {
+    #[cfg(unix)]
+    if let Ok(pid) = i32::try_from(child.id()) {
+        // The group id is the pid of the command (`process_group(0)`).
+        // SAFETY: `kill` takes plain integers and has no memory effect.
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// The app itself is the MCP server: the AppImage file when there is one.
@@ -205,36 +232,12 @@ pub fn mcp_args(db: Option<&Path>, period: Option<Period>) -> Vec<String> {
     args
 }
 
-/// A file or folder that is removed when it goes out of scope.
-pub struct Temp(pub PathBuf);
-
-impl Temp {
-    /// A path in the temp folder, unique for this process and `name`.
-    pub fn new(name: &str) -> Self {
-        Self(std::env::temp_dir().join(format!("garmin-companion-{}-{name}", std::process::id())))
-    }
-}
-
-impl Temp {
-    /// Make the folder, for this user only. It must not exist: another user
-    /// could have made it in the shared temp folder, and then owns its files.
-    pub fn make_dir(&self) -> std::io::Result<()> {
-        let _ = std::fs::remove_dir_all(&self.0);
-        let mut dir = std::fs::DirBuilder::new();
-        #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut dir, 0o700);
-        dir.create(&self.0)
-    }
-}
-
-impl Drop for Temp {
-    fn drop(&mut self) {
-        if self.0.is_dir() {
-            let _ = std::fs::remove_dir_all(&self.0);
-        } else {
-            let _ = std::fs::remove_file(&self.0);
-        }
-    }
+/// A new folder in the temp folder, with a random name and mode 0700. It is
+/// removed when it goes out of scope. Put the files of a turn in it.
+pub fn temp_dir(name: &str) -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new()
+        .prefix(&format!("garmin-companion-{name}-"))
+        .tempdir()
 }
 
 /// What every turn needs before it builds the flags.
@@ -245,6 +248,8 @@ pub struct Setup {
     pub system: String,
     /// An empty folder that the app owns. The command finds no project files in it.
     pub cwd: PathBuf,
+    /// Removes `cwd` when the setup goes out of scope, if it is a temp folder.
+    _cwd_guard: Option<tempfile::TempDir>,
 }
 
 /// Find the command, and read the system prompt from the cache.
@@ -262,24 +267,27 @@ pub fn setup(
     }
     .map_err(|e| format!("{e:#}"))?;
     let system = external::mcp_system_prompt(&cache, period).map_err(|e| format!("{e:#}"))?;
-    let cwd = work_dir(cli, db).map_err(|e| format!("Could not make the work folder: {e}"))?;
+    let (cwd, guard) =
+        work_dir(cli, db).map_err(|e| format!("Could not make the work folder: {e}"))?;
     Ok(Setup {
         bin,
         app,
         system,
         cwd,
+        _cwd_guard: guard,
     })
 }
 
-fn work_dir(cli: &Cli, db: Option<&Path>) -> std::io::Result<PathBuf> {
-    let base = match db {
-        None => garmin_core::paths::ensure_base_dir().map_err(std::io::Error::other)?,
+fn work_dir(cli: &Cli, db: Option<&Path>) -> std::io::Result<(PathBuf, Option<tempfile::TempDir>)> {
+    if db.is_some() {
         // A demo copy must not write in the data folder of the real cache.
-        Some(_) => std::env::temp_dir(),
-    };
+        let dir = temp_dir(&format!("{}-cwd", cli.bin))?;
+        return Ok((dir.path().to_path_buf(), Some(dir)));
+    }
+    let base = garmin_core::paths::ensure_base_dir().map_err(std::io::Error::other)?;
     let dir = base.join(format!("{}-cwd", cli.bin));
     std::fs::create_dir_all(&dir)?;
-    Ok(dir)
+    Ok((dir, None))
 }
 
 /* -------------------------------------------------------------------- turn --- */
@@ -432,12 +440,6 @@ fn tail_of(stream: Option<impl Read + Send + 'static>) -> Arc<Mutex<String>> {
         });
     }
     tail
-}
-
-/// Kill the command. Its MCP child ends when its stdin closes.
-fn end(child: &mut Child) {
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 /// Wait a moment for a clean exit, then kill. Returns the exit code.
@@ -775,6 +777,41 @@ mod tests {
             let _ = std::fs::remove_dir_all(bin.parent().unwrap());
             assert_eq!(out, Err("Test took too long and was stopped.".into()));
             assert!(start.elapsed() < Duration::from_secs(5));
+        }
+
+        /// Whether a process with this pid still runs (a zombie counts as gone).
+        fn alive(pid: i32) -> bool {
+            std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|s| {
+                s.rsplit(')')
+                    .next()
+                    .is_some_and(|r| !r.trim().starts_with('Z'))
+            })
+        }
+
+        #[test]
+        fn a_kill_reaches_the_processes_that_the_command_started() {
+            let _lock = serial();
+            let pid_file =
+                std::env::temp_dir().join(format!("gc-grandchild-{}", std::process::id()));
+            let body = format!("sleep 60 &\necho $! > {}\nwait", pid_file.display());
+            let bin = script("tree", &body);
+            let rec = Rec(Mutex::default());
+            let out = run_child(
+                run_of(bin.clone(), Some(Duration::from_millis(800))),
+                &mut OneLine(false),
+                &rec,
+                &AtomicBool::new(false),
+            );
+            let pid: i32 = std::fs::read_to_string(&pid_file)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            let _ = std::fs::remove_file(&pid_file);
+            let _ = std::fs::remove_dir_all(bin.parent().unwrap());
+            assert!(out.is_err());
+            std::thread::sleep(Duration::from_millis(200));
+            assert!(!alive(pid), "the grandchild {pid} still runs");
         }
 
         #[test]

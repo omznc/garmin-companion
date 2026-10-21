@@ -20,7 +20,7 @@ use garmin_coach::external::transcript;
 use garmin_coach::{Event, EventSink, HistoryMessage, Period};
 use serde_json::{json, Value};
 
-use crate::cli_agent::{self as cli, error, is_batch, Answer, Cli, Run, Status, Stream, Temp};
+use crate::cli_agent::{self as cli, error, Answer, Cli, Run, Status, Stream};
 
 pub const CLI: Cli = Cli {
     name: "OpenCode",
@@ -136,8 +136,8 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
 
 /// `--auto` would approve more than the tools of the app, so it is not here.
 /// OpenCode takes a model as `provider/model`, so another form is ignored.
-/// Without a `question`, the command reads it from stdin.
-fn flags(cwd: &Path, model: &str, question: Option<String>) -> Vec<OsString> {
+/// The question goes on stdin: `run` with no message reads it there.
+fn flags(cwd: &Path, model: &str) -> Vec<OsString> {
     let mut args: Vec<OsString> = ["run", "--format", "json", "--pure", "--agent", AGENT]
         .into_iter()
         .map(Into::into)
@@ -146,7 +146,6 @@ fn flags(cwd: &Path, model: &str, question: Option<String>) -> Vec<OsString> {
     if model.contains('/') {
         args.extend(["-m".into(), model.into()]);
     }
-    args.extend(question.map(OsString::from));
     args
 }
 
@@ -176,11 +175,9 @@ fn turn(
     stop: &AtomicBool,
 ) -> Result<(), String> {
     let setup = cli::setup(&CLI, NOT_INSTALLED, db, period)?;
-    let home = Temp::new("opencode");
-    let folder = home.0.join("opencode");
-    home.make_dir()
-        .and_then(|()| std::fs::create_dir(&folder))
-        .map_err(|e| format!("Could not make the config: {e}"))?;
+    let home = cli::temp_dir("opencode").map_err(|e| format!("Could not make the config: {e}"))?;
+    let folder = home.path().join("opencode");
+    std::fs::create_dir(&folder).map_err(|e| format!("Could not make the config: {e}"))?;
     let write = |name: &str, text: String| {
         std::fs::write(folder.join(name), text)
             .map_err(|e| format!("Could not write the config: {e}"))
@@ -188,23 +185,16 @@ fn turn(
     write("coach.md", setup.system.clone())?;
     write("opencode.json", config(&setup.app, db, period).to_string())?;
 
-    let mut question = Some(transcript(history));
-    // A batch file cannot take the question in its arguments.
-    let stdin = if is_batch(&setup.bin) {
-        question.take()
-    } else {
-        None
-    };
     let run = Run {
         cli: &CLI,
         bin: setup.bin,
-        args: flags(&setup.cwd, model, question),
+        args: flags(&setup.cwd, model),
         cwd: setup.cwd,
         env: vec![
-            ("XDG_CONFIG_HOME", home.0.clone().into()),
+            ("XDG_CONFIG_HOME", home.path().into()),
             ("OPENCODE_DISABLE_AUTOUPDATE", "1".into()),
         ],
-        stdin,
+        stdin: Some(transcript(history)),
         limit: None,
     };
     cli::run_child(run, &mut Parser::default(), sink, stop)
@@ -358,10 +348,9 @@ mod tests {
         let text = |args: Vec<OsString>| -> Vec<String> {
             args.iter().map(|a| a.to_string_lossy().into()).collect()
         };
-        let a = text(flags(Path::new("/w"), "sonnet", Some("User: hi".into())));
+        let a = text(flags(Path::new("/w"), "sonnet"));
         assert!(!a.contains(&"-m".to_string()) && !a.contains(&"--auto".to_string()));
-        assert_eq!(a.last().unwrap(), "User: hi");
-        let b = text(flags(Path::new("/w"), "anthropic/claude-x", None));
+        let b = text(flags(Path::new("/w"), "anthropic/claude-x"));
         let at = b.iter().position(|x| x == "-m").unwrap();
         assert_eq!(b[at + 1], "anthropic/claude-x");
         assert!(b.contains(&"--pure".to_string()));
