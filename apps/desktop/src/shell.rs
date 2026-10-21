@@ -685,19 +685,19 @@ impl Root {
 }
 
 impl Root {
-    /// One screen in the whole window, with no title bar: the window buttons only.
+    /// One screen in the whole window, under a bare title bar: the brand and the window buttons.
     fn framed(&self, body: AnyElement, t: &Theme, window: &Window) -> gpui::Div {
         div()
             .relative()
             .size_full()
             .flex()
+            .flex_col()
             .bg(t.bg)
             .text_color(t.fg)
             .font_family(SANS)
             .line_height(relative(LH_NORMAL))
+            .child(titlebar::render_bare(window, t))
             .child(body)
-            .child(chrome::drag_strip())
-            .children(chrome::corner_controls(window, t))
             .children(chrome::resize_handles(window))
     }
 

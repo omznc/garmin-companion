@@ -1,0 +1,1 @@
+{"type":"error","timestamp":1792525482059,"sessionID":"ses_ea52","error":{"name":"APIError","data":{"message":"OpenCode's free tier can only be used from within OpenCode.","statusCode":403,"isRetryable":false}}}

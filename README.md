@@ -70,7 +70,7 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
   server of ours.
 - **Chat** sends your question plus whatever a tool returned for it — a handful
   of summary rows, never the whole database and never GPS traces. Where it sends
-  that depends on which of the four providers you pick:
+  that depends on which of the six providers you pick:
   - **Built-in coach** (the default) — through a small proxy this project runs,
     on to a hosted model. It sees the metrics a question needs and keeps none of
     them; the code is in [`worker/`](worker) and so is what it does and doesn't
@@ -78,12 +78,10 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
     run, which is why it says so on the Ask screen and in Settings.
   - **OpenRouter** with your own key — straight from the app to OpenRouter.
   - **Ollama** on your machine — nothing leaves the computer at all.
-  - **Claude Code**: runs the `claude` CLI that you already have installed.
-    The desktop binary serves the coach tools to it over MCP
-    (`garmin-companion mcp`), so it uses your Claude plan and no cloud credits
-    from us. The CLI sends your question and the tool rows to Anthropic, under
-    your own Claude account. Desktop only, and not yet tested on Windows or
-    macOS.
+  - **Claude Code**, **OpenCode** or **Codex** (desktop only) — the app starts
+    the command you already use and gives it read-only tools over MCP. The
+    command sends the data on to its own model provider, under your account.
+    Not yet tested on Windows or macOS.
 - **Switching** is one click in Settings, in either direction, at any time.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.
