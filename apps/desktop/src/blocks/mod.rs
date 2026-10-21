@@ -359,13 +359,24 @@ pub fn grid(
             kit::link(("block-link", n), label, ctx.t)
                 .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.go(go, cx)))
         });
-        let card = kit::card(def.title, block.meta, link, block.body, ctx.t);
+        let card = kit::card(def.title, block.meta, link, scoped(n, block.body), ctx.t);
         cards.push((width.columns(), card));
     }
     if cards.is_empty() {
         return nothing_to_show(ctx);
     }
     lay_out(cards, available, narrow)
+}
+
+/// The body of the card at `n` under its own id. Rows in two cards can have the
+/// same id, and gpui gives elements with the same id one click state.
+fn scoped(n: usize, body: AnyElement) -> gpui::Stateful<Div> {
+    div()
+        .id(("block", n))
+        .flex_1()
+        .flex()
+        .flex_col()
+        .child(body)
 }
 
 /// True when the data of the screen has loaded, so an empty page is a real state.
@@ -536,6 +547,58 @@ mod tests {
             for (id, _) in default_layout(screen) {
                 assert!(def(id).is_some(), "{id}");
             }
+        }
+    }
+
+    /// Two cards with a clickable list each, as Today draws them.
+    struct TwoLists(std::rc::Rc<std::cell::Cell<[u32; 2]>>);
+
+    impl Render for TwoLists {
+        fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
+            let t = crate::theme::Palette::Paper.theme();
+            let list = |n: usize| {
+                let hits = self.0.clone();
+                let row = kit::ListRow {
+                    glyph: crate::icons::Icon::NavStrength,
+                    tone: crate::charts::Tone::Muted,
+                    title: "Row".into(),
+                    sub: None,
+                    right: None,
+                    right_sub: None,
+                };
+                let click: kit::RowClick = Box::new(move |_, _| {
+                    let mut h = hits.get();
+                    h[n] += 1;
+                    hits.set(h);
+                });
+                scoped(
+                    n,
+                    kit::list_rows_click(vec![(row, Some(click))], &t).into_any_element(),
+                )
+            };
+            div()
+                .size_full()
+                .child(div().h(gpui::px(100.0)).child(list(0)))
+                .child(list(1))
+        }
+    }
+
+    #[gpui::test]
+    fn a_click_on_the_second_list_opens_its_row(cx: &mut gpui::TestAppContext) {
+        let hits = std::rc::Rc::new(std::cell::Cell::new([0; 2]));
+        let (_, cx) = cx.add_window_view(|_, _| TwoLists(hits.clone()));
+        let frame = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|window, cx| window.draw(cx).clear(cx));
+        };
+        let none = gpui::Modifiers::default();
+        for (y, want) in [(110.0, [0, 1]), (10.0, [1, 1])] {
+            let at = gpui::point(gpui::px(40.0), gpui::px(y));
+            cx.simulate_mouse_move(at, None, none);
+            frame(cx);
+            cx.simulate_mouse_down(at, gpui::MouseButton::Left, none);
+            cx.simulate_mouse_up(at, gpui::MouseButton::Left, none);
+            frame(cx);
+            assert_eq!(hits.get(), want, "click at y {y}");
         }
     }
 }
