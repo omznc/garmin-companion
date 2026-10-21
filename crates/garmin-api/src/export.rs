@@ -541,6 +541,9 @@ mod tests {
         // The CJK chars and the emoji all share the "?" glyph.
         assert_eq!(font.used.values().filter(|&&c| c == '?').count(), 1);
         assert_eq!(font.glyph('朝'), font.glyph('?'));
+        // A char that the font has keeps its own glyph.
+        assert_ne!(font.glyph('\u{2013}'), font.glyph('?'));
+        assert_ne!(font.glyph('\u{b0}'), font.glyph('?'));
     }
 
     #[test]

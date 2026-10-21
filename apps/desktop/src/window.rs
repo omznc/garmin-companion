@@ -85,20 +85,19 @@ impl State {
     }
 }
 
-/// The room that a window gets when no screen is known (Wayland reports
-/// none until an output answers).
-const UNKNOWN_ROOM: (f32, f32) = (1920.0, 1080.0);
-
 /// The size, cut down to the visible area of the screen. A zero area (no
-/// screen known) cuts the size to `UNKNOWN_ROOM`.
+/// screen known) leaves the size as it is.
 pub fn clamp(wanted: (f32, f32), visible: (f32, f32), min: (f32, f32)) -> (f32, f32) {
-    let fit = |want: f32, room: f32, fallback: f32, low: f32| {
-        let room = if room > 0.0 { room } else { fallback };
-        want.min(room).max(low.min(room))
+    let fit = |want: f32, room: f32, low: f32| {
+        if room > 0.0 {
+            want.min(room).max(low.min(room))
+        } else {
+            want
+        }
     };
     (
-        fit(wanted.0, visible.0, UNKNOWN_ROOM.0, min.0),
-        fit(wanted.1, visible.1, UNKNOWN_ROOM.1, min.1),
+        fit(wanted.0, visible.0, min.0),
+        fit(wanted.1, visible.1, min.1),
     )
 }
 
@@ -153,8 +152,6 @@ mod tests {
         assert_eq!(clamp(DEFAULT_SIZE, (1366.0, 728.0), MIN), (1366.0, 728.0));
         assert_eq!(clamp(DEFAULT_SIZE, (2560.0, 1400.0), MIN), DEFAULT_SIZE);
         assert_eq!(clamp(DEFAULT_SIZE, (0.0, 0.0), MIN), DEFAULT_SIZE);
-        // No screen known: a saved size bigger than any sane screen is cut.
-        assert_eq!(clamp((5000.0, 4000.0), (0.0, 0.0), MIN), UNKNOWN_ROOM);
     }
 
     #[test]

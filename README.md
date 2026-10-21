@@ -39,8 +39,8 @@ mid-conversation. Sync is the only thing that talks to Garmin.
   and shoe and bike mileage
 - **Export** — activities to CSV, and the weekly and monthly reports to PDF
 
-The desktop app was redesigned for 1.0.7, in a Zed-like style with no entrance
-animations:
+Version 1.0.7 brings a new desktop design. The style is like Zed, with no
+entrance animations:
 
 - **Cards** — every screen is a grid of cards, and you arrange the ones on Today
 - **Date focus calendar** — a calendar in the sidebar sets a day or a range of
@@ -78,10 +78,12 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
     run, which is why it says so on the Ask screen and in Settings.
   - **OpenRouter** with your own key — straight from the app to OpenRouter.
   - **Ollama** on your machine — nothing leaves the computer at all.
-  - **Claude Code** — runs the `claude` CLI you already have installed. The
-    desktop binary serves the coach tools to it over MCP
+  - **Claude Code**: runs the `claude` CLI that you already have installed.
+    The desktop binary serves the coach tools to it over MCP
     (`garmin-companion mcp`), so it uses your Claude plan and no cloud credits
-    from us. Desktop only, and not yet tested on Windows or macOS.
+    from us. The CLI sends your question and the tool rows to Anthropic, under
+    your own Claude account. Desktop only, and not yet tested on Windows or
+    macOS.
 - **Switching** is one click in Settings, in either direction, at any time.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.
