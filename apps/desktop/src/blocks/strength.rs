@@ -268,6 +268,11 @@ fn numbers(ctx: &Ctx) -> Option<Block> {
     block(
         Some("average".into()),
         None,
-        gpui::div().child(grid).children(caveat),
+        gpui::div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(grid)
+            .children(caveat),
     )
 }
