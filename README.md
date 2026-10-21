@@ -38,9 +38,9 @@ mid-conversation. Sync is the only thing that talks to Garmin.
 - **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
   and shoe and bike mileage
 
-| A session, read back to you | Where the heart rate actually went | Asked in your own words |
+| A session, with its heart-rate zones | A strength session, set by set | Asked in your own words |
 |---|---|---|
-| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Zones](docs/screenshots/activity-zones-dark.png)](docs/screenshots/activity-zones-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
+| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Strength](docs/screenshots/activity-strength-dark.png)](docs/screenshots/activity-strength-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
 
 | Correlations, with their sample size | Recovery over time | Routes out of the GPS traces |
 |---|---|---|
