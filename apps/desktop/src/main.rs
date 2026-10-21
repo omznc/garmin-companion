@@ -489,6 +489,8 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
             };
+            #[cfg(target_os = "linux")]
+            window::shrink_when_screen_known(handle.into(), min, cx);
             command_palette::bind_keys(cx);
             cx.on_action(move |_: &command_palette::OpenPalette, cx| {
                 let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));

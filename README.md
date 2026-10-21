@@ -37,6 +37,20 @@ mid-conversation. Sync is the only thing that talks to Garmin.
   sample size, and weekly summaries
 - **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
   and shoe and bike mileage
+- **Export** — activities to CSV, and the weekly and monthly reports to PDF
+
+Version 1.0.7 brings a new desktop design. The style is like Zed, with no
+entrance animations:
+
+- **Cards** — every screen is a grid of cards, and you arrange the ones on Today
+- **Date focus calendar** — a calendar in the sidebar sets a day or a range of
+  days, and every screen and the coach follow it
+- **Status bar menus** — sync, pick the coach provider and the palette, and
+  update, all from the bottom bar
+- **Detail pages** — activities, workouts and insights open with more data, and
+  breadcrumbs replace the back links
+- **Layout** — the sidebar, the coach panel and the window resize by dragging,
+  and Appearance has an interface scale
 
 | A session, with its heart-rate zones | A strength session, set by set | Asked in your own words |
 |---|---|---|
@@ -56,7 +70,7 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
   server of ours.
 - **Chat** sends your question plus whatever a tool returned for it — a handful
   of summary rows, never the whole database and never GPS traces. Where it sends
-  that depends on which provider you pick:
+  that depends on which of the six providers you pick:
   - **Built-in coach** (the default) — through a small proxy this project runs,
     on to a hosted model. It sees the metrics a question needs and keeps none of
     them; the code is in [`worker/`](worker) and so is what it does and doesn't
@@ -67,6 +81,7 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
   - **Claude Code**, **OpenCode** or **Codex** (desktop only) — the app starts
     the command you already use and gives it read-only tools over MCP. The
     command sends the data on to its own model provider, under your account.
+    Not yet tested on Windows or macOS.
 - **Switching** is one click in Settings, in either direction, at any time.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.
