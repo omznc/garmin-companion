@@ -188,6 +188,8 @@ pub struct Ctx<'a> {
     pub store: &'a Store,
     /// The list of the activities, read at start and after a sync.
     pub activities: &'a anyhow::Result<ActivitiesView>,
+    /// The number of cached sessions. It is read with the list, not each frame.
+    pub activity_count: Option<i64>,
 }
 
 impl Root {
@@ -207,6 +209,7 @@ impl Root {
             places: &self.places,
             store: &self.store,
             activities: &self.list,
+            activity_count: self.activity_count(),
         }
     }
 }

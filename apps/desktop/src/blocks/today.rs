@@ -594,6 +594,7 @@ mod tests {
             places: &places,
             store: &store,
             activities: &list,
+            activity_count: store.count(),
         };
         BLOCKS
             .iter()

@@ -41,16 +41,22 @@ pub struct Wellness {
     pub sleep: SleepView,
 }
 
+/// Read both views for `day`. The as-of date hides data after that day.
+fn from_db(db: &garmin_core::Db, day: chrono::NaiveDate) -> Result<Wellness> {
+    garmin_core::with_as_of(day, || {
+        Ok(Wellness {
+            health: garmin_api::health_view(db, day).context("cannot build Health")?,
+            sleep: garmin_api::sleep_view(db, day).context("cannot build Sleep")?,
+        })
+    })
+}
+
 /// Read both views from the same source as the Today screen.
 pub fn load(source: &Source) -> Result<Wellness> {
     match source {
         Source::Default => {
             let db = garmin_api::open_default_db().context("cannot open the cache")?;
-            let day = chrono::Local::now().date_naive();
-            Ok(Wellness {
-                health: garmin_api::health_view(&db, day).context("cannot build Health")?,
-                sleep: garmin_api::sleep_view(&db, day).context("cannot build Sleep")?,
-            })
+            from_db(&db, chrono::Local::now().date_naive())
         }
         Source::Persona(name) => {
             let (_, health, sleep) = PERSONAS
@@ -65,11 +71,10 @@ pub fn load(source: &Source) -> Result<Wellness> {
         Source::Db { path, date } => {
             ensure!(path.is_file(), "no cache copy at {}", path.display());
             let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
-            let day = date.unwrap_or_else(|| chrono::Local::now().date_naive());
-            Ok(Wellness {
-                health: garmin_api::health_view(&db, day).context("cannot build Health")?,
-                sleep: garmin_api::sleep_view(&db, day).context("cannot build Sleep")?,
-            })
+            from_db(
+                &db,
+                date.unwrap_or_else(|| chrono::Local::now().date_naive()),
+            )
         }
     }
 }

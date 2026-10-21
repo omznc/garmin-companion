@@ -221,7 +221,8 @@ pub fn load_today(source: &Source) -> Result<Today> {
     match source {
         Source::Default => {
             let db = garmin_api::open_default_db().context("cannot open the cache")?;
-            let view = garmin_api::today_view(&db, chrono::Local::now().date_naive())
+            let day = chrono::Local::now().date_naive();
+            let view = garmin_core::with_as_of(day, || garmin_api::today_view(&db, day))
                 .context("cannot build the Today view")?;
             Ok(crate::map::today(&view, None))
         }
@@ -239,7 +240,8 @@ pub fn load_today(source: &Source) -> Result<Today> {
             ensure!(path.is_file(), "no cache copy at {}", path.display());
             let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
             let today = date.unwrap_or_else(|| chrono::Local::now().date_naive());
-            let view = garmin_api::today_view(&db, today).context("cannot build the Today view")?;
+            let view = garmin_core::with_as_of(today, || garmin_api::today_view(&db, today))
+                .context("cannot build the Today view")?;
             Ok(crate::map::today(&view, None))
         }
     }

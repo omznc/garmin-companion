@@ -173,10 +173,12 @@ impl Places {
     fn reader(&self) -> impl FnOnce() -> PlacesRead + Send + 'static {
         let (path, today) = (self.path.clone(), self.today);
         move || match garmin_api::open_db(&path).map_err(|e| e.to_string()) {
-            Ok(db) => (
-                plan_view(&db, today).map_err(|e| e.to_string()),
-                routes_view(&db, RouteSort::Recent).map_err(|e| e.to_string()),
-            ),
+            Ok(db) => garmin_core::with_as_of(today, || {
+                (
+                    plan_view(&db, today).map_err(|e| e.to_string()),
+                    routes_view(&db, RouteSort::Recent).map_err(|e| e.to_string()),
+                )
+            }),
             Err(e) => (Err(e.clone()), Err(e)),
         }
     }

@@ -347,6 +347,12 @@ fn day_cell(
             MouseButton::Left,
             cx.listener(|root, _, _, cx| root.cal_release(cx)),
         )
+        // A release outside every cell still ends the drag. `cal_release` runs
+        // once, because it takes the drag.
+        .on_mouse_up_out(
+            MouseButton::Left,
+            cx.listener(|root, _, _, cx| root.cal_release(cx)),
+        )
 }
 
 fn weekdays(t: &Theme) -> Div {

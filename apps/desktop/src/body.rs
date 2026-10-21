@@ -19,7 +19,8 @@ pub fn load_body(source: &Source) -> Result<BodyData> {
             let db = garmin_api::open_default_db().context("cannot open the cache")?;
             let today = chrono::Local::now().date_naive();
             Ok(BodyData(
-                garmin_api::body::body_views(&db, today).context("cannot build the body views")?,
+                garmin_core::with_as_of(today, || garmin_api::body::body_views(&db, today))
+                    .context("cannot build the body views")?,
             ))
         }
         Source::Persona(name) => {
@@ -37,7 +38,8 @@ pub fn load_body(source: &Source) -> Result<BodyData> {
             let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
             let today = date.unwrap_or_else(|| chrono::Local::now().date_naive());
             Ok(BodyData(
-                garmin_api::body::body_views(&db, today).context("cannot build the body views")?,
+                garmin_core::with_as_of(today, || garmin_api::body::body_views(&db, today))
+                    .context("cannot build the body views")?,
             ))
         }
     }

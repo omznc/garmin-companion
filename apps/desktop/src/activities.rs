@@ -24,6 +24,8 @@ use crate::ui::MONO;
 
 /// The sessions that the store reads for the tables.
 const ROWS: u32 = 400;
+/// The newest sessions that the view groups by day.
+const GROUPS: u32 = 60;
 /// The rows on one page of all sessions.
 const PAGE_ROWS: usize = 25;
 const DASH: &str = "—";
@@ -90,9 +92,20 @@ impl Store {
         Ok(garmin_api::open_db(&self.path)?)
     }
 
+    /// Read for another day. The focus sets it.
+    pub fn set_day(&mut self, day: NaiveDate) {
+        self.today = day;
+    }
+
     pub fn list(&self) -> Result<ActivitiesView> {
         let db = garmin_api::open_db(&self.path)?;
-        Ok(garmin_api::activities_view_rows(&db, self.today, 0, ROWS)?)
+        // The as-of date hides the sessions after `today`. The day groups feed
+        // the calendar dots and the Plan week.
+        garmin_core::with_as_of(self.today, || {
+            Ok(garmin_api::activities_view_rows(
+                &db, self.today, GROUPS, ROWS,
+            )?)
+        })
     }
 
     pub fn detail(&self, id: i64) -> Result<Option<ActivityDetailView>> {
@@ -503,6 +516,23 @@ mod tests {
         assert!(list.total > 0);
         assert!(store.detail(id).unwrap().is_some());
         assert!(store.detail(1).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(store.path.parent().unwrap());
+    }
+
+    #[test]
+    fn the_list_has_day_groups_and_hides_days_after_the_focus() {
+        let mut store = Store::persona("sample").unwrap();
+        let all = store.list().unwrap();
+        // The groups feed the calendar dots and the Plan week.
+        assert!(!all.groups.is_empty());
+        let newest = all.rows[0].date.clone();
+        let oldest = all.rows.last().unwrap().date.clone();
+        assert!(oldest < newest, "the persona needs more than one day");
+        let past = NaiveDate::parse_from_str(&oldest, "%Y-%m-%d").unwrap();
+        store.set_day(past);
+        let view = store.list().unwrap();
+        assert!(view.rows.iter().all(|r| r.date <= oldest));
+        assert!(view.groups.iter().all(|g| g.date <= oldest));
         let _ = std::fs::remove_dir_all(store.path.parent().unwrap());
     }
 }

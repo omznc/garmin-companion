@@ -53,11 +53,15 @@ fn persona(name: &str) -> Result<TrainingViews> {
 }
 
 fn from_db(db: &garmin_core::Db, day: chrono::NaiveDate, offset: usize) -> Result<Training> {
-    Ok(Training {
-        insights: garmin_api::insights::insights_view(db, day).context("cannot build Insights")?,
-        fitness: garmin_api::fitness::fitness_view(db, day).context("cannot build Fitness")?,
-        report: garmin_api::reports::report_view(db, day, offset)
-            .context("cannot build the report")?,
+    // The as-of date hides data after `day`, so offset 0 is the newest week up to `day`.
+    garmin_core::with_as_of(day, || {
+        Ok(Training {
+            insights: garmin_api::insights::insights_view(db, day)
+                .context("cannot build Insights")?,
+            fitness: garmin_api::fitness::fitness_view(db, day).context("cannot build Fitness")?,
+            report: garmin_api::reports::report_view(db, day, offset)
+                .context("cannot build the report")?,
+        })
     })
 }
 

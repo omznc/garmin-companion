@@ -316,8 +316,9 @@ impl Root {
         let source = self.focused_source();
         self.places.set_day(self.focus.end);
         let (cache, day) = self.places.cache();
+        // The store, the exports and the report follow the focused day.
+        self.store.set_day(day);
         let store = self.store.clone();
-        let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
         let live = !self.account.demo;
         load_async(
             self,
@@ -327,7 +328,7 @@ impl Root {
                 today: data::load_today(&source),
                 wellness: wellness::load(&source),
                 body: body::load_body(&source),
-                training: training::load(&source, offset),
+                training: training::load(&source, 0),
                 activities: store.count(),
                 list: store.list(),
                 views: crate::views::Views::load(&cache, day),

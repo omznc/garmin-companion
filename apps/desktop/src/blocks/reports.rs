@@ -205,28 +205,54 @@ fn status() -> String {
 
 /// The bytes of the file, and its suggested name.
 fn build(kind: Export, store: &Store, font: &[u8]) -> Result<(Vec<u8>, String), String> {
+    // The store reads for the focused day, as the screens do.
     let today = store.today();
     let db = store.open().map_err(|e| e.to_string())?;
     let bad = |e: garmin_api::ApiError| e.to_string();
-    Ok(match kind {
-        Export::Week(offset) => (
-            garmin_api::export::weekly_report_pdf(&db, today, offset, font).map_err(bad)?,
-            format!("garmin-week-{}.pdf", today.format("%Y-%m-%d")),
-        ),
-        Export::Month(back) => {
-            let month = today.with_day(1).unwrap_or(today) - Months::new(back);
-            (
-                garmin_api::export::monthly_report_pdf(&db, today, back, font).map_err(bad)?,
-                format!("garmin-{}.pdf", month.format("%Y-%m")),
-            )
-        }
-        Export::Csv => (
-            garmin_api::export::activities_csv(&db)
-                .map_err(bad)?
-                .into_bytes(),
-            "garmin-activities.csv".to_string(),
-        ),
+    // The CSV holds all sessions, so it reads without the as-of date.
+    if matches!(kind, Export::Csv) {
+        let csv = garmin_api::export::activities_csv(&db).map_err(bad)?;
+        return Ok((csv.into_bytes(), "garmin-activities.csv".to_string()));
+    }
+    // The as-of date makes the export see the same weeks as the screen.
+    garmin_core::with_as_of(today, || {
+        Ok(match kind {
+            Export::Week(offset) => {
+                let view = garmin_api::reports::report_view(&db, today, offset).map_err(bad)?;
+                (
+                    garmin_api::export::weekly_report_pdf(&db, today, offset, font)
+                        .map_err(bad)?,
+                    format!("garmin-week-{}.pdf", week_start(&view.eyebrow, today)),
+                )
+            }
+            Export::Month(back) => {
+                let month = today.with_day(1).unwrap_or(today) - Months::new(back);
+                (
+                    garmin_api::export::monthly_report_pdf(&db, today, back, font)
+                        .map_err(bad)?,
+                    format!("garmin-{}.pdf", month.format("%Y-%m")),
+                )
+            }
+            Export::Csv => unreachable!("the CSV returns above"),
+        })
     })
+}
+
+/// The first day of the week in an eyebrow such as `No. 3 · 02 Mar - 08 Mar`,
+/// as `YYYY-MM-DD`. The eyebrow has no year, so take the newest year that does
+/// not pass `today`. Fall back to `today`.
+fn week_start(eyebrow: &str, today: NaiveDate) -> String {
+    let first = eyebrow
+        .split_once(" · ")
+        .and_then(|(_, range)| range.split_once(" - "))
+        .map(|(start, _)| start);
+    let parsed = first.and_then(|s| {
+        [today.year(), today.year() - 1]
+            .into_iter()
+            .filter_map(|y| NaiveDate::parse_from_str(&format!("{s} {y}"), "%d %b %Y").ok())
+            .find(|d| *d <= today)
+    });
+    parsed.unwrap_or(today).format("%Y-%m-%d").to_string()
 }
 
 /// Ask for a place with the dialog of the system, then write the file.
@@ -329,7 +355,7 @@ fn files_list(ctx: &Ctx) -> Vec<File> {
             kind: Export::Month(back),
         });
     }
-    if let Some(n) = ctx.store.count().filter(|n| *n > 0) {
+    if let Some(n) = ctx.activity_count.filter(|n| *n > 0) {
         out.push(File {
             title: "All activities".into(),
             sub: format!("{n} rows"),
@@ -368,4 +394,16 @@ fn files(ctx: &Ctx) -> Option<Block> {
         link: None,
         body: col.into_any_element(),
     })
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn the_week_file_name_comes_from_the_week_start() {
+        let day = NaiveDate::from_ymd_opt(2026, 1, 7).unwrap();
+        assert_eq!(week_start("No. 3 · 29 Dec - 04 Jan", day), "2025-12-29");
+        assert_eq!(week_start("odd", day), "2026-01-07");
+    }
 }
