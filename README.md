@@ -37,6 +37,20 @@ mid-conversation. Sync is the only thing that talks to Garmin.
   sample size, and weekly summaries
 - **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
   and shoe and bike mileage
+- **Export** — activities to CSV, and the weekly and monthly reports to PDF
+
+The desktop app was redesigned for 1.0.7, in a Zed-like style with no entrance
+animations:
+
+- **Cards** — every screen is a grid of cards, and you arrange the ones on Today
+- **Date focus calendar** — a calendar in the sidebar sets a day or a range of
+  days, and every screen and the coach follow it
+- **Status bar menus** — sync, pick the coach provider and the palette, and
+  update, all from the bottom bar
+- **Detail pages** — activities, workouts and insights open with more data, and
+  breadcrumbs replace the back links
+- **Layout** — the sidebar, the coach panel and the window resize by dragging,
+  and Appearance has an interface scale
 
 | A session, with its heart-rate zones | A strength session, set by set | Asked in your own words |
 |---|---|---|
@@ -56,7 +70,7 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
   server of ours.
 - **Chat** sends your question plus whatever a tool returned for it — a handful
   of summary rows, never the whole database and never GPS traces. Where it sends
-  that depends on which of the three providers you pick:
+  that depends on which of the four providers you pick:
   - **Built-in coach** (the default) — through a small proxy this project runs,
     on to a hosted model. It sees the metrics a question needs and keeps none of
     them; the code is in [`worker/`](worker) and so is what it does and doesn't
@@ -64,6 +78,10 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
     run, which is why it says so on the Ask screen and in Settings.
   - **OpenRouter** with your own key — straight from the app to OpenRouter.
   - **Ollama** on your machine — nothing leaves the computer at all.
+  - **Claude Code** — runs the `claude` CLI you already have installed. The
+    desktop binary serves the coach tools to it over MCP
+    (`garmin-companion mcp`), so it uses your Claude plan and no cloud credits
+    from us. Desktop only, and not yet tested on Windows or macOS.
 - **Switching** is one click in Settings, in either direction, at any time.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.

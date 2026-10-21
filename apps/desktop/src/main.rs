@@ -362,8 +362,10 @@ fn main() -> anyhow::Result<()> {
                 scale::set(factor);
             }
             let min = (MIN_SIZE.0 * scale::get(), MIN_SIZE.1 * scale::get());
+            // Wayland has no primary display, so take the first output.
             let visible = cx
                 .primary_display()
+                .or_else(|| cx.displays().into_iter().next())
                 .map_or(Bounds::default(), |d| d.visible_bounds());
             let bounds = window::start_bounds(&saved, wanted_size, visible, min);
             let options = WindowOptions {

@@ -228,8 +228,15 @@ impl Font<'_> {
         1000.0 / f32::from(self.face.units_per_em())
     }
 
+    /// The glyph for `c`, and the char it shows. A char that the font lacks
+    /// shows as "?" (never the .notdef box, glyph 0).
+    fn resolve(&self, c: char) -> (u16, char) {
+        let find = |c: char| self.face.glyph_index(c).map(|g| (g.0, c));
+        find(c).or_else(|| find('?')).unwrap_or((0, '?'))
+    }
+
     fn glyph(&self, c: char) -> u16 {
-        self.face.glyph_index(c).map_or(0, |g| g.0)
+        self.resolve(c).0
     }
 
     /// The advance of a glyph, in thousandths of the font size.
@@ -246,8 +253,8 @@ impl Font<'_> {
     fn encode(&mut self, s: &str) -> Vec<u8> {
         let mut out = Vec::new();
         for c in s.chars() {
-            let gid = self.glyph(c);
-            self.used.insert(gid, c);
+            let (gid, shown) = self.resolve(c);
+            self.used.insert(gid, shown);
             out.extend(gid.to_be_bytes());
         }
         out
@@ -515,6 +522,25 @@ mod tests {
         };
         let pdf = weekly_report_pdf(&empty, today(), 0, FONT).unwrap();
         assert!(pdf.starts_with(b"%PDF"));
+    }
+
+    #[test]
+    fn a_missing_glyph_never_draws_the_notdef_box() {
+        let face = ttf_parser::Face::parse(FONT, 0).unwrap();
+        let mut font = Font {
+            face,
+            used: BTreeMap::new(),
+        };
+        let bytes = font.encode("Čaša 5 \u{2013} 20\u{b0}C 朝のラン \u{1F3C3}");
+        let gids: Vec<u16> = bytes
+            .chunks(2)
+            .map(|p| u16::from_be_bytes([p[0], p[1]]))
+            .collect();
+        assert!(gids.iter().all(|&g| g != 0));
+        assert!(font.used.keys().all(|&g| g != 0));
+        // The CJK chars and the emoji all share the "?" glyph.
+        assert_eq!(font.used.values().filter(|&&c| c == '?').count(), 1);
+        assert_eq!(font.glyph('朝'), font.glyph('?'));
     }
 
     #[test]
