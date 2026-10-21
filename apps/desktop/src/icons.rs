@@ -163,7 +163,8 @@ pub fn icon_spin(which: Icon, size: f32, colour: Hsla, id: &'static str) -> impl
         .with_animation(
             id,
             Animation::new(Duration::from_secs(1)).repeat(),
-            |s, delta| s.with_transformation(Transformation::rotate(percentage(delta))),
+            // The Sync arrows point counter-clockwise. A positive angle turns clockwise.
+            |s, delta| s.with_transformation(Transformation::rotate(percentage(-delta))),
         )
         .into_any_element()
 }

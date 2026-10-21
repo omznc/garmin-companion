@@ -7,10 +7,11 @@ use gpui::{div, prelude::*, ClickEvent, Context, Stateful, Window};
 
 use crate::chrome;
 use crate::icons::{icon, icon_spin, Icon};
-use crate::kit::{icon_button, icon_button_shell, kbd, modifier};
+use crate::kit::{chip, icon_button, icon_button_shell, kbd, modifier};
 use crate::shell::Root;
 use crate::theme::Theme;
 use crate::ui::SANS;
+use crate::update_ui;
 
 /// The width of the search box in the design.
 const SEARCH_W: f32 = 420.0;
@@ -101,7 +102,30 @@ fn sync_button(syncing: bool, t: &Theme, cx: &mut Context<Root>) -> Stateful<gpu
     }
 }
 
+/// The update button, in front of the sync button. The click does what the
+/// "Install and restart" row of the version menu does.
+fn update_button(
+    label: String,
+    enabled: bool,
+    t: &Theme,
+    cx: &mut Context<Root>,
+) -> Stateful<gpui::Div> {
+    let button = chip(label, true, false, t)
+        .id("tb-update")
+        .mr(px(4.0))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation());
+    if enabled {
+        button
+            .cursor_pointer()
+            .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx)))
+    } else {
+        button
+    }
+}
+
 fn actions(root: &Root, window: &Window, t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
+    let update = update_ui::title_button(&root.account.update, root.account.demo)
+        .map(|(label, enabled)| update_button(label, enabled, t, cx));
     let coach = icon_button("tb-coach", Icon::Panel, 15.0, false, root.coach_open, t)
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.toggle_coach(cx)));
@@ -112,6 +136,7 @@ fn actions(root: &Root, window: &Window, t: &Theme, cx: &mut Context<Root>) -> i
         .items_center()
         .justify_end()
         .gap(px(2.0))
+        .children(update)
         .child(sync_button(root.account.syncing(), t, cx))
         .child(coach)
         .children(window_buttons(window, t))
