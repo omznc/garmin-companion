@@ -7,8 +7,8 @@
 use crate::scale::px;
 use garmin_core::theme as folder;
 use gpui::{
-    div, point, prelude::*, relative, AnyElement, BoxShadow, ClickEvent, Context, Div, FontWeight,
-    Hsla, KeyDownEvent, Stateful, TextTransform, Window,
+    div, prelude::*, relative, AnyElement, ClickEvent, Context, Div, FontWeight, Hsla,
+    KeyDownEvent, Stateful, TextTransform, Window,
 };
 
 use crate::icons::{icon, Icon};
@@ -593,13 +593,6 @@ pub fn render(
     } else {
         columns
     };
-    let shadow = BoxShadow {
-        color: t.dshadow,
-        offset: point(px(0.0), px(24.0)),
-        blur_radius: px(64.0),
-        spread_radius: px(0.0),
-        inset: false,
-    };
     let dialog = div()
         .id("themes-dialog")
         .w_full()
@@ -612,7 +605,7 @@ pub fn render(
         .border_1()
         .border_color(t.line)
         .bg(t.bg2)
-        .shadow(vec![shadow])
+        .shadow_lg()
         // A click on the dialog must not reach the scrim.
         .on_click(|_, _, cx| cx.stop_propagation())
         .child(header(&fit, t, cx))
