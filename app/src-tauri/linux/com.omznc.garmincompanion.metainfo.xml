@@ -147,6 +147,16 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.9" date="2026-10-21">
+      <description>
+        <p>
+          The title bar shows a button when a new version is available, and
+          the sync icon turns the same way as its arrows. Figure grids now
+          reach the bottom of their card. The Android app icon has its logo
+          optically centred.
+        </p>
+      </description>
+    </release>
     <release version="1.0.8" date="2026-10-21">
       <description>
         <p>
