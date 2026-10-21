@@ -22,7 +22,7 @@ const DEFAULTS: ThemePrefs = {
   theme: "ember",
   materialYou: true,
   highContrast: false,
-  noVibration: false,
+  noVibration: true,
 };
 const file = () => new File(Paths.document, "theme.json");
 
