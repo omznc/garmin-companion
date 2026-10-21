@@ -30,7 +30,7 @@ fn announce(on: Progress<'_>, detail: &str) {
 
 /// The day strings of the last `n` days, today first.
 fn recent_days(n: i64) -> Vec<String> {
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     (0..n)
         .map(|o| (today - Duration::days(o)).format("%Y-%m-%d").to_string())
         .collect()
@@ -180,7 +180,7 @@ async fn sync_vo2(
     on: Progress<'_>,
 ) -> Result<()> {
     announce(on, "vo2 max");
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let day = |d: chrono::NaiveDate| d.format("%Y-%m-%d").to_string();
     let first = db.sync_state("vo2_history")?.is_none();
     let span = if first {
@@ -268,7 +268,7 @@ async fn sync_calendar(
     on: Progress<'_>,
 ) -> Result<()> {
     announce(on, "calendar");
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     for ahead in 0..2 {
         let Some((year, month0, first, last)) = month_window(today, ahead) else {
             continue;
@@ -304,7 +304,7 @@ async fn sync_planned_workouts(
     on: Progress<'_>,
 ) -> Result<()> {
     announce(on, "planned workouts");
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let day = |o: i64| (today + Duration::days(o)).format("%Y-%m-%d").to_string();
     let ids: Vec<i64> = db
         .plan_items(&day(0), &day(PLAN_AHEAD_DAYS))?
@@ -352,7 +352,7 @@ async fn sync_plans(
             }
         }
     }
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let (from, to) = (
         today.format("%Y-%m-%d").to_string(),
         (today + Duration::days(365)).format("%Y-%m-%d").to_string(),
@@ -437,9 +437,6 @@ mod tests {
     fn the_recent_days_start_with_today() {
         let days = recent_days(2);
         assert_eq!(days.len(), 2);
-        assert_eq!(
-            days[0],
-            Utc::now().date_naive().format("%Y-%m-%d").to_string()
-        );
+        assert_eq!(days[0], crate::today().format("%Y-%m-%d").to_string());
     }
 }
