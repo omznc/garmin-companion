@@ -117,6 +117,8 @@ struct Shared {
     menu: Option<Menu>,
     /// A move to apply: the position it starts at, and where it ends.
     command: Option<(usize, usize)>,
+    /// The position of the entry that becomes the default screen.
+    default_at: Option<usize>,
 }
 
 impl Shared {
@@ -140,6 +142,8 @@ pub struct Sidebar {
     pub active: Screen,
     /// The entries in the user's order. A group stays whole.
     order: Vec<Screen>,
+    /// The screen that the app opens on. It can be in any group.
+    default: Screen,
     /// The groups that the user closed.
     closed: Vec<Group>,
     shared: Rc<RefCell<Shared>>,
@@ -152,9 +156,13 @@ pub struct Sidebar {
 
 impl Sidebar {
     /// `keys` is the saved order and `closed` the keys of the closed groups.
-    /// The app starts on the first entry of the order.
-    pub fn new(reduced_motion: bool, keys: &[String], closed: &[String]) -> Self {
+    /// The app starts on the saved default screen. Without one it starts on
+    /// the first saved key, or on the first entry of the order.
+    pub fn new(reduced_motion: bool, keys: &[String], default: &str, closed: &[String]) -> Self {
         let order = order_from_keys(keys);
+        let default = Screen::from_key(default)
+            .or_else(|| keys.iter().find_map(|k| Screen::from_key(k)))
+            .unwrap_or(order[0]);
         let closed: Vec<Group> = Group::ALL
             .into_iter()
             .filter(|g| closed.contains(&g.key()))
@@ -164,7 +172,8 @@ impl Sidebar {
             ..Shared::default()
         };
         Self {
-            active: order[0],
+            active: default,
+            default,
             order,
             closed,
             shared: Rc::new(RefCell::new(shared)),
@@ -176,6 +185,11 @@ impl Sidebar {
     /// The keys to save, in the order of the list.
     pub fn keys(&self) -> Vec<String> {
         self.order.iter().map(|s| s.key()).collect()
+    }
+
+    /// The key of the screen that the app opens on.
+    pub fn default_key(&self) -> String {
+        self.default.key()
     }
 
     /// The keys of the closed groups, for the window state.
@@ -253,7 +267,19 @@ impl Sidebar {
             }
             shared.command.take()
         };
-        command.is_some_and(|(from, to)| self.apply_move(from, to))
+        let default_at = self.shared.borrow_mut().default_at.take();
+        let defaulted = default_at.is_some_and(|at| self.set_default(at));
+        command.is_some_and(|(from, to)| self.apply_move(from, to)) || defaulted
+    }
+
+    /// Make the entry at position `at` the default screen. True when it changed.
+    fn set_default(&mut self, at: usize) -> bool {
+        let Some(&screen) = self.order.get(at) else {
+            return false;
+        };
+        let changed = screen != self.default;
+        self.default = screen;
+        changed
     }
 
     /// During a drag, send each row to the place that a release would leave it in.
@@ -489,10 +515,15 @@ fn context_menu(state: &Sidebar, t: &Theme) -> Option<AnyElement> {
     let menu = state.shared.borrow().menu?;
     let at = menu.position;
     let (first, last) = state.span(at);
+    // A move has a target position. "Set as default screen" has none.
     let items = [
-        ("Set as default screen", at > 0 && first == 0, 0),
-        ("Move up", at > first, at.saturating_sub(1)),
-        ("Move down", at < last, (at + 1).min(last)),
+        (
+            "Set as default screen",
+            state.order[at] != state.default,
+            None,
+        ),
+        ("Move up", at > first, Some(at.saturating_sub(1))),
+        ("Move down", at < last, Some((at + 1).min(last))),
     ];
     let close = {
         let shared = state.shared.clone();
@@ -530,7 +561,12 @@ fn context_menu(state: &Sidebar, t: &Theme) -> Option<AnyElement> {
             item.cursor_pointer()
                 .hover(move |s| s.bg(sel).text_color(fg))
                 .on_click(move |_, window, _| {
-                    shared.borrow_mut().command = Some((at, to));
+                    let mut shared = shared.borrow_mut();
+                    match to {
+                        Some(to) => shared.command = Some((at, to)),
+                        None => shared.default_at = Some(at),
+                    }
+                    drop(shared);
                     close(window);
                 })
                 .child(label)
@@ -667,7 +703,7 @@ mod tests {
     }
 
     fn bar() -> Sidebar {
-        Sidebar::new(false, &[], &[])
+        Sidebar::new(false, &[], "", &[])
     }
 
     #[test]
@@ -711,12 +747,30 @@ mod tests {
         assert_eq!(order.len(), Screen::ALL.len());
         assert_eq!(order_from_keys(&[]), Screen::ALL.to_vec());
         // The keys of one group never move a screen into another group.
-        let bar = Sidebar::new(false, &keys(&["settings", "gear", "sleep", "reports"]), &[]);
-        assert_eq!(bar.active, Screen::Sleep);
+        let saved = keys(&["settings", "gear", "sleep", "reports"]);
+        let bar = Sidebar::new(false, &saved, "", &[]);
         assert_eq!(bar.keys()[..3], ["sleep", "today", "health"]);
         assert_eq!(bar.order[5], Screen::Gear);
         assert_eq!(bar.order[11], Screen::Reports);
         assert_eq!(bar.order[14], Screen::Settings);
+        // With no saved default, the first saved key is the default.
+        assert_eq!(bar.active, Screen::Settings);
+    }
+
+    #[test]
+    fn any_screen_can_be_the_default() {
+        let mut bar = bar();
+        assert_eq!(bar.active, Screen::Today);
+        let gear = bar.position(Screen::Gear);
+        assert!(bar.set_default(gear));
+        assert!(!bar.set_default(gear));
+        // The saved default opens the app, and the list order stays.
+        let again = Sidebar::new(false, &bar.keys(), &bar.default_key(), &[]);
+        assert_eq!(again.active, Screen::Gear);
+        assert_eq!(again.order, bar.order);
+        // An unknown saved default falls back to the first key.
+        let lost = Sidebar::new(false, &bar.keys(), "gone", &[]);
+        assert_eq!(lost.active, Screen::Today);
     }
 
     #[test]
@@ -781,7 +835,7 @@ mod tests {
 
     #[gpui::test]
     fn a_tiny_drag_from_the_lower_half_of_a_row_changes_nothing(cx: &mut gpui::TestAppContext) {
-        let (host, cx) = cx.add_window_view(|_, _| Host(Sidebar::new(true, &[], &[])));
+        let (host, cx) = cx.add_window_view(|_, _| Host(Sidebar::new(true, &[], "", &[])));
         for _ in 0..3 {
             frame(cx);
         }

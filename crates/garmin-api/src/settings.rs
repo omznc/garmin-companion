@@ -33,9 +33,12 @@ pub enum ThemeMode {
 #[serde(default)]
 pub struct Prefs {
     pub theme: ThemeMode,
-    /// The sidebar entries in the order the user chose, as stable keys. The
-    /// first key is the screen the app opens on. Empty means the shipped order.
+    /// The sidebar entries in the order the user chose, as stable keys. Empty
+    /// means the shipped order.
     pub nav_order: Vec<String>,
+    /// The screen the app opens on, as a stable key. It can be in any group.
+    /// Empty means the first key of `nav_order`.
+    pub default_screen: String,
     /// The palette for light mode, as a stable id. Empty means the shipped one.
     /// The desktop app reads it. The mobile apps ignore it.
     pub theme_light: String,
@@ -60,10 +63,11 @@ pub fn set_theme(theme: ThemeMode) -> Result<Prefs, ApiError> {
     save(Prefs { theme, ..prefs() })
 }
 
-/// Save the sidebar order. The theme stays as it was.
-pub fn set_nav_order(nav_order: Vec<String>) -> Result<Prefs, ApiError> {
+/// Save the sidebar order and the default screen. The theme stays as it was.
+pub fn set_nav_order(nav_order: Vec<String>, default_screen: String) -> Result<Prefs, ApiError> {
     save(Prefs {
         nav_order,
+        default_screen,
         ..prefs()
     })
 }
@@ -270,7 +274,8 @@ mod tests {
         assert_eq!(set_theme(ThemeMode::Dark).unwrap().theme, ThemeMode::Dark);
         assert_eq!(prefs().theme, ThemeMode::Dark);
         // Each setting keeps the other one.
-        set_nav_order(vec!["sleep".into()]).unwrap();
+        set_nav_order(vec!["sleep".into()], "gear".into()).unwrap();
+        assert_eq!(prefs().default_screen, "gear");
         assert_eq!(prefs().theme, ThemeMode::Dark);
         set_theme(ThemeMode::Light).unwrap();
         assert_eq!(prefs().nav_order, vec!["sleep".to_string()]);
