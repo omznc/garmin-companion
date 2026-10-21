@@ -350,6 +350,8 @@ fn main() -> anyhow::Result<()> {
                 }
             })
             .detach();
+            // A CLI coach run must not outlive the app: it spends model quota.
+            cx.on_app_quit(|_| async { cli_agent::kill_all() }).detach();
 
             // A demo reads and writes no saved state.
             let demo = !matches!(source, data::Source::Default);

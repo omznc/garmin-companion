@@ -179,11 +179,36 @@ fn command(bin: &Path, cli: &Cli) -> Command {
     cmd
 }
 
-/// Kill the command and every process that it started: a launcher script, a
-/// native binary, an MCP child. Then wait for the command.
-fn end(child: &mut Child) {
+/// The pids of the commands that run now. Each pid is the leader of its tree.
+/// A pid leaves the list before the command is reaped, so `kill_all` never
+/// hits a reused pid.
+static LIVE: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+fn live() -> std::sync::MutexGuard<'static, Vec<u32>> {
+    LIVE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn register(child: &Child) {
+    live().push(child.id());
+}
+
+fn forget(child: &Child) {
+    live().retain(|&p| p != child.id());
+}
+
+/// Kill every command that runs now, with its tree. The app calls this on quit.
+pub fn kill_all() {
+    // The lock stays held, so no command is reaped during the kills.
+    for pid in live().drain(..) {
+        kill_tree(pid);
+    }
+}
+
+/// Kill a command and every process that it started: a launcher script, a
+/// native binary, an MCP child.
+fn kill_tree(pid: u32) {
     #[cfg(unix)]
-    if let Ok(pid) = i32::try_from(child.id()) {
+    if let Ok(pid) = i32::try_from(pid) {
         // The group id is the pid of the command (`process_group(0)`).
         // SAFETY: `kill` takes plain integers and has no memory effect.
         unsafe { libc::kill(-pid, libc::SIGKILL) };
@@ -192,13 +217,19 @@ fn end(child: &mut Child) {
     {
         use std::os::windows::process::CommandExt;
         let _ = Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &child.id().to_string()])
+            .args(["/T", "/F", "/PID", &pid.to_string()])
             .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
     }
+}
+
+/// Kill the command and its tree. Then wait for the command.
+fn end(child: &mut Child) {
+    forget(child);
+    kill_tree(child.id());
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -344,6 +375,7 @@ pub fn run_child(
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Could not start {}: {e}", run.cli.name))?;
+    register(&child);
     if let (Some(mut stdin), Some(text)) = (child.stdin.take(), run.stdin) {
         std::thread::spawn(move || {
             let _ = stdin.write_all(text.as_bytes());
@@ -451,6 +483,7 @@ fn tail_of(stream: Option<impl Read + Send + 'static>) -> Arc<Mutex<String>> {
 
 /// Wait a moment for a clean exit, then kill. Returns the exit code.
 fn reap(child: &mut Child) -> Option<i32> {
+    forget(child);
     let until = Instant::now() + Duration::from_secs(2);
     while Instant::now() < until {
         if let Ok(Some(status)) = child.try_wait() {
@@ -525,6 +558,7 @@ fn output_of(bin: &Path, cli: &Cli, args: &[&str], limit: Duration) -> std::io::
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
+    register(&child);
     let stdout = child.stdout.take();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
@@ -535,10 +569,13 @@ fn output_of(bin: &Path, cli: &Cli, args: &[&str], limit: Duration) -> std::io::
         let _ = tx.send(buf);
     });
     match rx.recv_timeout(limit) {
-        Ok(buf) => Ok(Output {
-            text: String::from_utf8_lossy(&buf).into_owned(),
-            ok: child.wait().is_ok_and(|s| s.success()),
-        }),
+        Ok(buf) => {
+            forget(&child);
+            Ok(Output {
+                text: String::from_utf8_lossy(&buf).into_owned(),
+                ok: child.wait().is_ok_and(|s| s.success()),
+            })
+        }
         Err(_) => {
             end(&mut child);
             Err(std::io::ErrorKind::TimedOut.into())
@@ -826,6 +863,39 @@ mod tests {
             let _ = std::fs::remove_file(&pid_file);
             let _ = std::fs::remove_dir_all(bin.parent().unwrap());
             assert!(out.is_err());
+            std::thread::sleep(Duration::from_millis(200));
+            assert!(!alive(pid), "the grandchild {pid} still runs");
+        }
+
+        #[test]
+        fn kill_all_ends_a_running_tree_and_the_list_empties() {
+            let _lock = serial();
+            let pid_file = std::env::temp_dir().join(format!("gc-killall-{}", std::process::id()));
+            let body = format!("sleep 60 &\necho $! > {}\nwait", pid_file.display());
+            let bin = script("killall", &body);
+            let run = run_of(bin.clone(), None);
+            let runner = std::thread::spawn(move || {
+                let rec = Rec(Mutex::default());
+                run_child(run, &mut OneLine(false), &rec, &AtomicBool::new(false))
+            });
+            let until = Instant::now() + Duration::from_secs(5);
+            while !std::fs::read_to_string(&pid_file).is_ok_and(|s| s.trim().parse::<i32>().is_ok())
+                && Instant::now() < until
+            {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let pid: i32 = std::fs::read_to_string(&pid_file)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            assert_eq!(live().len(), 1);
+            kill_all();
+            let out = runner.join().unwrap();
+            let _ = std::fs::remove_file(&pid_file);
+            let _ = std::fs::remove_dir_all(bin.parent().unwrap());
+            assert!(out.is_err());
+            assert!(live().is_empty());
             std::thread::sleep(Duration::from_millis(200));
             assert!(!alive(pid), "the grandchild {pid} still runs");
         }
