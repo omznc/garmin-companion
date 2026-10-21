@@ -225,11 +225,11 @@ fn tile(s: &Saved, t: &Theme) -> gpui::Div {
 }
 
 fn saved(ctx: &Ctx) -> Option<Block> {
-    let items = saved_routes(ctx.places.routes()?);
+    let view = ctx.places.routes()?;
+    let items = saved_routes(view);
     if items.is_empty() {
         return None;
     }
-    let view = ctx.places.routes()?;
     let mut grid = div().flex().flex_wrap().gap(px(10.0)).p(px(12.0));
     for s in items.iter().take(MAX_TILES) {
         grid = grid.child(tile(s, ctx.t));

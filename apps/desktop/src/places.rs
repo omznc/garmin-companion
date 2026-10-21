@@ -65,15 +65,14 @@ fn persona_cache(name: &str) -> Result<(PathBuf, Persona), String> {
     Ok((path, persona))
 }
 
-/// The gear that was kept in the cache. `Failed` with `why` when none was kept.
+/// The gear that was kept in the cache, or `Failed` with `why` when none was kept.
 fn kept_gear(path: &std::path::Path, why: &str) -> Gear {
-    garmin_api::open_db(path)
-        .ok()
-        .and_then(|db| cached_gear(&db))
-        .map_or_else(
-            || Gear::Failed(why.into()),
-            |entries| Gear::Ready(gear_view(&entries)),
-        )
+    kept_view(path).map_or_else(|| Gear::Failed(why.into()), Gear::Ready)
+}
+
+fn kept_view(path: &std::path::Path) -> Option<GearView> {
+    let entries = cached_gear(&garmin_api::open_db(path).ok()?)?;
+    Some(gear_view(&entries))
 }
 
 /// Ask Garmin and keep the answer. When Garmin cannot answer, use the kept gear.
@@ -85,10 +84,7 @@ fn live_or_kept_gear(path: &std::path::Path) -> Result<GearView, String> {
             }
             Ok(gear_view(&entries))
         }
-        Err(e) => match kept_gear(path, "") {
-            Gear::Ready(view) => Ok(view),
-            _ => Err(e.to_string()),
-        },
+        Err(e) => kept_view(path).ok_or_else(|| e.to_string()),
     }
 }
 
