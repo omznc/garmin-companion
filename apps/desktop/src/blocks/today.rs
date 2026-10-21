@@ -368,7 +368,7 @@ fn week(ctx: &Ctx) -> Option<Block> {
     let w = ctx.today.week.as_ref().filter(|w| !w.minutes.is_empty())?;
     let average = w.minutes.iter().sum::<f32>() / w.minutes.len() as f32;
     let avg = (average > 0.0).then(|| (average, format!("avg {}", minutes_label(average))));
-    let summary = (!w.summary.is_empty()).then(|| sentence(&w.summary, ctx.t));
+    let summary = (!w.summary.is_empty()).then(|| padded(sentence(&w.summary, ctx.t)).pt(px(0.0)));
     block(
         Some(week_meta(w)),
         None,
