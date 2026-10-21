@@ -147,6 +147,20 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.0.8" date="2026-10-21">
+      <description>
+        <p>
+          The coach can now use your own OpenCode or Codex login, next to
+          Claude Code. Today has a Weight card, and it shows the same
+          sentences as the phone. The day focus moves to the new day after
+          midnight. Rows in Strength and Routes open their activity, the
+          Routes sort and the Gear retry are back, and the first sign-in
+          screen has a new design. On Wayland, a window that is too big for
+          the screen gets smaller. The phone has a "No vibration" setting,
+          and it is on by default.
+        </p>
+      </description>
+    </release>
     <release version="1.0.7" date="2026-10-20">
       <description>
         <p>
