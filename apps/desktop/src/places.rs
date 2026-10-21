@@ -34,19 +34,28 @@ pub enum Gear {
     Idle,
     Loading,
     Ready(GearView),
-    Failed,
+    /// Why there is no gear, for the screen to show.
+    Failed(String),
 }
 
 pub struct Places {
     origin: Origin,
     path: PathBuf,
     today: NaiveDate,
+    sort: RouteSort,
     plan: Result<PlanView, String>,
+    /// Always in the default order. Every card but the grid reads this.
     routes: Result<RoutesView, String>,
+    /// The routes in the chosen order, only for the grid. `None` in the default order.
+    ordered: Option<RoutesView>,
     gear: Gear,
 }
 
-type PlacesRead = (Result<PlanView, String>, Result<RoutesView, String>);
+type PlacesRead = (
+    Result<PlanView, String>,
+    Result<RoutesView, String>,
+    Option<RoutesView>,
+);
 
 /// A persona is a made-up cache that the app seeds in a temp folder.
 fn persona_cache(name: &str) -> Result<(PathBuf, Persona), String> {
@@ -63,12 +72,14 @@ fn persona_cache(name: &str) -> Result<(PathBuf, Persona), String> {
     Ok((path, persona))
 }
 
-/// The gear that was kept in the cache. `Failed` when none was kept.
-fn kept_gear(path: &std::path::Path) -> Gear {
-    garmin_api::open_db(path)
-        .ok()
-        .and_then(|db| cached_gear(&db))
-        .map_or(Gear::Failed, |entries| Gear::Ready(gear_view(&entries)))
+/// The gear that was kept in the cache, or `Failed` with `why` when none was kept.
+fn kept_gear(path: &std::path::Path, why: &str) -> Gear {
+    kept_view(path).map_or_else(|| Gear::Failed(why.into()), Gear::Ready)
+}
+
+fn kept_view(path: &std::path::Path) -> Option<GearView> {
+    let entries = cached_gear(&garmin_api::open_db(path).ok()?)?;
+    Some(gear_view(&entries))
 }
 
 /// Ask Garmin and keep the answer. When Garmin cannot answer, use the kept gear.
@@ -80,10 +91,7 @@ fn live_or_kept_gear(path: &std::path::Path) -> Result<GearView, String> {
             }
             Ok(gear_view(&entries))
         }
-        Err(e) => match kept_gear(path) {
-            Gear::Ready(view) => Ok(view),
-            _ => Err(e.to_string()),
-        },
+        Err(e) => kept_view(path).ok_or_else(|| e.to_string()),
     }
 }
 
@@ -106,8 +114,10 @@ impl Places {
             origin,
             path,
             today,
+            sort: RouteSort::Recent,
             plan: Err(String::new()),
             routes: Err(String::new()),
+            ordered: None,
             gear: Gear::Idle,
         };
         places.reload();
@@ -136,6 +146,16 @@ impl Places {
         self.routes.as_ref().ok()
     }
 
+    /// The routes for the grid, in the order that the user chose.
+    pub fn ordered_routes(&self) -> Option<&RoutesView> {
+        self.ordered.as_ref().or_else(|| self.routes())
+    }
+
+    /// The order that the user chose for the grid.
+    pub fn sort(&self) -> RouteSort {
+        self.sort
+    }
+
     /// The gear, once Garmin has answered.
     pub fn gear(&self) -> Option<&GearView> {
         match &self.gear {
@@ -144,9 +164,12 @@ impl Places {
         }
     }
 
-    /// True when the gear could not be read and none was kept.
-    pub fn gear_failed(&self) -> bool {
-        matches!(self.gear, Gear::Failed)
+    /// Why the gear could not be read, when none was kept.
+    pub fn gear_error(&self) -> Option<&str> {
+        match &self.gear {
+            Gear::Failed(why) => Some(why),
+            _ => None,
+        }
     }
 
     /// The number of saved routes, for the sidebar.
@@ -166,20 +189,24 @@ impl Places {
 
     /// Read the routes again, after a sync.
     pub fn reload(&mut self) {
-        (self.plan, self.routes) = self.reader()();
+        (self.plan, self.routes, self.ordered) = self.reader()();
     }
 
     /// A job that reads the plan and the routes. It owns its inputs, so it can run on a thread.
     fn reader(&self) -> impl FnOnce() -> PlacesRead + Send + 'static {
-        let (path, today) = (self.path.clone(), self.today);
+        let (path, today, sort) = (self.path.clone(), self.today, self.sort);
         move || match garmin_api::open_db(&path).map_err(|e| e.to_string()) {
             Ok(db) => garmin_core::with_as_of(today, || {
                 (
                     plan_view(&db, today).map_err(|e| e.to_string()),
                     routes_view(&db, RouteSort::Recent).map_err(|e| e.to_string()),
+                    // A failed read here leaves the grid in the default order.
+                    (sort != RouteSort::Recent)
+                        .then(|| routes_view(&db, sort).ok())
+                        .flatten(),
                 )
             }),
-            Err(e) => (Err(e.clone()), Err(e)),
+            Err(e) => (Err(e.clone()), Err(e), None),
         }
     }
 }
@@ -189,11 +216,24 @@ impl Root {
     /// figures until the new ones arrive.
     pub fn reload_places(&mut self, cx: &mut Context<Self>) {
         let read = self.places.reader();
-        crate::account::load_async(self, "places", cx, read, |root, (plan, routes), cx| {
-            root.places.plan = plan;
-            root.places.routes = routes;
-            cx.notify();
-        });
+        crate::account::load_async(
+            self,
+            "places",
+            cx,
+            read,
+            |root, (plan, routes, ordered), cx| {
+                root.places.plan = plan;
+                root.places.routes = routes;
+                root.places.ordered = ordered;
+                cx.notify();
+            },
+        );
+    }
+
+    /// Choose the order of the routes and read them again.
+    pub fn set_route_sort(&mut self, sort: RouteSort, cx: &mut Context<Self>) {
+        self.places.sort = sort;
+        self.reload_places(cx);
     }
 
     /// Fill the Gear screen. A persona answers at once. A live account asks Garmin on a thread.
@@ -205,9 +245,13 @@ impl Root {
             Origin::Persona(p) => {
                 self.places.gear = Gear::Ready(gear_view(&persona_gear(p)));
             }
-            Origin::Copy => self.places.gear = kept_gear(&self.places.path),
+            Origin::Copy => {
+                let why = "Gear comes live from Garmin, and a copy of the cache holds none.";
+                self.places.gear = kept_gear(&self.places.path, why);
+            }
             Origin::Live if !self.account.connected => {
-                self.places.gear = kept_gear(&self.places.path);
+                let why = "Sign in to Garmin to see your gear.";
+                self.places.gear = kept_gear(&self.places.path, why);
             }
             Origin::Live => self.ask_garmin_for_gear(cx),
         }
@@ -238,7 +282,7 @@ impl Root {
                     Ok(view) => Gear::Ready(view),
                     Err(e) => {
                         eprintln!("could not read the gear: {e}");
-                        Gear::Failed
+                        Gear::Failed(e)
                     }
                 };
                 cx.notify();
@@ -265,5 +309,23 @@ mod tests {
                 assert_eq!(routes.routes.len(), 2);
             }
         }
+    }
+
+    #[test]
+    fn a_new_order_changes_the_first_route() {
+        let mut places = Places::load(&Source::Persona("sample".into()));
+        places.sort = RouteSort::Distance;
+        places.reload();
+        let first = places.ordered_routes().unwrap().routes[0].distance.clone();
+        assert_eq!(first.as_deref(), Some("8.0 km"));
+    }
+
+    #[test]
+    fn a_new_order_leaves_the_outings_and_the_counts_alone() {
+        let mut places = Places::load(&Source::Persona("sample".into()));
+        let before = format!("{:?}", places.routes().unwrap());
+        places.sort = RouteSort::Distance;
+        places.reload();
+        assert_eq!(format!("{:?}", places.routes().unwrap()), before);
     }
 }

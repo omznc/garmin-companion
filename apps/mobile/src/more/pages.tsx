@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 import { THEMES, useSettingsActions } from "../data/useSettingsActions";
+import { setThemePref, useThemePrefs } from "../theme/prefs";
 import { Item, Note, Page, Section } from "./Kit";
 
 const REPO = "https://github.com/omznc/garmin-companion";
@@ -79,6 +80,7 @@ export function SyncPage() {
 export function AppearancePage() {
   const a = useSettingsActions();
   const theme = a.settings.data?.theme;
+  const { noVibration } = useThemePrefs();
   return (
     <Page title="Appearance">
       <Section title="Theme">
@@ -90,6 +92,13 @@ export function AppearancePage() {
             onPress={() => a.chooseTheme(t.value)}
           />
         ))}
+      </Section>
+      <Section title="Feedback">
+        <Item
+          title="No vibration"
+          on={noVibration}
+          onPress={() => setThemePref("noVibration", !noVibration)}
+        />
       </Section>
     </Page>
   );
