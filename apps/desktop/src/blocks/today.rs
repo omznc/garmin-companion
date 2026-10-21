@@ -62,6 +62,13 @@ pub const BLOCKS: &[BlockDef] = &[
         default_width: Width::Third,
         render: fuel,
     },
+    BlockDef {
+        id: "weight_today",
+        title: "Weight",
+        group: Screen::Today,
+        default_width: Width::Third,
+        render: weight,
+    },
 ];
 
 /// The default order and width of the blocks.
@@ -73,6 +80,7 @@ pub const LAYOUT: &[(&str, Width)] = &[
     ("drift", Width::Third),
     ("night", Width::TwoThirds),
     ("fuel", Width::Third),
+    ("weight_today", Width::Third),
 ];
 
 /// The verdict of the headline, or the weekday.
@@ -360,10 +368,13 @@ fn week(ctx: &Ctx) -> Option<Block> {
     let w = ctx.today.week.as_ref().filter(|w| !w.minutes.is_empty())?;
     let average = w.minutes.iter().sum::<f32>() / w.minutes.len() as f32;
     let avg = (average > 0.0).then(|| (average, format!("avg {}", minutes_label(average))));
+    let summary = (!w.summary.is_empty()).then(|| padded(sentence(&w.summary, ctx.t)).pt(px(0.0)));
     block(
         Some(week_meta(w)),
         None,
-        charts::bar_chart(&week_bars(w), avg, ctx.t),
+        div()
+            .child(charts::bar_chart(&week_bars(w), avg, ctx.t))
+            .children(summary),
     )
 }
 
@@ -517,16 +528,23 @@ fn fuel_rows(eaten: f32, burned: f32) -> Vec<MeterRow> {
     ]
 }
 
-fn fuel(ctx: &Ctx) -> Option<Block> {
-    let f: &Fuel = ctx.today.fuel.as_ref()?;
+/// A sentence that the core built. The block only draws it.
+fn sentence(text: &str, t: &Theme) -> Div {
+    div()
+        .mt(px(12.0))
+        .text_size(px(13.0))
+        .text_color(t.mutd)
+        .child(text.to_string())
+}
+
+fn fuel_figures(f: &Fuel, t: &Theme) -> Option<Div> {
     let (eaten, burned) = (f.eaten?, f.burned?);
-    let t = ctx.t;
     let pct = if burned > 0.0 {
         format!("{:.0}%", eaten / burned * 100.0)
     } else {
         String::new()
     };
-    let body = padded(
+    Some(
         div()
             .child(head(
                 &kcal(eaten),
@@ -539,12 +557,46 @@ fn fuel(ctx: &Ctx) -> Option<Block> {
                     .mt(px(12.0))
                     .child(charts::meter_rows(fuel_rows(eaten, burned), t)),
             ),
+    )
+}
+
+fn fuel(ctx: &Ctx) -> Option<Block> {
+    let f = ctx.today.fuel.as_ref();
+    let t = ctx.t;
+    let figures = f.and_then(|f| fuel_figures(f, t));
+    let notes = f.map(|f| f.note.as_str()).filter(|n| !n.is_empty());
+    // The block hides when the day has no figures and no core sentence to show.
+    if figures.is_none() && notes.is_none() {
+        return None;
+    }
+    let body = padded(
+        div()
+            .children(figures)
+            .children(notes.map(|n| sentence(n, t))),
     );
     block(
-        Some(f.when.clone()),
+        f.map(|f| f.when.clone()),
         Some(("Food", Go::Screen(Screen::Food))),
         body,
     )
+}
+
+/* ----------------------------------------------------------------- weight --- */
+
+/// The weight trend and the core sentence. The block only draws them.
+fn weight(ctx: &Ctx) -> Option<Block> {
+    let (w, t) = (ctx.today.weight.as_ref()?, ctx.t);
+    let rate = w.rate_kg_per_week.map(|r| format!("{r:+.2} kg a week"));
+    let figure = w.trend_kg.map(|kg| {
+        head(
+            &format!("{kg:.1}"),
+            "kg",
+            rate.as_deref().unwrap_or_default(),
+            t,
+        )
+    });
+    let body = padded(div().children(figure).child(sentence(&w.sentence, t)));
+    block(None, Some(("Weight", Go::Screen(Screen::Weight))), body)
 }
 
 #[cfg(test)]
@@ -614,6 +666,8 @@ mod tests {
         let golfer = shown("golfer");
         assert!(!golfer.contains(&"drift"));
         assert!(!shown("new_user").contains(&"last"));
+        // These personas have no weight, so the weight block hides.
+        assert!(!sample.contains(&"weight_today"));
     }
 
     #[test]

@@ -313,6 +313,7 @@ impl Root {
     /// Read the Today view and the settings again, after a sync. The reads run
     /// on the background executor. The screens keep the old data until then.
     pub(crate) fn reload(&mut self, cx: &mut Context<Self>) {
+        self.roll_focus(cx);
         let source = self.focused_source();
         self.places.set_day(self.focus.end);
         let (cache, day) = self.places.cache();

@@ -404,6 +404,11 @@ fn main() -> anyhow::Result<()> {
                     cx.observe_window_activation(window, |root: &mut shell::Root, window, cx| {
                         if window.is_window_active() {
                             root.on_activated(cx);
+                            // A window that sat open past midnight moves to the new day.
+                            if root.focus_is_stale() {
+                                root.reload(cx);
+                                cx.notify();
+                            }
                         }
                     })
                     .detach();
