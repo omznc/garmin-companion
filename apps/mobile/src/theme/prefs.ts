@@ -13,6 +13,7 @@ export type ThemePrefs = {
   theme: ThemeId;
   materialYou: boolean;
   highContrast: boolean;
+  noVibration: boolean;
 };
 
 const DEFAULTS: ThemePrefs = {
@@ -20,6 +21,7 @@ const DEFAULTS: ThemePrefs = {
   theme: "ember",
   materialYou: true,
   highContrast: false,
+  noVibration: false,
 };
 const file = () => new File(Paths.document, "theme.json");
 
@@ -33,6 +35,7 @@ const read = (): ThemePrefs => {
       theme: THEMES.some((t) => t.id === p.theme) ? (p.theme as ThemeId) : DEFAULTS.theme,
       materialYou: typeof p.materialYou === "boolean" ? p.materialYou : DEFAULTS.materialYou,
       highContrast: typeof p.highContrast === "boolean" ? p.highContrast : DEFAULTS.highContrast,
+      noVibration: typeof p.noVibration === "boolean" ? p.noVibration : DEFAULTS.noVibration,
     };
   } catch {
     // No file yet, or an unreadable one: the defaults are a complete theme.
@@ -65,6 +68,9 @@ export const setThemePref = <K extends keyof ThemePrefs>(key: K, value: ThemePre
     // The choice still applies until the app closes. It is only not kept.
   }
 };
+
+/** The current choice, for code that is not a component (the haptics). */
+export const getThemePrefs = (): ThemePrefs => current;
 
 export const useThemePrefs = (): ThemePrefs =>
   useSyncExternalStore(

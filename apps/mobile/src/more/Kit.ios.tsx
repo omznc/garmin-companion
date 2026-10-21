@@ -2,7 +2,15 @@
 import { Stack } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { Children, type ReactNode } from "react";
-import { type ColorValue, PlatformColor, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  type ColorValue,
+  PlatformColor,
+  Pressable,
+  ScrollView,
+  Switch,
+  Text,
+  View,
+} from "react-native";
 
 export function useColors() {
   return {
@@ -22,6 +30,8 @@ export type ItemProps = {
   icon?: { sf: string; color: string };
   chevron?: boolean;
   checked?: boolean;
+  /** Shows a switch with this state. A tap on the row or the switch calls onPress. */
+  on?: boolean;
   tone?: "action" | "danger";
   disabled?: boolean;
   onPress?: () => void;
@@ -133,7 +143,17 @@ function toneColor(tone: ItemProps["tone"]): ColorValue {
   return PlatformColor(tone === "action" ? "systemOrange" : "label");
 }
 
-export function Item({ title, value, icon, chevron, checked, tone, disabled, onPress }: ItemProps) {
+export function Item({
+  title,
+  value,
+  icon,
+  chevron,
+  checked,
+  on,
+  tone,
+  disabled,
+  onPress,
+}: ItemProps) {
   const color = disabled ? PlatformColor("tertiaryLabel") : toneColor(tone);
   return (
     <Pressable
@@ -157,6 +177,7 @@ export function Item({ title, value, icon, chevron, checked, tone, disabled, onP
           {value}
         </Text>
       ) : null}
+      {on !== undefined ? <Switch value={on} onValueChange={() => onPress?.()} /> : null}
       {checked ? (
         <SymbolView name="checkmark" size={15} tintColor={PlatformColor("systemOrange")} />
       ) : null}

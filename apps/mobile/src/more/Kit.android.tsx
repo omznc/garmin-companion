@@ -36,6 +36,8 @@ export type ItemProps = {
   md?: { icon: IconName; tone: Tone };
   chevron?: boolean;
   checked?: boolean;
+  /** Used on iOS only: a switch with this state. Android has its own row. */
+  on?: boolean;
   tone?: "action" | "danger";
   disabled?: boolean;
   onPress?: () => void;

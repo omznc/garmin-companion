@@ -131,6 +131,29 @@ function HighContrastRow() {
   );
 }
 
+function NoVibrationRow() {
+  const md = useMd();
+  const { noVibration } = useThemePrefs();
+  const set = (on: boolean) => setThemePref("noVibration", on);
+  return (
+    <ListRow
+      icon="vibration"
+      title="No vibration"
+      supporting="Turn off the haptic feedback"
+      onPress={() => set(!noVibration)}
+      trailing={
+        // The Android switch ignores pointerEvents and flips itself, so it must report the change.
+        <Switch
+          value={noVibration}
+          onValueChange={set}
+          trackColor={{ false: md.surfaceContainerHighest, true: md.primary }}
+          thumbColor={noVibration ? md.onPrimary : md.outline}
+        />
+      }
+    />
+  );
+}
+
 export function AppearancePage() {
   const a = useSettingsActions();
   const { scheme } = useThemePrefs();
@@ -150,6 +173,9 @@ export function AppearancePage() {
       <Swatches />
       <Section title="Contrast">
         <HighContrastRow />
+      </Section>
+      <Section title="Feedback">
+        <NoVibrationRow />
       </Section>
     </Page>
   );
