@@ -246,8 +246,32 @@ impl Root {
         if provider == Provider::Ollama && cloud.live {
             return self.cloud_choose_ollama(cx);
         }
+        if provider == Provider::ClaudeCode && cloud.live {
+            return self.cloud_choose_claude(cx);
+        }
         let model = model_for(provider, cloud.provider);
         self.cloud_keep(provider, model, cx);
+        if provider == Provider::ClaudeCode {
+            self.claude_probe(cx);
+        }
+    }
+
+    /// Save the choice only when the local command works. Else keep the old
+    /// provider and say why.
+    fn cloud_choose_claude(&mut self, cx: &mut Context<Self>) {
+        let probe = async { Ok(claude_code::probe()) };
+        self.cloud_call(cx, probe, |root, out, cx| {
+            let status = out.unwrap_or(claude_code::Status::TimedOut);
+            if status.ready() {
+                let model = model_for(Provider::ClaudeCode, root.account.cloud.provider);
+                root.account.cloud.claude = Some(status);
+                return root.cloud_keep(Provider::ClaudeCode, model, cx);
+            }
+            root.account.cloud.say(status.line(), true);
+            root.account.cloud.claude = Some(status);
+            // The note is drawn in the Coach section of Settings.
+            root.show_settings_section(1, cx);
+        });
     }
 
     /// Save the choice. A persona demo keeps it in memory only.
@@ -266,9 +290,6 @@ impl Root {
         let live = cloud.live;
         if provider == Provider::Cloud {
             self.cloud_refresh(cx);
-        }
-        if provider == Provider::ClaudeCode {
-            self.claude_probe(cx);
         }
         // The status bar and the coach panel read the provider from Ask.
         self.ask.update(cx, |ask, cx| {
