@@ -277,11 +277,7 @@ fn sort_tabs(active: RouteSort, t: &Theme) -> gpui::Div {
                     .text_color(if on { t.fg } else { t.faint })
                     .child(*label)
                     .on_click(move |_, _, cx| {
-                        let Some(root) = cx.try_global::<super::RootHandle>().map(|h| h.0.clone())
-                        else {
-                            return;
-                        };
-                        let _ = root.update(cx, |root, cx| root.set_route_sort(sort, cx));
+                        super::with_root(cx, |root, cx| root.set_route_sort(sort, cx))
                     }),
             )
         },

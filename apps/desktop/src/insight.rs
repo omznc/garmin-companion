@@ -57,11 +57,8 @@ pub fn crumb(training: Option<&Training>, id: &str) -> String {
 /// A click on a row that opens the detail page of an item.
 pub fn open_insight(id: String) -> RowClick {
     Box::new(move |_, cx| {
-        let Some(root) = cx.try_global::<blocks::RootHandle>().map(|h| h.0.clone()) else {
-            return;
-        };
         let id = id.clone();
-        let _ = root.update(cx, |root, cx| root.open_insight(id, cx));
+        blocks::with_root(cx, |root, cx| root.open_insight(id, cx))
     })
 }
 

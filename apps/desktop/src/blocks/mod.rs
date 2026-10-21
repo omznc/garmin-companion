@@ -229,14 +229,17 @@ pub struct RootHandle(pub gpui::WeakEntity<Root>);
 
 impl gpui::Global for RootHandle {}
 
+/// Run `f` on the root, from a click in a block. Nothing happens before `start` sets the handle.
+pub fn with_root(cx: &mut gpui::App, f: impl FnOnce(&mut Root, &mut Context<Root>)) {
+    let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
+        return;
+    };
+    let _ = root.update(cx, f);
+}
+
 /// A click on a row that opens the detail of one session.
 pub fn open_activity(id: i64) -> kit::RowClick {
-    Box::new(move |_, cx| {
-        let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
-            return;
-        };
-        let _ = root.update(cx, |root, cx| root.open_activity(id, cx));
-    })
+    Box::new(move |_, cx| with_root(cx, |root, cx| root.open_activity(id, cx)))
 }
 
 /// What a block returns: the header text and the body. The registry adds the
@@ -399,7 +402,11 @@ fn nothing_to_show(ctx: &Ctx) -> Div {
     if !loaded(ctx) {
         return div();
     }
-    if let Some(why) = ctx.places.gear_error() {
+    if let Some(why) = ctx
+        .places
+        .gear_error()
+        .filter(|_| ctx.screen == Screen::Gear)
+    {
         return gear_failed(why, ctx.t);
     }
     let note = screen_note(ctx);
@@ -411,12 +418,8 @@ fn nothing_to_show(ctx: &Ctx) -> Div {
 
 /// The Gear screen when Garmin gave no gear: the reason, and a button to ask again.
 fn gear_failed(why: &str, t: &Theme) -> Div {
-    let retry = kit::link("gear-retry", "Try again", t).on_click(|_, _, cx| {
-        let Some(root) = cx.try_global::<RootHandle>().map(|h| h.0.clone()) else {
-            return;
-        };
-        let _ = root.update(cx, |root, cx| root.load_gear(cx));
-    });
+    let retry = kit::link("gear-retry", "Try again", t)
+        .on_click(|_, _, cx| with_root(cx, |root, cx| root.load_gear(cx)));
     let body = div()
         .flex()
         .flex_col()
