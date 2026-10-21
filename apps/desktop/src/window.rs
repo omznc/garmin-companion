@@ -101,6 +101,63 @@ pub fn clamp(wanted: (f32, f32), visible: (f32, f32), min: (f32, f32)) -> (f32, 
     )
 }
 
+/// The smaller size for a window that is too big for its screen, or `None`
+/// when the window fits or the screen is not known.
+pub fn shrink_to(current: (f32, f32), visible: (f32, f32), min: (f32, f32)) -> Option<(f32, f32)> {
+    let fitted = clamp(current, visible, min);
+    (fitted.0 < current.0 || fitted.1 < current.1).then_some(fitted)
+}
+
+/// Wayland opens the window before it reads the outputs, so the start
+/// bounds cannot be cut to the screen. Wait for the first output, then
+/// shrink a window that is too big. The compositor can undo the first
+/// resize, so repeat it until the window fits. The check stops after a
+/// few seconds and never grows a window.
+#[cfg(target_os = "linux")]
+pub fn shrink_when_screen_known(
+    handle: gpui::AnyWindowHandle,
+    min: (f32, f32),
+    cx: &mut gpui::App,
+) {
+    use std::time::Duration;
+    const STEP: Duration = Duration::from_millis(50);
+    const TRIES: u32 = 100;
+    // X11 knows its primary display at start.
+    if cx.primary_display().is_some() {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        for _ in 0..TRIES {
+            cx.background_executor().timer(STEP).await;
+            let fits = cx.update(|cx| {
+                handle
+                    .update(cx, |_, window, cx| {
+                        let display = window
+                            .display(cx)
+                            .or_else(|| cx.displays().into_iter().next());
+                        let Some(display) = display else {
+                            return false;
+                        };
+                        let visible = display.visible_bounds().size;
+                        let now = window.bounds().size;
+                        let current = (f32::from(now.width), f32::from(now.height));
+                        let room = (f32::from(visible.width), f32::from(visible.height));
+                        let Some((w, h)) = shrink_to(current, room, min) else {
+                            return true;
+                        };
+                        window.resize(size(px(w), px(h)));
+                        false
+                    })
+                    .unwrap_or(true)
+            });
+            if fits {
+                return;
+            }
+        }
+    })
+    .detach();
+}
+
 /// The bounds for the first window. `explicit` is the size from the command
 /// line and wins over the saved one. The saved position stays only when it
 /// lies inside the visible area.
@@ -152,6 +209,17 @@ mod tests {
         assert_eq!(clamp(DEFAULT_SIZE, (1366.0, 728.0), MIN), (1366.0, 728.0));
         assert_eq!(clamp(DEFAULT_SIZE, (2560.0, 1400.0), MIN), DEFAULT_SIZE);
         assert_eq!(clamp(DEFAULT_SIZE, (0.0, 0.0), MIN), DEFAULT_SIZE);
+    }
+
+    #[test]
+    fn only_a_window_that_is_too_big_shrinks() {
+        let big = (1440.0, 900.0);
+        assert_eq!(shrink_to(big, (1024.0, 700.0), MIN), Some((1024.0, 700.0)));
+        assert_eq!(shrink_to(big, (1024.0, 1000.0), MIN), Some((1024.0, 900.0)));
+        assert_eq!(shrink_to(big, (2560.0, 1400.0), MIN), None);
+        assert_eq!(shrink_to(big, (0.0, 0.0), MIN), None);
+        // A window that is smaller than the screen never grows.
+        assert_eq!(shrink_to((800.0, 600.0), (1024.0, 700.0), MIN), None);
     }
 
     #[test]
