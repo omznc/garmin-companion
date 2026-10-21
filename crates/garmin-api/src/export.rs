@@ -37,6 +37,17 @@ fn field(s: &str) -> String {
     }
 }
 
+/// One text cell. A spreadsheet reads a cell that starts with `=`, `+`, `-`,
+/// `@`, a tab or a line break as a formula, so such a cell gets a leading
+/// quote (OWASP). Do not use this for numbers: a negative number stays a number.
+fn text_field(s: &str) -> String {
+    if s.starts_with(['=', '+', '-', '@', '\t', '\r', '\n']) {
+        field(&format!("'{s}"))
+    } else {
+        field(s)
+    }
+}
+
 fn number(v: Option<f64>, decimals: usize) -> String {
     v.map(|v| format!("{v:.decimals$}")).unwrap_or_default()
 }
@@ -48,8 +59,8 @@ pub fn activities_csv(db: &Db) -> Result<String, ApiError> {
     for a in db.activities_since("0000-01-01")? {
         let row = [
             a.local_date.clone().unwrap_or_default(),
-            field(a.name.as_deref().unwrap_or_default()),
-            field(&sport_label(a.type_key.as_deref())),
+            text_field(a.name.as_deref().unwrap_or_default()),
+            text_field(&sport_label(a.type_key.as_deref())),
             number(a.distance_m.map(|m| m / 1000.0), 2),
             number(a.duration_s, 0),
             number(a.avg_hr, 0),
@@ -454,6 +465,17 @@ mod tests {
         assert_eq!(field("a,b"), "\"a,b\"");
         assert_eq!(field("say \"hi\""), "\"say \"\"hi\"\"\"");
         assert_eq!(field("two\nlines"), "\"two\nlines\"");
+    }
+
+    #[test]
+    fn csv_text_cells_cannot_start_a_formula() {
+        assert_eq!(text_field("=1+1"), "'=1+1");
+        assert_eq!(text_field("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(text_field("-2"), "'-2");
+        assert_eq!(text_field("+1,5"), "\"'+1,5\"");
+        assert_eq!(text_field("\tx"), "'\tx");
+        assert_eq!(text_field("Run = fun"), "Run = fun");
+        assert_eq!(number(Some(-3.0), 0), "-3");
     }
 
     #[test]
