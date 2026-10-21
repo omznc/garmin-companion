@@ -27,6 +27,8 @@ use serde::{Deserialize, Serialize};
 const DAILY_DAYS: u32 = 45;
 /// Enough rows to cover the 56-day activity profile.
 const ACTIVITY_LIMIT: u32 = 300;
+/// Days of resting heart rate that make a baseline for the headline.
+const MIN_BASELINE_DAYS: usize = 4;
 /// Runs in the zone drift strip. A phone UI can show fewer from the end.
 const DRIFT_RUNS: usize = 8;
 /// The 80/20 model asks for 20% of time above Z2.
@@ -247,7 +249,11 @@ fn headline_input(
     let yesterday = date_key(today - chrono::Duration::days(1));
     HeadlineInput {
         readiness: fresh(latest(rows, |d| d.training_readiness), today).map(|l| l.value),
+        // A new user has no baseline yet: the delta would be 0 and read as "recovered".
         resting_delta: fresh(latest(comparable, |d| d.resting_hr), today)
+            .filter(|_| {
+                comparable.iter().filter(|d| d.resting_hr.is_some()).count() >= MIN_BASELINE_DAYS
+            })
             .zip(mean(comparable.iter().map(|d| d.resting_hr)))
             .map(|(l, baseline)| l.value - baseline),
         hrv,
@@ -430,6 +436,21 @@ mod tests {
         assert_eq!(rhr.value, 56.0);
         assert!(rhr.accent);
         assert!(v.lede.starts_with("You slept"));
+    }
+
+    #[test]
+    fn a_new_user_is_not_told_that_they_are_recovered() {
+        let db = db();
+        for date in ["2026-03-09", "2026-03-10", "2026-03-11"] {
+            db.upsert_daily(&DailyMetrics {
+                date: date.into(),
+                resting_hr: Some(50.0),
+                ..DailyMetrics::default()
+            })
+            .unwrap();
+        }
+        let h = today_view(&db, today()).unwrap().headline;
+        assert_eq!(h.tone, crate::headline::HeadlineTone::NoData, "{h:?}");
     }
 
     #[test]
