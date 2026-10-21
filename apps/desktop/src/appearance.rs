@@ -2,9 +2,10 @@
 //!
 //! The markup follows the Appearance part of the Settings design.
 
+use crate::scale::px;
 use garmin_api::settings::ThemeMode;
 use gpui::{
-    div, prelude::*, px, BoxShadow, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
+    div, prelude::*, BoxShadow, ClickEvent, Context, Div, ElementId, FontWeight, Hsla,
     SharedString, Stateful,
 };
 
@@ -54,7 +55,7 @@ fn mode_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
             }),
         ));
     }
-    let help = "Match system follows the setting of your desktop. Each mode has its own palette.";
+    let help = "Match system follows the setting of your desktop.";
     panel::row(true, "Mode", Some(help), panel::stack().child(control), t)
 }
 
@@ -237,10 +238,10 @@ fn store_row(t: &Theme, cx: &mut Context<Root>) -> Div {
                 It appears in the picker of its mode.";
     let open = panel::button(
         "browse-themes",
-        "Browse themes…",
+        "Browse VS Code themes…",
         Kind::Plain,
         true,
-        Some(Icon::Search),
+        None,
         t,
     )
     .on_click(cx.listener(|root, _: &ClickEvent, window, cx| root.open_themes("", window, cx)));
@@ -253,11 +254,46 @@ fn store_row(t: &Theme, cx: &mut Context<Root>) -> Div {
     )
 }
 
-pub fn render(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let rows = panel::panel(t)
-        .child(mode_row(root, t, cx))
-        .child(palette_row(root, false, t, cx))
-        .child(palette_row(root, true, t, cx))
-        .child(store_row(t, cx));
-    panel::section("Appearance", None, t).child(rows)
+/// `Interface scale`: the size of the whole window, in steps.
+fn scale_row(t: &Theme, cx: &mut Context<Root>) -> Div {
+    let now = (crate::scale::get() * 100.0).round() as u32;
+    let mut control = panel::seg(t);
+    for pct in crate::scale::STEPS {
+        let item = panel::seg_item(
+            format!("scale-{pct}"),
+            format!("{pct}%"),
+            pct == now,
+            None,
+            t,
+        );
+        control = control.child(item.on_click(
+            cx.listener(move |root, _: &ClickEvent, _, cx| root.set_scale(pct as f32 / 100.0, cx)),
+        ));
+    }
+    let help = "Size of text and controls.";
+    panel::row(
+        false,
+        "Interface scale",
+        Some(help),
+        panel::stack().child(control),
+        t,
+    )
+}
+
+/// The rows of the Appearance section of Settings, each with the words that
+/// the search of Settings matches.
+pub fn rows(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Vec<(&'static str, Div)> {
+    vec![
+        ("mode match system light dark theme", mode_row(root, t, cx)),
+        ("interface scale zoom size text controls", scale_row(t, cx)),
+        (
+            "light palette colours theme",
+            palette_row(root, false, t, cx),
+        ),
+        ("dark palette colours theme", palette_row(root, true, t, cx)),
+        (
+            "vs code themes browse open-vsx store install",
+            store_row(t, cx),
+        ),
+    ]
 }

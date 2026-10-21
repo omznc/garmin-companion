@@ -11,16 +11,18 @@
 use std::future::Future;
 use std::time::Duration;
 
+use crate::scale::px;
 use chrono::Utc;
 use garmin_coach::{AccountView, Balance, CloudClient, Provider};
 use garmin_core::{db::Db, store};
-use gpui::{div, prelude::*, px, App, ClickEvent, Context, Div, FontWeight, Window};
+use gpui::{div, prelude::*, App, ClickEvent, Context, Div, FontWeight, Window};
 
+use crate::claude_code;
 use crate::data::Source;
 use crate::field::Field;
 use crate::panel::{self, Kind, Tone};
 use crate::shell::Root;
-use crate::theme::{Theme, FS_BASE};
+use crate::theme::Theme;
 use crate::ui::body;
 
 /// The checkout page is watched for 2 minutes: every 3 seconds for the first
@@ -53,6 +55,9 @@ pub struct Cloud {
     /// The poll has not ended. A window that comes back reads the balance once.
     watching: bool,
     has_key: bool,
+    /// The model alias of Claude Code, and what the local command reports.
+    claude_model: String,
+    claude: Option<claude_code::Status>,
     email: Field,
     code: Field,
     key: Field,
@@ -70,10 +75,17 @@ impl Cloud {
             watch: None,
             watching: false,
             has_key: false,
+            claude_model: garmin_coach::DEFAULT_CLAUDE_MODEL.into(),
+            claude: None,
             email: Field::new("you@example.com", false, cx),
             code: Field::new("6-digit code", false, cx),
             key: Field::new("OpenRouter API key", true, cx),
         }
+    }
+
+    /// A provider that cannot work yet: the own key is not saved. A demo has no keyring.
+    pub fn needs_key(&self, provider: Provider) -> bool {
+        self.live && provider == Provider::Openrouter && !self.has_key
     }
 
     pub fn say(&mut self, text: impl Into<String>, bad: bool) {
@@ -125,12 +137,15 @@ pub async fn account_quiet() -> Result<Option<AccountView>, String> {
 /// saved one. A model from another provider means nothing to OpenRouter, so
 /// switching to "Your own key" starts from the default model.
 fn model_for(provider: Provider, previous: Provider) -> &'static str {
-    if provider == Provider::Openrouter && previous != Provider::Openrouter {
-        garmin_coach::DEFAULT_OPENROUTER_MODEL
-    } else {
-        ""
+    match provider {
+        Provider::Openrouter if previous != provider => garmin_coach::DEFAULT_OPENROUTER_MODEL,
+        Provider::ClaudeCode if previous != provider => garmin_coach::DEFAULT_CLAUDE_MODEL,
+        _ => "",
     }
 }
+
+/// The model aliases that Claude Code offers. An alias follows the newest model.
+const CLAUDE_MODELS: [&str; 3] = ["sonnet", "opus", "haiku"];
 
 /// Only the default source may reach the network, the keyring or the saved
 /// choice. A persona and a database copy are demos.
@@ -159,12 +174,40 @@ impl Root {
         if live {
             cloud.provider = cloud.read_provider().unwrap_or(Provider::Cloud);
             cloud.has_key = matches!(store::load_openrouter_key(), Ok(Some(_)));
+            if let Some(model) = cloud
+                .read_model()
+                .filter(|m| CLAUDE_MODELS.contains(&m.as_str()))
+            {
+                cloud.claude_model = model;
+            }
         }
         if !live {
             cloud.view = Some(sample_account());
         } else if cloud.provider == Provider::Cloud {
             self.cloud_refresh(cx);
         }
+        if self.account.cloud.provider == Provider::ClaudeCode {
+            self.claude_probe(cx);
+        }
+    }
+
+    /// Ask the local `claude` command for its version and login, off the UI thread.
+    fn claude_probe(&mut self, cx: &mut Context<Self>) {
+        self.cloud_call(cx, async { Ok(claude_code::probe()) }, |root, out, _| {
+            root.account.cloud.claude = out.ok();
+        });
+    }
+
+    pub fn claude_choose_model(&mut self, alias: &'static str, cx: &mut Context<Self>) {
+        let cloud = &mut self.account.cloud;
+        if cloud.live {
+            if let Err(e) = cloud.write_provider(Provider::ClaudeCode, alias) {
+                cloud.say(format!("Could not save the choice: {e:#}"), true);
+                return cx.notify();
+            }
+        }
+        cloud.claude_model = alias.into();
+        cx.notify();
     }
 
     pub fn cloud_refresh(&mut self, cx: &mut Context<Self>) {
@@ -217,9 +260,24 @@ impl Root {
             }
         }
         cloud.provider = provider;
+        if provider == Provider::ClaudeCode && !model.is_empty() {
+            cloud.claude_model = model.into();
+        }
+        let live = cloud.live;
         if provider == Provider::Cloud {
             self.cloud_refresh(cx);
         }
+        if provider == Provider::ClaudeCode {
+            self.claude_probe(cx);
+        }
+        // The status bar and the coach panel read the provider from Ask.
+        self.ask.update(cx, |ask, cx| {
+            if live {
+                ask.refresh_credits(cx)
+            } else {
+                ask.set_provider(provider)
+            }
+        });
         cx.notify();
     }
 
@@ -232,10 +290,13 @@ impl Root {
             Ok((true, models)) if !models.is_empty() => {
                 root.cloud_keep(Provider::Ollama, &models[0], cx)
             }
-            _ => root
-                .account
-                .cloud
-                .say("Ollama is not running here, or it has no model.", true),
+            _ => {
+                root.account
+                    .cloud
+                    .say("Ollama is not running here, or it has no model.", true);
+                // The note is drawn in the Coach section of Settings.
+                root.show_settings_section(1, cx);
+            }
         });
     }
 
@@ -435,6 +496,10 @@ impl Cloud {
         provider
     }
 
+    fn read_model(&self) -> Option<String> {
+        garmin_coach::load_config(&self.db().ok()?).ok()?.1
+    }
+
     /// An empty `model` keeps the model that is saved.
     fn write_provider(&self, provider: Provider, model: &str) -> anyhow::Result<()> {
         let db = self.db()?;
@@ -446,40 +511,52 @@ impl Cloud {
 
 /* ---------------------------------------------------------------- drawing --- */
 
-/// The three cards: the name, a short tag and what the choice means.
-const CHOICES: [(&str, &str, &str, &str, Provider); 3] = [
+/// The four choices: the name and what the choice means.
+pub(crate) const CHOICES: [(&str, &str, &str, Provider); 4] = [
     (
         "coach-cloud",
         "Cloud",
-        "Free credits",
-        "Only the rows that a question needs leave this computer.",
+        "Cloud: only the rows that a question needs leave this computer.",
         Provider::Cloud,
     ),
     (
         "coach-key",
         "Your own key",
-        "OpenRouter",
-        "Questions go to OpenRouter with your key. OpenRouter bills you.",
+        "Your own key: questions go to OpenRouter. OpenRouter bills you.",
         Provider::Openrouter,
     ),
     (
         "coach-ollama",
         "Ollama",
-        "Local",
-        "A model on this computer. No data leaves it.",
+        "Ollama: a model on this computer. No data leaves it.",
         Provider::Ollama,
+    ),
+    (
+        "coach-claude",
+        "Claude Code",
+        "Claude Code: your own claude command answers. It reads your data through this app. No cloud credits.",
+        Provider::ClaudeCode,
     ),
 ];
 
 fn choice(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
-    let mut cards = panel::opts();
-    for (id, name, tag, desc, provider) in CHOICES {
-        let on = root.account.cloud.provider == provider;
-        cards = cards.child(panel::opt(id, name, Some(tag), desc, on, t).on_click(
-            cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
-        ));
+    let current = root.account.cloud.provider;
+    let mut control = panel::seg(t);
+    for (id, name, _, provider) in CHOICES {
+        control = control.child(
+            panel::seg_item(id, name, current == provider, None, t).on_click(
+                cx.listener(move |root, _: &ClickEvent, _, cx| root.cloud_choose(provider, cx)),
+            ),
+        );
     }
-    panel::padded(div()).child(cards)
+    let help = CHOICES.iter().find(|c| c.3 == current).map_or("", |c| c.2);
+    panel::row(
+        true,
+        "Where the model runs",
+        Some(help),
+        panel::stack().child(control),
+        t,
+    )
 }
 
 /// The cloud account section of a demo. No sign-in form: nothing is sent.
@@ -490,7 +567,7 @@ fn form_head(label: &str, help: &str, t: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .child(body(label.to_string(), 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body(label.to_string(), 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(help.to_string(), t))
 }
 
@@ -504,7 +581,7 @@ fn credits(view: &AccountView, t: &Theme) -> Div {
         .items_baseline()
         .gap_x(px(16.0))
         .gap_y(px(6.0))
-        .child(body(view.credits_line.clone(), FS_BASE, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body(view.credits_line.clone(), 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(view.plan_line.clone(), t))
 }
 
@@ -561,7 +638,7 @@ fn signed_in_part(root: &Root, email: &str, t: &Theme, cx: &mut Context<Root>) -
         .flex()
         .flex_col()
         .gap(px(12.0))
-        .child(body(format!("Signed in as {email}."), 14.5, t.fg))
+        .child(body(format!("Signed in as {email}."), 13.0, t.fg))
         .child(panel::actions().child(main).child(out))
 }
 
@@ -636,7 +713,7 @@ fn key_block(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) ->
         .items_center()
         .gap_x(px(12.0))
         .gap_y(px(8.0))
-        .child(body("OpenRouter API key", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body("OpenRouter API key", 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::chip(state, cloud.has_key, t));
     let form = panel::field_line()
         .child(panel::input_box(cloud.key.render(
@@ -676,11 +753,36 @@ fn ollama_block(t: &Theme) -> Div {
         .flex()
         .flex_col()
         .gap(px(10.0))
-        .child(body("Ollama", 14.5, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(body("Ollama", 13.0, t.fg).font_weight(FontWeight::MEDIUM))
         .child(panel::help(
             "A model on this computer. No data leaves it.",
             t,
         ))
+}
+
+/// The model alias, and what the local `claude` command reports.
+fn claude_block(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let cloud = &root.account.cloud;
+    let mut models = panel::seg(t);
+    for alias in CLAUDE_MODELS {
+        models = models.child(
+            panel::seg_item(alias, alias, cloud.claude_model == alias, None, t).on_click(
+                cx.listener(move |root, _: &ClickEvent, _, cx| root.claude_choose_model(alias, cx)),
+            ),
+        );
+    }
+    let status = match &cloud.claude {
+        Some(s) => panel::chip(s.line(), s.ready(), t),
+        None => panel::chip("Checking the claude command...", false, t),
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(10.0))
+        .child(body("Claude Code", 13.0, t.fg).font_weight(FontWeight::MEDIUM))
+        .child(status)
+        .child(panel::help("Model", t))
+        .child(models)
 }
 
 /// The area under the cards: the part of the chosen provider, then the last note.
@@ -690,6 +792,7 @@ fn detail(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Di
         Provider::Cloud => account_block(root, t, window, cx),
         Provider::Openrouter => key_block(root, t, window, cx),
         Provider::Ollama => ollama_block(t),
+        Provider::ClaudeCode => claude_block(root, t, cx),
     };
     let mut area = panel::sub(t).child(part);
     if let Some(n) = &cloud.note {
@@ -699,12 +802,24 @@ fn detail(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Di
     area
 }
 
-/// The Coach section of Settings.
-pub fn render(root: &Root, t: &Theme, window: &Window, cx: &mut Context<Root>) -> Div {
-    let rows = panel::panel(t)
-        .child(choice(root, t, cx))
-        .child(detail(root, t, window, cx));
-    panel::section("Coach", Some("Choose where the coach model runs."), t).child(rows)
+/// The rows of the Coach section of Settings, each with the words that the
+/// search of Settings matches.
+pub fn rows(
+    root: &Root,
+    t: &Theme,
+    window: &Window,
+    cx: &mut Context<Root>,
+) -> Vec<(&'static str, Div)> {
+    vec![
+        (
+            "where the model runs cloud your own key ollama openrouter claude code",
+            choice(root, t, cx),
+        ),
+        (
+            "account credits sign in email code premium billing api key claude model sonnet opus haiku",
+            detail(root, t, window, cx),
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -746,6 +861,8 @@ mod tests {
         assert_eq!(model_for(Provider::Openrouter, Provider::Openrouter), "");
         assert_eq!(model_for(Provider::Ollama, Provider::Openrouter), "");
         assert_eq!(model_for(Provider::Cloud, Provider::Ollama), "");
+        assert_eq!(model_for(Provider::ClaudeCode, Provider::Ollama), "sonnet");
+        assert_eq!(model_for(Provider::ClaudeCode, Provider::ClaudeCode), "");
     }
 
     #[test]

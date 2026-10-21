@@ -30,6 +30,38 @@ pub struct ActivitiesView {
     pub empty: bool,
     /// Newest day first.
     pub groups: Vec<DayGroup>,
+    /// The flat rows for a table, newest first. Only `activities_view_rows`
+    /// fills them. They stay out of the JSON, so the phone sees no change.
+    #[serde(default, skip_serializing)]
+    pub rows: Vec<ActivityRow>,
+    /// The number of cached sessions, with `rows`.
+    #[serde(default, skip_serializing)]
+    pub total: i64,
+    /// The year of the oldest session, with `rows`.
+    #[serde(default, skip_serializing)]
+    pub since_year: Option<i32>,
+}
+
+/// One session as a row of a table. The figures are raw, so a screen can sum
+/// them. The pace is text, because it depends on the sport.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityRow {
+    pub activity_id: i64,
+    /// `YYYY-MM-DD`, or empty when the session has no day.
+    pub date: String,
+    pub name: String,
+    pub sport_label: String,
+    pub distance_m: Option<f64>,
+    pub duration_s: Option<f64>,
+    /// `5:23` for a session on foot. `None` for other sports.
+    pub pace: Option<String>,
+    /// Average speed in km/h for a session on wheels. `None` for other sports.
+    #[serde(default)]
+    pub speed_kmh: Option<f64>,
+    pub avg_hr: Option<f64>,
+    /// Garmin's training load for the session.
+    pub load: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +135,21 @@ pub struct SetRow {
     pub rest: Option<String>,
     /// The watch guess, such as "Bench press (guess)". Often empty.
     pub exercise: Option<String>,
+    /// The load of the set, such as "40 kg". Often empty.
+    #[serde(default, skip_serializing)]
+    pub weight: Option<String>,
+}
+
+/// One movement over the session, from the watch guesses.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExerciseSummary {
+    pub name: String,
+    pub sets: usize,
+    pub reps: i64,
+    /// Reps times load, in kg. `None` when no set has a load.
+    pub volume_kg: Option<f64>,
+    pub top_kg: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +157,11 @@ pub struct SetRow {
 pub struct StrengthBlock {
     pub sentence: String,
     pub sets: Vec<SetRow>,
+    #[serde(default, skip_serializing)]
+    pub exercises: Vec<ExerciseSummary>,
+    /// Work sets by muscle group, most sets first.
+    #[serde(default, skip_serializing)]
+    pub muscles: Vec<(String, usize)>,
 }
 
 /// Evenly spaced samples. A `None` is a gap in the line.
@@ -119,6 +171,12 @@ pub struct Chart {
     pub hr: Vec<Option<f64>>,
     /// Empty when the session has no elevation.
     pub elevation: Vec<Option<f64>>,
+    /// Minutes per kilometre. Empty when the session has none.
+    #[serde(default, skip_serializing)]
+    pub pace: Vec<Option<f64>>,
+    /// Empty when the session has none.
+    #[serde(default, skip_serializing)]
+    pub cadence: Vec<Option<f64>>,
     /// The length of the session, for the axis, such as "42 min".
     pub span: String,
 }
@@ -132,6 +190,9 @@ pub struct ActivityDetailView {
     pub family: Family,
     /// For example "Wed 11 Mar, 07:15".
     pub when: String,
+    /// `YYYY-MM-DD`, or empty.
+    #[serde(default, skip_serializing)]
+    pub date: String,
     pub stats: Vec<Stat>,
     pub zones: Option<ZoneBlock>,
     pub laps: Vec<LapRow>,
@@ -265,11 +326,53 @@ pub fn group_by_day(
     groups
 }
 
+fn activity_row(a: &CachedActivity) -> ActivityRow {
+    let key = a.type_key.as_deref();
+    ActivityRow {
+        activity_id: a.activity_id,
+        date: day_of(a).map_or_else(String::new, |d| d.format("%Y-%m-%d").to_string()),
+        name: session_name(a),
+        sport_label: sport_label(key),
+        distance_m: a.distance_m.filter(|d| *d >= 100.0),
+        duration_s: a.duration_s.filter(|d| *d > 0.0),
+        pace: a.pace_min_per_km().filter(|_| on_foot(key)).map(pace_text),
+        speed_kmh: a
+            .pace_min_per_km()
+            .filter(|p| *p > 0.0 && is_wheeled(key))
+            .map(|p| 60.0 / p),
+        avg_hr: a.avg_hr.filter(|h| *h > 0.0),
+        load: a.training_load.filter(|l| *l > 0.0),
+    }
+}
+
 /// The list of recent sessions, grouped by day, newest first.
 pub fn activities_view(db: &Db, today: NaiveDate, limit: u32) -> Result<ActivitiesView, ApiError> {
-    let rows = db.recent_activities(limit, None)?;
-    let mut cards = Vec::with_capacity(rows.len());
-    for a in &rows {
+    activities_view_rows(db, today, limit, 0)
+}
+
+/// As `activities_view`, with the flat `rows` of the newest `row_limit`
+/// sessions, the total and the first year. One query reads the sessions.
+pub fn activities_view_rows(
+    db: &Db,
+    today: NaiveDate,
+    limit: u32,
+    row_limit: u32,
+) -> Result<ActivitiesView, ApiError> {
+    let rows = db.recent_activities(limit.max(row_limit), None)?;
+    let flat: Vec<ActivityRow> = rows
+        .iter()
+        .take(row_limit as usize)
+        .map(activity_row)
+        .collect();
+    let (total, since_year) = if row_limit > 0 {
+        let first = db.earliest_activity_date()?;
+        let year = first.and_then(|d| d.get(..4)?.parse().ok());
+        (db.activity_count()?, year)
+    } else {
+        (0, None)
+    };
+    let mut cards = Vec::with_capacity(limit as usize);
+    for a in rows.iter().take(limit as usize) {
         // Only a gym card needs the sets.
         let sets = if family(a.type_key.as_deref()) == Family::Gym {
             db.exercise_sets(a.activity_id)?
@@ -281,6 +384,9 @@ pub fn activities_view(db: &Db, today: NaiveDate, limit: u32) -> Result<Activiti
     Ok(ActivitiesView {
         empty: rows.is_empty(),
         groups: group_by_day(cards, today),
+        rows: flat,
+        total,
+        since_year,
     })
 }
 
@@ -327,6 +433,12 @@ fn stats(a: &CachedActivity) -> Vec<Stat> {
             a.distance_m.filter(|d| *d >= 100.0).map(km_text),
         ),
         stat("Time", secs.map(duration_text)),
+        stat(
+            "Elapsed time",
+            a.duration_s
+                .filter(|d| a.moving_duration_s.is_some_and(|m| *d - m > 60.0))
+                .map(duration_text),
+        ),
         rate_stat(a),
         stat("Avg HR", a.avg_hr.map(|h| format!("{} bpm", num(h)))),
         stat("Max HR", a.max_hr.map(|h| format!("{} bpm", num(h)))),
@@ -341,6 +453,10 @@ fn stats(a: &CachedActivity) -> Vec<Stat> {
         stat("Calories", a.calories.map(|c| format!("{} kcal", num(c)))),
         stat("Aerobic TE", a.aerobic_te.map(|t| format!("{t:.1}"))),
         stat("Anaerobic TE", a.anaerobic_te.map(|t| format!("{t:.1}"))),
+        stat(
+            "Training load",
+            a.training_load.filter(|l| *l > 0.0).map(num),
+        ),
     ]
     .into_iter()
     .flatten()
@@ -421,6 +537,8 @@ fn chart(analysis: &analysis::ActivityAnalysis) -> Option<Chart> {
     Some(Chart {
         hr,
         elevation: thin(&analysis.series.elevation_m),
+        pace: thin(&analysis.series.pace_min_km),
+        cadence: thin(&analysis.series.cadence),
         span,
     })
 }
@@ -451,6 +569,10 @@ fn strength_block(sets: &[ExerciseSet]) -> Option<StrengthBlock> {
                     .exercise
                     .as_deref()
                     .map(|e| format!("{} (guess)", exercise_name(e))),
+                weight: s
+                    .weight_kg
+                    .filter(|w| *w > 0.0)
+                    .map(|w| format!("{} kg", num(w))),
             });
         } else if let Some(last) = rows.last_mut() {
             last.rest = s.duration_s.map(duration_text_exact);
@@ -459,7 +581,57 @@ fn strength_block(sets: &[ExerciseSet]) -> Option<StrengthBlock> {
     Some(StrengthBlock {
         sentence,
         sets: rows,
+        exercises: exercise_summaries(sets),
+        muscles: muscle_sets(sets),
     })
+}
+
+/// The work sets by movement, most sets first.
+fn exercise_summaries(sets: &[ExerciseSet]) -> Vec<ExerciseSummary> {
+    let mut out: Vec<ExerciseSummary> = Vec::new();
+    for s in sets.iter().filter(|s| s.active) {
+        let Some(raw) = s.exercise.as_deref() else {
+            continue;
+        };
+        let name = exercise_name(raw);
+        let at = out.iter().position(|e| e.name == name).unwrap_or_else(|| {
+            out.push(ExerciseSummary {
+                name,
+                sets: 0,
+                reps: 0,
+                volume_kg: None,
+                top_kg: None,
+            });
+            out.len() - 1
+        });
+        let e = &mut out[at];
+        let reps = s.reps.unwrap_or(0);
+        e.sets += 1;
+        e.reps += reps;
+        if let Some(w) = s.weight_kg.filter(|w| *w > 0.0) {
+            e.volume_kg = Some(e.volume_kg.unwrap_or(0.0) + w * reps as f64);
+            e.top_kg = Some(e.top_kg.map_or(w, |t| t.max(w)));
+        }
+    }
+    out.sort_by(|a, b| b.sets.cmp(&a.sets).then(a.name.cmp(&b.name)));
+    out
+}
+
+/// The work sets by muscle group, most sets first.
+fn muscle_sets(sets: &[ExerciseSet]) -> Vec<(String, usize)> {
+    let mut out: Vec<(String, usize)> = Vec::new();
+    let named = sets
+        .iter()
+        .filter(|s| s.active)
+        .filter_map(|s| crate::charts::muscle_group(s.exercise.as_deref()?));
+    for group in named {
+        match out.iter_mut().find(|(g, _)| g == group) {
+            Some((_, n)) => *n += 1,
+            None => out.push((group.to_string(), 1)),
+        }
+    }
+    out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    out
 }
 
 /// The cached analysis of a session, or `None` when it was never computed or
@@ -503,6 +675,7 @@ pub fn activity_detail_view(
         sport_label: sport_label(a.type_key.as_deref()),
         family: fam,
         when,
+        date: day_of(&a).map_or_else(String::new, |d| d.format("%Y-%m-%d").to_string()),
         stats: stats(&a),
         zones: zone_block(&a),
         laps: analysis
@@ -554,6 +727,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         }
     }
 
@@ -605,6 +779,26 @@ mod tests {
         assert_eq!(cadence_unit(Some("indoor_rowing")), None);
         assert_eq!(cadence_unit(Some("motorcycling_v2")), None);
         assert_eq!(rate_text(Some("indoor_rowing"), 2.0), None);
+    }
+
+    #[test]
+    fn a_row_has_a_speed_only_on_wheels() {
+        let ride = activity_row(&session("cycling"));
+        assert!(ride.speed_kmh.is_some_and(|s| s > 0.0));
+        assert_eq!(activity_row(&session("running")).speed_kmh, None);
+        assert_eq!(activity_row(&session("strength_training")).speed_kmh, None);
+    }
+
+    #[test]
+    fn a_row_has_a_pace_only_on_foot() {
+        assert_eq!(
+            activity_row(&session("running")).pace.as_deref(),
+            Some("2:00")
+        );
+        assert_eq!(activity_row(&session("cycling")).pace, None);
+        let mut load = session("running");
+        load.training_load = Some(96.0);
+        assert_eq!(activity_row(&load).load, Some(96.0));
     }
 
     #[test]

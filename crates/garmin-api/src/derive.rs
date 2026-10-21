@@ -308,6 +308,9 @@ pub struct Observation {
     pub spark_unit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<Link>,
+    /// The id of the Insights item that tells more about this note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight: Option<String>,
 }
 
 fn note(accent: bool, text: String) -> Observation {
@@ -317,7 +320,13 @@ fn note(accent: bool, text: String) -> Observation {
         spark: None,
         spark_unit: None,
         link: None,
+        insight: None,
     }
+}
+
+fn with_insight(mut o: Observation, id: &str) -> Observation {
+    o.insight = Some(id.into());
+    o
 }
 
 fn with_link(mut o: Observation, label: &str, to: &str) -> Observation {
@@ -378,7 +387,10 @@ fn resting_hr_note(daily: &[DailyMetrics]) -> Option<Observation> {
         recent.len()
     );
     let o = with_spark(note(true, text), &rhr, "bpm");
-    Some(with_link(o, "Ask about this", "/ask"))
+    Some(with_insight(
+        with_link(o, "Ask about this", "/ask"),
+        "recovery-drivers",
+    ))
 }
 
 /// HRV falling over the last five nights against the fortnight before.
@@ -397,7 +409,10 @@ fn hrv_note(daily: &[DailyMetrics]) -> Option<Observation> {
     let text = format!(
         "HRV has averaged {recent:.0} ms over the last five nights, down from {prior:.0} ms in the fortnight before."
     );
-    Some(with_spark(note(true, text), &hrv, "ms"))
+    Some(with_insight(
+        with_spark(note(true, text), &hrv, "ms"),
+        "recovery-drivers",
+    ))
 }
 
 /// Zone drift: too much of the recent running was above Z2.
@@ -407,7 +422,10 @@ fn zone_drift_note(runs: &[&CachedActivity]) -> Option<Observation> {
         "{:.0}% of your last {} runs with heart-rate data was above Z2. The 80/20 target is 20%.",
         split.hard_pct, split.counted
     );
-    Some(with_link(note(true, text), "Insights", "/insights"))
+    Some(with_insight(
+        with_link(note(true, text), "Insights", "/insights"),
+        "hard-runs",
+    ))
 }
 
 fn cadence_note(runs: &[&CachedActivity]) -> Option<Observation> {
@@ -420,9 +438,12 @@ fn cadence_note(runs: &[&CachedActivity]) -> Option<Observation> {
         return None;
     }
     let avg = mean(low)?;
-    Some(note(
-        false,
-        format!("Cadence is averaging {avg:.0} spm across your recent runs. Quicker, lighter steps nearer 170 cut joint load."),
+    Some(with_insight(
+        note(
+            false,
+            format!("Cadence is averaging {avg:.0} spm across your recent runs. Quicker, lighter steps nearer 170 cut joint load."),
+        ),
+        "low-cadence",
     ))
 }
 
@@ -509,6 +530,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: zones,
+            training_load: None,
         }
     }
 

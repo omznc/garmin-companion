@@ -1246,6 +1246,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: zones,
+            training_load: None,
         }
     }
 

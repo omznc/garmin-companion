@@ -51,6 +51,28 @@ pub enum Source {
     },
 }
 
+impl Source {
+    /// The same source, read for `day`. The real today keeps the shipped
+    /// source. A persona is fixed and keeps its day.
+    pub fn on_day(&self, day: NaiveDate) -> Source {
+        match self {
+            Source::Default if day == chrono::Local::now().date_naive() => Source::Default,
+            Source::Default => match garmin_core::db::default_path() {
+                Some(path) => Source::Db {
+                    path,
+                    date: Some(day),
+                },
+                None => Source::Default,
+            },
+            Source::Db { path, .. } => Source::Db {
+                path: path.clone(),
+                date: Some(day),
+            },
+            Source::Persona(name) => Source::Persona(name.clone()),
+        }
+    }
+}
+
 /// A piece of a metric value. A unit draws smaller, as in "6h 24m".
 #[derive(Debug, Clone, PartialEq)]
 pub struct Part {
@@ -78,6 +100,8 @@ pub struct Attention {
     /// A missing day is `None`, and the chart leaves a gap there.
     pub spark: Vec<Option<f32>>,
     pub link: Option<Link>,
+    /// The id of the Insights item that tells more about this note.
+    pub insight: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -88,7 +112,15 @@ pub struct Stat {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Session {
+    pub id: i64,
     pub name: String,
+    /// The sport, such as "Easy run".
+    pub sport: String,
+    /// When it started, such as "Mon 19 Oct, 07:12".
+    pub when: Option<String>,
+    /// Seconds in each of Z1 to Z5, when the zone verdict suits.
+    pub zone_secs: Option<[f32; 5]>,
+    pub max_hr: Option<f32>,
     pub detail: String,
     /// Percent of the time in each of Z1 to Z5. `None` for a session that a
     /// zone verdict does not suit, or one with no heart rate data.
@@ -108,6 +140,8 @@ pub struct DriftRun {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Drift {
+    /// The mean share above Z2 of the newest runs.
+    pub recent_avg: Option<f32>,
     /// What the bars count, such as "runs". It comes from `ZoneDrift.noun` in
     /// the API, so the screen has no sport words of its own.
     pub noun: String,
@@ -124,6 +158,8 @@ pub struct Week {
     /// One axis label for each day.
     pub axis: Vec<String>,
     pub summary: String,
+    pub sessions: usize,
+    pub total_minutes: f32,
     /// The distance of the week, such as "27.7 km". Only a user with distance has it.
     pub distance: Option<String>,
 }
@@ -134,6 +170,25 @@ pub struct Fuel {
     /// The balance as a tile. `None` when no day has a balance.
     pub tile: Option<Metric>,
     pub note: String,
+    /// The day of the log: "today", "yesterday" or "3 days ago".
+    pub when: String,
+    pub eaten: Option<f32>,
+    pub burned: Option<f32>,
+}
+
+/// One of the vital signs of this morning.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Vital {
+    /// The key of its series in the Health view: `resting_hr`, `hrv`,
+    /// `body_battery`, `stress`, or `sleep`.
+    pub key: &'static str,
+    pub label: String,
+    pub value: String,
+    pub unit: Option<String>,
+    /// A line under the figure, such as "+5 vs 30 days".
+    pub sub: Option<String>,
+    /// Only a worse than usual figure takes the accent colour.
+    pub accent: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,6 +206,8 @@ pub struct Today {
     pub sections: Vec<String>,
     /// The health tiles that have a figure. A user without the sensor gets no tile.
     pub metrics: Vec<Metric>,
+    /// The vital signs that have a figure, in the order of the Today block.
+    pub vitals: Vec<Vital>,
     pub fuel: Option<Fuel>,
     pub weight_note: Option<String>,
     pub attention: Vec<Attention>,
@@ -164,7 +221,8 @@ pub fn load_today(source: &Source) -> Result<Today> {
     match source {
         Source::Default => {
             let db = garmin_api::open_default_db().context("cannot open the cache")?;
-            let view = garmin_api::today_view(&db, chrono::Local::now().date_naive())
+            let day = chrono::Local::now().date_naive();
+            let view = garmin_core::with_as_of(day, || garmin_api::today_view(&db, day))
                 .context("cannot build the Today view")?;
             Ok(crate::map::today(&view, None))
         }
@@ -182,7 +240,8 @@ pub fn load_today(source: &Source) -> Result<Today> {
             ensure!(path.is_file(), "no cache copy at {}", path.display());
             let db = garmin_api::open_db(path).context("cannot open the cache copy")?;
             let today = date.unwrap_or_else(|| chrono::Local::now().date_naive());
-            let view = garmin_api::today_view(&db, today).context("cannot build the Today view")?;
+            let view = garmin_core::with_as_of(today, || garmin_api::today_view(&db, today))
+                .context("cannot build the Today view")?;
             Ok(crate::map::today(&view, None))
         }
     }

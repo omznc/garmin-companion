@@ -71,7 +71,8 @@
         800.0,
         0.0,
         0.0
-      ]
+      ],
+      "trainingLoad": null
     },
     "hasZoneData": true,
     "aboveZ2Pct": 5.405405405405405,
@@ -134,5 +135,10 @@
     "health_tiles",
     "last_session",
     "week"
-  ]
+  ],
+  "headline": {
+    "tone": "go",
+    "verdict": "Recovered. Go ahead as planned.",
+    "detail": "Your resting heart rate is at your baseline or below and you slept 7h 00m."
+  }
 }

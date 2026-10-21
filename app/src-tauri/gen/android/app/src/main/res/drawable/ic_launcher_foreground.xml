@@ -1,26 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Foreground layer of the adaptive launcher icon: the gauge from
-  `src-tauri/icons/icon.svg`, minus the rounded-square plate (that's the
-  background layer's job now).
+  Foreground layer of the adaptive launcher icon: the Horizon mark from
+  `src-tauri/icons/icon.svg`, minus the rounded-square tile (the background
+  layer draws the colour).
 
-  Hand-written, and `pnpm tauri icon` does not touch it. That command only
-  writes the raster mipmaps, and the one it calls `ic_launcher_foreground.png`
-  is the full-bleed artwork — correct as a legacy icon, wrong as a foreground,
-  because a launcher masks this layer down to the middle 72 of 108dp and would
-  cut the arc's shoulders off.
+  Written by hand. `pnpm tauri icon` does not touch it. The viewport is the
+  1024 grid of the artwork, so the four paths are copies of the SVG. The group
+  scales the grid so the mark is 60dp wide and sits in the centre. The launcher
+  shows the middle 72dp of the 108dp, and Android keeps the middle 66dp safe.
 
-  The viewport is the artwork's own 1024 grid so the two paths below are
-  verbatim copies of the SVG. The group shrinks that grid until the gauge —
-  696 units across, being 2 × (r 300 + half of the 96 stroke) — lands at 54dp:
+      scale       = (60 / 108) x 1024 / 664 = 0.8567
+      translate x = 512 x (1 - 0.8567)      = 73.4
+      translate y = 512 - 608 x 0.8567      = -8.9
 
-      scale     = (54 / 108) × 1024 / 696 = 0.7356
-      translate = (1024 − 1024 × 0.7356) / 2 = 135.4
-
-  That's three quarters of the 72dp a mask shows, and clear of the 66dp circle
-  Android guarantees. It reads a shade bigger than the mark does on the desktop
-  plate, which is deliberate: a round mask eats the corner air a rounded square
-  gives away for free, so matching the ratio exactly would look shrunken.
+  The mark spans x 180 to 844 and y 372 to 844 in the grid. Its centre is
+  (512, 608).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -28,21 +22,27 @@
     android:viewportWidth="1024"
     android:viewportHeight="1024">
     <group
-        android:scaleX="0.7356"
-        android:scaleY="0.7356"
-        android:translateX="135.4"
-        android:translateY="135.4">
-        <!-- Track: 135° → 405°, the unfilled remainder of the gauge. -->
+        android:scaleX="0.8567"
+        android:scaleY="0.8567"
+        android:translateX="73.4"
+        android:translateY="-8.9">
         <path
-            android:pathData="M 299.87 724.13 A 300 300 0 1 1 724.13 724.13"
-            android:strokeColor="#4a453c"
-            android:strokeWidth="96"
+            android:pathData="M 292 592 A 220 220 0 0 1 732 592 Z"
+            android:fillColor="#c97354" />
+        <path
+            android:pathData="M 212 592 H 812"
+            android:strokeColor="#ede8de"
+            android:strokeWidth="64"
             android:strokeLineCap="round" />
-        <!-- Fill: the same arc stopped at 62%, in accent. -->
         <path
-            android:pathData="M 299.87 724.13 A 300 300 0 0 1 672.70 258.70"
-            android:strokeColor="#c97354"
-            android:strokeWidth="96"
+            android:pathData="M 312 712 H 712"
+            android:strokeColor="#4a453c"
+            android:strokeWidth="56"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M 412 816 H 612"
+            android:strokeColor="#4a453c"
+            android:strokeWidth="56"
             android:strokeLineCap="round" />
     </group>
 </vector>

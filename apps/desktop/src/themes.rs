@@ -90,7 +90,8 @@ impl Themes {
         };
         let mut search = Field::new("Search open-vsx, for example nord", false, cx);
         search.sans = true;
-        search.pad_left = 34.0;
+        search.pad_left = 30.0;
+        search.flat = true;
         Self {
             light: saved(&prefs.theme_light, &custom, false),
             dark: saved(&prefs.theme_dark, &custom, true),

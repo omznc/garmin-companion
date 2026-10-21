@@ -55,14 +55,96 @@
                   5.658914728682171,
                   5.833333333333333
                 ],
-                "muted": false
+                "muted": false,
+                "invert": true,
+                "format": "pace"
               }
             ],
             "ends": [
               "2025-09-30",
               "2026-03-11"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11",
+            "labels": [
+              "2025-09-30",
+              "2025-10-06",
+              "2025-10-12",
+              "2025-10-18",
+              "2025-10-24",
+              "2025-10-30",
+              "2025-11-05",
+              "2025-11-11",
+              "2025-11-17",
+              "2025-11-23",
+              "2025-11-29",
+              "2025-12-05",
+              "2025-12-11",
+              "2025-12-17",
+              "2025-12-23",
+              "2025-12-29",
+              "2026-01-04",
+              "2026-01-10",
+              "2026-01-16",
+              "2026-01-22",
+              "2026-01-28",
+              "2026-02-03",
+              "2026-02-09",
+              "2026-02-15",
+              "2026-02-21",
+              "2026-02-23",
+              "2026-02-25",
+              "2026-02-27",
+              "2026-03-01",
+              "2026-03-03",
+              "2026-03-05",
+              "2026-03-07",
+              "2026-03-09",
+              "2026-03-11"
+            ],
+            "estimate": {
+              "value": 1.9529095991284995,
+              "low": 1.7860849340511764,
+              "high": 2.132494189041679,
+              "n": 34
+            },
+            "action": "Compare runs at a similar effort, not at a similar pace. Keep the easy runs easy so the comparison stays fair.",
+            "sessions": [
+              9000123,
+              9000122,
+              9000121,
+              9000120,
+              9000119,
+              9000118,
+              9000117,
+              9000116,
+              9000115,
+              9000114,
+              9000113,
+              9000112,
+              9000111,
+              9000110,
+              9000109,
+              9000108,
+              9000107,
+              9000106,
+              9000105,
+              9000104,
+              9000103,
+              9000102,
+              9000101,
+              9000100,
+              9000009,
+              9000008,
+              9000007,
+              9000006,
+              9000005,
+              9000004,
+              9000003,
+              9000002,
+              9000001,
+              9000000
+            ]
           }
         ]
       },
@@ -89,14 +171,29 @@
                   61.65767199788957,
                   54.23340961098398
                 ],
-                "muted": false
+                "muted": false,
+                "invert": false,
+                "format": "pct"
               }
             ],
             "ends": [
               "Sep",
               "Mar"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11",
+            "labels": [
+              "Sep",
+              "Oct",
+              "Nov",
+              "Dec",
+              "Jan",
+              "Feb",
+              "Mar"
+            ],
+            "estimate": null,
+            "action": "Make the easy sessions easier. Keep most of your time in the low heart-rate zones and keep the hard days few.",
+            "sessions": []
           }
         ]
       },
@@ -139,14 +236,21 @@
                   235.0,
                   121.0
                 ],
-                "muted": false
+                "muted": false,
+                "invert": false,
+                "format": null
               }
             ],
             "ends": [
               "22 Dec",
               "09 Mar"
             ],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11",
+            "labels": [],
+            "estimate": null,
+            "action": null,
+            "sessions": []
           }
         ]
       },
@@ -163,7 +267,12 @@
             "figures": [],
             "series": [],
             "ends": [],
-            "rows": []
+            "rows": [],
+            "firstSeen": "2026-03-11",
+            "labels": [],
+            "estimate": null,
+            "action": null,
+            "sessions": []
           }
         ]
       }
@@ -370,7 +479,15 @@
           "distance": "6.5 km",
           "duration": "37 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 41.0,
+        "priorAvgHrv": 50.285714285714285,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -476,7 +593,15 @@
           "distance": "7.8 km",
           "duration": "41 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 50.285714285714285,
+        "priorAvgHrv": 53.714285714285715,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -590,7 +715,15 @@
           "distance": "6.6 km",
           "duration": "37 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.714285714285715,
+        "priorAvgHrv": 54.142857142857146,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -675,7 +808,15 @@
           "distance": "7.0 km",
           "duration": "39 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.142857142857146,
+        "priorAvgHrv": 53.857142857142854,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -768,7 +909,15 @@
           "distance": "7.0 km",
           "duration": "42 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 53.857142857142854,
+        "priorAvgHrv": 54.285714285714285,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -853,7 +1002,15 @@
           "distance": "8.0 km",
           "duration": "49 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.285714285714285,
+        "priorAvgHrv": 54.0,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -938,7 +1095,15 @@
           "distance": "6.0 km",
           "duration": "36 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": 54.0,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1018,7 +1183,15 @@
           "distance": "7.0 km",
           "duration": "43 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1098,7 +1271,15 @@
           "distance": "8.0 km",
           "duration": "50 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1178,7 +1359,15 @@
           "distance": "6.0 km",
           "duration": "38 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1266,7 +1455,15 @@
           "distance": "8.0 km",
           "duration": "52 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1346,7 +1543,15 @@
           "distance": "6.0 km",
           "duration": "39 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1426,7 +1631,15 @@
           "distance": "7.0 km",
           "duration": "46 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1506,7 +1719,15 @@
           "distance": "8.0 km",
           "duration": "53 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1586,7 +1807,15 @@
           "distance": "6.0 km",
           "duration": "40 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1666,7 +1895,15 @@
           "distance": "7.0 km",
           "duration": "47 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     },
     {
       "date": "2026-03-11",
@@ -1754,7 +1991,15 @@
           "distance": "6.0 km",
           "duration": "41 min"
         }
-      ]
+      ],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     }
   ]
 }

@@ -28,8 +28,12 @@ mod account;
 mod activities;
 mod appearance;
 mod ask;
+mod blocks;
 mod body;
+mod calendar;
+mod charts;
 mod chrome;
+mod claude_code;
 mod cloud;
 mod command_palette;
 mod commands;
@@ -38,59 +42,68 @@ mod controls;
 mod data;
 mod editor;
 mod field;
+mod focus;
 mod fuzzy;
 mod icons;
+mod insight;
 mod instance;
+mod kit;
 mod map;
 mod markdown;
+mod mcp;
 mod motion;
 mod openvsx;
 mod panel;
+mod panes;
 mod places;
+mod scale;
+mod screen;
 mod scroll;
 mod settings;
 mod setup;
 mod shell;
 mod sidebar;
 mod spring;
+mod statusbar;
+mod statusmenu;
+mod tabs;
 mod theme;
 mod theme_dialog;
 mod themes;
-mod today;
+mod titlebar;
 mod training;
 mod ui;
 mod update_ui;
 mod updater;
 mod updater_pkg;
+mod views;
 mod vscode;
 mod wellness;
+mod window;
 
 use std::borrow::Cow;
 
 use anyhow::Context as _;
 
+use crate::scale::px;
 use gpui::{
-    point, px, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds,
-    WindowDecorations, WindowOptions,
+    point, size, App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowDecorations,
+    WindowOptions,
 };
 
 use data::Source;
 use theme::Palette;
 
-/// The fonts of the current app, in the binary. They are static TrueType
-/// instances of the upstream variable fonts, with the Latin Extended-A glyphs
-/// that Bosnian names need.
-const FONTS: [&[u8]; 7] = [
-    include_bytes!("../assets/fonts/InstrumentSans-Regular.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSans-Medium.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSans-SemiBold.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSerif-Regular.ttf"),
-    include_bytes!("../assets/fonts/InstrumentSerif-Italic.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-Regular.ttf"),
-    include_bytes!("../assets/fonts/GeistMono-Medium.ttf"),
+/// The fonts of the design, in the binary. IBM Plex is static TrueType from the
+/// IBM release (SIL OFL). It has the Latin Extended-A glyphs that Bosnian names need.
+const FONTS: [&[u8]; 5] = [
+    include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexSans-Medium.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf"),
+    include_bytes!("../assets/fonts/IBMPlexMono-Medium.ttf"),
 ];
 
-const DEFAULT_SIZE: (f32, f32) = (1100.0, 780.0);
 const MIN_SIZE: (f32, f32) = (720.0, 540.0);
 
 /// The value after `flag` in the arguments, if there is one. Another flag is not a value.
@@ -132,7 +145,8 @@ fn parse_palette(name: &str) -> Option<Palette> {
 struct Cli {
     palette: Palette,
     explicit_palette: bool,
-    size: (f32, f32),
+    /// The size from `--size`. Without it the saved or the default size applies.
+    size: Option<(f32, f32)>,
     source: Source,
     screen: Option<String>,
     start_activity: Option<i64>,
@@ -141,15 +155,27 @@ struct Cli {
     draft: Option<String>,
     start_sync: bool,
     background: bool,
+    /// The focus to start with, from `--focus YYYY-MM-DD[..YYYY-MM-DD]`.
+    focus: Option<focus::Focus>,
+}
+
+/// A day, or two days with `..` between them.
+fn parse_focus(text: &str) -> anyhow::Result<focus::Focus> {
+    let day = |d: &str| {
+        d.parse::<chrono::NaiveDate>()
+            .with_context(|| format!("--focus needs YYYY-MM-DD[..YYYY-MM-DD], got {text}"))
+    };
+    match text.split_once("..") {
+        Some((a, b)) => Ok(focus::Focus::range(day(a)?, day(b)?)),
+        None => Ok(focus::Focus::day(day(text)?)),
+    }
 }
 
 fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
     let palette = option(args, "--palette")
         .and_then(|n| parse_palette(&n))
         .unwrap_or(Palette::Paper);
-    let size = option(args, "--size")
-        .and_then(|s| parse_size(&s))
-        .unwrap_or(DEFAULT_SIZE);
+    let size = option(args, "--size").and_then(|s| parse_size(&s));
     let db = required(args, "--db")?;
     let date = required(args, "--date")?
         .map(|d| {
@@ -164,9 +190,7 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
     };
     if let Some(name) = &screen {
         anyhow::ensure!(
-            sidebar::NAV
-                .iter()
-                .any(|(l, _)| l.eq_ignore_ascii_case(name)),
+            screen::Screen::from_label(name).is_some(),
             "--screen {name} is not a screen"
         );
     }
@@ -198,6 +222,9 @@ fn parse_args(args: &[String]) -> anyhow::Result<Cli> {
         draft: required(args, "--draft")?,
         start_sync: args.iter().any(|a| a == "--sync"),
         background: args.iter().any(|a| a == "--background"),
+        focus: required(args, "--focus")?
+            .map(|f| parse_focus(&f))
+            .transpose()?,
     })
 }
 
@@ -239,6 +266,10 @@ fn empty_body() -> anyhow::Result<body::BodyData> {
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    // The MCP server first: stdout is its transport, and it is not an app start.
+    if args.get(1).is_some_and(|a| a == "mcp") {
+        return mcp::run(&args[2..]);
+    }
     #[cfg(debug_assertions)]
     if args.iter().any(|a| a == "--update-selftest") {
         return updater::selftest();
@@ -250,7 +281,7 @@ fn main() -> anyhow::Result<()> {
     let Cli {
         palette,
         explicit_palette,
-        size: (width, height),
+        size: wanted_size,
         source,
         screen,
         start_activity,
@@ -259,6 +290,7 @@ fn main() -> anyhow::Result<()> {
         draft,
         start_sync,
         background,
+        focus,
     } = parse_args(&args)?;
     if let Some(spec) = coach {
         let Source::Db { path, .. } = &source else {
@@ -316,7 +348,24 @@ fn main() -> anyhow::Result<()> {
             })
             .detach();
 
-            let bounds = Bounds::centered(None, size(px(width), px(height)), cx);
+            // A demo reads and writes no saved state.
+            let demo = !matches!(source, data::Source::Default);
+            let saved = if demo {
+                window::State::default()
+            } else {
+                window::State::load()
+            };
+            scale::set(saved.scale);
+            // For screenshots: `GC_SCALE=1.25` starts at a scale.
+            #[cfg(debug_assertions)]
+            if let Some(factor) = std::env::var("GC_SCALE").ok().and_then(|v| v.parse().ok()) {
+                scale::set(factor);
+            }
+            let min = (MIN_SIZE.0 * scale::get(), MIN_SIZE.1 * scale::get());
+            let visible = cx
+                .primary_display()
+                .map_or(Bounds::default(), |d| d.visible_bounds());
+            let bounds = window::start_bounds(&saved, wanted_size, visible, min);
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(MIN_SIZE.0), px(MIN_SIZE.1))),
@@ -332,7 +381,6 @@ fn main() -> anyhow::Result<()> {
                 app_id: Some("garmin-companion".into()),
                 ..Default::default()
             };
-            let demo = !matches!(source, data::Source::Default);
             let account = account::Account::new(demo, cx);
             // A palette from the command line wins. Otherwise the saved mode picks.
             let palette = if explicit_palette {
@@ -356,16 +404,43 @@ fn main() -> anyhow::Result<()> {
                     .detach();
                     let ask = shell::new_ask(ask_start, palette, cx);
                     let mut root =
-                        shell::Root::new(today, palette, store, body, source, account, ask);
+                        shell::Root::new(today, palette, store, body, source, account, ask, saved);
                     if let Some(wellness) = wellness {
                         root = root.with_wellness(wellness);
                     }
                     if let Some(training) = training {
                         root = root.with_training(training);
                     }
+                    if let Some(focus) = focus {
+                        root.set_focus(focus, cx);
+                    }
                     root.start(cx);
+                    // For screenshots: `GC_OPEN_CALENDAR=1` opens the breadcrumb popover.
+                    #[cfg(debug_assertions)]
+                    if std::env::var("GC_OPEN_CALENDAR").is_ok() {
+                        root.toggle_calendar_popover(window, cx);
+                    }
                     if let Some(name) = &screen {
                         root.open(name, cx);
+                    }
+                    // For screenshots: `GC_EDIT_LAYOUT=<n>` starts the edit mode of Today
+                    // with card `n` selected. A value that is not a number selects none.
+                    #[cfg(debug_assertions)]
+                    if let Ok(value) = std::env::var("GC_EDIT_LAYOUT") {
+                        root.start_edit(value.parse().ok(), window, cx);
+                    }
+                    // For screenshots: `GC_SETTINGS_PAGE=2` picks the Appearance section.
+                    #[cfg(debug_assertions)]
+                    if let Some(at) = std::env::var("GC_SETTINGS_PAGE")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                    {
+                        root.account.settings_page = at;
+                    }
+                    // For screenshots: `GC_OPEN_INSIGHT=<id>` opens the detail of an item.
+                    #[cfg(debug_assertions)]
+                    if let Ok(id) = std::env::var("GC_OPEN_INSIGHT") {
+                        root.open_insight(id, cx);
                     }
                     if let Some(id) = start_activity {
                         root.start_at_activity(id, cx);
@@ -374,10 +449,19 @@ fn main() -> anyhow::Result<()> {
                         root.start_sync(false, cx);
                     }
                     root.watch_for_updates(cx);
+                    root.watch_window(window, cx);
                     // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
                     #[cfg(debug_assertions)]
                     if let Ok(query) = std::env::var("GC_OPEN_PALETTE") {
                         root.toggle_palette(&query, window, cx);
+                    }
+                    // `GC_OPEN_STATUS_MENU=sync|coach|palette|version` opens a status bar menu.
+                    #[cfg(debug_assertions)]
+                    if let Some(kind) = std::env::var("GC_OPEN_STATUS_MENU")
+                        .ok()
+                        .and_then(|v| statusmenu::MenuKind::from_name(&v))
+                    {
+                        root.toggle_status_menu(kind, window, cx);
                     }
                     // `GC_OPEN_THEMES=<query>` opens the theme dialog and runs the search.
                     #[cfg(debug_assertions)]
@@ -398,6 +482,18 @@ fn main() -> anyhow::Result<()> {
             command_palette::bind_keys(cx);
             cx.on_action(move |_: &command_palette::OpenPalette, cx| {
                 let _ = handle.update(cx, |root, window, cx| root.toggle_palette("", window, cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomIn, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(Some(true), cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomOut, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(Some(false), cx));
+            });
+            cx.on_action(move |_: &command_palette::ZoomReset, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.zoom(None, cx));
+            });
+            cx.on_action(move |_: &command_palette::OpenSettings, cx| {
+                let _ = handle.update(cx, |root, _, cx| root.show_settings(cx));
             });
             if background {
                 // The login item passes --background. The app has no tray icon,
@@ -442,6 +538,18 @@ mod tests {
         assert_eq!(parse_palette("nope"), None);
         assert_eq!(parse_size("wide"), None);
         assert_eq!(option(&args, "--missing"), None);
+    }
+
+    #[test]
+    fn the_focus_flag_takes_a_day_or_a_range() {
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        assert_eq!(
+            parse_focus("2026-10-14").unwrap(),
+            focus::Focus::day(day(14))
+        );
+        let range = parse_focus("2026-10-20..2026-10-14").unwrap();
+        assert_eq!((range.start, range.end), (day(14), day(20)));
+        assert!(parse_focus("soon").is_err());
     }
 
     #[test]

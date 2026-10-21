@@ -21,7 +21,14 @@ pub enum Provider {
     Cloud,
     Openrouter,
     Ollama,
+    /// The `claude` command on this computer, with the app's own tools over
+    /// MCP. A desktop only: a phone cannot start a process.
+    #[serde(rename = "claude_code")]
+    ClaudeCode,
 }
+
+/// The model alias that Claude Code gets when none was chosen.
+pub const DEFAULT_CLAUDE_MODEL: &str = "sonnet";
 
 impl Provider {
     pub fn parse(s: &str) -> Option<Self> {
@@ -29,6 +36,7 @@ impl Provider {
             "cloud" => Some(Self::Cloud),
             "openrouter" => Some(Self::Openrouter),
             "ollama" => Some(Self::Ollama),
+            "claude_code" => Some(Self::ClaudeCode),
             _ => None,
         }
     }
@@ -38,13 +46,14 @@ impl Provider {
             Self::Cloud => "cloud",
             Self::Openrouter => "openrouter",
             Self::Ollama => "ollama",
+            Self::ClaudeCode => "claude_code",
         }
     }
 
     /// The base URL of the chat API. The hosted coach has its own client.
     pub(crate) fn base(self) -> Option<&'static str> {
         match self {
-            Self::Cloud => None,
+            Self::Cloud | Self::ClaudeCode => None,
             Self::Openrouter => Some(OPENROUTER_BASE),
             Self::Ollama => Some(OLLAMA_BASE),
         }
@@ -55,6 +64,7 @@ impl Provider {
     fn default_model(self) -> Option<&'static str> {
         match self {
             Self::Openrouter => Some(DEFAULT_OPENROUTER_MODEL),
+            Self::ClaudeCode => Some(DEFAULT_CLAUDE_MODEL),
             Self::Cloud | Self::Ollama => None,
         }
     }
@@ -81,9 +91,10 @@ pub(crate) fn default_provider(has_own_key: bool) -> Provider {
     }
 }
 
-/// A phone cannot reach a local Ollama, so a phone drops that choice.
+/// A phone cannot reach a local Ollama or start Claude Code, so a phone drops
+/// those choices.
 fn usable(saved: Option<Provider>, phone: bool) -> Option<Provider> {
-    saved.filter(|p| !(phone && *p == Provider::Ollama))
+    saved.filter(|p| !(phone && matches!(p, Provider::Ollama | Provider::ClaudeCode)))
 }
 
 /// The saved choice, or the default. The provider is always set.
@@ -155,7 +166,12 @@ mod tests {
 
     #[test]
     fn providers_round_trip_through_their_names() {
-        for p in [Provider::Cloud, Provider::Openrouter, Provider::Ollama] {
+        for p in [
+            Provider::Cloud,
+            Provider::Openrouter,
+            Provider::Ollama,
+            Provider::ClaudeCode,
+        ] {
             assert_eq!(Provider::parse(p.as_str()), Some(p));
         }
         assert_eq!(Provider::parse("nope"), None);
@@ -179,6 +195,11 @@ mod tests {
         assert_eq!(
             usable(Some(Provider::Ollama), false),
             Some(Provider::Ollama)
+        );
+        assert_eq!(usable(Some(Provider::ClaudeCode), true), None);
+        assert_eq!(
+            usable(Some(Provider::ClaudeCode), false),
+            Some(Provider::ClaudeCode)
         );
         assert_eq!(usable(Some(Provider::Cloud), true), Some(Provider::Cloud));
     }

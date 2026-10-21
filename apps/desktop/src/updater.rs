@@ -34,9 +34,10 @@ const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzRD
 /// The time between two checks.
 pub const CHECK_EVERY: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// The version of this app. The release workflow sets `APP_VERSION` at build
-/// time, because the crate version is not the release version.
-pub const VERSION: &str = garmin_api::settings::APP_VERSION;
+/// The version of this app. `build.rs` reads `APP_VERSION` from the release
+/// workflow, or the version of `tauri.conf.json`. The crate version is not
+/// the release version.
+pub const VERSION: &str = env!("GC_APP_VERSION");
 
 /// Debug builds only: a test can point the updater at a local server, with a
 /// test key, a version and an install target. A release build has no code for

@@ -14,7 +14,8 @@ pub struct SpringConfig {
     pub response: f32,
 }
 
-/// A row that moves out of the way. It was not thrown, so it does not overshoot.
+/// A spring that does not overshoot. Only the tests use it.
+#[cfg(test)]
 pub const SETTLE: SpringConfig = SpringConfig {
     damping: 1.0,
     response: 0.32,
@@ -79,33 +80,6 @@ impl Spring {
     }
 }
 
-/// A CSS `cubic-bezier(x1, y1, x2, y2)` as an easing function over 0..1.
-pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
-    let axis = |a: f32, b: f32, t: f32| {
-        let u = 1.0 - t;
-        3.0 * u * u * t * a + 3.0 * u * t * t * b + t * t * t
-    };
-    move |x: f32| {
-        let x = x.clamp(0.0, 1.0);
-        // Bisection on t. The x axis of the curve is monotonic.
-        let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
-        for _ in 0..24 {
-            let mid = (lo + hi) / 2.0;
-            if axis(x1, x2, mid) < x {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        axis(y1, y2, (lo + hi) / 2.0)
-    }
-}
-
-/// `--ease-out` from `styles.css`.
-pub fn ease_out(t: f32) -> f32 {
-    cubic_bezier(0.23, 1.0, 0.32, 1.0)(t)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,13 +137,5 @@ mod tests {
         slow.to(0.0);
         slow.step(5.0);
         assert!(slow.x.abs() <= 10.0 && (slow.x - s.x).abs() < 3.0);
-    }
-
-    #[test]
-    fn the_bezier_keeps_its_end_points_and_leads_early() {
-        assert!(ease_out(0.0).abs() < 1e-3);
-        assert!((ease_out(1.0) - 1.0).abs() < 1e-3);
-        // `ease-out` covers most of the distance in the first quarter.
-        assert!(ease_out(0.25) > 0.5);
     }
 }

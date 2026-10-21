@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::scale::px;
 use anyhow::Result;
 use garmin_coach::{
     AccountView, Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
@@ -30,25 +31,40 @@ use garmin_core::workout::{
     EndCondition, ExecStep, Sport, Step as DraftStep, StepKind, Target, WorkoutDraft,
 };
 use gpui::{
-    div, linear_color_stop, linear_gradient, prelude::*, px, relative, ClickEvent, ColorExt as _,
+    div, linear_color_stop, linear_gradient, prelude::*, relative, ClickEvent, ColorExt as _,
     Context, Div, ElementId, Entity, IntoElement, Render, SharedString, Subscription, Task, Window,
 };
 use serde_json::Value;
 
+use crate::claude_code;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
+use crate::focus::Focus;
+use crate::icons::Icon;
+use crate::kit::{button, chip, icon_button, Look};
 use crate::markdown;
 use crate::motion;
 use crate::scroll::SmoothScroll;
-use crate::shell::{column_width, COLUMN_MAX, COLUMN_SIDE, COLUMN_TOP};
-use crate::theme::{Palette, Theme, FS_CAPTION, FS_MD, FS_SMALL};
-use crate::ui::{block_in, body, ch, eyebrow, eyebrow_lg, h1, underlined, SANS};
+use crate::sidebar::SIDEBAR_W;
+use crate::theme::{Palette, Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
+use crate::ui::{body, ch, eyebrow, SANS};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
 /// Room under the thread for the docked composer.
 const COMPOSER_ROOM: f32 = 176.0;
+/// The reading column of the Ask screen, and the air above and beside it.
+const COLUMN_MAX: f32 = 720.0;
+const COLUMN_TOP: f32 = 28.0;
+const COLUMN_SIDE: f32 = 56.0;
+/// The width of the coach panel, with its left border.
+pub const PANEL_W: f32 = 340.0;
+
+/// The width of the text column of the Ask screen for a window `viewport` pixels wide.
+fn column_width(viewport: f32) -> f32 {
+    (viewport - SIDEBAR_W - 2.0 * COLUMN_SIDE).clamp(200.0, COLUMN_MAX)
+}
 
 /// What a demo says in place of a call to the hosted coach.
 pub const CLOUD_OFF: &str = "The cloud coach is off in a demo. Start the app with --coach ollama:<model> to use another model.";
@@ -135,13 +151,23 @@ pub struct Ask {
     credits: Option<AccountView>,
     /// The hosted coach is the chosen provider, so credits matter.
     cloud_on: bool,
+    /// The chosen provider. `None` in a copy, which asks no model.
+    provider: Option<Provider>,
+    /// The entity sits in the side panel and not in the Ask screen.
+    panel: bool,
+    /// The width of the side panel.
+    panel_w: f32,
+    /// The name of the screen behind the panel. The coach hears it with a question.
+    context: Option<&'static str>,
+    /// The focus period, when it is not the live day.
+    focus: Option<Focus>,
     palette: Palette,
     composer: Entity<Composer>,
     turns: Vec<Turn>,
     busy: bool,
     stop: Arc<AtomicBool>,
     scroll: SmoothScroll,
-    /// Counts the visits, so the empty screen animates in again.
+    /// Counts the visits, so each visit starts with a fresh scroll area.
     visits: usize,
     task: Option<Task<()>>,
     _subscription: Subscription,
@@ -161,6 +187,11 @@ impl Ask {
             source,
             credits: None,
             cloud_on: false,
+            provider: None,
+            panel: false,
+            panel_w: PANEL_W,
+            context: None,
+            focus: None,
             palette,
             composer,
             turns: Vec::new(),
@@ -184,17 +215,70 @@ impl Ask {
         self.refresh_credits(cx);
     }
 
+    /// Draw the entity in the side panel, or in the Ask screen.
+    pub fn set_panel(&mut self, panel: bool) {
+        self.panel = panel;
+    }
+
+    /// The width of the side panel, which the user can drag.
+    pub fn set_panel_width(&mut self, width: f32) {
+        self.panel_w = width;
+    }
+
+    /// The screen behind the panel, or `None` on the Ask screen.
+    pub fn set_context(&mut self, screen: Option<&'static str>) {
+        self.context = screen;
+    }
+
+    /// The period that the pages look at. A live focus adds nothing to a question.
+    pub fn set_focus(&mut self, focus: Focus, cx: &mut Context<Self>) {
+        self.focus = (!focus.is_live()).then_some(focus);
+        let hint = self.focus.map(|f| f.label());
+        self.composer
+            .update(cx, |c, cx| c.set_focus_label(hint, cx));
+    }
+
+    /// The name of the provider for the status bar.
+    pub fn provider_label(&self) -> Option<&'static str> {
+        Some(match self.provider? {
+            Provider::Cloud => "Cloud",
+            Provider::Openrouter => "Own key",
+            Provider::Ollama => "Ollama",
+            Provider::ClaudeCode => "Claude Code",
+        })
+    }
+
+    pub fn provider(&self) -> Option<Provider> {
+        self.provider
+    }
+
+    /// The credits left, while the hosted coach is the provider.
+    pub fn credits_left(&self) -> Option<u64> {
+        self.credits
+            .as_ref()
+            .filter(|_| self.cloud_on)
+            .map(|v| v.credits_remaining)
+    }
+
+    /// A demo keeps the choice in memory only: set it here, with no read.
+    pub fn set_provider(&mut self, provider: Provider) {
+        self.provider = Some(provider);
+        self.cloud_on = provider == Provider::Cloud;
+    }
+
     /// Read the provider, and the balance if the hosted coach is the provider.
     pub fn refresh_credits(&mut self, cx: &mut Context<Self>) {
         let path = match &self.source {
             Source::Demo => {
                 self.cloud_on = true;
+                self.provider = Some(Provider::Cloud);
                 self.credits = Some(cloud::sample_account());
                 return;
             }
             Source::Copy(_) => {
                 // A demo makes no cloud call, so there are no credits to show.
                 self.cloud_on = false;
+                self.provider = None;
                 self.credits = None;
                 return;
             }
@@ -203,6 +287,7 @@ impl Ask {
         let saved = Db::open(&path)
             .and_then(|db| garmin_coach::load_config(&db))
             .map(|(provider, _)| provider);
+        self.provider = saved.as_ref().ok().copied().flatten();
         self.cloud_on = matches!(saved, Ok(Some(Provider::Cloud)));
         if !self.cloud_on {
             return;
@@ -239,7 +324,7 @@ impl Ask {
             return;
         }
         self.turns.push(Turn::new(Who::You, text));
-        let history = history(&self.turns);
+        let history = with_context(history(&self.turns), self.context, self.focus);
         self.turns.push(Turn::new(Who::Coach, String::new()));
         self.busy = true;
         self.stop = Arc::default();
@@ -247,7 +332,11 @@ impl Ask {
 
         let (tx, rx) = async_channel::unbounded();
         let (source, stop) = (self.source.clone(), self.stop.clone());
-        std::thread::spawn(move || run_on_thread(source, history, tx, stop));
+        let period = self.focus.map(|f| garmin_coach::Period {
+            start: f.start,
+            end: f.end,
+        });
+        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period));
         self.task = Some(cx.spawn(async move |this, cx| {
             while let Ok(event) = rx.recv().await {
                 if this.update(cx, |ask, cx| ask.apply(event, cx)).is_err() {
@@ -347,6 +436,29 @@ fn history(turns: &[Turn]) -> Vec<HistoryMessage> {
         .collect()
 }
 
+/// The question gets one more line: the screen that the user is on. The
+/// thread on screen does not show the line.
+fn with_context(
+    mut messages: Vec<HistoryMessage>,
+    screen: Option<&str>,
+    focus: Option<Focus>,
+) -> Vec<HistoryMessage> {
+    let Some(last) = messages.last_mut() else {
+        return messages;
+    };
+    if let Some(screen) = screen {
+        last.content = format!("{}\n\nThe user is on the {screen} screen.", last.content);
+    }
+    if let Some(f) = focus {
+        last.content = format!(
+            "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
+             The tools read this period: they count days back from its last day.",
+            last.content, f.start, f.end
+        );
+    }
+    messages
+}
+
 /// A call starts and then comes back, as two events with one id.
 fn upsert(steps: &mut Vec<Step>, step: Step) {
     match steps.iter_mut().find(|s| s.call_id == step.call_id) {
@@ -371,6 +483,7 @@ fn run_on_thread(
     history: Vec<HistoryMessage>,
     tx: async_channel::Sender<Event>,
     stop: Arc<AtomicBool>,
+    period: Option<garmin_coach::Period>,
 ) {
     let sink = ChannelSink(tx);
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -388,8 +501,8 @@ fn run_on_thread(
                 let memory = || Db::open(std::path::Path::new(":memory:"));
                 let _ = garmin_coach::run_turn(&Demo, &sink, &stop, history, &memory, false).await;
             }
-            Source::Db(path) => real_turn(&path, false, history, &sink, &stop).await,
-            Source::Copy(path) => real_turn(&path, true, history, &sink, &stop).await,
+            Source::Db(path) => real_turn(&path, false, history, &sink, &stop, period).await,
+            Source::Copy(path) => real_turn(&path, true, history, &sink, &stop, period).await,
         }
     });
 }
@@ -400,8 +513,17 @@ async fn real_turn(
     history: Vec<HistoryMessage>,
     sink: &ChannelSink,
     stop: &AtomicBool,
+    period: Option<garmin_coach::Period>,
 ) {
     let open = || Db::open(path);
+    // Claude Code is a program on this computer, not an HTTP transport.
+    if let Ok((Some(Provider::ClaudeCode), model)) =
+        open().and_then(|db| garmin_coach::load_config(&db))
+    {
+        let model = model.unwrap_or_default();
+        let copy = demo.then_some(path);
+        return claude_code::run_turn(copy, &model, history, period, sink, stop);
+    }
     let transport = open().and_then(|db| {
         if demo && matches!(garmin_coach::load_config(&db)?.0, Some(Provider::Cloud)) {
             anyhow::bail!("{CLOUD_OFF}");
@@ -410,7 +532,8 @@ async fn real_turn(
     });
     match transport {
         Ok(transport) => {
-            let _ = garmin_coach::run_turn(&transport, sink, stop, history, &open, true).await;
+            let _ = garmin_coach::run_turn_in(&transport, sink, stop, history, &open, true, period)
+                .await;
         }
         Err(e) => sink.emit(Event::Error {
             text: format!("{e:#}"),
@@ -464,11 +587,12 @@ impl Transport for Demo {
 pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
     let (name, model) = spec.split_once(':').unwrap_or((spec, ""));
     let provider = Provider::parse(name).ok_or_else(|| {
-        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter or ollama")
+        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter, ollama or claude_code")
     })?;
     let model = match (model, provider) {
         ("", Provider::Cloud) => "",
         ("", Provider::Openrouter) => garmin_coach::DEFAULT_OPENROUTER_MODEL,
+        ("", Provider::ClaudeCode) => garmin_coach::DEFAULT_CLAUDE_MODEL,
         ("", _) => anyhow::bail!("name a model, for example {name}:llama3.2"),
         (m, _) => m,
     };
@@ -478,35 +602,23 @@ pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
 
 /* ----------------------------------------------------------------- drawing --- */
 
-fn step_row(step: &Step, t: &Theme) -> impl IntoElement {
-    let dot = if step.running {
-        t.acc
-    } else if step.ok {
-        t.faint
-    } else {
-        t.warn
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(10.0))
-        .font_family(SANS)
-        .text_size(px(FS_SMALL))
-        .text_color(if step.running { t.mutd } else { t.faint })
-        .child(div().flex_none().size(px(5.0)).rounded_full().bg(dot))
-        .child(SharedString::from(step.label.clone()))
+/// A tool step as a chip. A call that still runs has the accent and a dot.
+fn step_chip(step: &Step, t: &Theme) -> Div {
+    chip(step.label.clone(), step.running, step.running, t)
 }
 
 fn user_bubble(text: &str, t: &Theme) -> impl IntoElement {
     div().flex().justify_end().child(
         div()
-            .max_w(ch(48.0, FS_MD))
-            .px(px(15.0))
-            .py(px(11.0))
-            .rounded(px(10.0))
-            .bg(t.sel)
-            .text_size(px(FS_MD))
-            .line_height(relative(1.6))
+            .max_w(relative(0.85))
+            .px(px(12.0))
+            .py(px(8.0))
+            .rounded(px(7.0))
+            .border_1()
+            .border_color(t.line)
+            .bg(t.bg2)
+            .text_size(px(13.5))
+            .line_height(relative(1.5))
             .child(SharedString::from(text.to_string())),
     )
 }
@@ -613,14 +725,14 @@ fn draft_card(
 }
 
 fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> Div {
-    let mut col = div().flex().flex_col().gap(px(16.0));
+    let mut col = div().flex().flex_col().gap(px(12.0));
     if !turn.steps.is_empty() {
         col = col.child(
             div()
                 .flex()
-                .flex_col()
-                .gap(px(7.0))
-                .children(turn.steps.iter().map(|s| step_row(s, t))),
+                .flex_wrap()
+                .gap(px(6.0))
+                .children(turn.steps.iter().map(|s| step_chip(s, t))),
         );
     }
     if !turn.text.is_empty() {
@@ -670,60 +782,102 @@ fn credit_row(view: &AccountView, cx: &mut Context<Ask>, t: &Theme) -> impl Into
 
 impl Ask {
     fn empty(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
-        let key = self.visits;
         let day = chrono::Datelike::ordinal(&chrono::Local::now().date_naive()) as usize;
+        let (line, hover) = (t.line, t.hover);
         let chips = (0..3).map(|i| {
             let text = OPENERS[(day + i * 3) % OPENERS.len()];
-            underlined(("opener", i), text, FS_MD, t)
+            div()
+                .id(("opener", i))
+                .px(px(10.0))
+                .py(px(7.0))
+                .rounded(px(5.0))
+                .border_1()
+                .border_color(line)
+                .bg(t.bg2)
+                .text_size(px(12.5))
                 .cursor_pointer()
+                .hover(move |s| s.bg(hover))
                 .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.fill(text, cx)))
+                .child(text)
         });
-        let lede = "Ask about your sleep, recovery, activity or weight. The coach reads \
-                    your own Garmin data before it answers.";
         div()
-            .child(block_in(key, 0, eyebrow_lg("Ask", t)))
-            .child(block_in(
-                key,
-                0,
-                h1("What would you like to know?").mt(px(18.0)),
-            ))
-            .child(block_in(
-                key,
-                1,
-                body(lede, 16.0, t.mutd).mt(px(22.0)).max_w(ch(58.0, 16.0)),
-            ))
-            .child(block_in(
-                key,
-                2,
-                div()
-                    .mt(px(36.0))
-                    .flex()
-                    .flex_col()
-                    .items_start()
-                    .gap(px(14.0))
-                    .children(chips),
-            ))
+            .flex()
+            .flex_col()
+            .items_start()
+            .gap(px(8.0))
+            .children(chips)
             .when(matches!(self.source, Source::Demo), |d| {
-                d.child(block_in(
-                    key,
-                    3,
-                    body(
-                        "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
-                        FS_CAPTION,
-                        t.faint,
-                    )
-                    .mt(px(48.0)),
+                d.child(body(
+                    "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
+                    FS_CAPTION,
+                    t.faint,
                 ))
             })
             .into_any_element()
+    }
+
+    /// The head of the Ask screen: the title, the line about local data and
+    /// the chip with the credits.
+    fn screen_head(&self, t: &Theme) -> Div {
+        let credits = self.credits.as_ref().filter(|_| self.cloud_on).map(|v| {
+            chip(
+                format!("Cloud · {} left", v.credits_remaining),
+                false,
+                true,
+                t,
+            )
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(4.0))
+            .mb(px(14.0))
+            .child(
+                div()
+                    .text_size(px(20.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("Ask the coach"),
+            )
+            .child(div().text_size(px(13.5)).text_color(t.mutd).child(
+                "Questions use your local data. Only the rows that a question \
+                         needs leave this computer.",
+            ))
+            .children(credits.map(|c| div().mt(px(6.0)).flex().child(c)))
+    }
+
+    /// The buttons under an answer that has ended. Copy puts the text on the clipboard.
+    fn answer_actions(index: usize, text: &str, t: &Theme, cx: &mut Context<Self>) -> Div {
+        let text = text.to_string();
+        div().flex().gap(px(6.0)).child(
+            button(("ask-copy", index), "Copy", Look::Default, true, t).on_click(cx.listener(
+                move |_, _: &ClickEvent, _, cx| {
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+                },
+            )),
+        )
     }
 }
 
 impl Render for Ask {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.panel {
+            self.panel_view(window, cx).into_any_element()
+        } else {
+            self.screen_view(window, cx).into_any_element()
+        }
+    }
+}
+
+impl Ask {
+    /// The Ask screen: a reading column with the composer docked under it.
+    fn screen_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
         let t = self.palette.theme();
-        let width = column_width(f32::from(window.viewport_size().width));
-        self.composer.update(cx, |c, _| c.set_column_width(width));
+        let width = column_width(crate::scale::viewport_w(window));
+        self.composer.update(cx, |c, _| {
+            c.set_column_width(width);
+            c.set_panel(true);
+            c.set_hint("Ask about your training...");
+        });
 
         self.scroll.tick(window);
         // Follow new text while the reader is at the bottom.
@@ -736,17 +890,21 @@ impl Render for Ask {
         } else {
             let last = self.turns.len() - 1;
             let live = self.busy;
-            let mut col = div().flex().flex_col().gap(px(34.0));
+            let mut col = div().flex().flex_col().gap(px(22.0));
             for (i, turn) in self.turns.iter().enumerate() {
                 col = col.child(match turn.who {
                     Who::You => user_bubble(&turn.text, &t).into_any_element(),
-                    Who::Coach => coach_turn(turn, live && i == last, &t)
-                        .children(
-                            turn.draft
-                                .as_ref()
-                                .map(|(d, save)| draft_card(i, d, save, cx, &t)),
-                        )
-                        .into_any_element(),
+                    Who::Coach => {
+                        let ended = !(live && i == last) && !turn.text.is_empty();
+                        coach_turn(turn, live && i == last, &t)
+                            .children(
+                                turn.draft
+                                    .as_ref()
+                                    .map(|(d, save)| draft_card(i, d, save, cx, &t)),
+                            )
+                            .children(ended.then(|| Self::answer_actions(i, &turn.text, &t, cx)))
+                            .into_any_element()
+                    }
                 });
             }
             col.into_any_element()
@@ -760,8 +918,10 @@ impl Render for Ask {
             .child(
                 div()
                     .max_w(px(COLUMN_MAX))
+                    .mx_auto()
                     .pt(px(COLUMN_TOP))
                     .pb(px(COMPOSER_ROOM))
+                    .child(self.screen_head(&t))
                     .child(content),
             );
         let dock = div()
@@ -773,6 +933,7 @@ impl Render for Ask {
             .child(
                 div()
                     .max_w(px(COLUMN_MAX))
+                    .mx_auto()
                     .pt(px(24.0))
                     .pb(px(18.0))
                     .bg(linear_gradient(
@@ -793,6 +954,162 @@ impl Render for Ask {
             .flex_1()
             .min_w_0()
             .h_full()
+            .child(thread)
+            .child(dock)
+    }
+
+    /// The header of the panel: the name, the credits and the button for a new thread.
+    fn panel_header(&self, cx: &mut Context<Self>, t: &Theme) -> Div {
+        let credits = self.credits.as_ref().filter(|_| self.cloud_on).map(|v| {
+            chip(
+                format!("Cloud · {} left", v.credits_remaining),
+                false,
+                true,
+                t,
+            )
+        });
+        let new_thread = icon_button("coach-new", Icon::Plus, 14.0, false, false, t)
+            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.new_chat(cx)));
+        div()
+            .flex_none()
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .h(px(34.0))
+            .pl(px(12.0))
+            .pr(px(6.0))
+            .border_b_1()
+            .border_color(t.line)
+            .child(
+                div()
+                    .flex_1()
+                    .font_family(SANS)
+                    .text_size(px(13.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .child("Coach"),
+            )
+            .children(credits)
+            .child(new_thread)
+    }
+
+    /// The empty thread of the panel: one line and three questions to start with.
+    fn panel_empty(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
+        let day = chrono::Datelike::ordinal(&chrono::Local::now().date_naive()) as usize;
+        let (line, hover) = (t.line, t.hover);
+        let openers = (0..3).map(|i| {
+            let text = OPENERS[(day + i * 3) % OPENERS.len()];
+            div()
+                .id(("opener", i))
+                .px(px(10.0))
+                .py(px(7.0))
+                .rounded(px(5.0))
+                .border_1()
+                .border_color(line)
+                .bg(t.bg)
+                .text_size(px(12.5))
+                .cursor_pointer()
+                .hover(move |s| s.bg(hover))
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.fill(text, cx)))
+                .child(text)
+        });
+        let demo = matches!(self.source, Source::Demo).then(|| {
+            body(
+                "Sample mode: answers are canned. Run with --db <copy> to ask your own data.",
+                11.5,
+                t.faint,
+            )
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.0))
+            .child(
+                body(
+                    "Ask about your sleep, recovery, activity or weight. The coach reads \
+                     your own Garmin data before it answers.",
+                    FS_BASE,
+                    t.mutd,
+                )
+                .line_height(relative(1.6))
+                .mb(px(6.0)),
+            )
+            .children(openers)
+            .children(demo)
+            .into_any_element()
+    }
+
+    /// The thread of the panel: your questions in a box, the answers as text.
+    fn panel_thread(&self, cx: &mut Context<Self>, t: &Theme) -> gpui::AnyElement {
+        if self.turns.is_empty() {
+            return self.panel_empty(cx, t);
+        }
+        let last = self.turns.len() - 1;
+        let mut col = div().flex().flex_col().gap(px(14.0));
+        for (i, turn) in self.turns.iter().enumerate() {
+            col = col.child(match turn.who {
+                Who::You => div()
+                    .px(px(11.0))
+                    .py(px(9.0))
+                    .rounded(px(7.0))
+                    .border_1()
+                    .border_color(t.line)
+                    .bg(t.bg)
+                    .child(SharedString::from(turn.text.clone()))
+                    .into_any_element(),
+                Who::Coach => coach_turn(turn, self.busy && i == last, t)
+                    .children(
+                        turn.draft
+                            .as_ref()
+                            .map(|(d, save)| draft_card(i, d, save, cx, t)),
+                    )
+                    .into_any_element(),
+            });
+        }
+        col.into_any_element()
+    }
+
+    /// The coach panel: the header, the thread and the composer.
+    fn panel_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let t = self.palette.theme();
+        let panel_w = self.panel_w;
+        self.composer.update(cx, |c, _| {
+            c.set_column_width(panel_w - 1.0 - 20.0);
+            c.set_panel(true);
+            c.set_hint("Ask about this screen...");
+        });
+        self.scroll.tick(window);
+        if self.busy && self.scroll.distance_below() <= STICK_SLOP {
+            self.scroll.pin_bottom();
+        }
+        let thread = self
+            .scroll
+            .area(ElementId::NamedInteger("coach".into(), self.visits as u64))
+            .flex_1()
+            .min_h_0()
+            .w_full()
+            .child(
+                div()
+                    .px(px(12.0))
+                    .py(px(14.0))
+                    .child(self.panel_thread(cx, &t)),
+            );
+        let out = self
+            .credits
+            .as_ref()
+            .filter(|v| self.cloud_on && v.out)
+            .map(|v| credit_row(v, cx, &t));
+        let dock = div()
+            .flex_none()
+            .p(px(10.0))
+            .border_t_1()
+            .border_color(t.line)
+            .child(self.composer.clone())
+            .children(out);
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(self.panel_header(cx, &t))
             .child(thread)
             .child(dock)
     }
@@ -832,6 +1149,26 @@ mod tests {
     }
 
     #[test]
+    fn the_question_carries_the_screen_but_the_thread_does_not() {
+        let turns = vec![Turn::new(Who::You, "hi".into())];
+        let sent = with_context(history(&turns), Some("Sleep"), None);
+        assert_eq!(sent[0].content, "hi\n\nThe user is on the Sleep screen.");
+        assert_eq!(turns[0].text, "hi");
+        assert_eq!(with_context(history(&turns), None, None)[0].content, "hi");
+    }
+
+    #[test]
+    fn a_focus_period_adds_its_dates_to_the_question() {
+        let turns = vec![Turn::new(Who::You, "hi".into())];
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        let focus = Focus::range(day(14), day(20));
+        let sent = with_context(history(&turns), None, Some(focus));
+        assert!(sent[0]
+            .content
+            .contains("Focus period: 2026-10-14 to 2026-10-20 (ISO dates)."));
+    }
+
+    #[test]
     fn a_repeat_reads_as_n_times() {
         let work = ExecStep {
             kind: StepKind::Interval,
@@ -865,7 +1202,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gc-ask-copy-{}.db", std::process::id()));
         setup(&path, "cloud").unwrap();
         let (tx, rx) = async_channel::unbounded();
-        run_on_thread(Source::Copy(path), vec![], tx, Arc::default());
+        run_on_thread(Source::Copy(path), vec![], tx, Arc::default(), None);
         let events: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(matches!(&events[..], [Event::Error { text }] if text == CLOUD_OFF));
     }

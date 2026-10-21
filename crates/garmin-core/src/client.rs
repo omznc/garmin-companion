@@ -434,6 +434,16 @@ impl GarminClient {
         .await
     }
 
+    /// Stress and Body Battery samples of one day, about one every three
+    /// minutes. Needs no display name in its path, unlike the daily summary.
+    pub async fn daily_stress(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/wellness-service/wellness/dailyStress/{date}"),
+            &[],
+        )
+        .await
+    }
+
     pub async fn hrv(&self, date: &str) -> Result<serde_json::Value> {
         self.get_json(&format!("/hrv-service/hrv/{date}"), &[])
             .await
@@ -472,6 +482,82 @@ impl GarminClient {
     /// weigh-ins themselves, but they're null unless a smart scale wrote them.
     pub async fn user_settings(&self) -> Result<serde_json::Value> {
         self.get_json("/userprofile-service/userprofile/user-settings", &[])
+            .await
+    }
+
+    /// The courses that the athlete saved, with their figures and no track.
+    pub async fn courses(&self) -> Result<serde_json::Value> {
+        self.get_json("/course-service/course", &[]).await
+    }
+
+    /// One course with its track (`geoPoints`).
+    pub async fn course(&self, id: i64) -> Result<serde_json::Value> {
+        self.get_json(&format!("/course-service/course/{id}"), &[])
+            .await
+    }
+
+    /// VO2 max for each day between two dates. An empty list for an account
+    /// with no outdoor GPS run.
+    pub async fn max_metrics_range(&self, start: &str, end: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/metrics-service/metrics/maxmet/daily/{start}/{end}"),
+            &[],
+        )
+        .await
+    }
+
+    /// Garmin's fitness age for a date.
+    pub async fn fitness_age(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(&format!("/fitnessage-service/fitnessage/{date}"), &[])
+            .await
+    }
+
+    /// The food log of one day with the goals and the nutrition figures.
+    pub async fn food_log(&self, date: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            &format!("/nutrition-service/food/logs/{date}"),
+            &[
+                ("includeGoals", "true".to_string()),
+                ("includeNutrition", "true".to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// The training plans of the account. Empty for an account with none.
+    pub async fn training_plans(&self) -> Result<serde_json::Value> {
+        self.get_json("/trainingplan-service/trainingplan/plans", &[])
+            .await
+    }
+
+    /// The events (races) that the athlete put on the calendar between two
+    /// dates.
+    pub async fn calendar_events(&self, start: &str, end: &str) -> Result<serde_json::Value> {
+        self.get_json(
+            "/calendar-service/events",
+            &[
+                ("startDate", start.to_string()),
+                ("endDate", end.to_string()),
+            ],
+        )
+        .await
+    }
+
+    /// One saved workout with its steps.
+    pub async fn workout(&self, id: i64) -> Result<serde_json::Value> {
+        self.get_json(&format!("/workout-service/workout/{id}"), &[])
+            .await
+    }
+
+    /// The devices registered to the account.
+    pub async fn devices(&self) -> Result<serde_json::Value> {
+        self.get_json("/device-service/deviceregistration/devices", &[])
+            .await
+    }
+
+    /// The device that uploaded last, and when.
+    pub async fn last_used_device(&self) -> Result<serde_json::Value> {
+        self.get_json("/device-service/deviceservice/mylastused", &[])
             .await
     }
 
@@ -591,6 +677,9 @@ pub struct ActivitySummary {
     pub aerobic_training_effect: Option<f64>,
     #[serde(default)]
     pub anaerobic_training_effect: Option<f64>,
+    /// Garmin's load for the session. Old activities do not have it.
+    #[serde(default)]
+    pub activity_training_load: Option<f64>,
     #[serde(default)]
     pub activity_type: Option<ActivityType>,
     /// Metres climbed. Absent on treadmill and indoor activities.

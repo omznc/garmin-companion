@@ -14,7 +14,7 @@ use crate::text::{hours_minutes, num, plural};
 use crate::ApiError;
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_core::sport::{is_exercise, sport_label};
-use garmin_core::{CachedActivity, DailyMetrics, Db};
+use garmin_core::{CachedActivity, DailyMetrics, Db, WeighIn};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -63,6 +63,26 @@ pub struct ReportView {
     pub daily_title: String,
     pub daily: Vec<DayBar>,
     pub sessions: Vec<ReportSession>,
+    /// Load, HRV and weight of the week, for the extra figures of the report.
+    #[serde(default)]
+    pub extras: WeekExtras,
+}
+
+/// The week against the week before, for the figures that the sessions do not
+/// hold. Each is `None` when the cache has no reading for it.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WeekExtras {
+    /// The sum of Garmin's load over the sessions of the week.
+    pub load: Option<f64>,
+    pub prior_load: Option<f64>,
+    /// The mean overnight HRV of the week, in ms.
+    pub avg_hrv: Option<f64>,
+    pub prior_avg_hrv: Option<f64>,
+    /// The last weigh-in on or before the end of the week, in kg.
+    pub weight_kg: Option<f64>,
+    /// `weight_kg` minus the last weigh-in before the week.
+    pub weight_change_kg: Option<f64>,
 }
 
 struct Week<'a> {
@@ -126,7 +146,7 @@ fn short(d: NaiveDate) -> String {
 }
 
 /// `39 min`, or `1h 05m`.
-fn duration(secs: f64) -> String {
+pub(crate) fn duration(secs: f64) -> String {
     if secs < 3600.0 {
         format!("{} min", (secs / 60.0).round() as i64)
     } else {
@@ -379,6 +399,70 @@ fn session_rows(week: &Week) -> Vec<ReportSession> {
         .collect()
 }
 
+/// The days `start` to `start + 6`, as keys that compare as text.
+fn week_keys(start: NaiveDate) -> (String, String) {
+    (date_key(start), date_key(start + Duration::days(6)))
+}
+
+/// Garmin's load over the sessions of a week. `None` when no session has it.
+fn load_of(activities: &[CachedActivity], start: NaiveDate) -> Option<f64> {
+    let (from, to) = week_keys(start);
+    let loads: Vec<f64> = activities
+        .iter()
+        .filter(|a| {
+            a.local_date
+                .as_deref()
+                .is_some_and(|d| d >= from.as_str() && d <= to.as_str())
+        })
+        .filter_map(|a| a.training_load)
+        .collect();
+    (!loads.is_empty()).then(|| loads.iter().sum())
+}
+
+/// The mean overnight HRV of a week.
+fn hrv_of(rows: &[DailyMetrics], start: NaiveDate) -> Option<f64> {
+    let (from, to) = week_keys(start);
+    mean(
+        rows.iter()
+            .filter(|r| r.date >= from && r.date <= to)
+            .map(|r| r.hrv_last_night),
+    )
+}
+
+/// The weight on the last weigh-in on or before `key`, in kg.
+fn weight_by(weigh_ins: &[WeighIn], key: &str, inclusive: bool) -> Option<f64> {
+    weigh_ins
+        .iter()
+        .filter(|w| w.calendar_date.as_str() < key || (inclusive && w.calendar_date == key))
+        .max_by(|a, b| {
+            a.calendar_date
+                .cmp(&b.calendar_date)
+                .then(a.sample_pk.cmp(&b.sample_pk))
+        })
+        .map(|w| w.weight_g / 1000.0)
+}
+
+/// The extra figures of the week that starts on `start`.
+fn week_extras(
+    start: NaiveDate,
+    activities: &[CachedActivity],
+    rows: &[DailyMetrics],
+    weigh_ins: &[WeighIn],
+) -> WeekExtras {
+    let prior = start - Duration::days(7);
+    let (from, to) = week_keys(start);
+    let weight_kg = weight_by(weigh_ins, &to, true);
+    let before = weight_by(weigh_ins, &from, false);
+    WeekExtras {
+        load: load_of(activities, start),
+        prior_load: load_of(activities, prior),
+        avg_hrv: hrv_of(rows, start),
+        prior_avg_hrv: hrv_of(rows, prior),
+        weight_kg,
+        weight_change_kg: weight_kg.zip(before).map(|(now, then)| now - then),
+    }
+}
+
 fn empty_view(today: NaiveDate) -> ReportView {
     ReportView {
         date: date_key(today),
@@ -398,6 +482,7 @@ fn empty_view(today: NaiveDate) -> ReportView {
         daily_title: String::new(),
         daily: Vec::new(),
         sessions: Vec::new(),
+        extras: WeekExtras::default(),
     }
 }
 
@@ -421,6 +506,25 @@ fn compare_for<'a>(
         None if week.start > window_start + Duration::days(7) => Compare::First,
         None => Compare::Gap,
     }
+}
+
+/// The Monday of the week at `offset`, as `report_view` counts weeks.
+/// `None` when the cache has no week.
+pub(crate) fn week_start(
+    db: &Db,
+    today: NaiveDate,
+    offset: usize,
+) -> Result<Option<NaiveDate>, ApiError> {
+    let from = date_key(today - Duration::days(HISTORY_DAYS - 1));
+    let activities: Vec<CachedActivity> = db
+        .activities_since(&from)?
+        .into_iter()
+        .filter(|a| is_exercise(a.type_key.as_deref()))
+        .collect();
+    let weeks = by_week(&activities);
+    Ok(weeks
+        .get(offset.min(weeks.len().saturating_sub(1)))
+        .map(|w| w.start))
 }
 
 /// Build the report for the week at `offset`. 0 is the newest week with a
@@ -461,6 +565,7 @@ pub fn report_view(db: &Db, today: NaiveDate, offset: usize) -> Result<ReportVie
         daily_title,
         daily,
         sessions: session_rows(week),
+        extras: week_extras(week.start, &activities, &rows, &db.weigh_ins_since(&from)?),
     })
 }
 
@@ -487,7 +592,54 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         }
+    }
+
+    #[test]
+    fn the_week_extras_set_load_hrv_and_weight_against_the_week_before() {
+        let mut a = act(1, "2026-03-10", "golf", 60.0, 0.0);
+        a.training_load = Some(80.0);
+        let mut b = act(2, "2026-03-11", "golf", 60.0, 0.0);
+        b.training_load = Some(40.0);
+        let mut c = act(3, "2026-03-03", "golf", 60.0, 0.0);
+        c.training_load = Some(50.0);
+        let no_load = act(4, "2026-03-04", "golf", 60.0, 0.0);
+        let hrv = |date: &str, v| DailyMetrics {
+            date: date.into(),
+            hrv_last_night: Some(v),
+            ..Default::default()
+        };
+        let rows = [
+            hrv("2026-03-09", 40.0),
+            hrv("2026-03-10", 50.0),
+            hrv("2026-03-02", 60.0),
+        ];
+        let weigh = |date: &str, kg: f64, pk| WeighIn {
+            sample_pk: pk,
+            calendar_date: date.into(),
+            weight_g: kg * 1000.0,
+            bmi: None,
+            body_fat: None,
+            body_water: None,
+            bone_mass: None,
+            muscle_mass: None,
+            source_type: None,
+        };
+        let weigh_ins = [
+            weigh("2026-03-05", 80.0, 1),
+            weigh("2026-03-12", 79.0, 2),
+            weigh("2026-03-20", 70.0, 3),
+        ];
+        let start = NaiveDate::from_ymd_opt(2026, 3, 9).unwrap();
+        let got = week_extras(start, &[a, b, c, no_load], &rows, &weigh_ins);
+        assert_eq!((got.load, got.prior_load), (Some(120.0), Some(50.0)));
+        assert_eq!((got.avg_hrv, got.prior_avg_hrv), (Some(45.0), Some(60.0)));
+        assert_eq!(
+            (got.weight_kg, got.weight_change_kg),
+            (Some(79.0), Some(-1.0))
+        );
+        assert_eq!(week_extras(start, &[], &[], &[]), WeekExtras::default());
     }
 
     #[test]

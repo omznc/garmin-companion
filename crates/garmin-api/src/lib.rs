@@ -9,11 +9,15 @@
 
 pub mod activities;
 pub mod body;
+pub mod charts;
 mod derive;
 mod dispatch;
 mod error;
+pub mod export;
+pub mod extras;
 pub mod fitness;
 pub mod gear;
+pub mod headline;
 pub mod health;
 pub mod insights;
 pub mod personas;
@@ -26,11 +30,15 @@ pub mod session;
 pub mod settings;
 pub mod sleep_view;
 mod text;
+pub mod tiles;
 pub mod today;
 pub mod training_fixtures;
 pub mod workouts;
 
-pub use activities::{activities_view, activity_detail_view, ActivitiesView, ActivityDetailView};
+pub use activities::{
+    activities_view, activities_view_rows, activity_detail_view, ActivitiesView,
+    ActivityDetailView, ActivityRow,
+};
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
 pub use dispatch::call;
 pub use error::ApiError;

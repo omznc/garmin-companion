@@ -9,8 +9,9 @@
 
 use std::{cell::Cell, rc::Rc};
 
+use crate::scale::px;
 use gpui::{
-    canvas, div, font, prelude::*, px, relative, App, ClipboardItem, Context, Div, FocusHandle,
+    canvas, div, font, prelude::*, relative, App, ClipboardItem, Context, Div, FocusHandle,
     KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, TextRun,
     Window,
 };
@@ -223,6 +224,8 @@ pub struct Field {
     pub sans: bool,
     /// The left padding in pixels. An icon that stands over the field needs more.
     pub pad_left: f32,
+    /// No outline and no radius: the field is one row of a larger panel.
+    pub flat: bool,
     /// The left edge of the text on the window. The last paint sets it.
     origin: Rc<Cell<Pixels>>,
     /// True while the left button is down after a press in the field.
@@ -238,6 +241,7 @@ impl Field {
             mask,
             sans: false,
             pad_left: 12.0,
+            flat: false,
             origin: Rc::new(Cell::new(px(0.0))),
             dragging: false,
         }
@@ -354,9 +358,13 @@ impl Field {
             .px(px(12.0))
             .pl(px(self.pad_left))
             .py(px(9.0))
-            .rounded(px(6.0))
+            .rounded(px(if self.flat { 0.0 } else { 6.0 }))
             .border_1()
-            .border_color(if focused { t.acc } else { t.line })
+            .border_color(match (self.flat, focused) {
+                (true, _) => gpui::transparent_black(),
+                (false, true) => t.acc,
+                (false, false) => t.line,
+            })
             .overflow_hidden()
             .on_mouse_down(
                 MouseButton::Left,

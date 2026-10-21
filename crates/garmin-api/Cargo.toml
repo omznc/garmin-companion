@@ -19,3 +19,5 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 url = "2"
 reqwest = { workspace = true }
+pdf-writer = "0.15"
+ttf-parser = "0.25.1"

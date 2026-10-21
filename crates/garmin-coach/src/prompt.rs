@@ -4,6 +4,7 @@ use anyhow::Result;
 use garmin_core::db::Db;
 use serde_json::{json, Value};
 
+use crate::tools::Period;
 use crate::turn::HistoryMessage;
 
 /// How much of a conversation goes back to the model. The screen keeps the
@@ -136,19 +137,34 @@ pub(crate) fn system_message(cache: bool, drafts: bool) -> Value {
 
 /// Today's date and what the cache can support. A separate system message, so
 /// the fixed prompt above keeps a stable prefix.
-pub(crate) fn grounding_message(db: &Db) -> Result<Value> {
+pub(crate) fn grounding_message(db: &Db, period: Option<Period>) -> Result<Value> {
     let now = chrono::Local::now();
-    let status = crate::tools::cache_status(db)?;
+    let status = match period {
+        Some(p) => garmin_core::with_as_of(p.end, || crate::tools::cache_status(db))?,
+        None => crate::tools::cache_status(db)?,
+    };
     let goals = garmin_core::Goals::load(db)?;
 
-    let mut s = format!(
-        "Current date and time, which you cannot know any other way: {}, local \
-         time {} (UTC{}). A question about \"today\", \"this week\" or \
-         \"recently\" is anchored here, not to the newest row in the cache.\n\n",
-        now.format("%A %-d %B %Y"),
-        now.format("%H:%M"),
-        now.format("%:z"),
-    );
+    let mut s = match period {
+        None => format!(
+            "Current date and time, which you cannot know any other way: {}, local \
+             time {} (UTC{}). A question about \"today\", \"this week\" or \
+             \"recently\" is anchored here, not to the newest row in the cache.\n\n",
+            now.format("%A %-d %B %Y"),
+            now.format("%H:%M"),
+            now.format("%:z"),
+        ),
+        Some(p) => {
+            let end = p.end.format("%A %-d %B %Y");
+            format!(
+                "The person looks at the period {} to {end}. For every tool, today \
+                 is {end}, and no data after that date is shown. A question about \
+                 \"today\", \"this week\" or \"recently\" is anchored to {end}. Use \
+                 only data from this period, unless the person asks for more.\n\n",
+                p.start.format("%A %-d %B %Y"),
+            )
+        }
+    };
     s.push_str("How current the cached data is:\n");
     s.push_str(&age_line(
         "Wellness (resting HR, HRV, sleep, readiness)",

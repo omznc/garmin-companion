@@ -1,4 +1,5 @@
-//! Phosphor icons, compiled into the binary.
+//! The design's stroke icons and some Phosphor icons, compiled into the binary.
+//! A stroke icon is one path with one tint. The rest of this note is about Phosphor.
 //!
 //! gpui keeps only the alpha mask of an SVG and tints it with one colour. A
 //! Phosphor duotone icon is a shape at 20% opacity under the same shape's
@@ -8,8 +9,13 @@
 //! two as two stacked `svg()` elements with two colours.
 
 use std::borrow::Cow;
+use std::time::Duration;
 
-use gpui::{div, prelude::*, px, svg, AssetSource, Hsla, SharedString};
+use crate::scale::px;
+use gpui::{
+    div, percentage, prelude::*, svg, Animation, AnimationExt, AssetSource, Hsla, SharedString,
+    Transformation,
+};
 
 use crate::theme::Theme;
 
@@ -41,40 +47,55 @@ macro_rules! icons {
 }
 
 icons! {
-    // The window controls are strokes, so they take the bold weight.
-    // Duotone fills the shape behind a stroke, and a minus has none.
-    Minimise => "bold/minus",
-    Maximise => "bold/square",
+    // The design icons: 16 by 16 strokes with one layer. The `stroke/` files
+    // are the design's paths. Phosphor stays where the design has no icon.
+    Minimise => "stroke/minimise",
+    Maximise => "stroke/maximise",
+    Close => "stroke/close",
     Restore => "bold/copy-simple",
-    Close => "bold/x",
 
-    Sync => "duotone/arrows-clockwise",
+    // The Horizon mark in three layers, one tint each. See `titlebar::brand`.
+    LogoSun => "stroke/logo-sun",
+    LogoHorizon => "stroke/logo-horizon",
+    LogoLines => "stroke/logo-lines",
+    Search => "stroke/search",
+    Sync => "stroke/sync",
+    Panel => "stroke/panel",
+    ChevronDown => "stroke/chevron-down",
+    ChevronLeft => "stroke/chevron-left",
+    ChevronRight => "stroke/chevron-right",
+    Plus => "stroke/plus",
+    X => "stroke/x",
+    Grip => "stroke/grip",
+    GridPlus => "stroke/grid-plus",
+    Width => "stroke/width",
+    Check => "stroke/check",
+    Warning => "stroke/warn",
+    Info => "stroke/info",
+    Trophy => "stroke/trophy",
+
     ArrowRight => "duotone/arrow-right",
     Spinner => "duotone/circle-notch",
     Light => "duotone/sun",
     Dark => "duotone/moon",
     SignOut => "duotone/sign-out",
-    Check => "duotone/check",
-    Warning => "duotone/warning",
-    Info => "duotone/info",
     Desktop => "duotone/desktop",
-    Search => "duotone/magnifying-glass",
 
-    NavToday => "duotone/house",
-    NavActivities => "duotone/sneaker-move",
-    NavHealth => "duotone/heartbeat",
-    NavSleep => "duotone/moon-stars",
-    NavFood => "duotone/fork-knife",
-    NavWeight => "duotone/scales",
-    NavAsk => "duotone/chat-circle-dots",
-    NavInsights => "duotone/lightbulb",
-    NavPlan => "duotone/calendar-blank",
-    NavRoutes => "duotone/map-trifold",
-    NavGear => "duotone/backpack",
-    NavStrength => "duotone/barbell",
-    NavFitness => "duotone/gauge",
-    NavReports => "duotone/file-text",
-    NavSettings => "duotone/gear-six",
+    NavToday => "stroke/today",
+    NavHealth => "stroke/health",
+    NavSleep => "stroke/sleep",
+    NavFood => "stroke/food",
+    NavWeight => "stroke/weight",
+    NavActivities => "stroke/activities",
+    NavStrength => "stroke/strength",
+    NavFitness => "stroke/fitness",
+    NavPlan => "stroke/plan",
+    NavRoutes => "stroke/routes",
+    NavGear => "stroke/gear",
+    NavAsk => "stroke/ask",
+    NavInsights => "stroke/insights",
+    NavReports => "stroke/reports",
+    NavSettings => "stroke/settings",
 
     Send => "bold/arrow-up",
     Stop => "bold/stop",
@@ -125,6 +146,26 @@ pub fn icon_hover(
         Some((group, on)) => front.group_hover(group, move |s| s.text_color(on)),
         None => front,
     })
+}
+
+/// A stroke icon that turns once a second, for a job that runs. Reduced
+/// motion keeps it still.
+pub fn icon_spin(which: Icon, size: f32, colour: Hsla, id: &'static str) -> impl IntoElement {
+    let still = svg()
+        .path(which.path("front"))
+        .size(px(size))
+        .flex_none()
+        .text_color(colour);
+    if crate::motion::reduced() {
+        return still.into_any_element();
+    }
+    still
+        .with_animation(
+            id,
+            Animation::new(Duration::from_secs(1)).repeat(),
+            |s, delta| s.with_transformation(Transformation::rotate(percentage(delta))),
+        )
+        .into_any_element()
 }
 
 /// Split one Phosphor file into its back and front layers.
@@ -206,7 +247,7 @@ mod tests {
 
     #[test]
     fn the_back_layer_drops_the_opacity_the_tint_carries() {
-        let text = include_str!("../assets/icons/duotone/house.svg");
+        let text = include_str!("../assets/icons/duotone/sun.svg");
         let back = layer(text, true);
         let front = layer(text, false);
         assert!(!back.contains("opacity") && back.matches("<path").count() == 1);
