@@ -33,11 +33,13 @@ The coach answers questions about your data. You choose where it runs:
   directly to OpenRouter. The coach server gets nothing.
 - **Ollama**: the app sends the question and the data rows to the Ollama
   computer that you choose. Nobody else gets them.
-- **Claude Code** (desktop only): the app starts the Claude Code command on
-  your computer. It sends your question and the Garmin data that the tools of
-  the app return to this command. The command sends them to its AI model
-  provider, under your own account and the policies of that provider. The coach
-  server gets nothing.
+- **Claude Code, OpenCode or Codex** (desktop only): the app starts the
+  command that you choose (`claude`, `opencode` or `codex`) on your computer.
+  It sends your question and the Garmin data that the tools of the app return
+  to this command. The command sends them to its AI model provider, under your
+  own account and the policies of that provider. With OpenCode, the provider is
+  the one that you set in OpenCode. This can be a model on your computer. The
+  coach server gets nothing.
 
 Chat history stays on your device.
 

@@ -25,6 +25,11 @@ pub enum Provider {
     /// MCP. A desktop only: a phone cannot start a process.
     #[serde(rename = "claude_code")]
     ClaudeCode,
+    /// The `opencode` command, same design as `ClaudeCode`.
+    #[serde(rename = "opencode")]
+    OpenCode,
+    /// The `codex` command, same design as `ClaudeCode`.
+    Codex,
 }
 
 /// The model alias that Claude Code gets when none was chosen.
@@ -37,6 +42,8 @@ impl Provider {
             "openrouter" => Some(Self::Openrouter),
             "ollama" => Some(Self::Ollama),
             "claude_code" => Some(Self::ClaudeCode),
+            "opencode" => Some(Self::OpenCode),
+            "codex" => Some(Self::Codex),
             _ => None,
         }
     }
@@ -47,13 +54,25 @@ impl Provider {
             Self::Openrouter => "openrouter",
             Self::Ollama => "ollama",
             Self::ClaudeCode => "claude_code",
+            Self::OpenCode => "opencode",
+            Self::Codex => "codex",
         }
+    }
+
+    /// A local command that answers with the app's tools over MCP.
+    pub fn is_cli(self) -> bool {
+        matches!(self, Self::ClaudeCode | Self::OpenCode | Self::Codex)
+    }
+
+    /// A choice that needs this computer: Ollama or a local command.
+    pub fn is_local(self) -> bool {
+        self == Self::Ollama || self.is_cli()
     }
 
     /// The base URL of the chat API. The hosted coach has its own client.
     pub(crate) fn base(self) -> Option<&'static str> {
         match self {
-            Self::Cloud | Self::ClaudeCode => None,
+            Self::Cloud | Self::ClaudeCode | Self::OpenCode | Self::Codex => None,
             Self::Openrouter => Some(OPENROUTER_BASE),
             Self::Ollama => Some(OLLAMA_BASE),
         }
@@ -65,7 +84,7 @@ impl Provider {
         match self {
             Self::Openrouter => Some(DEFAULT_OPENROUTER_MODEL),
             Self::ClaudeCode => Some(DEFAULT_CLAUDE_MODEL),
-            Self::Cloud | Self::Ollama => None,
+            Self::Cloud | Self::Ollama | Self::OpenCode | Self::Codex => None,
         }
     }
 }
@@ -91,10 +110,10 @@ pub(crate) fn default_provider(has_own_key: bool) -> Provider {
     }
 }
 
-/// A phone cannot reach a local Ollama or start Claude Code, so a phone drops
-/// those choices.
+/// A phone cannot reach a local Ollama or start a local command, so a phone
+/// drops those choices.
 fn usable(saved: Option<Provider>, phone: bool) -> Option<Provider> {
-    saved.filter(|p| !(phone && matches!(p, Provider::Ollama | Provider::ClaudeCode)))
+    saved.filter(|p| !(phone && p.is_local()))
 }
 
 /// The saved choice, or the default. The provider is always set.
@@ -171,6 +190,8 @@ mod tests {
             Provider::Openrouter,
             Provider::Ollama,
             Provider::ClaudeCode,
+            Provider::OpenCode,
+            Provider::Codex,
         ] {
             assert_eq!(Provider::parse(p.as_str()), Some(p));
         }
@@ -201,6 +222,10 @@ mod tests {
             usable(Some(Provider::ClaudeCode), false),
             Some(Provider::ClaudeCode)
         );
+        for p in [Provider::OpenCode, Provider::Codex] {
+            assert_eq!(usable(Some(p), true), None);
+            assert_eq!(usable(Some(p), false), Some(p));
+        }
         assert_eq!(usable(Some(Provider::Cloud), true), Some(Provider::Cloud));
     }
 

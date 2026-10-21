@@ -36,7 +36,7 @@ use gpui::{
 };
 use serde_json::Value;
 
-use crate::claude_code;
+use crate::cli_agent::TurnFn;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
@@ -49,6 +49,7 @@ use crate::scroll::SmoothScroll;
 use crate::sidebar::SIDEBAR_W;
 use crate::theme::{Palette, Theme, FS_BASE, FS_CAPTION, FS_MD, FS_SMALL};
 use crate::ui::{body, ch, eyebrow, SANS};
+use crate::{claude_code, codex, opencode};
 
 /// How far off the bottom a reader can be and still follow new text.
 const STICK_SLOP: f32 = 90.0;
@@ -245,6 +246,8 @@ impl Ask {
             Provider::Openrouter => "Own key",
             Provider::Ollama => "Ollama",
             Provider::ClaudeCode => "Claude Code",
+            Provider::OpenCode => "OpenCode",
+            Provider::Codex => "Codex",
         })
     }
 
@@ -516,13 +519,19 @@ async fn real_turn(
     period: Option<garmin_coach::Period>,
 ) {
     let open = || Db::open(path);
-    // Claude Code is a program on this computer, not an HTTP transport.
-    if let Ok((Some(Provider::ClaudeCode), model)) =
-        open().and_then(|db| garmin_coach::load_config(&db))
-    {
+    // These are programs on this computer, not HTTP transports.
+    if let Ok((Some(provider), model)) = open().and_then(|db| garmin_coach::load_config(&db)) {
         let model = model.unwrap_or_default();
         let copy = demo.then_some(path);
-        return claude_code::run_turn(copy, &model, history, period, sink, stop);
+        let run = match provider {
+            Provider::ClaudeCode => Some(claude_code::run_turn as TurnFn),
+            Provider::OpenCode => Some(opencode::run_turn as TurnFn),
+            Provider::Codex => Some(codex::run_turn as TurnFn),
+            _ => None,
+        };
+        if let Some(run) = run {
+            return run(copy, &model, history, period, sink, stop);
+        }
     }
     let transport = open().and_then(|db| {
         if demo && matches!(garmin_coach::load_config(&db)?.0, Some(Provider::Cloud)) {
@@ -587,10 +596,12 @@ impl Transport for Demo {
 pub fn setup(db_path: &std::path::Path, spec: &str) -> Result<String> {
     let (name, model) = spec.split_once(':').unwrap_or((spec, ""));
     let provider = Provider::parse(name).ok_or_else(|| {
-        anyhow::anyhow!("unknown provider {name}: use cloud, openrouter, ollama or claude_code")
+        anyhow::anyhow!(
+            "unknown provider {name}: use cloud, openrouter, ollama, claude_code, opencode or codex"
+        )
     })?;
     let model = match (model, provider) {
-        ("", Provider::Cloud) => "",
+        ("", Provider::Cloud | Provider::OpenCode | Provider::Codex) => "",
         ("", Provider::Openrouter) => garmin_coach::DEFAULT_OPENROUTER_MODEL,
         ("", Provider::ClaudeCode) => garmin_coach::DEFAULT_CLAUDE_MODEL,
         ("", _) => anyhow::bail!("name a model, for example {name}:llama3.2"),
