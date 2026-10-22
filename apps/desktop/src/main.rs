@@ -448,6 +448,20 @@ fn main() -> anyhow::Result<()> {
                     {
                         root.account.settings_page = at;
                     }
+                    // For screenshots: `GC_OPEN_RECENTS=1` shows the thread list, and
+                    // `GC_OPEN_THREAD=<id>` opens a saved thread.
+                    #[cfg(debug_assertions)]
+                    {
+                        let ask = root.ask.clone();
+                        if let Ok(id) = std::env::var("GC_OPEN_THREAD") {
+                            ask.update(cx, |ask, cx| ask.open_thread(id, cx));
+                        } else if let Ok(state) = std::env::var("GC_OPEN_RECENTS") {
+                            ask.update(cx, |ask, cx| {
+                                ask.show_recents(cx);
+                                ask.preview_row(&state);
+                            });
+                        }
+                    }
                     // For screenshots: `GC_HIGH_CONTRAST=1` turns high contrast on.
                     #[cfg(debug_assertions)]
                     if std::env::var("GC_HIGH_CONTRAST").is_ok() {

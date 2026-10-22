@@ -13,8 +13,17 @@
 //! The hosted coach shows its credits under the composer, with a link to
 //! premium. The model choice lives in Settings (`--coach` sets it for a copy).
 //!
-//! Not here yet: saved conversations (Recents), pinned questions, and the
-//! collapse of the tool steps once an answer lands.
+//! Every question and answer goes to the saved threads of `garmin_api::chat`,
+//! the same store that the mobile app uses (`threads.rs`). Recents lists the
+//! threads, and a thread opens again, with its workout cards in their saved
+//! state (`recents.rs`). The open thread comes back at the next start. A demo
+//! keeps its threads in memory.
+//!
+//! Not here yet: pinned questions, and the collapse of the tool steps once an
+//! answer lands.
+
+mod recents;
+mod threads;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +32,7 @@ use std::time::Duration;
 
 use crate::scale::px;
 use anyhow::Result;
+use garmin_api::chat;
 use garmin_coach::{
     AccountView, Event, EventSink, HistoryMessage, HttpTransport, Provider, StreamResult, Transport,
 };
@@ -40,6 +50,7 @@ use crate::cli_agent::TurnFn;
 use crate::cloud;
 use crate::composer::{Composer, ComposerEvent};
 use crate::controls::quiet;
+use crate::field::Field;
 use crate::focus::Focus;
 use crate::icons::Icon;
 use crate::kit::{button, chip, icon_button, Look};
@@ -100,8 +111,24 @@ struct Turn {
     text: String,
     steps: Vec<Step>,
     error: Option<String>,
-    /// A workout the coach proposed, and whether it went to Garmin.
-    draft: Option<(WorkoutDraft, Save)>,
+    /// The workouts the coach proposed, and whether each went to Garmin.
+    drafts: Vec<DraftCard>,
+    /// The id of the turn in the saved thread. Only a coach turn has one.
+    id: String,
+}
+
+#[derive(Debug, Clone)]
+struct DraftCard {
+    call_id: String,
+    draft: WorkoutDraft,
+    save: Save,
+}
+
+/// What the screen shows: the chat, or the list of saved threads.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Pane {
+    Chat,
+    Recents,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -119,7 +146,8 @@ impl Turn {
             text,
             steps: Vec::new(),
             error: None,
-            draft: None,
+            drafts: Vec::new(),
+            id: String::new(),
         }
     }
 }
@@ -165,6 +193,20 @@ pub struct Ask {
     palette: Palette,
     composer: Entity<Composer>,
     turns: Vec<Turn>,
+    /// The saved thread that `turns` belongs to. `None` until the first question.
+    session: Option<String>,
+    /// The title of that thread.
+    title: Option<String>,
+    pane: Pane,
+    /// Frames left to hold the scroll area at the bottom after a thread opens.
+    pin: u8,
+    /// The list of Recents. `None` while it loads.
+    threads: Option<Vec<chat::ThreadMeta>>,
+    /// The thread that is being renamed, and its field.
+    renaming: Option<String>,
+    rename: Field,
+    /// The thread that waits for the answer to "Delete?".
+    deleting: Option<String>,
     busy: bool,
     stop: Arc<AtomicBool>,
     scroll: SmoothScroll,
@@ -196,6 +238,18 @@ impl Ask {
             palette,
             composer,
             turns: Vec::new(),
+            session: None,
+            title: None,
+            pane: Pane::Chat,
+            pin: 0,
+            threads: None,
+            renaming: None,
+            rename: {
+                let mut field = Field::new("Name of the chat", false, cx);
+                field.sans = true;
+                field
+            },
+            deleting: None,
             busy: false,
             stop: Arc::default(),
             scroll: SmoothScroll::new(motion::reduced()),
@@ -307,13 +361,23 @@ impl Ask {
         .detach();
     }
 
-    /// Drop the conversation and start an empty one.
-    pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+    /// Leave the thread on screen. A turn that runs stops, and its engine
+    /// thread saves what it wrote so far.
+    fn leave(&mut self, cx: &mut Context<Self>) {
         self.stop();
         self.task = None;
-        self.turns.clear();
         self.busy = false;
         self.composer.update(cx, |c, cx| c.set_busy(false, cx));
+    }
+
+    /// Start an empty chat. The old thread stays in Recents.
+    pub fn new_chat(&mut self, cx: &mut Context<Self>) {
+        self.leave(cx);
+        self.turns.clear();
+        self.session = None;
+        self.title = None;
+        self.show(Pane::Chat);
+        self.remember(None);
         cx.notify();
     }
 
@@ -321,14 +385,217 @@ impl Ask {
         self.stop.store(true, Ordering::Relaxed);
     }
 
+    /// The cache that holds the open thread id, when the threads are real.
+    fn db_path(&self) -> Option<&std::path::Path> {
+        match &self.source {
+            Source::Db(path) => Some(path),
+            Source::Demo | Source::Copy(_) => None,
+        }
+    }
+
+    /// Keep the open thread for the next start.
+    fn remember(&self, session: Option<&str>) {
+        if let Some(path) = self.db_path() {
+            let (path, session) = (path.to_path_buf(), session.map(str::to_owned));
+            std::thread::spawn(move || threads::save_current(&path, session.as_deref()));
+        }
+    }
+
+    /// Open the thread of the last run. It reads in the background, and a
+    /// question that the user sent in the meantime wins.
+    pub fn restore(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.db_path().map(std::path::Path::to_path_buf) else {
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            let id = cx
+                .background_executor()
+                .spawn(async move { threads::load_current(&path) })
+                .await;
+            if let Some(id) = id {
+                let _ = this.update(cx, |ask, cx| {
+                    if ask.session.is_none() {
+                        ask.open_thread(id, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Show the chat or the list. A new pane starts at its top.
+    fn show(&mut self, pane: Pane) {
+        self.pane = pane;
+        self.renaming = None;
+        self.deleting = None;
+        self.visits += 1;
+    }
+
+    /// Open a saved thread. A thread that is gone opens an empty chat.
+    pub fn open_thread(&mut self, id: String, cx: &mut Context<Self>) {
+        self.leave(cx);
+        let store = threads::store_for(&self.source);
+        cx.spawn(async move |this, cx| {
+            let read = cx
+                .background_executor()
+                .spawn({
+                    let id = id.clone();
+                    async move { chat::get_thread(store, &id, false, None) }
+                })
+                .await;
+            let _ = this.update(cx, |ask, cx| ask.opened(id, read, cx));
+        })
+        .detach();
+    }
+
+    fn opened(
+        &mut self,
+        id: String,
+        read: Result<Option<chat::Thread>, garmin_api::ApiError>,
+        cx: &mut Context<Self>,
+    ) {
+        match read {
+            Ok(Some(thread)) => {
+                self.session = Some(id.clone());
+                self.title = Some(thread.title);
+                self.turns = threads::from_saved(thread.turns);
+                self.remember(Some(&id));
+                self.show(Pane::Chat);
+                self.pin = 3;
+            }
+            Ok(None) => self.new_chat(cx),
+            Err(e) => eprintln!("could not open the thread: {e}"),
+        }
+        cx.notify();
+    }
+
+    /// Show the list of saved threads, newest first.
+    pub fn show_recents(&mut self, cx: &mut Context<Self>) {
+        self.show(Pane::Recents);
+        self.reload_threads(cx);
+        cx.notify();
+    }
+
+    pub fn show_chat(&mut self, cx: &mut Context<Self>) {
+        self.show(Pane::Chat);
+        cx.notify();
+    }
+
+    /// Read the list again. The old list stays on screen until the new one comes.
+    fn reload_threads(&mut self, cx: &mut Context<Self>) {
+        let store = threads::store_for(&self.source);
+        let running = self.busy.then(|| self.session.clone()).flatten();
+        cx.spawn(async move |this, cx| {
+            let args = chat::ListArgs {
+                limit: Some(200),
+                offset: None,
+            };
+            let list = cx
+                .background_executor()
+                .spawn(async move { chat::list_threads(store, &args, running.as_deref()) })
+                .await;
+            let _ = this.update(cx, |ask, cx| {
+                match list {
+                    Ok(list) => ask.threads = Some(list.threads),
+                    Err(e) => {
+                        eprintln!("could not list the threads: {e}");
+                        ask.threads.get_or_insert_with(Vec::new);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Delete a saved thread. The open thread becomes an empty chat.
+    pub fn delete_thread(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.session.as_deref() == Some(id.as_str()) {
+            self.new_chat(cx);
+            self.pane = Pane::Recents;
+        }
+        self.deleting = None;
+        let store = threads::store_for(&self.source);
+        cx.spawn(async move |this, cx| {
+            let done = cx
+                .background_executor()
+                .spawn(async move { chat::delete_thread(store, &id) })
+                .await;
+            if let Err(e) = done {
+                eprintln!("could not delete the thread: {e}");
+            }
+            let _ = this.update(cx, |ask, cx| ask.reload_threads(cx));
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Start to rename a thread: the field takes its title.
+    pub fn start_rename(
+        &mut self,
+        id: String,
+        title: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.deleting = None;
+        self.renaming = Some(id);
+        self.rename.line.clear();
+        self.rename.line.insert(title);
+        self.rename.focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Save the new title. An empty title keeps the old one.
+    pub fn commit_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(id) = self.renaming.take() else {
+            return;
+        };
+        let title = self.rename.line.text().trim().to_owned();
+        if title.is_empty() {
+            cx.notify();
+            return;
+        }
+        if self.session.as_deref() == Some(id.as_str()) {
+            self.title = Some(title.clone());
+        }
+        let store = threads::store_for(&self.source);
+        cx.spawn(async move |this, cx| {
+            let done = cx
+                .background_executor()
+                .spawn(async move { chat::rename_thread(store, &id, &title) })
+                .await;
+            if let Err(e) = done {
+                eprintln!("could not rename the thread: {e}");
+            }
+            let _ = this.update(cx, |ask, cx| ask.reload_threads(cx));
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// Send a question: add the two turns and start the engine.
     pub fn send(&mut self, text: String, cx: &mut Context<Self>) {
         if self.busy || text.trim().is_empty() {
             return;
         }
-        self.turns.push(Turn::new(Who::You, text));
+        let session = match &self.session {
+            Some(id) => id.clone(),
+            None => {
+                let id = threads::new_session_id();
+                self.title = Some(chat::make_title(&text));
+                self.session = Some(id.clone());
+                self.remember(Some(&id));
+                id
+            }
+        };
+        self.pane = Pane::Chat;
+        let turn_id = format!("{session}:{}", self.turns.len() / 2);
+        self.turns.push(Turn::new(Who::You, text.clone()));
         let history = with_context(history(&self.turns), self.context, self.focus);
-        self.turns.push(Turn::new(Who::Coach, String::new()));
+        let mut coach = Turn::new(Who::Coach, String::new());
+        coach.id = turn_id;
+        self.turns.push(coach);
         self.busy = true;
         self.stop = Arc::default();
         self.composer.update(cx, |c, cx| c.set_busy(true, cx));
@@ -339,7 +606,8 @@ impl Ask {
             start: f.start,
             end: f.end,
         });
-        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period));
+        let save = Some((threads::store_for(&source), session, text));
+        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period, save));
         self.task = Some(cx.spawn(async move |this, cx| {
             while let Ok(event) = rx.recv().await {
                 if this.update(cx, |ask, cx| ask.apply(event, cx)).is_err() {
@@ -358,7 +626,11 @@ impl Ask {
             Event::Delta { text } => turn.text.push_str(&text),
             // The desktop has no trace of notes: it drops the narration.
             Event::Note { .. } => turn.text.clear(),
-            Event::Draft { draft, .. } => turn.draft = Some((draft, Save::Idle)),
+            Event::Draft { call_id, draft } => turn.drafts.push(DraftCard {
+                call_id,
+                draft,
+                save: Save::Idle,
+            }),
             Event::Tool {
                 call_id,
                 label,
@@ -390,23 +662,40 @@ impl Ask {
 
     /// Send the draft of one turn to Garmin. A second press while one runs, or
     /// after it saved, does nothing.
-    fn save_draft(&mut self, index: usize, cx: &mut Context<Self>) {
-        let Some((draft, state)) = self.turns.get_mut(index).and_then(|t| t.draft.as_mut()) else {
+    fn save_draft(&mut self, (index, card): (usize, usize), cx: &mut Context<Self>) {
+        let Some(turn) = self.turns.get_mut(index) else {
             return;
         };
-        if matches!(state, Save::Saving | Save::Saved) {
+        let turn_id = turn.id.clone();
+        let Some(found) = turn.drafts.get_mut(card) else {
+            return;
+        };
+        if matches!(found.save, Save::Saving | Save::Saved) {
             return;
         }
-        *state = Save::Saving;
-        let draft = draft.clone();
+        found.save = Save::Saving;
+        let (draft, call_id) = (found.draft.clone(), found.call_id.clone());
+        let session = self.session.clone().unwrap_or_default();
+        let store = threads::store_for(&self.source);
         cx.spawn(async move |this, cx| {
+            let ids = (session, turn_id, call_id);
             let result = cx
                 .background_executor()
-                .spawn(async move { garmin_api::workouts::create_workout(&draft) })
+                .spawn({
+                    let ids = ids.clone();
+                    async move { threads::create_and_record(store, &ids, &draft) }
+                })
                 .await;
             let _ = this.update(cx, |ask, cx| {
-                if let Some((_, state)) = ask.turns.get_mut(index).and_then(|t| t.draft.as_mut()) {
-                    *state = match result {
+                // The user may have opened another thread while Garmin answered.
+                let found = ask
+                    .turns
+                    .iter_mut()
+                    .filter(|t| t.id == ids.1)
+                    .flat_map(|t| t.drafts.iter_mut())
+                    .find(|d| d.call_id == ids.2);
+                if let Some(found) = found {
+                    found.save = match result {
                         Ok(_) => Save::Saved,
                         Err(e) => Save::Failed(e.to_string()),
                     };
@@ -472,14 +761,27 @@ fn upsert(steps: &mut Vec<Step>, step: Step) {
 
 /* -------------------------------------------------------------- the engine --- */
 
-struct ChannelSink(async_channel::Sender<Event>);
+/// Sends each event to the UI, and saves the turn into its thread. The save
+/// comes first and runs here, so an answer reaches the store even when the user
+/// has left the thread.
+struct ChannelSink {
+    tx: async_channel::Sender<Event>,
+    saver: Option<threads::TurnSaver>,
+    stop: Arc<AtomicBool>,
+}
 
 impl EventSink for ChannelSink {
     fn emit(&self, event: Event) {
+        if let Some(saver) = &self.saver {
+            saver.on_event(&event, self.stop.load(Ordering::Relaxed));
+        }
         // A closed channel means the window is gone, and nobody needs the event.
-        let _ = self.0.send_blocking(event);
+        let _ = self.tx.send_blocking(event);
     }
 }
+
+/// The thread that a turn saves into: the store, the thread id and the question.
+type SaveTo = (garmin_api::Source, String, String);
 
 fn run_on_thread(
     source: Source,
@@ -487,8 +789,15 @@ fn run_on_thread(
     tx: async_channel::Sender<Event>,
     stop: Arc<AtomicBool>,
     period: Option<garmin_coach::Period>,
+    save: Option<SaveTo>,
 ) {
-    let sink = ChannelSink(tx);
+    let sink = ChannelSink {
+        tx,
+        saver: save.and_then(|(store, session, question)| {
+            threads::TurnSaver::begin(store, &session, &question)
+        }),
+        stop: stop.clone(),
+    };
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build();
@@ -695,7 +1004,7 @@ fn sport_name(sport: Sport) -> &'static str {
 
 /// The card for a proposed workout, with the button that saves it.
 fn draft_card(
-    index: usize,
+    at: (usize, usize),
     draft: &WorkoutDraft,
     save: &Save,
     cx: &mut Context<Ask>,
@@ -707,10 +1016,11 @@ fn draft_card(
         Save::Saved => ("Saved", false),
     };
     // The quiet disabled colour is the border colour, too faint for "Saved".
-    let mut button = quiet(("save-draft", index), label, enabled, true, t).text_color(t.mutd);
+    let mut button =
+        quiet(("save-draft", at.0 * 100 + at.1), label, enabled, true, t).text_color(t.mutd);
     if enabled {
         button = button
-            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.save_draft(index, cx)));
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| this.save_draft(at, cx)));
     }
     let mut card = div()
         .max_w(ch(62.0, FS_SMALL))
@@ -733,6 +1043,20 @@ fn draft_card(
         card = card.child(body(e.clone(), FS_SMALL, t.warn));
     }
     card
+}
+
+/// The cards of the workouts that one coach turn proposed.
+fn draft_cards(
+    index: usize,
+    turn: &Turn,
+    cx: &mut Context<Ask>,
+    t: &Theme,
+) -> Vec<impl IntoElement> {
+    turn.drafts
+        .iter()
+        .enumerate()
+        .map(|(n, card)| draft_card((index, n), &card.draft, &card.save, cx, t))
+        .collect()
 }
 
 fn coach_turn(turn: &Turn, live: bool, t: &Theme) -> Div {
@@ -890,13 +1214,13 @@ impl Ask {
             c.set_hint("Ask about your training...");
         });
 
-        self.scroll.tick(window);
         // Follow new text while the reader is at the bottom.
-        if self.busy && self.scroll.distance_below() <= STICK_SLOP {
-            self.scroll.pin_bottom();
-        }
+        self.follow(window, cx);
 
-        let content = if self.turns.is_empty() {
+        let recents = self.pane == Pane::Recents;
+        let content = if recents {
+            self.recents_list(window, cx, &t)
+        } else if self.turns.is_empty() {
             self.empty(cx, &t)
         } else {
             let last = self.turns.len() - 1;
@@ -908,11 +1232,7 @@ impl Ask {
                     Who::Coach => {
                         let ended = !(live && i == last) && !turn.text.is_empty();
                         coach_turn(turn, live && i == last, &t)
-                            .children(
-                                turn.draft
-                                    .as_ref()
-                                    .map(|(d, save)| draft_card(i, d, save, cx, &t)),
-                            )
+                            .children(draft_cards(i, turn, cx, &t))
                             .children(ended.then(|| Self::answer_actions(i, &turn.text, &t, cx)))
                             .into_any_element()
                     }
@@ -921,6 +1241,12 @@ impl Ask {
             col.into_any_element()
         };
 
+        // The breadcrumb bar of the window shows the thread (`crumb_tail`).
+        let bar = div()
+            .flex()
+            .justify_end()
+            .mb(px(14.0))
+            .child(self.thread_buttons(cx, &t));
         let thread = self
             .scroll
             .area(ElementId::NamedInteger("ask".into(), self.visits as u64))
@@ -932,6 +1258,7 @@ impl Ask {
                     .mx_auto()
                     .pt(px(COLUMN_TOP))
                     .pb(px(COMPOSER_ROOM))
+                    .child(bar)
                     .child(self.screen_head(&t))
                     .child(content),
             );
@@ -966,10 +1293,11 @@ impl Ask {
             .min_w_0()
             .h_full()
             .child(thread)
-            .child(dock)
+            .when(!recents, |d| d.child(dock))
     }
 
-    /// The header of the panel: the name, the credits and the button for a new thread.
+    /// The header of the panel: the crumbs, the credits and the buttons for
+    /// Recents and for a new thread.
     fn panel_header(&self, cx: &mut Context<Self>, t: &Theme) -> Div {
         let credits = self.credits.as_ref().filter(|_| self.cloud_on).map(|v| {
             chip(
@@ -979,8 +1307,6 @@ impl Ask {
                 t,
             )
         });
-        let new_thread = icon_button("coach-new", Icon::Plus, 14.0, false, false, t)
-            .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.new_chat(cx)));
         div()
             .flex_none()
             .flex()
@@ -991,16 +1317,9 @@ impl Ask {
             .pr(px(6.0))
             .border_b_1()
             .border_color(t.line)
-            .child(
-                div()
-                    .flex_1()
-                    .font_family(SANS)
-                    .text_size(px(13.0))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .child("Coach"),
-            )
+            .child(self.crumbs(cx, t))
             .children(credits)
-            .child(new_thread)
+            .child(self.thread_buttons(cx, t))
     }
 
     /// The empty thread of the panel: one line and three questions to start with.
@@ -1068,11 +1387,7 @@ impl Ask {
                     .child(SharedString::from(turn.text.clone()))
                     .into_any_element(),
                 Who::Coach => coach_turn(turn, self.busy && i == last, t)
-                    .children(
-                        turn.draft
-                            .as_ref()
-                            .map(|(d, save)| draft_card(i, d, save, cx, t)),
-                    )
+                    .children(draft_cards(i, turn, cx, t))
                     .into_any_element(),
             });
         }
@@ -1088,22 +1403,20 @@ impl Ask {
             c.set_panel(true);
             c.set_hint("Ask about this screen...");
         });
-        self.scroll.tick(window);
-        if self.busy && self.scroll.distance_below() <= STICK_SLOP {
-            self.scroll.pin_bottom();
-        }
+        self.follow(window, cx);
+        let recents = self.pane == Pane::Recents;
+        let content = if recents {
+            self.recents_list(window, cx, &t)
+        } else {
+            self.panel_thread(cx, &t)
+        };
         let thread = self
             .scroll
             .area(ElementId::NamedInteger("coach".into(), self.visits as u64))
             .flex_1()
             .min_h_0()
             .w_full()
-            .child(
-                div()
-                    .px(px(12.0))
-                    .py(px(14.0))
-                    .child(self.panel_thread(cx, &t)),
-            );
+            .child(div().px(px(12.0)).py(px(14.0)).child(content));
         let out = self
             .credits
             .as_ref()
@@ -1122,7 +1435,21 @@ impl Ask {
             .flex_col()
             .child(self.panel_header(cx, &t))
             .child(thread)
-            .child(dock)
+            .when(!recents, |d| d.child(dock))
+    }
+
+    /// Keep the scroll area where the reader is: at the bottom while text
+    /// streams, and at the bottom for a few frames after a thread opens,
+    /// because its height is known only after the first layout.
+    fn follow(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.scroll.tick(window);
+        if self.pin > 0 {
+            self.pin -= 1;
+            self.scroll.pin_bottom();
+            cx.notify();
+        } else if self.busy && self.scroll.distance_below() <= STICK_SLOP {
+            self.scroll.pin_bottom();
+        }
     }
 }
 
@@ -1213,7 +1540,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gc-ask-copy-{}.db", std::process::id()));
         setup(&path, "cloud").unwrap();
         let (tx, rx) = async_channel::unbounded();
-        run_on_thread(Source::Copy(path), vec![], tx, Arc::default(), None);
+        run_on_thread(Source::Copy(path), vec![], tx, Arc::default(), None, None);
         let events: Vec<Event> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
         assert!(matches!(&events[..], [Event::Error { text }] if text == CLOUD_OFF));
     }
