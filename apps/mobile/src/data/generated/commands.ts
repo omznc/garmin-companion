@@ -8,6 +8,7 @@ import type { AskEvent } from "./AskEvent";
 import type { CachedActivity } from "./CachedActivity";
 import type { ChartsView } from "./ChartsView";
 import type { ChatConfig } from "./ChatConfig";
+import type { ClaimArgs } from "./ClaimArgs";
 import type { CloudAccountArgs } from "./CloudAccountArgs";
 import type { CloudEmailArgs } from "./CloudEmailArgs";
 import type { CloudVerified } from "./CloudVerified";
@@ -65,6 +66,7 @@ export type Commands = {
   cached_activities: { args: RecentArgs | undefined; result: Array<CachedActivity> };
   cached_activities_since: { args: SinceArgs; result: Array<CachedActivity> };
   cached_activity: { args: ActivityIdArgs; result: CachedActivity | null };
+  claim_notification: { args: ClaimArgs; result: boolean };
   nutrition: { args: DaysArgs | undefined; result: NutritionReport };
   weight: { args: DaysArgs | undefined; result: WeightReport };
   activities: { args: RecentArgs | undefined; result: ActivitiesView };

@@ -44,6 +44,11 @@
     "plugins": [
       "expo-router",
       "expo-system-ui",
+      "expo-background-task",
+      [
+        "expo-notifications",
+        { "icon": "./assets/adaptive-icon-monochrome.png", "enableRemoteNotifications": false }
+      ],
       "./plugins/self-update",
       "./plugins/data-extraction",
       "./plugins/night-mode",

@@ -65,6 +65,7 @@ export function MoreHome() {
       settings ? (settings.connected ? "Connected" : "Not connected") : undefined,
     ),
     row("Sync", "/more/sync", "arrow.triangle.2.circlepath", "systemGreen", "sync"),
+    row("Notifications", "/more/notifications", "bell.fill", "systemRed", "notifications"),
     row("Appearance", "/more/appearance", "paintbrush.fill", "systemPink", "palette", theme),
     row(
       "Coach",
