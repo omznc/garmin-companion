@@ -11,7 +11,7 @@
     "bridge:android": "./scripts/build-android-bridge.sh",
     "bridge:ios": "cd packages/garmin-bridge && ../../node_modules/.bin/ubrn build ios --and-generate --config ubrn.config.yaml --profile release-mobile",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test": "node --test src/update/manifest.test.ts src/data/present.test.ts src/data/bodyLine.test.ts src/appConfig.test.ts src/ask/markdown.test.ts src/ask/turns.test.ts src/ask/workout.test.ts src/data/importLabel.test.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
     "format": "biome format --write .",
     "format:check": "biome format ."
   },
@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@types/node": "^24.19.2",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   }

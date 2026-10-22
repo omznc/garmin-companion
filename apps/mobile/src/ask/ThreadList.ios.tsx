@@ -1,8 +1,8 @@
 // The chat history on iOS: a grouped inset list under the large title, a pull to refresh,
 // and a compose button in the header. A long press renames or deletes a chat.
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
-import { PlatformColor, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { type ReactNode, useState } from "react";
+import { FlatList, PlatformColor, Pressable, RefreshControl, Text, View } from "react-native";
 import type { ThreadMeta } from "../data/chatTypes";
 import { Group, label, secondary } from "../components/Grouped";
 import { RenameDialog } from "./RenameDialog";
@@ -58,6 +58,34 @@ function ThreadRow({
   );
 }
 
+// A row of the inset group. The list draws it row by row, so the first and last row hold the corners.
+function GroupCell({
+  first,
+  last,
+  children,
+}: {
+  first: boolean;
+  last: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={{
+        marginTop: first ? 24 : 0,
+        marginHorizontal: 16,
+        backgroundColor: PlatformColor("secondarySystemGroupedBackground"),
+        borderTopLeftRadius: first ? 26 : 0,
+        borderTopRightRadius: first ? 26 : 0,
+        borderBottomLeftRadius: last ? 26 : 0,
+        borderBottomRightRadius: last ? 26 : 0,
+        overflow: "hidden",
+      }}
+    >
+      {children}
+    </View>
+  );
+}
+
 function Message({ children }: { children: string }) {
   return (
     <View
@@ -109,28 +137,26 @@ export function ThreadList() {
           onPress={() => router.push("/ask/new")}
         />
       </Stack.Toolbar>
-      <ScrollView
+      <FlatList
         contentInsetAdjustmentBehavior="automatic"
         style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.onRefresh} />}
-      >
-        <Status list={list} />
-        {list.rows.length > 0 ? (
-          <Group>
-            {list.rows.map((thread, i) => (
-              <ThreadRow
-                key={thread.sessionId}
-                thread={thread}
-                now={now}
-                last={i === list.rows.length - 1}
-                onOpen={() => router.push(`/ask/${thread.sessionId}`)}
-                onMenu={() => showThreadMenu(thread, () => rename.begin(thread))}
-              />
-            ))}
-          </Group>
-        ) : null}
-      </ScrollView>
+        data={list.rows}
+        keyExtractor={(thread) => thread.sessionId}
+        ListHeaderComponent={<Status list={list} />}
+        renderItem={({ item: thread, index }) => (
+          <GroupCell first={index === 0} last={index === list.rows.length - 1}>
+            <ThreadRow
+              thread={thread}
+              now={now}
+              last={index === list.rows.length - 1}
+              onOpen={() => router.push(`/ask/${thread.sessionId}`)}
+              onMenu={() => showThreadMenu(thread, () => rename.begin(thread))}
+            />
+          </GroupCell>
+        )}
+      />
       <RenameDialog
         // A new key gives each rename a fresh field.
         key={rename.renaming?.sessionId ?? "closed"}
