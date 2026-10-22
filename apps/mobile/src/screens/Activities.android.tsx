@@ -6,6 +6,7 @@ import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Card, GAP, Group, ListRow, Loading, MARGIN, SectionLabel, T } from "../components/MdKit";
 import { FAMILY_ICON } from "../components/TodayKit";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { shareActivitiesCsv } from "../data/share";
 import { useMd } from "../theme/md";
 
 function SessionRow({ c }: { c: ActivityCard }) {
@@ -83,6 +84,7 @@ export function ActivitiesScreen() {
   return (
     <LargeAppBarScreen
       title="Activities"
+      share={{ label: "Export as CSV", onPress: () => void shareActivitiesCsv() }}
       list={{
         data: groups,
         keyExtractor: (g) => g.date,

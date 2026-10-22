@@ -1,1 +1,4 @@
 packages: []
+minimumReleaseAgeExclude:
+  - '@expo/config-plugins@58.0.10'
+  - expo-sharing@58.0.20

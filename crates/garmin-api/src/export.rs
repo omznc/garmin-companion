@@ -7,13 +7,14 @@
 use crate::derive::{date_key, mean};
 use crate::reports::{report_view, week_start};
 use crate::text::hours_minutes;
-use crate::ApiError;
+use crate::{ApiError, Source};
 use chrono::{Datelike, Months, NaiveDate};
 use garmin_core::sport::{is_exercise, sport_label};
 use garmin_core::Db;
 use pdf_writer::types::{CidFontType, FontFlags, SystemInfo};
 use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, Str};
 use std::collections::BTreeMap;
+use std::path::Path;
 
 const HEADER: [&str; 9] = [
     "date",
@@ -208,6 +209,81 @@ pub fn monthly_report_pdf(
         prose: vec![prose],
     };
     render(&doc, font)
+}
+
+// ---- Files for the mobile bridge ----
+
+/// The font of the PDF reports. The desktop app embeds the same file.
+const FONT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/desktop/assets/fonts/IBMPlexSans-Regular.ttf"
+));
+
+/// What a file export writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Csv,
+    Week(usize),
+    Month(u32),
+}
+
+fn io_error(e: std::io::Error) -> ApiError {
+    ApiError::Internal(e.to_string())
+}
+
+/// The file name and the bytes of one export.
+fn build(db: &Db, today: NaiveDate, kind: Kind) -> Result<(String, Vec<u8>), ApiError> {
+    Ok(match kind {
+        Kind::Csv => (
+            "garmin-activities.csv".into(),
+            activities_csv(db)?.into_bytes(),
+        ),
+        Kind::Week(offset) => {
+            let start = week_start(db, today, offset)?.unwrap_or(today);
+            (
+                format!("garmin-week-{}.pdf", date_key(start)),
+                weekly_report_pdf(db, today, offset, FONT)?,
+            )
+        }
+        Kind::Month(back) => {
+            let month = today
+                .with_day(1)
+                .and_then(|d| d.checked_sub_months(Months::new(back)));
+            (
+                format!("garmin-{}.pdf", month.unwrap_or(today).format("%Y-%m")),
+                monthly_report_pdf(db, today, back, FONT)?,
+            )
+        }
+    })
+}
+
+/// Write one export into `dir` and return the path of the file. A sample
+/// source seeds a scratch cache inside `dir`, so it never opens the real cache.
+pub(crate) fn write_export(source: Source, dir: &str, kind: Kind) -> Result<String, ApiError> {
+    if dir.trim().is_empty() {
+        return Err(ApiError::BadArguments("dir must not be empty".into()));
+    }
+    let dir = Path::new(dir);
+    std::fs::create_dir_all(dir).map_err(io_error)?;
+    let (name, bytes) = match source {
+        Source::Live => build(&crate::open_default_db()?, garmin_core::today(), kind)?,
+        Source::Sample => {
+            let scratch = dir.join("sample-export");
+            let _ = std::fs::remove_dir_all(&scratch);
+            let today = crate::personas::sample_day();
+            let made = (|| {
+                let db = Db::open(&scratch.join("cache.sqlite3"))?;
+                crate::personas::seed(&db, crate::personas::Persona::Sample, today)
+                    .map_err(|e| ApiError::Internal(e.to_string()))?;
+                garmin_core::with_as_of(today, || build(&db, today, kind))
+            })();
+            let _ = std::fs::remove_dir_all(&scratch);
+            made?
+        }
+    };
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).map_err(io_error)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 // ---- PDF drawing ----
@@ -428,11 +504,6 @@ fn write_pdf(content: &[u8], font: &Font, font_bytes: &[u8]) -> Vec<u8> {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    const FONT: &[u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../apps/desktop/assets/fonts/IBMPlexSans-Regular.ttf"
-    ));
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 3, 11).unwrap()

@@ -1,8 +1,10 @@
 // Activities on iOS: native large title, grouped lists by day, system colours, Dynamic Type.
 // A row pushes the detail route onto the stack.
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, PlatformColor, Pressable, Text, View } from "react-native";
+import { ShareButton } from "../components/ShareButton";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { shareActivitiesCsv } from "../data/share";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -85,22 +87,31 @@ function DayGroup({ g }: { g: Day }) {
 export function ActivitiesScreen() {
   const { data, error } = useActivities();
   return (
-    <FlatList
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
-      contentContainerStyle={{ paddingBottom: 32 }}
-      data={data?.groups ?? []}
-      keyExtractor={(g) => g.date}
-      renderItem={({ item }) => <DayGroup g={item} />}
-      ListHeaderComponent={
-        <>
-          {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
-          {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
-          {data?.empty ? (
-            <Message>No sessions yet. When your watch records a session, it shows here.</Message>
-          ) : null}
-        </>
-      }
-    />
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <ShareButton label="Export as CSV" onPress={() => void shareActivitiesCsv()} />
+          ),
+        }}
+      />
+      <FlatList
+        contentInsetAdjustmentBehavior="automatic"
+        style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        data={data?.groups ?? []}
+        keyExtractor={(g) => g.date}
+        renderItem={({ item }) => <DayGroup g={item} />}
+        ListHeaderComponent={
+          <>
+            {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
+            {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
+            {data?.empty ? (
+              <Message>No sessions yet. When your watch records a session, it shows here.</Message>
+            ) : null}
+          </>
+        }
+      />
+    </>
   );
 }
