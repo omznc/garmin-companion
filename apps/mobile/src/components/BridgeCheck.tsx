@@ -2,7 +2,7 @@
 import { Button, Column, Host } from "@expo/ui";
 import { useRef, useState } from "react";
 import { Text, View } from "react-native";
-import { bridgeVersion, callJson, sourceKind, subscribe } from "../data/source";
+import { bridgeVersion, call, sourceKind, subscribe } from "../data/source";
 
 export function BridgeCheck() {
   const [lines, setLines] = useState<string[]>([]);
@@ -14,7 +14,7 @@ export function BridgeCheck() {
     off.current?.();
     off.current = subscribe((e) => push(`event ${e.kind} ${JSON.stringify(e.payload)}`));
     try {
-      const out = await callJson("sync", { steps: 3 });
+      const out = await call("sync", { steps: 3 });
       push(`async call, sync: ${JSON.stringify(out)}`);
     } catch (error) {
       push(`error: ${String(error)}`);

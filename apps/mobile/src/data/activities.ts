@@ -9,50 +9,15 @@ import sampleList from "../../../../crates/garmin-api/fixtures/activities.sample
 import golferDetail from "../../../../crates/garmin-api/fixtures/activity.golfer.json";
 import gymDetail from "../../../../crates/garmin-api/fixtures/activity.gym.json";
 import sampleDetail from "../../../../crates/garmin-api/fixtures/activity.sample.json";
-import { callJson } from "./source";
+import { call } from "./source";
 
-export type ActivityCard = {
-  activityId: number;
-  name: string;
-  sportLabel: string;
-  family: string;
-  time: string | null;
-  headline: string;
-  detail: string;
-};
+// The wire types come from the Rust core, through `generated/`.
+import type { ActivitiesView } from "./generated/ActivitiesView";
+import type { ActivityDetailView } from "./generated/ActivityDetailView";
 
-export type ActivitiesView = {
-  empty: boolean;
-  groups: { date: string; label: string; sessions: ActivityCard[] }[];
-};
-
-export type ActivityDetail = {
-  activityId: number;
-  name: string;
-  sportLabel: string;
-  family: string;
-  when: string;
-  stats: { label: string; value: string }[];
-  zones: { rows: { zone: number; percent: number; time: string }[]; sentence: string } | null;
-  laps: {
-    label: string;
-    distance: string | null;
-    time: string | null;
-    pace: string | null;
-    avgHr: string | null;
-  }[];
-  strength: {
-    sentence: string;
-    sets: {
-      label: string;
-      reps: string | null;
-      work: string | null;
-      rest: string | null;
-      exercise: string | null;
-    }[];
-  } | null;
-  chart: { hr: (number | null)[]; elevation: (number | null)[]; span: string } | null;
-};
+export type { ActivitiesView };
+export type { ActivityCard } from "./generated/ActivityCard";
+export type ActivityDetail = ActivityDetailView;
 
 // Dev only: EXPO_PUBLIC_PERSONA shows a recorded persona, as it does for Today.
 const personas: Record<string, { list: unknown; detail: unknown }> = {
@@ -65,16 +30,14 @@ const personas: Record<string, { list: unknown; detail: unknown }> = {
 const persona = __DEV__ ? personas[process.env.EXPO_PUBLIC_PERSONA ?? ""] : undefined;
 
 export const fetchActivities = () =>
-  persona
-    ? Promise.resolve(persona.list as ActivitiesView)
-    : callJson<ActivitiesView>("activities", { limit: 60 });
+  persona ? Promise.resolve(persona.list as ActivitiesView) : call("activities", { limit: 60 });
 
 // A persona has one recorded detail. Another id has none.
 export const fetchActivityDetail = (id: number) => {
   const recorded = persona?.detail as ActivityDetail | null | undefined;
   return persona
     ? Promise.resolve(recorded?.activityId === id ? recorded : null)
-    : callJson<ActivityDetail | null>("activity_detail", { activityId: id });
+    : call("activity_detail", { activityId: id });
 };
 
 export const useActivities = () =>

@@ -13,6 +13,7 @@ import gym from "../../../../crates/garmin-api/fixtures/today.gym.json";
 import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only.json";
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { fixtureChat } from "./chatFixtures";
+import type { Commands, Events } from "./generated/commands";
 import { presentToday } from "./present";
 import { placesFixture } from "./placesFixtures";
 import { trainingFixture } from "./trainingFixtures";
@@ -83,7 +84,7 @@ function fixtureAccountCall(cmd: string, args: unknown): unknown {
 
 const fixtureListeners = new Set<(event: BridgeEvent) => void>();
 const emitFixture = (payload: object) =>
-  fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
+  fixtureListeners.forEach((l) => l({ kind: "ask", payload: payload as Events["ask"] }));
 
 // The Expo Go coach state. It lives in memory and resets on reload.
 let fixtureProvider = "cloud";
@@ -195,7 +196,8 @@ function bridgeSource(): Source | null {
         }),
       subscribe: (listener) => {
         const sub = bridge.subscribe({
-          onEvent: (kind, payload) => listener({ kind, payload: JSON.parse(payload) }),
+          onEvent: (kind, payload) =>
+            listener({ kind, payload: JSON.parse(payload) } as BridgeEvent),
         });
         return () => sub.cancel();
       },
@@ -217,8 +219,18 @@ const impl: Source = bridgeImpl ?? (fixtureAllowed ? fixtureSource : unavailable
 
 export const sourceKind = bridgeImpl ? "bridge" : impl === fixtureSource ? "fixture" : "none";
 
-export async function callJson<T>(cmd: string, args: unknown = {}): Promise<T> {
-  return JSON.parse(await impl.call(cmd, args)) as T;
+// The arguments of a command. A command with no required argument takes none.
+type ArgsOf<K extends keyof Commands> = undefined extends Commands[K]["args"]
+  ? [args?: Commands[K]["args"]]
+  : [args: Commands[K]["args"]];
+
+// Run a command of the Rust core. `Commands` is generated from the core, so the
+// name, the arguments and the result are checked by the compiler.
+export async function call<K extends keyof Commands>(
+  cmd: K,
+  ...[args]: ArgsOf<K>
+): Promise<Commands[K]["result"]> {
+  return JSON.parse(await impl.call(cmd, args ?? {}));
 }
 
 export const subscribe = impl.subscribe;
@@ -246,7 +258,7 @@ const persona = __DEV__ ? personas[process.env.EXPO_PUBLIC_PERSONA ?? ""] : unde
 export async function fetchToday(): Promise<Today> {
   const view = persona
     ? (persona as TodayView)
-    : await callJson<TodayView>("today", demoDate ? { date: demoDate } : {});
+    : await call("today", demoDate ? { date: demoDate } : {});
   const today = presentToday(view);
   const sample = sampleData || impl === fixtureSource || persona !== undefined;
   return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;

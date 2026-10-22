@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from "react";
 import type { AskEventPayload, HistoryRow, Thread } from "../data/chatTypes";
 import { queryClient } from "../data/queryClient";
-import { callJson, subscribe as subscribeBridge } from "../data/source";
+import { call, subscribe as subscribeBridge } from "../data/source";
 import {
   canStart,
   failRun,
@@ -65,7 +65,7 @@ const setLives = (next: Lives, soon = false) => {
 // before it sends "done", so the saved copy is the final one.
 async function settle(sessionId: string, turnId: string) {
   try {
-    const thread = await callJson<Thread | null>("chat_get", { sessionId });
+    const thread = await call("chat_get", { sessionId });
     queryClient.setQueryData(threadKey(sessionId), thread);
     setLives(settleRun(lives, sessionId, turnId));
   } catch {
@@ -134,7 +134,7 @@ export async function startTurn(
   setSendError(null);
   setLives(startRun(lives, sessionId, index, question, turnId));
   try {
-    await callJson("ask_send", { sessionId, turnId, history });
+    await call("ask_send", { sessionId, turnId, history });
   } catch (error) {
     setLives(failRun(lives, sessionId, turnId));
     setSendError(error instanceof Error ? error.message : String(error));
@@ -145,7 +145,7 @@ export async function startTurn(
 }
 
 export function stopTurn() {
-  void callJson("ask_stop").catch(() => {});
+  void call("ask_stop").catch(() => {});
 }
 
 export function dropLive(sessionId: string) {

@@ -1,6 +1,7 @@
 // The coach settings and the opening questions of the Ask screen.
 import { useQuery } from "@tanstack/react-query";
-import { callJson, isSampleData } from "./source";
+import type { ChatConfig } from "./generated/ChatConfig";
+import { call, isSampleData } from "./source";
 
 // Sample mode stores no secret, so the key field is hidden and this line takes its place.
 export const SAMPLE_KEY_NOTE =
@@ -23,11 +24,8 @@ export function openers(): string[] {
   return [0, 3, 6].map((i) => OPENERS[(day + i) % OPENERS.length] ?? "");
 }
 
-export type CoachConfig = {
-  provider: string | null;
-  model: string | null;
-  hasKey: boolean;
-};
+// The shape comes from the Rust core (`garmin_coach::ChatConfig`).
+export type CoachConfig = ChatConfig;
 
 // Whether the coach can answer: the hosted coach, an OpenRouter key, or a local model.
 export function needsSetup(config: CoachConfig | undefined): boolean {
@@ -39,12 +37,12 @@ export function needsSetup(config: CoachConfig | undefined): boolean {
 export async function saveKey(key: string): Promise<void> {
   // The bridge drops the key in sample mode. Saving would still flip the provider.
   if (isSampleData()) return;
-  await callJson("ask_save_config", { provider: "openrouter", key });
+  await call("ask_save_config", { provider: "openrouter", key });
 }
 
 export const useCoachConfig = () =>
   useQuery({
     queryKey: ["askConfig"],
-    queryFn: () => callJson<CoachConfig>("ask_config"),
+    queryFn: () => call("ask_config"),
     retry: false,
   });

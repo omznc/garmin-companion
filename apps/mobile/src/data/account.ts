@@ -1,28 +1,26 @@
 // Typed calls for sign-in, sync and Settings. The core owns the sentences.
 import { File, Paths } from "expo-file-system";
 import { Appearance } from "react-native";
-import { callJson, leaveSampleData } from "./source";
+import { call, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
 // The core ignores the sample flag when it has tokens, for example after a stop before the first sync.
 export const getStatus = async () => {
-  const status = await callJson<Status>("status");
+  const status = await call("status");
   if (status.connected) leaveSampleData();
   return status;
 };
-export const getSignInUrl = () => callJson<string>("sign_in_url");
+export const getSignInUrl = () => call("sign_in_url");
 export const redeemTicket = async (ticket: string) => {
-  const status = await callJson<Status>("redeem_ticket", { ticket });
+  const status = await call("redeem_ticket", { ticket });
   clearSkipSetup();
   leaveSampleData();
   return status;
 };
-export const signOut = () => callJson<Status>("sign_out");
-export const getSettings = () => callJson<SettingsView>("settings");
-export const setTheme = (theme: ThemeMode) =>
-  callJson<{ theme: ThemeMode }>("set_theme", { theme });
-export const runSync = (args: { days?: number; full?: boolean }) =>
-  callJson<SyncSummary>("sync", args);
+export const signOut = () => call("sign_out");
+export const getSettings = () => call("settings");
+export const setTheme = (theme: ThemeMode) => call("set_theme", { theme });
+export const runSync = (args: { days?: number; full?: boolean }) => call("sync", args);
 
 // "system" (unspecified) clears the override, so the phone setting rules again.
 export const applyTheme = (theme: ThemeMode) =>
