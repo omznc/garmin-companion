@@ -1,4 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { notifyDeps } from "../notify/notifications";
+import { notifyAfterSync } from "../notify/run";
 import { committed } from "../ui/haptics";
 import {
   clearHistoryPending,
@@ -73,9 +75,11 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
   return runSync(args)
-    .then((summary) => {
+    .then(async (summary) => {
       markSynced();
       set({ line: summary.line });
+      // A notification must never fail a sync. The background task waits for it before it ends.
+      await notifyAfterSync(notifyDeps, args.full === true).catch(() => {});
       return summary;
     })
     .catch((e: unknown) => {
