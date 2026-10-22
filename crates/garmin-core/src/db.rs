@@ -129,6 +129,12 @@ pub fn default_path() -> Option<PathBuf> {
         .map(|d| d.join("cache.sqlite3"))
 }
 
+/// How long a connection waits for a lock held by another process.
+const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The schema version that `Db::migrate` produces, kept in `user_version`.
+const SCHEMA_VERSION: i64 = 1;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
@@ -137,6 +143,10 @@ impl Db {
         }
         let conn =
             Connection::open(path).with_context(|| format!("could not open {}", path.display()))?;
+        // The desktop app, the mobile app and the MCP server can write the
+        // same file. rusqlite already sets 5 s; set it here to pin the value.
+        // Set it first, because the WAL switch needs a lock too.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
         // WAL so the desktop app and the MCP server can both hold the cache
         // open without blocking each other.
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -151,7 +161,34 @@ impl Db {
         Self::open(&path)
     }
 
+    /// Bring the schema to `SCHEMA_VERSION`. A cache that is already current
+    /// runs no DDL. Migrations only add; they never drop or rewrite data.
     fn migrate(&self) -> Result<()> {
+        let version: i64 = self
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+        if version >= SCHEMA_VERSION {
+            return Ok(());
+        }
+        if version < 1 {
+            self.migrate_v1()?;
+        }
+        // Later migrations: add one `if version < N` step here and raise
+        // `SCHEMA_VERSION`.
+        // A read-only copy cannot take the stamp. It stays at its version.
+        if self.conn.is_readonly(rusqlite::MAIN_DB)? {
+            return Ok(());
+        }
+        self.conn
+            .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        Ok(())
+    }
+
+    /// Migration 1: the schema as it was before versioning. It is idempotent,
+    /// so a cache at version 0 with any subset of the columns passes through.
+    /// Frozen: this function and the `SCHEMA` constants of the modules that
+    /// it runs must not change. Put a schema change in a new migration.
+    fn migrate_v1(&self) -> Result<()> {
         self.conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS activities (
@@ -459,7 +496,9 @@ impl Db {
 
         // Columns added after the first release. SQLite has no
         // `ADD COLUMN IF NOT EXISTS`, and a duplicate column is the expected
-        // outcome on every run after the first, so it isn't an error here.
+        // outcome for a cache that already has it, so it isn't an error here.
+        // This list is frozen at version 1. A cache at version 1 never runs
+        // it again, so a new column needs a new `if version < N` step.
         for ddl in [
             "ALTER TABLE activities ADD COLUMN elevation_gain REAL",
             "ALTER TABLE activities ADD COLUMN moving_duration_s REAL",
@@ -2454,5 +2493,147 @@ mod tests {
             Some("2026-06-08"),
             "the newest date, not the last one written"
         );
+    }
+
+    fn version_of(db: &Db) -> i64 {
+        db.conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap()
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "garmin-companion-test-{}-{name}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
+    fn has_column(db: &Db, table: &str, column: &str) -> bool {
+        let mut stmt = db
+            .conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        names.iter().any(|n| n == column)
+    }
+
+    #[test]
+    fn a_fresh_cache_is_at_the_current_version() {
+        let db = scratch("version-fresh");
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert!(has_column(&db, "daily_metrics", "hrv_balanced_upper"));
+    }
+
+    #[test]
+    fn an_old_cache_gains_the_new_columns_and_keeps_its_rows() {
+        let path = temp_path("version-old");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE activities (
+                     activity_id INTEGER PRIMARY KEY, name TEXT, type_key TEXT,
+                     start_time_local TEXT, local_date TEXT, distance_m REAL,
+                     duration_s REAL, avg_hr REAL, max_hr REAL, avg_cadence REAL,
+                     max_cadence REAL, avg_speed REAL, calories REAL,
+                     aerobic_te REAL, anaerobic_te REAL,
+                     z1_secs REAL NOT NULL DEFAULT 0, z2_secs REAL NOT NULL DEFAULT 0,
+                     z3_secs REAL NOT NULL DEFAULT 0, z4_secs REAL NOT NULL DEFAULT 0,
+                     z5_secs REAL NOT NULL DEFAULT 0, raw TEXT);
+                 CREATE TABLE daily_metrics (
+                     date TEXT PRIMARY KEY, resting_hr REAL, hrv_last_night REAL,
+                     hrv_weekly_avg REAL, hrv_status TEXT, training_readiness REAL,
+                     sleep_secs REAL, sleep_score REAL, steps INTEGER,
+                     stress_avg REAL, body_battery_high REAL,
+                     body_battery_low REAL, raw TEXT);
+                 CREATE TABLE chat_sessions (
+                     session_id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL, title TEXT NOT NULL,
+                     message_count INTEGER NOT NULL DEFAULT 0, messages TEXT NOT NULL);
+                 INSERT INTO activities (activity_id, name) VALUES (7, 'Old run');
+                 INSERT INTO daily_metrics (date, resting_hr) VALUES ('2025-01-01', 51.0);
+                 INSERT INTO chat_sessions VALUES ('s', 'a', 'b', 'Q', 1, '[]');",
+            )
+            .unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert!(has_column(&db, "activities", "training_load"));
+        assert!(has_column(&db, "daily_metrics", "hydration_ml"));
+        let name: String = db
+            .conn
+            .query_row(
+                "SELECT name FROM activities WHERE activity_id = 7",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Old run");
+        let chats: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(chats, 1);
+    }
+
+    #[test]
+    fn a_current_cache_at_version_zero_is_stamped_and_keeps_its_rows() {
+        let path = temp_path("version-zero");
+        {
+            let db = Db::open(&path).unwrap();
+            db.upsert_daily(&day("2026-06-06", 50.0)).unwrap();
+            db.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert_eq!(
+            db.newest_daily_date().unwrap().as_deref(),
+            Some("2026-06-06")
+        );
+    }
+
+    #[test]
+    fn a_read_only_cache_at_version_zero_still_opens() {
+        let path = temp_path("version-readonly");
+        {
+            let db = Db::open(&path).unwrap();
+            db.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&path, perms).unwrap();
+        let opened = Db::open(&path).map(|db| version_of(&db));
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&path, perms).unwrap();
+        assert_eq!(opened.unwrap(), 0);
+    }
+
+    #[test]
+    fn reopening_a_current_cache_runs_no_ddl() {
+        let path = temp_path("version-reopen");
+        drop(Db::open(&path).unwrap());
+        // A table that the migration would recreate stays gone only when the
+        // migration is skipped.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("DROP TABLE gear_cache").unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        let tables: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'gear_cache'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0);
     }
 }
