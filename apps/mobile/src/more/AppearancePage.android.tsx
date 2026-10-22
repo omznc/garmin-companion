@@ -121,10 +121,10 @@ function HighContrastRow() {
       supporting="Darker text and lines"
       onPress={toggle}
       trailing={
-        // The row takes the touch, so the switch only shows the state.
+        // The Android switch ignores pointerEvents and flips itself, so it must report the change.
         <Switch
-          pointerEvents="none"
           value={highContrast}
+          onValueChange={(on) => setThemePref("highContrast", on)}
           trackColor={{ false: md.surfaceContainerHighest, true: md.primary }}
           thumbColor={highContrast ? md.onPrimary : md.outline}
         />
