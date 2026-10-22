@@ -692,7 +692,7 @@ pub async fn sync_all_with(
 ) -> Result<SyncReport> {
     // One sync at a time across the desktop app, the mobile app and the MCP
     // server. A second caller waits, as the in-process lock of the app did.
-    let _lock = acquire_sync_lock().await?;
+    let _lock = acquire_sync_lock(&crate::paths::ensure_base_dir()?).await?;
     sync_all_locked(client, db, days, full, on).await
 }
 
@@ -701,8 +701,8 @@ const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Take the exclusive lock file of the data directory. The operating system
 /// frees the lock when the process ends, so a crash leaves no stale lock.
-async fn acquire_sync_lock() -> Result<std::fs::File> {
-    let path = crate::paths::ensure_base_dir()?.join("sync.lock");
+async fn acquire_sync_lock(dir: &std::path::Path) -> Result<std::fs::File> {
+    let path = dir.join("sync.lock");
     let file = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -864,6 +864,23 @@ fn history_days(db: &Db) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_second_sync_waits_for_the_lock_file() {
+        let dir =
+            std::env::temp_dir().join(format!("garmin-companion-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = acquire_sync_lock(&dir).await.unwrap();
+        // Each `open` has its own lock, so one process can test the wait.
+        let second = tokio::time::timeout(LOCK_POLL * 3, acquire_sync_lock(&dir)).await;
+        assert!(second.is_err(), "the second caller must wait");
+        drop(first);
+        tokio::time::timeout(LOCK_POLL * 8, acquire_sync_lock(&dir))
+            .await
+            .expect("the lock is free after the first drops")
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_fatal_failure_in_the_extras_does_not_fail_the_sync() {

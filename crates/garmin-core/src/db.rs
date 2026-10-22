@@ -144,8 +144,8 @@ impl Db {
         let conn =
             Connection::open(path).with_context(|| format!("could not open {}", path.display()))?;
         // The desktop app, the mobile app and the MCP server can write the
-        // same file. Wait for a lock instead of failing at once. Set it
-        // first, because the WAL switch needs a lock too.
+        // same file. rusqlite already sets 5 s; set it here to pin the value.
+        // Set it first, because the WAL switch needs a lock too.
         conn.busy_timeout(BUSY_TIMEOUT)?;
         // WAL so the desktop app and the MCP server can both hold the cache
         // open without blocking each other.
@@ -175,6 +175,10 @@ impl Db {
         }
         // Later migrations: add one `if version < N` step here and raise
         // `SCHEMA_VERSION`.
+        // A read-only copy cannot take the stamp. It stays at its version.
+        if self.conn.is_readonly(rusqlite::MAIN_DB)? {
+            return Ok(());
+        }
         self.conn
             .pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(())
@@ -182,6 +186,8 @@ impl Db {
 
     /// Migration 1: the schema as it was before versioning. It is idempotent,
     /// so a cache at version 0 with any subset of the columns passes through.
+    /// Frozen: this function and the `SCHEMA` constants of the modules that
+    /// it runs must not change. Put a schema change in a new migration.
     fn migrate_v1(&self) -> Result<()> {
         self.conn.execute_batch(
             r#"
@@ -490,7 +496,9 @@ impl Db {
 
         // Columns added after the first release. SQLite has no
         // `ADD COLUMN IF NOT EXISTS`, and a duplicate column is the expected
-        // outcome on every run after the first, so it isn't an error here.
+        // outcome for a cache that already has it, so it isn't an error here.
+        // This list is frozen at version 1. A cache at version 1 never runs
+        // it again, so a new column needs a new `if version < N` step.
         for ddl in [
             "ALTER TABLE activities ADD COLUMN elevation_gain REAL",
             "ALTER TABLE activities ADD COLUMN moving_duration_s REAL",
@@ -2587,6 +2595,24 @@ mod tests {
             db.newest_daily_date().unwrap().as_deref(),
             Some("2026-06-06")
         );
+    }
+
+    #[test]
+    fn a_read_only_cache_at_version_zero_still_opens() {
+        let path = temp_path("version-readonly");
+        {
+            let db = Db::open(&path).unwrap();
+            db.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&path, perms).unwrap();
+        let opened = Db::open(&path).map(|db| version_of(&db));
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&path, perms).unwrap();
+        assert_eq!(opened.unwrap(), 0);
     }
 
     #[test]
