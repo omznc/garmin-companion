@@ -141,9 +141,13 @@ pub fn settings_view() -> Result<SettingsView, ApiError> {
 /// How long ago the last sync ran, such as "3 hours ago". `None` when the cache
 /// has never synced or cannot open.
 pub fn synced_ago() -> Option<String> {
-    let (_, last_sync) = cache_facts();
-    let when = DateTime::parse_from_rfc3339(&last_sync?).ok()?;
-    Some(since(when.with_timezone(&Utc), Utc::now()))
+    Some(since(last_sync()?, Utc::now()))
+}
+
+/// When the last good sync ended. `None` when the cache has never synced.
+pub fn last_sync() -> Option<DateTime<Utc>> {
+    let when = DateTime::parse_from_rfc3339(&cache_facts().1?).ok()?;
+    Some(when.with_timezone(&Utc))
 }
 
 /// The cached activity count and the last sync time. A cache that cannot open

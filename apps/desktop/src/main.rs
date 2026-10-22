@@ -28,6 +28,7 @@ mod account;
 mod activities;
 mod appearance;
 mod ask;
+mod autosync;
 mod blocks;
 mod body;
 mod calendar;
@@ -464,6 +465,7 @@ fn main() -> anyhow::Result<()> {
                         root.start_sync(false, cx);
                     }
                     root.watch_for_updates(cx);
+                    root.watch_for_sync(cx);
                     root.watch_window(window, cx);
                     // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
                     #[cfg(debug_assertions)]

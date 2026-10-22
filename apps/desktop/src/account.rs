@@ -51,10 +51,14 @@ pub struct Account {
     /// Made-up data. Nothing reaches Garmin or the data folder.
     pub demo: bool,
     pub sync: Sync,
+    /// When the last sync failed. It starts the back-off of the timed sync.
+    pub sync_failed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub sign_in: SignIn,
     pub settings: Option<SettingsView>,
     pub synced_ago: Option<String>,
     pub mode: ThemeMode,
+    /// Stronger text and border contrast. A demo keeps it in memory only.
+    pub high_contrast: bool,
     /// The light and dark palette, the themes folder and the theme store.
     pub themes: Themes,
     pub token_path: Field,
@@ -307,6 +311,18 @@ impl Root {
             }
         }
         self.reload_settings(cx);
+        cx.notify();
+    }
+
+    /// Turn high contrast on or off. The choice is saved, except in demo mode.
+    pub fn set_high_contrast(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.account.high_contrast = on;
+        crate::theme::set_high_contrast(on);
+        if !self.account.demo {
+            if let Err(e) = settings::set_high_contrast(on) {
+                eprintln!("could not save high contrast: {e}");
+            }
+        }
         cx.notify();
     }
 
