@@ -136,6 +136,10 @@ pub async fn exchange_service_ticket(
     ticket: &str,
     service_url: &str,
 ) -> Result<Tokens> {
+    anyhow::ensure!(
+        !crate::paths::SANDBOXED,
+        "Garmin sign-in is not allowed in tests"
+    );
     let mut last_error = None;
 
     for client_id in DI_CLIENT_IDS {
@@ -217,6 +221,10 @@ impl std::error::Error for AuthFailed {}
 /// Garmin may or may not rotate the refresh token on each call; when it does
 /// we must persist the new one or the next refresh fails.
 pub async fn refresh(client: &reqwest::Client, tokens: &Tokens) -> Result<Tokens> {
+    anyhow::ensure!(
+        !crate::paths::SANDBOXED,
+        "Garmin sign-in is not allowed in tests"
+    );
     let form = [
         ("grant_type", "refresh_token"),
         ("client_id", tokens.di_client_id.as_str()),
