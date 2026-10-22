@@ -14,6 +14,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use garmin_coach::external::transcript;
@@ -67,6 +68,20 @@ impl Stream for Parser {
 
     fn finished(&self) -> bool {
         self.finished
+    }
+
+    /// OpenCode 2 can end a turn with no `step_finish` after the last text.
+    fn end(&mut self) -> Vec<Event> {
+        if self.finished {
+            return Vec::new();
+        }
+        let events = self.answer.done(self.sources());
+        self.finished = matches!(events[..], [Event::Done { .. }]);
+        if self.finished {
+            events
+        } else {
+            Vec::new()
+        }
     }
 
     fn sources(&self) -> Vec<String> {
@@ -134,15 +149,36 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
     })
 }
 
+/// The text of `opencode run --help`. The flags differ between versions, so
+/// the app reads the list once. An empty text means the call failed.
+fn run_help(bin: &Path) -> &'static str {
+    static HELP: OnceLock<String> = OnceLock::new();
+    HELP.get_or_init(|| {
+        cli::read(bin, &CLI, &["run", "--help"], cli::PROBE_LIMIT)
+            .map(|o| o.text)
+            .unwrap_or_default()
+    })
+}
+
 /// `--auto` would approve more than the tools of the app, so it is not here.
 /// OpenCode takes a model as `provider/model`, so another form is ignored.
-/// The question goes on stdin: `run` with no message reads it there.
-fn flags(cwd: &Path, model: &str) -> Vec<OsString> {
-    let mut args: Vec<OsString> = ["run", "--format", "json", "--pure", "--agent", AGENT]
+/// The question goes on stdin: `run` with no message reads it there. The work
+/// folder is the working directory of the command, so no `--dir` is needed.
+///
+/// OpenCode 1 has `--pure`: no external plugins. OpenCode 2 has no such flag.
+/// The temporary config folder hides the plugins there. OpenCode 2 sends a run
+/// to its background service, which ignores our config folder. `--standalone`
+/// starts a private server that reads it.
+fn flags(help: &str, model: &str) -> Vec<OsString> {
+    let mut args: Vec<OsString> = ["run", "--format", "json", "--agent", AGENT]
         .into_iter()
         .map(Into::into)
         .collect();
-    args.extend(["--dir".into(), cwd.into()]);
+    for flag in ["--standalone", "--pure"] {
+        if help.contains(flag) {
+            args.push(flag.into());
+        }
+    }
     if model.contains('/') {
         args.extend(["-m".into(), model.into()]);
     }
@@ -185,10 +221,11 @@ fn turn(
     write("coach.md", setup.system.clone())?;
     write("opencode.json", config(&setup.app, db, period).to_string())?;
 
+    let args = flags(run_help(&setup.bin), model);
     let run = Run {
         cli: &CLI,
         bin: setup.bin,
-        args: flags(&setup.cwd, model),
+        args,
         cwd: setup.cwd,
         env: vec![
             ("XDG_CONFIG_HOME", home.path().into()),
@@ -348,11 +385,35 @@ mod tests {
         let text = |args: Vec<OsString>| -> Vec<String> {
             args.iter().map(|a| a.to_string_lossy().into()).collect()
         };
-        let a = text(flags(Path::new("/w"), "sonnet"));
+        let a = text(flags("", "sonnet"));
         assert!(!a.contains(&"-m".to_string()) && !a.contains(&"--auto".to_string()));
-        let b = text(flags(Path::new("/w"), "anthropic/claude-x"));
+        let b = text(flags("", "anthropic/claude-x"));
         let at = b.iter().position(|x| x == "-m").unwrap();
         assert_eq!(b[at + 1], "anthropic/claude-x");
-        assert!(b.contains(&"--pure".to_string()));
+        assert!(!b.contains(&"--dir".to_string()));
+    }
+
+    #[test]
+    fn a_flag_goes_in_only_when_the_help_lists_it() {
+        let text = |help| -> Vec<String> {
+            flags(help, "")
+                .iter()
+                .map(|a| a.to_string_lossy().into())
+                .collect()
+        };
+        let v1 = text("  --pure   run without external plugins\n  --dir  directory");
+        assert!(v1.contains(&"--pure".into()) && !v1.contains(&"--standalone".into()));
+        let v2 = text("  --standalone   Run with a private server\n  --auto");
+        assert!(v2.contains(&"--standalone".into()) && !v2.contains(&"--pure".into()));
+        assert!(!v2.contains(&"--dir".into()) && !v2.contains(&"--auto".into()));
+    }
+
+    #[test]
+    fn a_turn_that_ends_after_the_text_with_no_step_finish_is_done() {
+        let mut p = Parser::default();
+        p.feed(&json!({"type":"text","part":{"text":"Answer."}}));
+        assert!(matches!(&p.end()[..], [Event::Done { .. }]));
+        assert!(p.finished);
+        assert!(Parser::default().end().is_empty());
     }
 }
