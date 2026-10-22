@@ -29,8 +29,9 @@
 
 import { handleV2 } from "./v2";
 import type { V2Env } from "./v2/env";
+import { purgeExpired } from "./v2/purge";
 
-export { Wallet } from "./v2";
+export { Limits, Wallet } from "./v2";
 
 interface Env extends V2Env {
   /** `cf workers secrets update OPENROUTER_KEY` */
@@ -125,6 +126,11 @@ const ALLOWED_FIELDS = new Set([
 ]);
 
 export default {
+  /** The cron trigger. It only cleans the /v2 tables. */
+  async scheduled(_event: ScheduledController, env: Env): Promise<void> {
+    await purgeExpired(env);
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 

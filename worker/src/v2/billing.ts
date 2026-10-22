@@ -11,12 +11,17 @@ import { fail, json } from "./http";
 const DAY_MS = 86_400_000;
 const PAST_DUE_GRACE = 7 * DAY_MS;
 const PERIOD_GRACE = 2 * DAY_MS;
+// Polar always sends a period end for a live subscription. A row without one is
+// an odd case. It is premium for this long after its last event, and a renewal
+// event renews it. Then it ends, so a lost revoke cannot leave premium on forever.
+const NO_PERIOD_GRACE = 35 * DAY_MS;
 const POLAR = "polar";
 
 interface Row {
   status: string;
   current_period_end: number | null;
   past_due_since: number | null;
+  last_event_at: number;
 }
 
 function rowIsPremium(r: Row, now: number): boolean {
@@ -25,7 +30,9 @@ function rowIsPremium(r: Row, now: number): boolean {
     case "trialing":
       // A renewal moves the period end. If the revoke webhook never arrives,
       // the period end still stops premium, after a short grace.
-      return r.current_period_end === null || now < r.current_period_end + PERIOD_GRACE;
+      return r.current_period_end === null
+        ? now < r.last_event_at + NO_PERIOD_GRACE
+        : now < r.current_period_end + PERIOD_GRACE;
     case "past_due":
       return r.past_due_since !== null && now < r.past_due_since + PAST_DUE_GRACE;
     default:
@@ -37,7 +44,7 @@ function rowIsPremium(r: Row, now: number): boolean {
 
 export async function entitlementOf(env: V2Env, userId: string, now = Date.now()) {
   const { results } = await env.DB.prepare(
-    "SELECT source, status, current_period_end, cancel_at_period_end, past_due_since FROM entitlement WHERE user_id = ?",
+    "SELECT source, status, current_period_end, cancel_at_period_end, past_due_since, last_event_at FROM entitlement WHERE user_id = ?",
   )
     .bind(userId)
     .all<Row & { source: string; cancel_at_period_end: number }>();
@@ -142,7 +149,13 @@ async function applySubscription(env: V2Env, e: PolarEvent, at: number): Promise
     console.warn("polar webhook: unknown customer");
     return "unknown_customer";
   }
-  const status = e.type === "subscription.revoked" ? "revoked" : String(d.status);
+  // A missing status is stored as "unknown", which is never premium.
+  const status =
+    e.type === "subscription.revoked"
+      ? "revoked"
+      : typeof d.status === "string"
+        ? d.status
+        : "unknown";
   const end = d.current_period_end ? Date.parse(d.current_period_end) : null;
   const now = Date.now();
   // Older than what is stored: skipped. The provider can deliver out of order.
