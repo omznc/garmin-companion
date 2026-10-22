@@ -1,6 +1,9 @@
 import { Stack } from "expo-router";
 import { TabStack } from "../../../src/nav/TabStack";
 
+// The More list is the root of the tab. Without it, iOS opened a sub-page (Tabs) as the root.
+export const unstable_settings = { anchor: "index" };
+
 // Each sub-page takes its title here, before the page mounts. It uses the large title of the stack.
 const pages = {
   garmin: "Garmin account",
