@@ -3,7 +3,7 @@
 //! Sync is incremental and idempotent: activities upsert by id, daily metrics
 //! upsert by date. Re-running it is always safe.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{Duration, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -684,6 +684,43 @@ pub async fn sync_all(client: &GarminClient, db: &Db, days: u32, full: bool) -> 
 
 /// [`sync_all`], reporting each step to `on` as it goes.
 pub async fn sync_all_with(
+    client: &GarminClient,
+    db: &Db,
+    days: u32,
+    full: bool,
+    on: Progress<'_>,
+) -> Result<SyncReport> {
+    // One sync at a time across the desktop app, the mobile app and the MCP
+    // server. A second caller waits, as the in-process lock of the app did.
+    let _lock = acquire_sync_lock().await?;
+    sync_all_locked(client, db, days, full, on).await
+}
+
+/// How often a waiting sync checks the lock.
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Take the exclusive lock file of the data directory. The operating system
+/// frees the lock when the process ends, so a crash leaves no stale lock.
+async fn acquire_sync_lock() -> Result<std::fs::File> {
+    let path = crate::paths::ensure_base_dir()?.join("sync.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("could not open {}", path.display()))?;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => tokio::time::sleep(LOCK_POLL).await,
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(e).context("could not lock the sync file")
+            }
+        }
+    }
+}
+
+async fn sync_all_locked(
     client: &GarminClient,
     db: &Db,
     days: u32,
