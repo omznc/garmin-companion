@@ -95,9 +95,7 @@ export function LargeAppBarScreen<T = never>({
 
   const scrollProps = {
     onScroll,
-    // One event per frame. 16 ms holds the bar to 60 Hz on a 90 or 120 Hz
-    // screen, where it steps unevenly against the list under it.
-    scrollEventThrottle: 1,
+    scrollEventThrottle: 16,
     refreshControl: onRefresh ? (
       <RefreshControl
         refreshing={refreshing}
