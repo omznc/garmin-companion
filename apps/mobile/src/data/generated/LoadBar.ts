@@ -4,7 +4,7 @@ export type LoadBar = { label: string, value: number, min: number, max: number,
 /**
  * `over`, `under` or `in`, against the range that Garmin wants.
  */
-state: string, 
+state: "in" | "over" | "under", 
 /**
  * For example `473 of 200 to 400`.
  */

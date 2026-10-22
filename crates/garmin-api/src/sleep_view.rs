@@ -25,6 +25,7 @@ const SHORT_NIGHT_SECS: f64 = 7.0 * 3600.0;
 #[serde(rename_all = "camelCase")]
 pub struct StageShare {
     /// `deep`, `light`, `rem` or `awake`.
+    // shortcut: a copy of the four stage keys in the type, update it with the code that sets them.
     #[cfg_attr(
         feature = "ts-rs",
         ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")
@@ -43,6 +44,7 @@ pub struct StageShare {
 #[serde(rename_all = "camelCase")]
 pub struct StageSpan {
     /// `deep`, `light`, `rem` or `awake`.
+    // shortcut: a copy of the four stage keys in the type, update it with the code that sets them.
     #[cfg_attr(
         feature = "ts-rs",
         ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")

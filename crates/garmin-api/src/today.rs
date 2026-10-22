@@ -65,6 +65,7 @@ pub struct TodayView {
     /// Section keys in drawing order. A UI draws these and skips a key that it
     /// does not know. Keys: `health_tiles`, `attention`, `fuel`, `weight`,
     /// `last_session`, `week`, `zone_drift`.
+    // shortcut: a copy of the section keys in the type, update it with `sections()` below.
     #[cfg_attr(
         feature = "ts-rs",
         ts(

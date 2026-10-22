@@ -331,9 +331,9 @@ fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
-/// Save a thread row as it is. A test helper: a turn adds rows through [`begin_turn`].
-#[doc(hidden)]
-pub fn put_row(source: Source, row: &ChatSession) -> Result<(), ApiError> {
+/// Save a thread row as it is. A turn adds rows through [`begin_turn`]; a test needs a row with a chosen date.
+#[cfg(test)]
+fn put_row(source: Source, row: &ChatSession) -> Result<(), ApiError> {
     with_store(source, |s| s.put(row))
 }
 

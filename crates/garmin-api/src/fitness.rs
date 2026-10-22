@@ -30,6 +30,8 @@ pub struct LoadBar {
     pub min: f64,
     pub max: f64,
     /// `over`, `under` or `in`, against the range that Garmin wants.
+    // shortcut: a copy of the three states in the type, update it with the code that sets them.
+    #[cfg_attr(feature = "ts-rs", ts(type = "\"in\" | \"over\" | \"under\""))]
     pub state: String,
     /// For example `473 of 200 to 400`.
     pub text: String,

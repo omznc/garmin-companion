@@ -202,6 +202,7 @@ pub(crate) struct SendArgs {
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 pub(crate) struct HistoryRow {
+    // shortcut: a copy of the roles in the type. The bridge accepts any string.
     #[cfg_attr(feature = "ts-rs", ts(type = "\"user\" | \"assistant\""))]
     role: String,
     content: String,
@@ -212,6 +213,7 @@ pub(crate) struct HistoryRow {
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SaveConfigArgs {
+    // shortcut: a copy of the providers that a phone can use. The core knows more.
     #[cfg_attr(
         feature = "ts-rs",
         ts(type = "\"cloud\" | \"openrouter\" | \"ollama\"")
