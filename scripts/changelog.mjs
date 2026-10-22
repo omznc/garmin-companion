@@ -12,7 +12,7 @@
  * `latest.json` as `notes`, and the app renders that in Settings once an
  * update is staged. So this text is the whole of the answer to "what did I
  * just install?", on every desktop, and — through `releaseNotes()` in
- * `app/src/lib/apk.ts` — on Android too.
+ * `apps/mobile/src/update` — on Android too.
  *
  * Usage:
  *   node scripts/changelog.mjs            # HEAD, against the last tag before it

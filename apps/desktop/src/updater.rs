@@ -23,12 +23,12 @@ use serde::Deserialize;
 use crate::updater_pkg::package_of;
 pub use crate::updater_pkg::{Outcome, PackageKind};
 
-/// The URL of the old app (`plugins.updater.endpoints` in its `tauri.conf.json`).
+/// The same URL as `plugins.updater.endpoints` in `tauri.conf.json`.
 pub const MANIFEST_URL: &str =
     "https://github.com/omznc/garmin-companion/releases/latest/download/latest.json";
 /// The release page: where a package install goes when the system does not allow the update.
 pub const RELEASE_PAGE: &str = "https://github.com/omznc/garmin-companion/releases/latest";
-/// `plugins.updater.pubkey` of the old app, as the Tauri config holds it.
+/// The same key as `plugins.updater.pubkey` in `tauri.conf.json`, as that file holds it.
 const PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzRDgyNjA4RjUwNDlBMzcKUldRM21nVDFDQ2JZUSt1eDU2MHBOMEVLTG9zQXFkd0gzTy8xeW1tbnQ2RmFrdmtqc1pObU5JSnAK";
 
 /// The time between two checks.

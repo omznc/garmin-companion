@@ -13,22 +13,14 @@ https://github.com/omznc/garmin-companion/releases/latest/download/latest.json
 https://github.com/omznc/garmin-companion/releases/latest/download/latest-android.json
 ```
 
-The first is in `app/src-tauri/tauri.conf.json` under
-`plugins.updater.endpoints`, read by `tauri-plugin-updater`. The second is the
-`ANDROID_MANIFEST` constant in `app/src-tauri/src/lib.rs`, read by the app
-itself — the plugin isn't compiled in on Android, so there is nothing to
-configure and the URL lives next to the code that fetches it.
+The first is in `apps/desktop/tauri.conf.json` under `plugins.updater.endpoints`.
+The desktop app has the same URL in `MANIFEST_URL` in `apps/desktop/src/updater.rs`.
+The second is the constant in
+`apps/mobile/src/update/manifest.ts`.
 
-That fetch is in Rust rather than in the webview, and has to stay there: GitHub
-serves release assets from a host that sends no `Access-Control-Allow-Origin`,
-so the same URL fetched from the page is refused by the WebView every time,
-which the app can only read as "no new version". A third slug appears in
-`RELEASE_API` in `app/src/lib/apk.ts` — that one is `api.github.com`, which does
-send the header, and it fetches the release notes rather than the manifest.
-
-Those three lines are the only places the repo slug appears. If it ever moves,
-all of them change or half the installed copies stop hearing about releases.
-Getting one wrong doesn't break the build — it breaks update checks silently.
+These three places are the only ones where the repository slug appears. If the
+repository moves, change all of them. A wrong URL does not break the build. It breaks
+the update check without a message.
 
 **The updater key**, which proves a bundle came from you. The app refuses any
 update it can't verify against the public half baked into it.
@@ -36,8 +28,8 @@ update it can't verify against the public half baked into it.
 - private: `~/.tauri/garmin-companion.key`, held by CI as
   `TAURI_SIGNING_PRIVATE_KEY` (its password is empty — the key was generated
   without one)
-- public: `~/.tauri/garmin-companion.key.pub`, pasted into `tauri.conf.json` as
-  `plugins.updater.pubkey`
+- public: `~/.tauri/garmin-companion.key.pub`, pasted into `apps/desktop/tauri.conf.json` as
+  `plugins.updater.pubkey`. The same value is `PUBKEY` in `apps/desktop/src/updater.rs`.
 
 **If the private key is gone, every installed copy stops being able to update**,
 and the only fix is shipping a new key in a build people install by hand.
@@ -107,7 +99,7 @@ bundler (`--config`) and to the Expo build (`APP_VERSION`). The Android version
 code is `major * 1000000 + minor * 1000 + patch`. `apps/mobile/app.config.js`
 calculates it.
 
-`app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml` needs a new
+`apps/desktop/linux/com.omznc.garmincompanion.metainfo.xml` needs a new
 `<release>` entry for the version. The `check` job of the release workflow
 stops if the entry is missing. Set `version` in `apps/desktop/tauri.conf.json`
 to the same version. The `metadata` job of `ci.yml` reads that file.
@@ -132,110 +124,10 @@ Testers sign it themselves with Sideloadly or AltStore. It is not in
 new signature must keep an application identifier. The Keychain items of the
 app need one, and the app cannot read its tokens without it.
 
-> The sections below, up to "Building locally", describe the old Tauri
-> release. They stay as background for the APK format, the signing keys and
-> the updater.
-
-### Why the Android job is the slow one, and what keeps it honest
-
-It builds the Rust workspace once per ABI, and each pass ends with OpenSSL
-compiled from C source (see the `openssl` dependency in
-`crates/garmin-core/Cargo.toml`), which is most of the ~2m35 a pass costs. Four
-ABIs made it a 20-minute job against 5–10 for each desktop bundle.
-
-One thing cuts that, and it is load-bearing if you touch it:
-
-- **Two ABIs, not four.** `-t aarch64 armv7` on both build steps. `i686` and
-  `x86_64` are emulator ABIs — no phone runs either — so they were five minutes
-  a release spent on something nobody installs. The list appears in three
-  places: the two build steps, the `targets:` on the toolchain, and the RANLIB
-  loop. All three have to agree.
-
-A cold desktop build takes 5-10 minutes. Only the first release starts with a
-cold cache, because a later run restores the cache of the default branch.
-
-### Why Android is its own job
-
-`tauri-action` builds the desktop bundles and writes `latest.json`. An Android
-build produces neither, so it sits in a separate job that uploads through
-`gh release upload` instead. Putting it in the matrix would have the action
-either fail on a platform it doesn't bundle for, or publish a `latest.json` that
-an APK can't be an update for.
-
-### How Android updates itself
-
-It does, and the note that used to be here saying it can't was wrong. What an
-Android app can't do is replace its own package *silently* — that's reserved
-for device owners. It can hand the system a new APK and have the system ask.
-
-So the flow is: `app/src/lib/apk.ts` asks the `latest_apk` command in Rust for
-`latest-android.json`, compares versions, and calls `download_apk`, which streams the APK
-into the app's cache and checks it against the hash in the manifest.
-`ApkInstaller` on the Kotlin side then commits a `PackageInstaller` session, and
-Android draws its own confirmation over the app. One tap. Everything before it
-happens in the background.
-
-Three things hold that up, and all three are load-bearing:
-
-- **`REQUEST_INSTALL_PACKAGES`** in `AndroidManifest.xml`. Without it the
-  session is refused outright.
-- **"Install unknown apps"**, granted per-app by the user from Android 8. It is
-  held by whichever browser the APK was first downloaded through, never by this
-  app, so the *first* update sends them to a settings screen. After that it's
-  silent until the tap. There is no callback when it's granted — the app just
-  asks again next time the button is pressed.
-- **The signing key.** Android installs over an existing package only when the
-  new one carries the same signature. That, not the permission, is what makes
-  any of this safe: a substituted APK would be offered as a separate app under
-  its own name, not as an update to this one. The SHA-256 in the manifest is
-  belt and braces — it stops a truncated download from reaching the installer,
-  nothing more.
-
-A fresh download waits in Settings rather than interrupting. One left over from
-an earlier session offers itself at launch instead, once per version — which is
-the cheapest moment to be asked to restart into something.
-
-`latest-android.json` is written by the workflow rather than by a tool:
-
-```json
-{ "version": "0.2.0", "url": "https://…/garmin-companion_0.2.0.apk", "sha256": "…" }
-```
-
-It is not signed with the minisign key, and doesn't need to be — see the third
-point above for what actually gates the install. Adding a signature would mean
-carrying a verifier in the app to re-derive a guarantee the OS already enforces.
-
-### Why the Play bundle is built twice
-
-`REQUEST_INSTALL_PACKAGES` is on Google Play's restricted list — only
-store-shaped apps may declare it — so the `.aab` has to go up without it while
-the `.apk` keeps it.
-
-The two artifacts come out of the *same* Gradle variant, so a flavour or build
-type can't tell them apart, and adding a dimension that could would double the
-per-ABI Rust compile: the expensive half of an Android build, four times over.
-Instead `app/build.gradle.kts` registers a transform on the merged manifest that
-strips the permission, active only when the `playBundle` project property is
-set. The workflow runs `--apk` without it and `--aab` with
-`ORG_GRADLE_PROJECT_playBundle=true`, which is the only channel available —
-`tauri android build` can't pass a property through to Gradle.
-
-The transform throws if it finds nothing to strip. That's deliberate: a silent
-no-op there ships a restricted permission to Play review, and nothing about the
-bundle would look wrong in the meantime.
-
-### The Android version code
-
-Google Play orders builds by `versionCode`, an integer, not by the version
-string. Tauri derives it as `major * 1000000 + minor * 1000 + patch`, so
-bumping the version in `tauri.conf.json` carries it along and there is nothing
-extra to remember. It only matters if you ever put this on Play; a sideloaded
-APK with a lower code does not install over a newer one.
-
 ### Why Windows is NSIS and not MSI
 
-`bundle.targets` is `"all"` everywhere except Windows, which
-`tauri.windows.conf.json` narrows to `["nsis"]`. JSON can't hold the reason, so
+`bundle.targets` is `"all"` everywhere except Windows, where the release
+workflow passes `--bundles nsis`. JSON cannot hold the reason, so
 it lives here: the MSI bundler drives WiX v3, whose `light.exe` runs its
 validation through **VBSCRIPT**, and Microsoft is removing VBScript from
 Windows. `windows-latest` is now Windows Server 2025, where it's no longer
@@ -256,68 +148,6 @@ on a HiDPI display believes the directory and picks it, then draws a 256px file
 at 512px. The plain sizes cover the same ground honestly: `32x32`, `64x64`,
 `128x128` and `icon.png` at 512. macOS and Windows read `icon.icns` and
 `icon.ico` and never touch the list, so dropping it costs nothing there.
-
-### Why the Android launcher icon is partly hand-written
-
-`pnpm tauri icon src-tauri/icons/icon.svg` regenerates every desktop icon and
-the Android raster mipmaps, and that covers Android 7 only. From Android 8 the
-launcher wants an *adaptive* icon — a background and a foreground it masks to
-whatever shape the device uses and parallaxes on touch — and Tauri writes no
-such thing, so the phone falls back to treating our full-bleed plate as a
-legacy icon: shrunk, and pasted onto a white circle the launcher draws itself.
-
-The three vectors under `gen/android/.../res/drawable/` are that adaptive icon,
-plus a `monochrome` layer for Android 13's themed icons, and
-`mipmap-anydpi-v26/ic_launcher.xml` binds them. They are written by hand, no
-tool regenerates them, and if the mark in `icon.svg` ever changes they need the
-same edit — the four mark paths are copied across verbatim. See the comments in
-`ic_launcher_foreground.xml` for the sizing, which is the part that isn't
-obvious.
-
-## Building locally
-
-```sh
-cd app && pnpm tauri build
-```
-
-Bundles land in `target/release/bundle/`. Unsigned unless
-`TAURI_SIGNING_PRIVATE_KEY` is in the environment, which is fine for testing —
-just don't hand a locally built bundle to someone expecting updates to work.
-
-### Android
-
-```sh
-source scripts/android-env.sh
-cd app && pnpm tauri android build --apk --debug
-adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
-```
-
-`scripts/android-env.sh` exists because three things about an Android build fail
-in ways that don't say what's wrong, and it settles all three: the SDK and NDK
-paths, a JDK that Gradle accepts (it refuses anything past 21, and Fedora ships
-25 on `PATH`), and the Perl modules OpenSSL's `./Configure` needs. On Fedora
-that last one is:
-
-```sh
-sudo dnf install perl-FindBin perl-IPC-Cmd perl-version perl-Time-Piece
-```
-
-`scripts/android-perl-shim.sh` does the same thing without root, for a machine
-where you can't install packages. Neither is needed in CI — the Ubuntu runner
-has a complete Perl already.
-
-**Run `pnpm tauri android build` through the package manager, not through
-`./node_modules/.bin/tauri`.** Tauri records the command it was invoked with
-into the generated Gradle project so the Rust step can call back into it, and
-invoking the bin shim directly makes it record `node tauri`, which resolves to
-nothing. The symptom is a `MODULE_NOT_FOUND` from `:app:rustBuildArm64Debug`
-three minutes into the build.
-
-Note that `pnpm tauri android init` **regenerates** `app/src-tauri/gen/android`,
-which is committed and has been hand-edited in two places: the backup lockdown
-in `AndroidManifest.xml` (see `garmin-core::secrets` for why it matters) and the
-release signing config in `app/build.gradle.kts`. Both are commented as such.
-Check `git diff` after re-running it.
 
 ## Why updating asks for a password on Linux, and only sometimes
 

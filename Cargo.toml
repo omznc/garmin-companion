@@ -6,13 +6,12 @@ members = [
     "crates/garmin-coach",
     "crates/garmin-mcp",
     "crates/garmin-ffi",
-    "app/src-tauri",
     "apps/desktop",
     "apps/login",
 ]
 
 # Cargo only honours `[profile.*]` at the workspace root, so this is the only
-# place these can live — `app/src-tauri/Cargo.toml` would be ignored silently.
+# place these can live — a member crate's own `[profile.*]` would be ignored silently.
 # Settings are the ones Tauri recommends for shipping size, and they apply to
 # the MCP server binary too.
 [profile.dev]

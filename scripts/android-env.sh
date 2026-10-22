@@ -2,7 +2,7 @@
 # Environment for building the Android target on this machine.
 #
 #   source scripts/android-env.sh
-#   cd app && pnpm tauri android build
+#   cd apps/mobile && pnpm android
 #
 # Everything here is host setup, not project configuration — CI installs the
 # same things through apt and needs none of it. It exists because building
