@@ -16,8 +16,6 @@ import { syncIsStale } from "./staleSync";
 import { createSyncQueue, type SyncArgs } from "./syncQueue";
 import type { SyncProgress, SyncSummary } from "./types";
 
-type Args = SyncArgs;
-
 export type SyncState = {
   busy: boolean;
   line: string | null;
@@ -59,7 +57,7 @@ const SYNC_KEYS = ["today", "activities", "activity", "body", "health", "sleep",
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
-function runOnce(args: Args): Promise<SyncSummary> {
+function runOnce(args: SyncArgs): Promise<SyncSummary> {
   set({
     error: null,
     line: null,

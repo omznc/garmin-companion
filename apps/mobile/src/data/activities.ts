@@ -50,9 +50,7 @@ export type ActivityDetail = {
 const personas = (__DEV__ ? require("./activityPersonas") : null) as
   | typeof import("./activityPersonas")
   | null;
-const persona = __DEV__
-  ? personas?.activityPersonas[process.env.EXPO_PUBLIC_PERSONA ?? ""]
-  : undefined;
+const persona = personas?.activityPersonas[process.env.EXPO_PUBLIC_PERSONA ?? ""];
 
 export const fetchActivities = () =>
   persona
