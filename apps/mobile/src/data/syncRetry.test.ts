@@ -13,8 +13,8 @@ test("does not retry when the app stayed in the foreground", () => {
   assert.equal(shouldRetryOffline(offline, ["active"]), false);
 });
 
-test("does not retry a run that started in the background", () => {
-  assert.equal(shouldRetryOffline(offline, ["background"]), false);
+test("retries a run that started in the background, such as a queued import pass", () => {
+  assert.equal(shouldRetryOffline(offline, ["background"]), true);
 });
 
 test("does not retry another kind of failure", () => {

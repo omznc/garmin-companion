@@ -72,10 +72,25 @@ const SYNC_KEYS = [
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
-// A run that the system cut off in the background shows no error. The next return to the
-// foreground runs it again. It does not wait in the queue, so the OS background task is never stuck.
+// A run that the system cut off in the background shows no error. It does not wait in the queue,
+// so the OS background task is never stuck. `resume` holds the work to run again in the foreground.
 type CutOff = { cutOff?: boolean };
 const isCutOff = (e: unknown) => (e as CutOff | null)?.cutOff === true;
+let resume: (() => void) | null = null;
+let inImport = false;
+
+// Keep the cut-off work. If the app is already back in the foreground, run it now.
+function keepCutOff(run: () => void) {
+  resume = run;
+  if (AppState.currentState === "active") resumeCutOff();
+}
+
+// Called when the app comes back to the foreground.
+export function resumeCutOff() {
+  const run = resume;
+  resume = null;
+  run?.();
+}
 
 async function runTracked(args: SyncArgs): Promise<SyncSummary> {
   const states: string[] = [String(AppState.currentState)];
@@ -115,6 +130,8 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     })
     .catch((e: unknown) => {
       if (!isCutOff(e)) set({ error: e instanceof Error ? e.message : String(e) });
+      // The import keeps its own cut-off work, so a pass does not run alone.
+      else if (!inImport) keepCutOff(() => void startSync(args).catch(() => {}));
       throw e;
     })
     .finally(() => {
@@ -163,6 +180,8 @@ export async function syncIfStale(): Promise<void> {
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
 export async function importHistory() {
   set({ importing: true, importError: null, importPass: "quick" });
+  inImport = true;
+  resume = null;
   try {
     // The marker comes first, so a stop in the quick pass still resumes at the next start.
     markHistoryPending();
@@ -170,25 +189,20 @@ export async function importHistory() {
     set({ importPass: "full" });
     await startSync({ full: true, days: 365 });
     clearHistoryPending();
+    inImport = false;
     set({ importing: false, importPass: null });
   } catch (e) {
-    importCut = isCutOff(e);
+    const cut = isCutOff(e);
     // Today offers a retry.
     set({
       importing: false,
       importPass: null,
-      importError: importCut ? null : e instanceof Error ? e.message : String(e),
+      importError: cut ? null : e instanceof Error ? e.message : String(e),
     });
+    // Clear the flag first: an import that runs again at once sets it again.
+    inImport = false;
+    if (cut) keepCutOff(() => void importHistory());
   }
-}
-
-let importCut = false;
-
-// Called when the app comes back to the foreground: take up an import that the system cut off.
-export function resumeCutImport() {
-  if (!importCut || state.importing) return;
-  importCut = false;
-  void importHistory();
 }
 
 export function useSync() {
