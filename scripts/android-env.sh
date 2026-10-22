@@ -2,7 +2,7 @@
 # Environment for building the Android target on this machine.
 #
 #   source scripts/android-env.sh
-#   cd apps/mobile && pnpm android
+#   cd apps/mobile && pnpm bridge:android && pnpm android
 #
 # Everything here is host setup, not project configuration — CI installs the
 # same things through apt and needs none of it. It exists because building
@@ -12,7 +12,7 @@
 set -u
 
 # --- 1. SDK and NDK ---------------------------------------------------------
-# Not exported by the system anywhere, so Tauri can't find them on its own.
+# Not exported by the system anywhere, so the Android build can not find them on its own.
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 export NDK_HOME="${NDK_HOME:-$ANDROID_HOME/ndk/28.2.13676358}"
 export ANDROID_NDK_ROOT="$NDK_HOME"

@@ -141,8 +141,11 @@ The same app and the same data, with three things worth knowing:
 The desktop app needs Rust. On Linux it also needs the development packages
 that `.github/workflows/ci.yml` installs.
 
+Build the sign-in helper first. The desktop app looks for
+`garmin-companion-login` next to its own executable.
+
 ```sh
-cargo run -p garmin-companion-desktop
+cargo build -p garmin-companion-login && cargo run -p garmin-companion-desktop
 ```
 
 The Android and iOS app is in `apps/mobile` (Expo). It needs Node 22+ and pnpm.
@@ -231,9 +234,9 @@ different versions of the Garmin client.
 
 ## Releases
 
-See [RELEASING.md](RELEASING.md). Tagging `v*` builds installers for macOS
-(Apple Silicon and Intel), Windows, Linux and Android, and the desktop app
-updates itself from Settings.
+See [RELEASING.md](RELEASING.md). A manual run of the release workflow builds
+installers for macOS (Apple Silicon and Intel), Windows, Linux and Android.
+The desktop app updates itself from Settings.
 
 ## Licence
 

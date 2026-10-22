@@ -18,9 +18,10 @@ The desktop app has the same URL in `MANIFEST_URL` in `apps/desktop/src/updater.
 The second is the constant in
 `apps/mobile/src/update/manifest.ts`.
 
-These three places are the only ones where the repository slug appears. If the
-repository moves, change all of them. A wrong URL does not break the build. It breaks
-the update check without a message.
+The desktop app also has `RELEASE_PAGE` in `apps/desktop/src/updater.rs`. It
+points to the release page. Run `rg 'omznc/garmin-companion'` to find the
+other places. If the repository moves, change all of them. A wrong URL does not
+break the build. It breaks the update check without a message.
 
 **The updater key**, which proves a bundle came from you. The app refuses any
 update it can't verify against the public half baked into it.
@@ -183,7 +184,7 @@ Gatekeeper or SmartScreen.
 - **macOS**: Gatekeeper refuses to open the app on first launch. Users have to
   right-click → Open, or run `xattr -dr com.apple.quarantine`. Fixing this
   properly needs an Apple Developer account (~$99/yr) and notarization —
-  `tauri-action` supports it through `APPLE_CERTIFICATE`,
+  `@tauri-apps/cli bundle` supports it through `APPLE_CERTIFICATE`,
   `APPLE_SIGNING_IDENTITY`, `APPLE_ID` and `APPLE_PASSWORD`. **Updates on
   macOS work either way**; it's only the first install that gets stopped.
 - **Windows**: SmartScreen shows "unrecognized app" until the download builds
@@ -207,11 +208,10 @@ notarization is the one worth buying.
 - **Version bumping.** Deliberately manual. The version is in the workflow
   input, the metainfo entry, `apps/desktop/tauri.conf.json` and
   `apps/mobile/app.json`. See "Cutting a release".
-- **iOS.** The Rust side is already platform-split for it — `secrets`, `paths`
-  and the mobile sign-in flow are written against `cfg(mobile)` rather than
-  against Android — and the frontend branches on `IS_MOBILE`, not on `android`.
-  What's missing is an Apple Developer account, and a signed build. The `ios`
-  job makes only an unsigned IPA (see "Cutting a release").
+- **iOS.** The app in `apps/mobile` is an Expo app and builds for iOS. The
+  `ios` job makes only an unsigned IPA (see "Cutting a release"). The workflow
+  `testflight.yml` makes a signed build, but it needs an Apple Developer
+  account. See "TestFlight".
 
 ## TestFlight
 
