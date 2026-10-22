@@ -323,11 +323,15 @@ fn toward(from: Hsla, to: Hsla, share: f32) -> Hsla {
 }
 
 /// `colour`, moved toward the text colour in 5% steps until it reaches `ratio`
-/// on both grounds. The text colour itself ends the walk.
+/// on the three grounds. The text colour itself ends the walk.
 fn at_least(colour: Hsla, ratio: f32, t: &Theme) -> Hsla {
     (0..=20)
         .map(|i| toward(colour, t.fg, i as f32 * 0.05))
-        .find(|c| contrast_ratio(*c, t.bg) >= ratio && contrast_ratio(*c, t.bg2) >= ratio)
+        .find(|c| {
+            [t.bg, t.bg2, t.bg3]
+                .iter()
+                .all(|g| contrast_ratio(*c, *g) >= ratio)
+        })
         .unwrap_or(t.fg)
 }
 
@@ -444,7 +448,7 @@ mod tests {
     fn high_contrast_lifts_text_and_borders_in_every_palette() {
         for p in Palette::ALL {
             let (base, high) = (derive(&p.authored()), boost(derive(&p.authored())));
-            for bg in [high.bg, high.bg2] {
+            for bg in [high.bg, high.bg2, high.bg3] {
                 assert!(contrast_ratio(high.mutd, bg) >= MUTED_RATIO, "{}", p.name());
                 assert!(
                     contrast_ratio(high.faint, bg) >= FAINT_RATIO,

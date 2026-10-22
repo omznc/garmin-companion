@@ -303,6 +303,15 @@ mod tests {
         set_palettes("linen".into(), "custom:x".into()).unwrap();
         assert_eq!(prefs().theme, ThemeMode::Dark);
         assert_eq!(prefs().theme_dark, "custom:x");
+        // High contrast saves, reads back, and keeps the other settings.
+        assert!(!prefs().high_contrast);
+        assert!(set_high_contrast(true).unwrap().high_contrast);
+        assert!(prefs().high_contrast);
+        assert_eq!(prefs().theme_dark, "custom:x");
+        set_theme(ThemeMode::Light).unwrap();
+        assert!(prefs().high_contrast);
+        assert!(!set_high_contrast(false).unwrap().high_contrast);
+        assert!(!prefs().high_contrast);
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
         let _ = std::fs::remove_file(base.join(PREFS_FILE));

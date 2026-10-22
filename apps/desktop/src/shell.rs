@@ -544,6 +544,9 @@ impl Root {
         if screen == Screen::Activities {
             self.close_activity(cx);
         } else {
+            if screen == Screen::Ask {
+                self.ask.update(cx, |ask, cx| ask.show_chat(cx));
+            }
             self.page = Page::List;
             self.restart_page(cx);
         }

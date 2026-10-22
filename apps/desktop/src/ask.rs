@@ -590,7 +590,12 @@ impl Ask {
             }
         };
         self.pane = Pane::Chat;
-        let turn_id = format!("{session}:{}", self.turns.len() / 2);
+        // The store counts the turns: its id is the only id. A failed save gives none.
+        let saver = threads::TurnSaver::begin(threads::store_for(&self.source), &session, &text);
+        let turn_id = saver
+            .as_ref()
+            .map(threads::TurnSaver::turn_id)
+            .unwrap_or_default();
         self.turns.push(Turn::new(Who::You, text.clone()));
         let history = with_context(history(&self.turns), self.context, self.focus);
         let mut coach = Turn::new(Who::Coach, String::new());
@@ -606,8 +611,7 @@ impl Ask {
             start: f.start,
             end: f.end,
         });
-        let save = Some((threads::store_for(&source), session, text));
-        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period, save));
+        std::thread::spawn(move || run_on_thread(source, history, tx, stop, period, saver));
         self.task = Some(cx.spawn(async move |this, cx| {
             while let Ok(event) = rx.recv().await {
                 if this.update(cx, |ask, cx| ask.apply(event, cx)).is_err() {
@@ -658,6 +662,7 @@ impl Ask {
         self.refresh_credits(cx);
         self.busy = false;
         self.composer.update(cx, |c, cx| c.set_busy(false, cx));
+        self.reload_threads(cx);
     }
 
     /// Send the draft of one turn to Garmin. A second press while one runs, or
@@ -683,7 +688,11 @@ impl Ask {
                 .background_executor()
                 .spawn({
                     let ids = ids.clone();
-                    async move { threads::create_and_record(store, &ids, &draft) }
+                    async move {
+                        threads::create_and_record(store, &ids, &draft, |d| {
+                            garmin_api::workouts::create_workout(d)
+                        })
+                    }
                 })
                 .await;
             let _ = this.update(cx, |ask, cx| {
@@ -780,22 +789,17 @@ impl EventSink for ChannelSink {
     }
 }
 
-/// The thread that a turn saves into: the store, the thread id and the question.
-type SaveTo = (garmin_api::Source, String, String);
-
 fn run_on_thread(
     source: Source,
     history: Vec<HistoryMessage>,
     tx: async_channel::Sender<Event>,
     stop: Arc<AtomicBool>,
     period: Option<garmin_coach::Period>,
-    save: Option<SaveTo>,
+    saver: Option<threads::TurnSaver>,
 ) {
     let sink = ChannelSink {
         tx,
-        saver: save.and_then(|(store, session, question)| {
-            threads::TurnSaver::begin(store, &session, &question)
-        }),
+        saver,
         stop: stop.clone(),
     };
     let runtime = tokio::runtime::Builder::new_current_thread()

@@ -49,7 +49,7 @@ impl Root {
                 let alive = this.update(cx, |root, cx| {
                     let failed = root.account.sync_failed_at;
                     if root.account.connected && due(last_good, failed, Utc::now()) {
-                        root.start_sync(false, cx);
+                        root.start_sync(last_good.is_none(), cx);
                     }
                 });
                 if alive.is_err() {

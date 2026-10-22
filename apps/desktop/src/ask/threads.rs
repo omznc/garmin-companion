@@ -3,8 +3,8 @@
 //!
 //! The thread format is the one that the mobile app writes, so a cache that
 //! moves between devices shows the same threads. A turn is saved from the
-//! thread of the engine, not from the UI: the answer reaches the store even
-//! when the user leaves the thread while the coach still writes.
+//! thread of the engine, not from the UI. When the user leaves the thread, the
+//! running turn stops, and the engine thread saves the text so far as "stopped".
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -94,6 +94,15 @@ impl TurnSaver {
         }
     }
 
+    /// The id of the stored turn. The UI uses this id and no other.
+    pub fn turn_id(&self) -> String {
+        self.turn
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .id
+            .clone()
+    }
+
     pub fn on_event(&self, event: &Event, stopped: bool) {
         let mut turn = self.turn.lock().unwrap_or_else(|e| e.into_inner());
         if apply_event(&mut turn, event, stopped) {
@@ -152,10 +161,12 @@ pub fn apply_event(turn: &mut chat::Turn, event: &Event, stopped: bool) -> bool 
 
 /// Save the draft of a turn to Garmin, and keep the workout id in the thread.
 /// A draft that was saved before returns its id and does not call Garmin again.
+/// `create` makes the workout: the caller passes the real call, a test passes a fake.
 pub fn create_and_record(
     source: garmin_api::Source,
     (session, turn, call): &(String, String, String),
     draft: &garmin_core::workout::WorkoutDraft,
+    create: impl FnOnce(&garmin_core::workout::WorkoutDraft) -> Result<i64, garmin_api::ApiError>,
 ) -> Result<i64, garmin_api::ApiError> {
     let ids = (session.as_str(), turn.as_str(), call.as_str());
     if let Some(DraftEntry {
@@ -165,7 +176,7 @@ pub fn create_and_record(
     {
         return Ok(id);
     }
-    let id = garmin_api::workouts::create_workout(draft)?;
+    let id = create(draft)?;
     if let Err(e) = chat::set_saved(source, ids, id) {
         eprintln!("could not record the saved workout: {e}");
     }
@@ -313,13 +324,36 @@ mod tests {
         let thread = get_thread(live, "s-test-2", false, None).unwrap().unwrap();
         assert_eq!(thread.turns[0].drafts[0].saved_workout_id, Some(77));
         assert_eq!(from_saved(thread.turns)[1].drafts[0].save, Save::Saved);
-        // A second press finds the id in the thread and does not call Garmin.
+        // A second press finds the id in the thread and does not create a workout.
         let ids = (
             "s-test-2".to_owned(),
             "s-test-2:0".to_owned(),
             "d1".to_owned(),
         );
-        assert_eq!(create_and_record(live, &ids, &draft()).unwrap(), 77);
+        let found = chat::find_draft(live, ("s-test-2", "s-test-2:0", "d1")).unwrap();
+        assert_eq!(found.and_then(|d| d.saved_workout_id), Some(77));
+        let fake = |_: &_| panic!("a saved draft must not create a workout");
+        assert_eq!(create_and_record(live, &ids, &draft(), fake).unwrap(), 77);
+    }
+
+    #[test]
+    fn a_new_draft_creates_one_workout_and_records_its_id() {
+        home();
+        let live = garmin_api::Source::Live;
+        let saver = TurnSaver::begin(live, "s-test-4", "Plan").unwrap();
+        let add = Event::Draft {
+            call_id: "d1".into(),
+            draft: draft(),
+        };
+        saver.on_event(&add, false);
+        let ids = ("s-test-4".to_owned(), saver.turn_id(), "d1".to_owned());
+        assert_eq!(saver.turn_id(), "s-test-4:0");
+        assert_eq!(
+            create_and_record(live, &ids, &draft(), |_| Ok(5)).unwrap(),
+            5
+        );
+        let fake = |_: &_| panic!("the second press must not create a workout");
+        assert_eq!(create_and_record(live, &ids, &draft(), fake).unwrap(), 5);
     }
 
     #[test]

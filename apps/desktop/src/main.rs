@@ -268,6 +268,29 @@ fn empty_body() -> anyhow::Result<body::BodyData> {
     Ok(body::BodyData(views))
 }
 
+/// Hooks for screenshots. They act on a demo run only: a real run keeps its
+/// threads and its settings. `GC_OPEN_THREAD=<id>` opens a saved thread,
+/// `GC_OPEN_RECENTS=1` shows the thread list, `GC_HIGH_CONTRAST=1` turns high
+/// contrast on.
+#[cfg(debug_assertions)]
+fn demo_hooks(root: &mut shell::Root, cx: &mut gpui::Context<shell::Root>) {
+    if !root.account.demo {
+        return;
+    }
+    let ask = root.ask.clone();
+    if let Ok(id) = std::env::var("GC_OPEN_THREAD") {
+        ask.update(cx, |ask, cx| ask.open_thread(id, cx));
+    } else if let Ok(state) = std::env::var("GC_OPEN_RECENTS") {
+        ask.update(cx, |ask, cx| {
+            ask.show_recents(cx);
+            ask.preview_row(&state);
+        });
+    }
+    if std::env::var("GC_HIGH_CONTRAST").is_ok() {
+        root.set_high_contrast(true, cx);
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     // The MCP server first: stdout is its transport, and it is not an app start.
@@ -448,25 +471,8 @@ fn main() -> anyhow::Result<()> {
                     {
                         root.account.settings_page = at;
                     }
-                    // For screenshots: `GC_OPEN_RECENTS=1` shows the thread list, and
-                    // `GC_OPEN_THREAD=<id>` opens a saved thread.
                     #[cfg(debug_assertions)]
-                    {
-                        let ask = root.ask.clone();
-                        if let Ok(id) = std::env::var("GC_OPEN_THREAD") {
-                            ask.update(cx, |ask, cx| ask.open_thread(id, cx));
-                        } else if let Ok(state) = std::env::var("GC_OPEN_RECENTS") {
-                            ask.update(cx, |ask, cx| {
-                                ask.show_recents(cx);
-                                ask.preview_row(&state);
-                            });
-                        }
-                    }
-                    // For screenshots: `GC_HIGH_CONTRAST=1` turns high contrast on.
-                    #[cfg(debug_assertions)]
-                    if std::env::var("GC_HIGH_CONTRAST").is_ok() {
-                        root.set_high_contrast(true, cx);
-                    }
+                    demo_hooks(&mut root, cx);
                     // For screenshots: `GC_SHOW_SETUP=1` shows the Setup screen on a demo run.
                     #[cfg(debug_assertions)]
                     if std::env::var("GC_SHOW_SETUP").is_ok() {

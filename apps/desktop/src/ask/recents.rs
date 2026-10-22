@@ -196,11 +196,14 @@ impl Ask {
             .cursor_pointer()
             .when(current, |d| d.bg(active))
             .hover(move |s| s.bg(hover))
-            .on_click(
-                cx.listener(move |this, _: &ClickEvent, _, cx| {
-                    this.open_thread(open_id.clone(), cx)
-                }),
-            )
+            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                // The open thread stays as it is: a running answer goes on.
+                if this.session.as_deref() == Some(open_id.as_str()) {
+                    this.show_chat(cx);
+                } else {
+                    this.open_thread(open_id.clone(), cx);
+                }
+            }))
             .child(
                 div()
                     .flex_1()
