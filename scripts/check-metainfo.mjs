@@ -2,7 +2,7 @@
 /**
  * Checks that the AppStream metadata agrees with the version being shipped.
  *
- * `app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml` carries a
+ * `apps/desktop/linux/com.omznc.garmincompanion.metainfo.xml` carries a
  * `<releases>` list, and GNOME Software and KDE Discover read the newest entry
  * in it as both "what's new" and "what version this is". Nothing in the build
  * derives it, so it is hand-written, and hand-written means forgettable — and
@@ -22,7 +22,7 @@
 import { readFileSync } from "node:fs";
 
 const CONF = "apps/desktop/tauri.conf.json";
-const METAINFO = "app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml";
+const METAINFO = "apps/desktop/linux/com.omznc.garmincompanion.metainfo.xml";
 
 // The release workflow passes the version of the release as an argument.
 const version = process.argv[2] ?? JSON.parse(readFileSync(CONF, "utf8")).version;
