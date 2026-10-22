@@ -55,21 +55,21 @@ function d1() {
 }
 
 function objectNamespace(make: (state: { storage: DurableObjectStorage }) => Wallet | Limits) {
-  const wallets = new Map<string, Wallet | Limits>();
+  const objects = new Map<string, Wallet | Limits>();
   const get = (name: string) => {
-    let w = wallets.get(name);
-    if (!w) {
+    let o = objects.get(name);
+    if (!o) {
       const mem = new Map<string, unknown>();
-      w = make({
+      o = make({
         storage: {
           get: async (k: string) => mem.get(k),
           put: async (k: string, v: unknown) => void mem.set(k, structuredClone(v)),
           deleteAll: async () => mem.clear(),
         } as unknown as DurableObjectStorage,
       });
-      wallets.set(name, w);
+      objects.set(name, o);
     }
-    return w;
+    return o;
   };
   return {
     idFromName: (n: string) => n,
