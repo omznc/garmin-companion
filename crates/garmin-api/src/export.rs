@@ -1,8 +1,9 @@
 //! Export of the cache as a CSV file and as PDF reports.
 //!
 //! The CSV holds every activity. The PDF reports use the same figures as the
-//! report view, on one A4 page. The caller passes the font file (a TTF), so
-//! this crate does not embed a font.
+//! report view, on one A4 page. The crate embeds a font (a TTF, about 200 KB)
+//! for the commands. The desktop app passes its own font file to the
+//! functions that make a report.
 
 use crate::derive::{date_key, mean};
 use crate::reports::{report_view, week_start};
@@ -257,6 +258,20 @@ fn build(db: &Db, today: NaiveDate, kind: Kind) -> Result<(String, Vec<u8>), Api
     })
 }
 
+/// Build one export from a scratch cache of the sample. The report screen reads
+/// the sample with the training rows (older weeks), so a report seeds them too.
+fn build_sample(scratch: &Path, kind: Kind) -> Result<(String, Vec<u8>), ApiError> {
+    use crate::personas::{sample_day, seed, Persona};
+    let today = sample_day();
+    let db = Db::open(&scratch.join("cache.sqlite3"))?;
+    seed(&db, Persona::Sample, today).map_err(|e| ApiError::Internal(e.to_string()))?;
+    if !matches!(kind, Kind::Csv) {
+        crate::training_fixtures::seed_training(&db, Persona::Sample, today)
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+    }
+    garmin_core::with_as_of(today, || build(&db, today, kind))
+}
+
 /// Write one export into `dir` and return the path of the file. A sample
 /// source seeds a scratch cache inside `dir`, so it never opens the real cache.
 pub(crate) fn write_export(source: Source, dir: &str, kind: Kind) -> Result<String, ApiError> {
@@ -268,15 +283,12 @@ pub(crate) fn write_export(source: Source, dir: &str, kind: Kind) -> Result<Stri
     let (name, bytes) = match source {
         Source::Live => build(&crate::open_default_db()?, garmin_core::today(), kind)?,
         Source::Sample => {
-            let scratch = dir.join("sample-export");
+            // A counter keeps parallel exports apart, as the pid keeps processes apart.
+            static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let scratch = dir.join(format!("sample-export-{}-{n}", std::process::id()));
             let _ = std::fs::remove_dir_all(&scratch);
-            let today = crate::personas::sample_day();
-            let made = (|| {
-                let db = Db::open(&scratch.join("cache.sqlite3"))?;
-                crate::personas::seed(&db, crate::personas::Persona::Sample, today)
-                    .map_err(|e| ApiError::Internal(e.to_string()))?;
-                garmin_core::with_as_of(today, || build(&db, today, kind))
-            })();
+            let made = build_sample(&scratch, kind);
             let _ = std::fs::remove_dir_all(&scratch);
             made?
         }

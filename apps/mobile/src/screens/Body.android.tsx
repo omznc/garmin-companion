@@ -161,7 +161,7 @@ export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string })
       back
       share={
         kind === "report" && data
-          ? { label: "Share report", onPress: () => askReportShare(offset) }
+          ? { label: "Share report", onPress: () => askReportShare(offset, data.weekLabel) }
           : undefined
       }
     >

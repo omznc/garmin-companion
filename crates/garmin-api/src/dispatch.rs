@@ -416,18 +416,55 @@ mod tests {
             "export_report",
             serde_json::json!({ "dir": dir, "period": "month", "offset": 1 }),
         );
-        assert!(week
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .starts_with("garmin-week-2026-"));
         assert_eq!(month, dir.join("garmin-2026-02.pdf"));
         for pdf in [week, month] {
             assert!(std::fs::read(pdf).unwrap().starts_with(b"%PDF"));
         }
         // The scratch cache of the sample is gone, and the files are all that is left.
-        assert!(!dir.join("sample-export").exists());
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The week of each sample export is the week that the report screen shows
+    /// (its label is in the fixture), and parallel exports do not clash.
+    #[test]
+    fn sample_week_exports_match_the_report_screen_in_parallel() {
+        use crate::personas::{sample_day, seed, Persona};
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-export-weeks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = crate::open_db(&dir.join("fixture").join("cache.sqlite3")).unwrap();
+        seed(&db, Persona::Sample, sample_day()).unwrap();
+        crate::training_fixtures::seed_training(&db, Persona::Sample, sample_day()).unwrap();
+        let reports = crate::training_fixtures::training_views(&db, sample_day())
+            .unwrap()
+            .reports;
+        assert!(reports.len() > 4, "the fixture holds the older weeks");
+        let out = dir.join("out");
+        std::thread::scope(|s| {
+            for (offset, report) in reports.iter().enumerate() {
+                let out = &out;
+                s.spawn(move || {
+                    let args =
+                        serde_json::json!({ "dir": out, "period": "week", "offset": offset });
+                    let path = call_with(Source::Sample, "export_report", &args.to_string());
+                    let path: String = serde_json::from_str(&path.unwrap()).unwrap();
+                    let name = std::path::Path::new(&path).file_name().unwrap();
+                    let day = name.to_string_lossy().replace("garmin-week-", "");
+                    let start = chrono::NaiveDate::parse_from_str(&day[..10], "%Y-%m-%d").unwrap();
+                    let label = start.format("%d %b").to_string();
+                    assert!(
+                        report.eyebrow.contains(&label),
+                        "offset {offset}: {} lacks {label}",
+                        report.eyebrow
+                    );
+                    assert!(std::fs::read(path).unwrap().starts_with(b"%PDF"));
+                });
+            }
+        });
+        // Only the PDFs are left: no scratch cache.
+        let left = std::fs::read_dir(&out).unwrap().count();
+        assert_eq!(left, reports.len());
         let _ = std::fs::remove_dir_all(dir);
     }
 

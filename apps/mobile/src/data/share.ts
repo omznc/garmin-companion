@@ -27,11 +27,18 @@ async function shareFile(path: string, kind: FileKind) {
 }
 
 // A failed export shows the sentence of the core. Closing the share sheet is not a failure.
+// A second share while the first runs throws on Android (SharingInProgressException), so a tap is ignored.
+let busy = false;
+
 async function exportAndShare(make: () => Promise<string>, kind: FileKind) {
+  if (busy) return;
+  busy = true;
   try {
     await shareFile(await make(), kind);
   } catch (e) {
     notifyError("Could not export", e);
+  } finally {
+    busy = false;
   }
 }
 
@@ -52,10 +59,13 @@ export async function shareActivitySummary(d: ActivityDetailView) {
   }
 }
 
-/** The weekly report: the person picks the week on screen or the month. */
-export const askReportShare = (weekOffset: number) =>
+/** The weekly report: the person picks the week on screen or the month of today. */
+export const askReportShare = (weekOffset: number, weekLabel?: string) =>
   showDialog("Share the report", "Send the report as a PDF file.", [
     { text: "Cancel", style: "cancel" },
     { text: "This month", onPress: () => void shareReportPdf("month") },
-    { text: "This week", onPress: () => void shareReportPdf("week", weekOffset) },
+    {
+      text: weekLabel ? `Week of ${weekLabel.split(" - ")[0]}` : "This week",
+      onPress: () => void shareReportPdf("week", weekOffset),
+    },
   ]);

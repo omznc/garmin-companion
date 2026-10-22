@@ -230,7 +230,10 @@ export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string })
           title,
           headerRight: () =>
             kind === "report" && data ? (
-              <ShareButton label="Share report" onPress={() => askReportShare(offset)} />
+              <ShareButton
+                label="Share report"
+                onPress={() => askReportShare(offset, data.weekLabel)}
+              />
             ) : null,
         }}
       />
