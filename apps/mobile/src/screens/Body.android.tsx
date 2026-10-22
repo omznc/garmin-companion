@@ -18,6 +18,7 @@ import {
 } from "../components/MdKit";
 import { RouteTrace, WearBar } from "../components/RouteTrace";
 import { type Block, type ScreenKind, useBody } from "../data/body";
+import { askReportShare } from "../data/share";
 import { useMd } from "../theme/md";
 
 const MAX_BARS = 48;
@@ -155,7 +156,15 @@ export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string })
   const onAction = (id: string) =>
     setOffset((o) => (id === "earlier" ? o + 1 : Math.max(o - 1, 0)));
   return (
-    <LargeAppBarScreen title={title} back>
+    <LargeAppBarScreen
+      title={title}
+      back
+      share={
+        kind === "report" && data
+          ? { label: "Share report", onPress: () => askReportShare(offset, data.weekLabel) }
+          : undefined
+      }
+    >
       {data ? (
         <Content>
           {data.blocks.map((b, i) => (

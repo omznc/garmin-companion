@@ -3,7 +3,9 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import type { ReactNode } from "react";
 import { ActivityIndicator, PlatformColor, ScrollView, Text, View } from "react-native";
+import { ShareButton } from "../components/ShareButton";
 import { type ActivityDetail, barHeights, useActivityDetail } from "../data/activities";
+import { shareActivitySummary } from "../data/share";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -227,7 +229,10 @@ export function ActivityDetailScreen() {
       <Stack.Screen
         options={{
           title: data?.name ?? "Activity",
-          headerRight: () => null,
+          headerRight: () =>
+            data ? (
+              <ShareButton label="Share summary" onPress={() => void shareActivitySummary(data)} />
+            ) : null,
         }}
       />
       {isPending ? <ActivityIndicator style={{ margin: 32 }} /> : null}

@@ -27,8 +27,12 @@ type ListRows<T> = {
   keyExtractor: (item: T) => string;
 };
 
+type ShareAction = { label: string; onPress: () => void };
+
 type Props<T> = {
   title: string;
+  /** A share button at the end of the bar. */
+  share?: ShareAction;
   list?: ListRows<T>;
   back?: boolean;
   /** A small bar that does not collapse. */
@@ -44,6 +48,7 @@ type Props<T> = {
 
 export function LargeAppBarScreen<T = never>({
   title,
+  share,
   list,
   back = false,
   small = false,
@@ -130,7 +135,28 @@ export function LargeAppBarScreen<T = never>({
           {title}
         </Animated.Text>
         {back ? <BackButton top={insets.top} /> : null}
+        {share ? <ShareButton top={insets.top} {...share} /> : null}
       </Animated.View>
+    </View>
+  );
+}
+
+// The share action of the screen, at the end of the bar. The title leaves 72 px for it.
+function ShareButton({ top, label, onPress }: { top: number } & ShareAction) {
+  const md = useMd();
+  const host = useHostTheme();
+  return (
+    <View style={{ position: "absolute", top: top + 8, right: 8, width: 48, height: 48 }}>
+      <Host matchContents {...host}>
+        <IconButton onClick={onPress}>
+          <Icon
+            source={require("../../assets/icons/share.xml")}
+            size={24}
+            tint={md.onSurface}
+            contentDescription={label}
+          />
+        </IconButton>
+      </Host>
     </View>
   );
 }

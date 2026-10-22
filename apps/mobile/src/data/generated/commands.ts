@@ -15,6 +15,8 @@ import type { CloudVerified } from "./CloudVerified";
 import type { CloudVerifyArgs } from "./CloudVerifyArgs";
 import type { DailyMetrics } from "./DailyMetrics";
 import type { DaysArgs } from "./DaysArgs";
+import type { ExportCsvArgs } from "./ExportCsvArgs";
+import type { ExportReportArgs } from "./ExportReportArgs";
 import type { ExtrasView } from "./ExtrasView";
 import type { FitnessView } from "./FitnessView";
 import type { FoodView } from "./FoodView";
@@ -86,6 +88,8 @@ export type Commands = {
   tiles_view: { args: undefined; result: TilesView };
   extras_view: { args: undefined; result: ExtrasView };
   charts_view: { args: undefined; result: ChartsView };
+  export_csv: { args: ExportCsvArgs; result: string };
+  export_report: { args: ExportReportArgs; result: string };
   status: { args: undefined; result: Status };
   sign_in_url: { args: undefined; result: string };
   redeem_ticket: { args: TicketArgs; result: Status };
