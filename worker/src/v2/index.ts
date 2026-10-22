@@ -33,8 +33,10 @@ const INSTALLS_PER_IP = 10;
 // must be high enough for a release day, when every upgraded app enrols again.
 const INSTALLS_PER_DAY = 5000;
 const NEW_ACCOUNTS_PER_IP = 5;
-// Each new account gets a free grant and costs one mail, so it keeps a low cap.
+// Each new account gets a free grant, so it keeps a low cap.
 const NEW_ACCOUNTS_PER_DAY = 200;
+// Code mails to addresses with no account, for each network. A bounce costs the mail sender.
+const NEW_ADDRESS_MAILS_PER_IP = 10;
 const MAX_MESSAGES = 80;
 const FREE_MAX_TOKENS = 4096;
 const ALLOWED_FIELDS = new Set([
@@ -203,9 +205,15 @@ async function authSend(request: Request, env: V2Env) {
   if (!(await env.ISSUE.limit({ key: `v2mail:${bucket}` })).success) {
     return fail(429, "rate_limited", "too many codes requested", {}, { "Retry-After": "60" });
   }
-  // Only a look here, to save a mail. The count happens when the account is made.
-  if (!(await userExists(env, email)) && !(await newAccountTaken(env, bucket, false)).ok) {
-    return newAccountCapped();
+  if (!(await userExists(env, email))) {
+    // A look only: the account is counted when it is made.
+    if (!(await newAccountTaken(env, bucket, false)).ok) return newAccountCapped();
+    // Each mail to a new address counts, so one network cannot mail the world.
+    const mail = await callLimits<Taken>(env, {
+      op: "take",
+      caps: [[`mail:${bucket}`, NEW_ADDRESS_MAILS_PER_IP]] satisfies Cap[],
+    });
+    if (!mail.ok) return newAccountCapped();
   }
   const result = await sendCode(env, email);
   if (result === "sent") return json({ ok: true });
@@ -636,7 +644,7 @@ const spendKey = (premium: boolean) => (premium ? "pspend" : "spend");
  */
 function budgetOf(env: V2Env, premium: boolean): number | null {
   const raw = premium ? env.DAILY_BUDGET_V2_PREMIUM_USD : env.DAILY_BUDGET_V2_USD;
-  const budget = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
+  const budget = raw === undefined || raw === "" ? Number.NaN : Number(raw);
   return Number.isFinite(budget) ? budget : null;
 }
 

@@ -90,7 +90,7 @@ describe("install cap under load", () => {
 });
 
 describe("new account cap", () => {
-  it("does not count a code that is sent and never verified", async () => {
+  it("does not count an account for a code that is sent and never verified", async () => {
     const h = harness();
     for (let i = 0; i < 7; i++) {
       const r = await h.call("/v2/auth/email/send", { json: { email: `u${i}@example.com` } });
@@ -98,6 +98,27 @@ describe("new account cap", () => {
     }
     expect(await counter(h, `newuser:total`)).toBe(0);
     expect(h.db.raw.prepare("SELECT COUNT(*) AS n FROM user").get()).toEqual({ n: 0 });
+  });
+
+  it("stops mails to new addresses after 10 from one network", async () => {
+    const h = harness();
+    const send = (email: string) => h.call("/v2/auth/email/send", { json: { email } });
+    const out = [];
+    for (let i = 0; i < 12; i++) out.push((await send(`u${i}@example.com`)).status);
+    expect(out.filter((s) => s === 200)).toHaveLength(10);
+    expect(out.slice(10)).toEqual([429, 429]);
+    expect(h.mails).toHaveLength(10);
+  });
+
+  it("keeps the code valid when the verify is capped", async () => {
+    const h = harness();
+    const emails = Array.from({ length: 6 }, (_, i) => `u${i}@example.com`);
+    for (const email of emails) await h.call("/v2/auth/email/send", { json: { email } });
+    const verify = (i: number) =>
+      h.call("/v2/auth/email/verify", { json: { email: emails[i], code: h.mails[i].code } });
+    for (let i = 0; i < 5; i++) expect((await verify(i)).status).toBe(200);
+    expect((await verify(5)).status).toBe(429);
+    expect((await verify(5)).status).toBe(429);
   });
 
   it("makes exactly 5 accounts from 8 parallel verifies for one address", async () => {
