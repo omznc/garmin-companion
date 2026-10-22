@@ -3,6 +3,7 @@
 import { useRouter } from "expo-router";
 import { PlatformColor, Pressable, ScrollView, Text, View } from "react-native";
 import { BodyLinks } from "../components/BodyLinks";
+import { FocusHeader } from "../components/FocusChip";
 import { ErrorGroup, Group, Loading, Note, Row, secondary } from "../components/Grouped";
 import { MiniBars } from "../components/MiniBars";
 import { type MetricTrend, scaled, useHealth, useSleep } from "../data/wellness";
@@ -60,6 +61,7 @@ export function HealthScreen() {
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
+      <FocusHeader />
       {data ? (
         <>
           <Group>

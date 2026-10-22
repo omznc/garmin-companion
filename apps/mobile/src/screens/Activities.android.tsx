@@ -2,6 +2,7 @@
 // A row opens the detail route in the same stack.
 import { useRouter } from "expo-router";
 import { View } from "react-native";
+import { FocusAction } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Card, GAP, Group, ListRow, Loading, MARGIN, SectionLabel, T } from "../components/MdKit";
 import { FAMILY_ICON } from "../components/TodayKit";
@@ -83,6 +84,7 @@ export function ActivitiesScreen() {
   return (
     <LargeAppBarScreen
       title="Activities"
+      actions={<FocusAction />}
       list={{
         data: groups,
         keyExtractor: (g) => g.date,

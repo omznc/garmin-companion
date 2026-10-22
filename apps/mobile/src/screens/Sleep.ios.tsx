@@ -5,8 +5,11 @@ import { pickerStyle, tag } from "@expo/ui/swift-ui/modifiers";
 import { Stack } from "expo-router";
 import { useState } from "react";
 import { PlatformColor, ScrollView, Text, View } from "react-native";
+import { FocusHeader } from "../components/FocusChip";
 import { ErrorGroup, Group, label, Loading, Note, Row, secondary } from "../components/Grouped";
 import { MiniBars } from "../components/MiniBars";
+import { SleepExtras } from "../components/SleepExtras";
+import { presentSleepExtras, useTiles } from "../data/views";
 import {
   type NightView,
   type SleepView,
@@ -156,6 +159,8 @@ function Window({ w }: { w: SleepWindow }) {
 
 function SleepBody({ view }: { view: SleepView }) {
   const [days, setDays] = useState(7);
+  const tiles = useTiles().data;
+  const extras = tiles ? presentSleepExtras(tiles) : null;
   return (
     <>
       <Group>
@@ -166,6 +171,7 @@ function SleepBody({ view }: { view: SleepView }) {
           {view.lastNight ? <LastNight night={view.lastNight} note={view.note} /> : null}
           <WindowPicker days={days} onPick={setDays} />
           <Window w={days === 7 ? view.week : view.month} />
+          {extras ? <SleepExtras extras={extras} /> : null}
           {view.insights.length > 0 ? (
             <Group title="What your nights say">
               {view.insights.map((i, n) => (
@@ -199,6 +205,7 @@ export function SleepScreen(_props: { root?: boolean }) {
       contentContainerStyle={{ paddingBottom: 32 }}
     >
       <Stack.Screen options={{ title: "Sleep" }} />
+      <FocusHeader />
       {data ? <SleepBody view={data} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorGroup message={String(error)} onRetry={() => refetch()} /> : null}

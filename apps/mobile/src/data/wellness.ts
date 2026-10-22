@@ -2,6 +2,8 @@
 // The core owns the numbers and the sentences. The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
 import { devPersona } from "./devPersona";
+import { focusArgs, focusKey, useFocus } from "./focus";
+import { clipHealth, clipSleep } from "./focusClip";
 import { call } from "./source";
 
 // The condition stays inline, so Metro drops the fixtures from a release build.
@@ -24,19 +26,28 @@ export type { StageShare } from "./generated/StageShare";
 const recorded = (cmd: string) =>
   devPersona ? fixtures?.wellnessFixture(cmd, devPersona) : undefined;
 
-export const useHealth = () =>
-  useQuery({
-    queryKey: ["health"],
-    queryFn: async () => (recorded("health_view") as HealthView | undefined) ?? call("health_view"),
+export const useHealth = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["health", focusKey(focus)],
+    queryFn: async () =>
+      (recorded("health_view") as HealthView | undefined) ?? call("health_view", focusArgs(focus)),
+    // The core ends the view on the last day. A range also drops the days before its start.
+    select: (view) => clipHealth(view, focus),
     retry: false,
   });
+};
 
-export const useSleep = () =>
-  useQuery({
-    queryKey: ["sleep"],
-    queryFn: async () => (recorded("sleep_view") as SleepView | undefined) ?? call("sleep_view"),
+export const useSleep = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["sleep", focusKey(focus)],
+    queryFn: async () =>
+      (recorded("sleep_view") as SleepView | undefined) ?? call("sleep_view", focusArgs(focus)),
+    select: (view) => clipSleep(view, focus),
     retry: false,
   });
+};
 
 /** Scale a series to 0.15..1 for bars, so a small change still shows. Gaps stay null. */
 export function scaled(points: (number | null)[]): (number | null)[] {

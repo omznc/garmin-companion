@@ -33,6 +33,8 @@ type Props<T> = {
   back?: boolean;
   /** A small bar that does not collapse. */
   small?: boolean;
+  /** A control at the end of the bar, for example the date focus. */
+  actions?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Called with the scroll offset, for a FAB that collapses. */
@@ -47,6 +49,7 @@ export function LargeAppBarScreen<T = never>({
   list,
   back = false,
   small = false,
+  actions,
   refreshing = false,
   onRefresh,
   onScrollOffset,
@@ -119,7 +122,7 @@ export function LargeAppBarScreen<T = never>({
           style={[
             {
               position: "absolute",
-              right: 72,
+              right: actions ? 200 : 72,
               bottom: small ? 18 : 16,
               color: md.onSurface,
               fontWeight: "500",
@@ -130,6 +133,9 @@ export function LargeAppBarScreen<T = never>({
           {title}
         </Animated.Text>
         {back ? <BackButton top={insets.top} /> : null}
+        {actions ? (
+          <View style={{ position: "absolute", top: insets.top + 8, right: 8 }}>{actions}</View>
+        ) : null}
       </Animated.View>
     </View>
   );

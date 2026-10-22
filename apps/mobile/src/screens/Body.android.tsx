@@ -2,7 +2,9 @@
 // The core sends the text. This file draws the blocks of `data/body.ts`.
 import { useState } from "react";
 import { View } from "react-native";
+import { FocusRow } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
+import { followsFocus } from "../data/focusChip";
 import {
   BarLabels,
   Bars,
@@ -156,6 +158,7 @@ export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string })
     setOffset((o) => (id === "earlier" ? o + 1 : Math.max(o - 1, 0)));
   return (
     <LargeAppBarScreen title={title} back>
+      {followsFocus(kind) ? <FocusRow /> : null}
       {data ? (
         <Content>
           {data.blocks.map((b, i) => (

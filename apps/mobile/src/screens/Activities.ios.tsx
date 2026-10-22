@@ -1,6 +1,7 @@
 // Activities on iOS: native large title, grouped lists by day, system colours, Dynamic Type.
 // A row pushes the detail route onto the stack.
 import { useRouter } from "expo-router";
+import { FocusHeader } from "../components/FocusChip";
 import { ActivityIndicator, FlatList, PlatformColor, Pressable, Text, View } from "react-native";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
 
@@ -94,6 +95,7 @@ export function ActivitiesScreen() {
       renderItem={({ item }) => <DayGroup g={item} />}
       ListHeaderComponent={
         <>
+          <FocusHeader />
           {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
           {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
           {data?.empty ? (

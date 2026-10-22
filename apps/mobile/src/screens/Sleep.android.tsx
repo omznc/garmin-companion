@@ -10,7 +10,10 @@ import {
 import { fillMaxWidth } from "@expo/ui/jetpack-compose/modifiers";
 import { useState } from "react";
 import { View } from "react-native";
+import { FocusAction } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
+import { SleepExtras } from "../components/SleepExtras";
+import { presentSleepExtras, useTiles } from "../data/views";
 import {
   BarLabels,
   Bars,
@@ -159,6 +162,8 @@ function Insights({ items }: { items: SleepInsight[] }) {
 function SleepBody({ view }: { view: SleepView }) {
   const md = useMd();
   const [days, setDays] = useState(7);
+  const tiles = useTiles().data;
+  const extras = tiles ? presentSleepExtras(tiles) : null;
   return (
     <Content>
       <Card tone="primary" gap={12} style={{ borderRadius: 32 }}>
@@ -176,6 +181,7 @@ function SleepBody({ view }: { view: SleepView }) {
           {view.lastNight ? <LastNight night={view.lastNight} note={view.note} /> : null}
           <WindowPicker days={days} onPick={setDays} />
           <Window w={days === 7 ? view.week : view.month} />
+          {extras ? <SleepExtras extras={extras} /> : null}
           {view.insights.length > 0 ? <Insights items={view.insights} /> : null}
         </>
       )}
@@ -187,7 +193,7 @@ function SleepBody({ view }: { view: SleepView }) {
 export function SleepScreen({ root = false }: { root?: boolean }) {
   const { data, error, refetch } = useSleep();
   return (
-    <LargeAppBarScreen title="Sleep" back={!root}>
+    <LargeAppBarScreen title="Sleep" back={!root} actions={<FocusAction />}>
       {data ? <SleepBody view={data} /> : null}
       {!data && !error ? <Loading /> : null}
       {error ? <ErrorCard message={String(error)} onRetry={refetch} /> : null}

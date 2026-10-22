@@ -3,6 +3,7 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
 import { BodyLinks } from "../components/BodyLinks";
+import { FocusAction } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Bars, Card, Content, ErrorCard, IconTile, Loading, T } from "../components/MdKit";
 import { type MetricTrend, scaled, useHealth, useSleep } from "../data/wellness";
@@ -86,7 +87,7 @@ function HealthBody() {
 
 export function HealthScreen() {
   return (
-    <LargeAppBarScreen title="Health">
+    <LargeAppBarScreen title="Health" actions={<FocusAction />}>
       <HealthBody />
     </LargeAppBarScreen>
   );

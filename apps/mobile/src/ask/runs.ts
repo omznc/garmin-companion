@@ -3,6 +3,7 @@
 // "ask" events of the core once. The core saves the turn itself.
 import { useSyncExternalStore } from "react";
 import type { AskEventPayload, HistoryRow, Thread } from "../data/chatTypes";
+import { focusArgs, getFocus } from "../data/focus";
 import { queryClient } from "../data/queryClient";
 import { call, subscribe as subscribeBridge } from "../data/source";
 import {
@@ -134,7 +135,7 @@ export async function startTurn(
   setSendError(null);
   setLives(startRun(lives, sessionId, index, question, turnId));
   try {
-    await call("ask_send", { sessionId, turnId, history });
+    await call("ask_send", { sessionId, turnId, history, ...focusArgs(getFocus()) });
   } catch (error) {
     setLives(failRun(lives, sessionId, turnId));
     setSendError(error instanceof Error ? error.message : String(error));
