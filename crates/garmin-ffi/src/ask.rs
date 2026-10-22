@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use garmin_coach::{Event, EventSink, HistoryMessage};
+use garmin_coach::{with_period_note, Event, EventSink, HistoryMessage, Period};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -197,6 +197,12 @@ pub(crate) struct SendArgs {
     /// The id that the app gives to this turn. The events carry it.
     turn_id: String,
     history: Vec<HistoryRow>,
+    /// The first day of the period that the coach reads, `YYYY-MM-DD`.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    from: Option<String>,
+    /// The last day of the period. With `from` alone, `to` is the real today.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    to: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -264,6 +270,12 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
         .find(|m| m.role == "user")
         .map(|m| m.content.clone())
         .ok_or_else(|| bad("history has no user message"))?;
+    let period = garmin_api::focus::Focus::parse(a.from.as_deref(), a.to.as_deref())
+        .map_err(bad)?
+        .map(|f| Period {
+            start: f.start,
+            end: f.end,
+        });
     let history: Vec<HistoryMessage> = a
         .history
         .into_iter()
@@ -272,6 +284,7 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
             content: m.content,
         })
         .collect();
+    let history = with_period_note(history, period);
     stop();
     let turn = chat::begin_turn(fixture, &a.session_id, &question).map_err(failed)?;
     let flag = Arc::new(AtomicBool::new(false));
@@ -289,7 +302,9 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let task = if fixture {
         tokio::spawn(async move { fixture_turn(&run).await })
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag, true).await })
+        tokio::spawn(
+            async move { garmin_coach::ask_in(history, &run, &run.0.flag, true, period).await },
+        )
     };
     tokio::spawn(report_panic(task, sink));
     Ok("{}".into())

@@ -15,6 +15,7 @@ const SLEEP: &str = include_str!("../fixtures/sleep.sample.json");
 const BODY: &str = include_str!("../fixtures/body.sample.json");
 const PLACES: &str = include_str!("../fixtures/places.sample.json");
 const TRAINING: &str = include_str!("../fixtures/training.sample.json");
+const VIEWS: &str = include_str!("../fixtures/views.sample.json");
 
 /// Commands that read the cache and have no recorded result. Sample mode
 /// refuses them, so a call cannot create the cache.
@@ -25,9 +26,6 @@ const NEEDS_CACHE: &[&str] = &[
     "cached_activity",
     "nutrition",
     "weight",
-    "tiles_view",
-    "extras_view",
-    "charts_view",
 ];
 
 fn json(text: &str) -> Value {
@@ -46,6 +44,7 @@ pub(crate) fn call(cmd: &str, args: &Value) -> Option<Result<String, ApiError>> 
         "sleep_view" => SLEEP.to_owned(),
         "insights_view" | "fitness_view" | "report_view" => training(cmd, args),
         "plan_view" | "routes_view" | "gear_view" => part(PLACES, cmd),
+        "tiles_view" | "extras_view" | "charts_view" => part(VIEWS, cmd),
         c if NEEDS_CACHE.contains(&c) => {
             return Some(Err(ApiError::BadArguments(
                 "sample mode has no cache".into(),
@@ -106,6 +105,9 @@ mod tests {
             "plan_view",
             "routes_view",
             "gear_view",
+            "tiles_view",
+            "extras_view",
+            "charts_view",
         ] {
             let out = call(cmd, &serde_json::json!({ "offset": 99 }))
                 .unwrap()
@@ -120,6 +122,21 @@ mod tests {
             .unwrap();
         assert_eq!(json(&d)["activityId"], 42);
         assert!(call("nope", &none).is_none());
+    }
+
+    #[test]
+    fn the_sample_views_show_every_section_of_the_new_views() {
+        use crate::{charts::ChartsView, extras::ExtrasView, tiles::TilesView};
+        let none = serde_json::json!({});
+        let out = |cmd| call(cmd, &none).unwrap().unwrap();
+        let tiles: TilesView = serde_json::from_str(&out("tiles_view")).unwrap();
+        assert!(tiles.sleep_debt.is_some() && tiles.bed_wake.is_some());
+        assert!(!tiles.tiles.is_empty() && !tiles.sleep_scores.points.is_empty());
+        let extras: ExtrasView = serde_json::from_str(&out("extras_view")).unwrap();
+        assert!(extras.race.is_some() && !extras.planned.is_empty());
+        assert!(!extras.nutrition.meals.is_empty() && extras.nutrition.goals.is_some());
+        let charts: ChartsView = serde_json::from_str(&out("charts_view")).unwrap();
+        assert!(!charts.sets_by_muscle.groups.is_empty());
     }
 
     #[test]
