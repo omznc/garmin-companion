@@ -13,10 +13,34 @@
 //! never call it and get the derived answer. That keeps this crate free of a
 //! Tauri dependency, which matters — `garmin-mcp` links it too, and that binary
 //! has no app handle to ask.
+//!
+//! # Tests never touch real user state
+//!
+//! The rule: a test must not read or write the data folder, the OS keyring or
+//! the Garmin servers of the developer. Every crate that links `garmin-core`
+//! must enable the `test-sandbox` feature in its `[dev-dependencies]`:
+//!
+//! ```toml
+//! [dev-dependencies]
+//! garmin-core = { workspace = true, features = ["test-sandbox"] }
+//! ```
+//!
+//! With the feature (and in the tests of this crate), three things change:
+//! - [`base_dir`] returns a temp folder of the process, unless a test calls
+//!   [`set_base_dir`].
+//! - `secrets` keeps every secret in memory.
+//! - `GarminClient::new` returns an error, so no test can call Garmin.
+//!
+//! Resolver 2 keeps dev-dependency features out of normal builds. Check this
+//! with `cargo tree -e features -i garmin-core`. Never enable the feature in
+//! a `[dependencies]` entry.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use std::sync::OnceLock;
+
+/// True when tests run. See the module notes.
+pub const SANDBOXED: bool = cfg!(any(test, feature = "test-sandbox"));
 
 /// Set once, at startup, by a host that knows better than the conventions do.
 static BASE_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -46,6 +70,9 @@ pub fn base_dir() -> Result<PathBuf> {
     if let Some(dir) = BASE_DIR.get() {
         return Ok(dir.clone());
     }
+    if SANDBOXED {
+        return Ok(sandbox_dir());
+    }
     Ok(dirs::data_dir()
         .context("could not locate a data directory")?
         .join(APP_DIR))
@@ -56,4 +83,28 @@ pub fn ensure_base_dir() -> Result<PathBuf> {
     let dir = base_dir()?;
     std::fs::create_dir_all(&dir).with_context(|| format!("could not create {}", dir.display()))?;
     Ok(dir)
+}
+
+/// A folder of this process under the system temp folder. The folder stays
+/// after the run: the system cleans its temp folder.
+fn sandbox_dir() -> PathBuf {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        std::env::temp_dir().join(format!("garmin-coach-test-{}", std::process::id()))
+    })
+    .clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_dir_is_a_temp_dir_and_not_the_real_data_dir() {
+        let dir = base_dir().unwrap();
+        assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
+        if let Some(real) = dirs::data_dir() {
+            assert!(!dir.starts_with(real.join(APP_DIR)));
+        }
+    }
 }

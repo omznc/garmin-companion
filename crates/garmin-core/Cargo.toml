@@ -48,3 +48,6 @@ openssl = { workspace = true }
 [features]
 # Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
 ts-rs = ["dep:ts-rs"]
+# Tests only: temp data folder, in-memory secrets, no live Garmin client.
+# Every crate enables it in `[dev-dependencies]`. See `src/paths.rs`.
+test-sandbox = []

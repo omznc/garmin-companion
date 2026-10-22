@@ -29,6 +29,19 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
+      # Every crate that links garmin-core must enable test-sandbox in its
+      # dev-dependencies, and no normal dependency may enable it.
+      - name: Test sandbox
+        run: |
+          cargo metadata --no-deps --format-version 1 | jq -e '
+            [.packages[] | select(.name != "garmin-core")
+             | . as $p | .dependencies | map(select(.name == "garmin-core"))
+             | select(length > 0)
+             | select(
+                 any(.[]; .kind == null and (.features | index("test-sandbox")))
+                 or (any(.[]; .kind == "dev" and (.features | index("test-sandbox"))) | not))
+             | $p.name] == []'
+
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
