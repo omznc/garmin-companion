@@ -82,7 +82,9 @@ const listeners = new Set<() => void>();
 
 export const getFocus = (): Focus => current;
 
-export function setFocus(next: Focus) {
+export function setFocus(requested: Focus) {
+  // The single day of today is the live focus: it sends no period to the core or the coach.
+  const next = isLive(requested, todayIso()) ? null : requested;
   if (focusKey(next) === focusKey(current)) return;
   current = next;
   for (const l of listeners) l();

@@ -4,6 +4,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { bodyLine, DASH, one, whole } from "./bodyLine";
 import { type Focus, focusArgs, focusKey, useFocus } from "./focus";
+import { followsFocus } from "./focusChip";
 import { fetchPlaces, type PlacesKind } from "./places";
 import { call } from "./source";
 import { presentPlanExtras, presentStrengthCharts } from "./viewsPresent";
@@ -227,7 +228,8 @@ async function fetchBody(kind: ScreenKind, offset: number, focus: Focus): Promis
 export const useBody = (kind: ScreenKind, offset = 0) => {
   const focus = useFocus();
   return useQuery({
-    queryKey: ["body", kind, offset, focusKey(focus)],
+    // Gear, Routes and Report ignore the focus, so it stays out of their key.
+    queryKey: ["body", kind, offset, followsFocus(kind) ? focusKey(focus) : "live"],
     queryFn: () => fetchBody(kind, offset, focus),
     // Keep the old week on screen while the next one loads.
     placeholderData: keepPreviousData,

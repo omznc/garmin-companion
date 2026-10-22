@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { devPersona } from "./devPersona";
 import { focusArgs, focusKey, useFocus } from "./focus";
 import { clipHealth, clipSleep } from "./focusClip";
-import { call } from "./source";
+import { call, isSampleData } from "./source";
 
 // The condition stays inline, so Metro drops the fixtures from a release build.
 const fixtures = (__DEV__ ? require("./wellnessFixtures") : null) as
@@ -33,7 +33,8 @@ export const useHealth = () => {
     queryFn: async () =>
       (recorded("health_view") as HealthView | undefined) ?? call("health_view", focusArgs(focus)),
     // The core ends the view on the last day. A range also drops the days before its start.
-    select: (view) => clipHealth(view, focus),
+    // Sample data is old, so a range of real dates would empty it.
+    select: (view) => clipHealth(view, isSampleData() ? null : focus),
     retry: false,
   });
 };
@@ -44,7 +45,7 @@ export const useSleep = () => {
     queryKey: ["sleep", focusKey(focus)],
     queryFn: async () =>
       (recorded("sleep_view") as SleepView | undefined) ?? call("sleep_view", focusArgs(focus)),
-    select: (view) => clipSleep(view, focus),
+    select: (view) => clipSleep(view, isSampleData() ? null : focus),
     retry: false,
   });
 };

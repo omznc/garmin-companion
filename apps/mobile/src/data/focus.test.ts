@@ -11,6 +11,7 @@ import {
   isLive,
   makeFocus,
   setFocus,
+  todayIso,
 } from "./focus.ts";
 
 const TODAY = "2026-10-20";
@@ -72,4 +73,11 @@ test("the store tells a change once and clears", () => {
   clearFocus();
   assert.equal(getFocus(), null);
   assert.equal(n, 1);
+});
+
+test("a focus on the single day of today is the live focus", () => {
+  const today = todayIso();
+  setFocus({ from: today, to: today });
+  assert.equal(getFocus(), null);
+  clearFocus();
 });

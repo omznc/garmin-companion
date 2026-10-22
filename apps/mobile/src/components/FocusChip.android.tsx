@@ -15,7 +15,8 @@ import { clearFocus, setFocus, todayIso, useFocus } from "../data/focus";
 import { chipState, pickedFocus, utcDay } from "../data/focusChip";
 import { useHostTheme, useMd } from "../theme/md";
 
-const utcMidnight = (iso: string) => new Date(`${iso}T00:00:00Z`);
+// Local noon: the picker reads the local day of the instant, so a UTC midnight is the day before west of UTC.
+const utcMidnight = (iso: string) => new Date(`${iso}T12:00:00`);
 
 function Picker({ onClose }: { onClose: () => void }) {
   const focus = useFocus();
