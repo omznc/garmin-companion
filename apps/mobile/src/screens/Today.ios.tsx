@@ -1,8 +1,10 @@
 // Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
 // The core sends the sections in order. A section that has no data is not drawn.
 import { Stack, useRouter } from "expo-router";
-import { FocusAction } from "../components/FocusChip";
+import { Gauge, Host, Text as SwiftText } from "@expo/ui/swift-ui";
+import { frame, gaugeStyle, scaleEffect, tint as tintStyle } from "@expo/ui/swift-ui/modifiers";
 import { SymbolView } from "expo-symbols";
+import { FocusHeader } from "../components/FocusChip";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -15,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { metricRoute } from "../data/present";
-import type { Section, Today } from "../data/types";
+import type { Hero, Section, Today } from "../data/types";
 import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
@@ -161,24 +163,28 @@ function WeekGroups({ s }: { s: Extract<Section, { kind: "week" }> }) {
   );
 }
 
-function SectionView({ s }: { s: Section }) {
+function SectionView({ s, hero }: { s: Section; hero: Hero | null }) {
   const router = useRouter();
   switch (s.kind) {
-    case "health":
+    case "health": {
+      // The hero card shows its metric, so the list skips it.
+      const metrics = s.metrics.filter((m) => m.id !== hero?.id);
+      if (!metrics.length) return null;
       return (
         <Group title="Health">
-          {s.metrics.map((m, i) => (
+          {metrics.map((m, i) => (
             <Row
               key={m.id}
               left={m.label}
               right={m.unit ? `${m.value} ${m.unit}` : m.value}
               accent={m.accent}
               onPress={() => router.push(metricRoute(m.id))}
-              last={i === s.metrics.length - 1}
+              last={i === metrics.length - 1}
             />
           ))}
         </Group>
       );
+    }
     case "attention":
       return (
         <Group title="Attention">
@@ -220,10 +226,56 @@ function AskGroup() {
   );
 }
 
+// The headline metric (readiness when Garmin gives one) as a native ring. A tap opens its trend.
+function HeroRow({ hero }: { hero: Hero }) {
+  const router = useRouter();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${hero.label} ${hero.text}${hero.pct != null ? " out of 100" : ""}`}
+      onPress={() => router.push(metricRoute(hero.id))}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 20,
+        padding: 16,
+        paddingBottom: 0,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      {hero.pct != null ? (
+        <Host style={{ width: 88, height: 88 }}>
+          <Gauge
+            value={hero.pct}
+            min={0}
+            max={100}
+            currentValueLabel={<SwiftText>{hero.text}</SwiftText>}
+            modifiers={[
+              gaugeStyle("circularCapacity"),
+              tintStyle(tint),
+              scaleEffect(1.35),
+              frame({ width: 88, height: 88 }),
+            ]}
+          />
+        </Host>
+      ) : (
+        <Text style={{ fontSize: 44, fontWeight: "700", color: tint }}>{hero.text}</Text>
+      )}
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={{ fontSize: 22, fontWeight: "700", color: label }}>{hero.label}</Text>
+        {hero.pct != null ? (
+          <Text style={{ fontSize: 15, color: secondary }}>out of 100</Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
 function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSync: () => void }) {
   return (
     <>
       <Group>
+        {today.hero ? <HeroRow hero={today.hero} /> : null}
         <View style={{ padding: 16 }}>
           <Text style={{ fontSize: 15, color: secondary }}>{today.dateLabel}</Text>
           <Text style={{ fontSize: 17, color: label, marginTop: 6 }}>{today.lede}</Text>
@@ -239,7 +291,7 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
       </Group>
       <AskGroup />
       {today.sections.map((s) => (
-        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} />
+        <SectionView key={s.kind === "text" ? s.key : s.kind} s={s} hero={today.hero} />
       ))}
     </>
   );
@@ -276,16 +328,13 @@ export function TodayScreen() {
       style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
       contentContainerStyle={{ paddingBottom: 32 }}
     >
-      <Stack.Toolbar placement="right">
-        <Stack.Toolbar.View>
-          <FocusAction />
-        </Stack.Toolbar.View>
+      <FocusHeader>
         <Stack.Toolbar.Button
           icon="bubble.left"
           accessibilityLabel="Ask the coach"
           onPress={() => router.push("/ask")}
         />
-      </Stack.Toolbar>
+      </FocusHeader>
       {sync.importing || sync.importError ? (
         <ImportRow sync={sync} />
       ) : sync.line || sync.error ? (

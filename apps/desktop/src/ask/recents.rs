@@ -18,7 +18,7 @@ fn meta_line(meta: &chat::ThreadMeta, now: DateTime<Utc>) -> String {
 
 impl Ask {
     /// For screenshots: `GC_OPEN_RECENTS=rename` or `=delete` shows that state
-    /// on the first sample thread.
+    /// on the sample recovery thread.
     #[cfg(debug_assertions)]
     pub fn preview_row(&mut self, state: &str) {
         let id = Some("sample-recovery".to_owned());
