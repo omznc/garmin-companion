@@ -174,6 +174,8 @@ export async function syncIfStale(): Promise<void> {
 // On Android a foreground service keeps the network open when the person leaves the app. The system
 // refuses to start it in the background. Then a cut import resumes in the foreground (resumeCutImport).
 export async function importHistory() {
+  // Sign-in and the start of the app can both ask. One import at a time owns the service.
+  if (state.importing) return;
   set({ importing: true, importError: null, importPass: "quick" });
   inImport = true;
   importCut = false;
@@ -197,8 +199,11 @@ export async function importHistory() {
       importError: importCut ? null : e instanceof Error ? e.message : String(e),
     });
     // The failure can arrive after the return to the foreground. The pause gives the system
-    // time to open the network again. The resumed import starts its own service.
-    if (importCut && AppState.currentState === "active") setTimeout(resumeCutImport, 1000);
+    // time to open the network again. The resumed import starts its own service. If the app left
+    // again in the pause, the next return to the foreground resumes it.
+    if (importCut && AppState.currentState === "active") {
+      setTimeout(() => AppState.currentState === "active" && resumeCutImport(), 1000);
+    }
   } finally {
     if (service) SyncService?.stop();
   }

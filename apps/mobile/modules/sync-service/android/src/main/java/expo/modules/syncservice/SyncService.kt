@@ -25,7 +25,10 @@ class SyncService : Service() {
 
   override fun onBind(intent: Intent?): IBinder? = null
 
-  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+  // The foreground state starts in onCreate, before any start or stop command, so a stop that
+  // comes at once can not stop the service before startForeground.
+  override fun onCreate() {
+    super.onCreate()
     try {
       ServiceCompat.startForeground(
         this,
@@ -36,9 +39,16 @@ class SyncService : Service() {
     } catch (e: RuntimeException) {
       // The system refused the foreground state. Without it the service has no use.
       stopSelf()
-      return START_NOT_STICKY
     }
-    acquireWakeLock()
+  }
+
+  override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    if (intent?.action == ACTION_STOP) {
+      releaseWakeLock()
+      stopSelf()
+    } else {
+      acquireWakeLock()
+    }
     // The import is not resumable from the service. The app resumes it at the next start.
     return START_NOT_STICKY
   }
@@ -98,9 +108,10 @@ class SyncService : Service() {
       .build()
   }
 
-  private companion object {
-    const val CHANNEL_ID = "sync"
-    const val NOTIFICATION_ID = 4101
-    const val WAKE_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L
+  companion object {
+    const val ACTION_STOP = "expo.modules.syncservice.STOP"
+    private const val CHANNEL_ID = "sync"
+    private const val NOTIFICATION_ID = 4101
+    private const val WAKE_LOCK_TIMEOUT_MS = 6 * 60 * 60 * 1000L
   }
 }
