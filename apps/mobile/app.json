@@ -59,7 +59,7 @@
           "android": {
             "buildArchs": ["arm64-v8a", "x86_64"],
             "minSdkVersion": 24,
-            "extraProguardRules": "-keepclassmembers class com.facebook.react.ReactActivity {\n    private androidx.activity.OnBackPressedCallback *;\n    public void invokeDefaultOnBackPressed();\n}\n"
+            "extraProguardRules": "-keepclassmembers class com.facebook.react.ReactActivity {\n    private androidx.activity.OnBackPressedCallback *;\n    public void invokeDefaultOnBackPressed();\n}\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class * extends androidx.work.InputMerger { public <init>(); }\n"
           }
         }
       ]

@@ -246,6 +246,9 @@ jobs:
         # The -P value replaces buildArchs of app.json (that list has x86_64 for dev).
         run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 
+      - name: Check the R8 keep rules
+        run: sh scripts/check-r8-keeps.sh apps/mobile/android/app/build/outputs/mapping/release/seeds.txt
+
       # The Expo template signs a release build with the debug key. Sign it
       # again with the key of the old app. The apksigner command replaces the
       # old signature.
