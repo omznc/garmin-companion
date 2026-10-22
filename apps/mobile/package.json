@@ -2,7 +2,7 @@
   "name": "garmin-companion-mobile",
   "version": "0.1.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "scripts": {
     "start": "expo start --dev-client",
     "android": "expo run:android",
@@ -11,7 +11,7 @@
     "bridge:android": "./scripts/build-android-bridge.sh",
     "bridge:ios": "cd packages/garmin-bridge && ../../node_modules/.bin/ubrn build ios --and-generate --config ubrn.config.yaml --profile release-mobile",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
-    "test": "node --test src/update/manifest.test.ts src/data/present.test.ts src/data/bodyLine.test.ts src/appConfig.test.ts src/ask/markdown.test.ts src/ask/turns.test.ts src/ask/workout.test.ts src/data/importLabel.test.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
     "format": "biome format --write .",
     "format:check": "biome format ."
   },
@@ -22,17 +22,21 @@
     "@tanstack/react-query": "^5.104.3",
     "@ubjs/core": "0.31.0-6",
     "expo": "58.0.14",
+    "expo-background-task": "~58.0.11",
     "expo-build-properties": "~58.0.11",
     "expo-constants": "~58.0.12",
     "expo-dev-client": "~58.0.14",
     "expo-file-system": "~58.0.9",
     "expo-haptics": "~58.0.7",
     "expo-linking": "~58.0.13",
+    "expo-notifications": "~58.1.6",
     "expo-router": "~58.0.23",
+    "expo-sharing": "~58.0.20",
     "expo-splash-screen": "~58.0.10",
     "expo-status-bar": "~58.0.3",
     "expo-symbols": "~58.0.4",
     "expo-system-ui": "~58.0.6",
+    "expo-task-manager": "~58.0.12",
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-garmin-bridge": "link:packages/garmin-bridge",
@@ -45,6 +49,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@types/node": "^24.19.2",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   }

@@ -3,52 +3,15 @@
 // JSON and turns it into the blocks that the Body screens draw. It has no other copy.
 import type { Block, BodyScreenData, EmptyNote } from "./body";
 
-export type Figure = { label: string; value: string; accent: boolean };
+// The wire types come from the Rust core, through `generated/`.
+import type { FitnessView } from "./generated/FitnessView";
+import type { Figure } from "./generated/Figure";
+import type { InsightItem } from "./generated/InsightItem";
+import type { InsightsView } from "./generated/InsightsView";
+import type { ReportView } from "./generated/ReportView";
 
-export type InsightItem = {
-  id: string;
-  claim: string;
-  detail: string;
-  basis: string | null;
-  figures: Figure[];
-  series: { name: string; values: (number | null)[]; muted: boolean }[];
-  ends: string[];
-  rows: { label: string; value: string; note: string | null; accent: boolean }[];
-};
-
-export type InsightsView = {
-  eyebrow: string;
-  lede: string;
-  empty: EmptyNote | null;
-  sections: { key: string; title: string; items: InsightItem[] }[];
-};
-
-export type FitnessView = {
-  empty: EmptyNote | null;
-  lede: string | null;
-  figures: Figure[];
-  notes: string[];
-  balance: {
-    intro: string;
-    bars: { label: string; state: "over" | "under" | "in"; text: string }[];
-  } | null;
-  predictions: { intro: string; rows: Figure[] } | null;
-  records: { label: string; value: string; date: string }[];
-};
-
-export type ReportView = {
-  empty: EmptyNote | null;
-  lede: string;
-  hasEarlier: boolean;
-  hasLater: boolean;
-  eyebrow: string;
-  headline: string;
-  paragraphs: string[];
-  figures: Figure[];
-  dailyTitle: string;
-  daily: { label: string; value: number; text: string }[];
-  sessions: { name: string; day: string; sport: string; distance: string; duration: string }[];
-};
+export type { Figure, FitnessView, InsightsView, ReportView };
+export type { InsightItem };
 
 const tiles = (figures: Figure[]): Block[] =>
   figures.length
@@ -171,6 +134,8 @@ export function presentReport(v: ReportView): BodyScreenData {
   ];
   return {
     title,
+    // The eyebrow reads "No. 6 · 02 Mar - 08 Mar". The share dialog names the range.
+    weekLabel: v.eyebrow.split(" · ")[1],
     blocks: [
       note(v.eyebrow),
       { kind: "text", text: v.headline, tone: "lede" },

@@ -384,6 +384,7 @@ fn is_running(type_key: Option<&str>) -> bool {
 /// a set of squats it measures the ninety seconds between them and reports a
 /// well-executed easy run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Discipline {
     /// Running, walking, hiking: pace, cadence and zone discipline all hold.
@@ -1126,17 +1127,19 @@ fn pacing_highlights(series: &Series, laps: &[Lap], out: &mut Vec<Highlight>) {
 
     // Fastest and slowest full laps, which is the split people actually look
     // for. Only when there are enough of them for a spread to mean anything.
-    let timed_laps: Vec<&Lap> = laps.iter().filter(|l| l.pace_min_km.is_some()).collect();
+    let timed_laps: Vec<(&Lap, f64)> = laps
+        .iter()
+        .filter_map(|l| Some((l, l.pace_min_km?)))
+        .collect();
     if timed_laps.len() >= 3 {
-        let fastest = timed_laps
-            .iter()
-            .min_by(|a, b| a.pace_min_km.unwrap().total_cmp(&b.pace_min_km.unwrap()))
-            .unwrap();
-        let slowest = timed_laps
-            .iter()
-            .max_by(|a, b| a.pace_min_km.unwrap().total_cmp(&b.pace_min_km.unwrap()))
-            .unwrap();
-        let spread = slowest.pace_min_km.unwrap() - fastest.pace_min_km.unwrap();
+        let by_pace = |a: &&(&Lap, f64), b: &&(&Lap, f64)| a.1.total_cmp(&b.1);
+        let (Some(&(fastest, fast)), Some(&(slowest, slow))) = (
+            timed_laps.iter().min_by(by_pace),
+            timed_laps.iter().max_by(by_pace),
+        ) else {
+            return;
+        };
+        let spread = slow - fast;
         // Under fifteen seconds a kilometre the laps are effectively even, and
         // naming a "fastest" one implies a variation that isn't there.
         if spread >= 0.25 {
@@ -1152,9 +1155,9 @@ fn pacing_highlights(series: &Series, laps: &[Lap], out: &mut Vec<Highlight>) {
                     "Lap {} ran {}/km and lap {} ran {}/km — {} a kilometre between \
                      your best and worst split.",
                     fastest.index,
-                    pace_label(fastest.pace_min_km.unwrap()),
+                    pace_label(fast),
                     slowest.index,
-                    pace_label(slowest.pace_min_km.unwrap()),
+                    pace_label(slow),
                     pace_label(spread)
                 ),
             ));
@@ -1591,6 +1594,7 @@ mod tests {
             aerobic_te: Some(3.0),
             anaerobic_te: Some(1.0),
             zone_secs: [60.0, 240.0, 900.0, 500.0, 100.0],
+            training_load: None,
         }
     }
 

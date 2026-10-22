@@ -1,0 +1,5 @@
+{"type":"step_start","timestamp":1792526570000,"sessionID":"ses_ea51","part":{"id":"prt_1","messageID":"msg_1","type":"step-start"}}
+{"type":"tool_use","timestamp":1792526570299,"sessionID":"ses_ea51","part":{"type":"tool","tool":"garmin_recovery","callID":"call_00_r0bc","state":{"status":"completed","input":{"days":2},"output":"{\"days\":[{\"date\":\"2026-10-19\",\"resting_hr\":48}]}","metadata":{"truncated":false},"title":"","time":{"start":1792526570297,"end":1792526570299}}}}
+{"type":"step_finish","timestamp":1792526570310,"sessionID":"ses_ea51","part":{"type":"step-finish","reason":"tool-calls","tokens":{"total":61469,"input":59607,"output":39,"reasoning":31,"cache":{"write":0,"read":1792}},"cost":0}}
+{"type":"text","timestamp":1792526571600,"sessionID":"ses_ea51","part":{"type":"text","text":"Your resting HR yesterday was **48 bpm**.","time":{"start":1792526571589,"end":1792526571591}}}
+{"type":"step_finish","timestamp":1792526571610,"sessionID":"ses_ea51","part":{"type":"step-finish","reason":"stop","tokens":{"total":61485,"input":42,"output":3,"cache":{"read":61440}},"cost":0}}

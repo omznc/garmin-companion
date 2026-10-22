@@ -1,0 +1,6 @@
+# Settings for `scripts/gen-types.sh`. ts-rs reads them only when the `ts-rs`
+# feature is on, so normal builds ignore them.
+[env]
+TS_RS_EXPORT_DIR = { value = "apps/mobile/src/data/generated", relative = true }
+# Garmin ids and counts are i64 and fit in a JS number.
+TS_RS_LARGE_INT = "number"

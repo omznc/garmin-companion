@@ -6,6 +6,7 @@
 //! stages. The insights come from `garmin_core::sleep`.
 
 use crate::derive::{daily_series, date_key};
+use crate::focus::Focus;
 use crate::text::{hours_minutes, short_date};
 use crate::ApiError;
 use chrono::{Datelike, NaiveDate};
@@ -21,9 +22,15 @@ const WEEK: u32 = 7;
 const SHORT_NIGHT_SECS: f64 = 7.0 * 3600.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StageShare {
     /// `deep`, `light`, `rem` or `awake`.
+    // shortcut: a copy of the four stage keys in the type, update it with the code that sets them.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")
+    )]
     pub key: String,
     pub label: String,
     pub secs: f64,
@@ -32,7 +39,25 @@ pub struct StageShare {
     pub text: String,
 }
 
+/// One stretch of one stage, for the hypnogram.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct StageSpan {
+    /// `deep`, `light`, `rem` or `awake`.
+    // shortcut: a copy of the four stage keys in the type, update it with the code that sets them.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")
+    )]
+    pub key: String,
+    /// Minutes from the moment sleep began.
+    pub from_mins: f64,
+    pub mins: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NightView {
     pub date: String,
@@ -48,10 +73,28 @@ pub struct NightView {
     pub end: Option<String>,
     /// Empty when the cache holds no stage detail for the night.
     pub stages: Vec<StageShare>,
+    /// The stages in time order. Empty when the cache holds no timeline.
+    #[serde(default)]
+    pub timeline: Vec<StageSpan>,
+    /// Figures of the night from the watch. Each is `None` when it has none.
+    #[serde(default)]
+    pub awake_count: Option<f64>,
+    #[serde(default)]
+    pub restless_count: Option<f64>,
+    #[serde(default)]
+    pub avg_respiration: Option<f64>,
+    #[serde(default)]
+    pub avg_spo2: Option<f64>,
+    #[serde(default)]
+    pub lowest_spo2: Option<f64>,
+    /// Seconds of nap in the day.
+    #[serde(default)]
+    pub nap_secs: Option<f64>,
     pub sentence: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NightBar {
     pub date: String,
@@ -62,6 +105,7 @@ pub struct NightBar {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepWindow {
     pub days: u32,
@@ -71,10 +115,11 @@ pub struct SleepWindow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepView {
     pub date: String,
-    /// True when the last 30 days hold no sleep.
+    /// True when the last 30 days hold no sleep. A range does not change it.
     pub empty: bool,
     pub lede: String,
     /// Said under the night when its stage detail is not cached yet.
@@ -95,6 +140,27 @@ struct Basic<'a> {
 
 fn clock(local: &Option<String>) -> Option<String> {
     local.as_deref()?.get(11..16).map(str::to_string)
+}
+
+fn timeline(n: &SleepNight) -> Vec<StageSpan> {
+    use garmin_core::sleep::Stage;
+    n.stages
+        .iter()
+        .filter_map(|s| {
+            let key = match s.stage {
+                Stage::Deep => "deep",
+                Stage::Light => "light",
+                Stage::Rem => "rem",
+                Stage::Awake => "awake",
+                Stage::Unmeasurable => return None,
+            };
+            Some(StageSpan {
+                key: key.into(),
+                from_mins: s.from_start_mins,
+                mins: s.secs / 60.0,
+            })
+        })
+        .collect()
 }
 
 fn stages(n: &SleepNight) -> Vec<StageShare> {
@@ -173,20 +239,37 @@ fn night_view(b: &Basic, today: NaiveDate) -> NightView {
         duration_secs: b.secs,
         duration_text: duration,
         stages: b.night.map(stages).unwrap_or_default(),
+        timeline: b.night.map(timeline).unwrap_or_default(),
+        awake_count: b.night.and_then(|n| n.awake_count),
+        restless_count: b.night.and_then(|n| n.restless_count),
+        avg_respiration: b.night.and_then(|n| n.avg_respiration),
+        avg_spo2: b.night.and_then(|n| n.avg_spo2),
+        lowest_spo2: b.night.and_then(|n| n.lowest_spo2),
+        nap_secs: b.night.and_then(|n| n.nap_secs).filter(|s| *s > 0.0),
         start,
         end,
     }
 }
 
-fn window_summary(bars: &[NightBar], days: u32) -> String {
+/// "the last 30 nights", or "the 3 nights of the range" for a range.
+fn scope(days: usize, ranged: bool) -> String {
+    if ranged {
+        format!("the {days} nights of the range")
+    } else {
+        format!("the last {days} nights")
+    }
+}
+
+fn window_summary(bars: &[NightBar], ranged: bool) -> String {
     let hours: Vec<f64> = bars.iter().filter_map(|b| b.hours).collect();
+    let scope = scope(bars.len(), ranged);
     if hours.is_empty() {
-        return format!("No sleep recorded in the last {days} nights.");
+        return format!("No sleep recorded in {scope}.");
     }
     let n = hours.len();
     let avg = hours.iter().sum::<f64>() / n as f64;
     let mut out = format!(
-        "Averaged {} a night over {n} of the last {days} nights.",
+        "Averaged {} a night over {n} of {scope}.",
         hours_minutes(avg * 3600.0)
     );
     let scores: Vec<f64> = bars.iter().filter_map(|b| b.score).collect();
@@ -211,7 +294,9 @@ fn window_summary(bars: &[NightBar], days: u32) -> String {
     out
 }
 
-fn window(by_date: &HashMap<&str, Basic>, days: u32, end: NaiveDate) -> SleepWindow {
+/// The bars of the last `days` nights up to `end`. A range keeps only its
+/// own nights, and the summary reads those.
+fn window(by_date: &HashMap<&str, Basic>, days: u32, end: NaiveDate, focus: Focus) -> SleepWindow {
     let bars: Vec<NightBar> = (0..days)
         .rev()
         .map(|age| {
@@ -225,9 +310,14 @@ fn window(by_date: &HashMap<&str, Basic>, days: u32, end: NaiveDate) -> SleepWin
             }
         })
         .collect();
+    let (first, last) = (date_key(focus.start), date_key(focus.end));
+    let bars: Vec<NightBar> = bars
+        .into_iter()
+        .filter(|b| !focus.is_range() || (b.date >= first && b.date <= last))
+        .collect();
     SleepWindow {
-        days,
-        summary: window_summary(&bars, days),
+        days: bars.len() as u32,
+        summary: window_summary(&bars, focus.is_range()),
         bars,
     }
 }
@@ -268,6 +358,13 @@ fn merge<'a>(nights: &'a [SleepNight], daily: &'a [DailyMetrics]) -> HashMap<&'a
 
 /// Build the Sleep view for `today`.
 pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
+    sleep_view_in(db, Focus::day(today))
+}
+
+/// Build the Sleep view for a focus. A range keeps only its nights in the
+/// windows, their summaries and the insights.
+pub fn sleep_view_in(db: &Db, focus: Focus) -> Result<SleepView, ApiError> {
+    let today = focus.end;
     // One day more than the chart: before the morning sync the window ends yesterday.
     let from = date_key(today - chrono::Duration::days(MONTH as i64));
     let nights = db.sleep_nights_since(&from)?;
@@ -299,11 +396,14 @@ pub fn sleep_view(db: &Db, today: NaiveDate) -> Result<SleepView, ApiError> {
         note: missing_detail
             .then(|| "The stage detail for this night arrives with the next sync.".to_string()),
         last_night,
-        week: window(&by_date, WEEK, end),
-        month: window(&by_date, MONTH, end),
+        week: window(&by_date, WEEK, end, focus),
+        month: window(&by_date, MONTH, end, focus),
         insights: {
-            // The insights read the same 30 nights as the chart.
-            let first = date_key(end - chrono::Duration::days(MONTH as i64 - 1));
+            // The insights read the same nights as the chart.
+            let mut first = date_key(end - chrono::Duration::days(MONTH as i64 - 1));
+            if focus.is_range() {
+                first = first.max(date_key(focus.start));
+            }
             let nights: Vec<_> = nights.into_iter().filter(|n| n.date >= first).collect();
             let daily: Vec<_> = daily.into_iter().filter(|d| d.date >= first).collect();
             insights(&nights, &daily, &exercise)
@@ -368,6 +468,30 @@ mod tests {
     }
 
     #[test]
+    fn the_timeline_keeps_the_order_and_drops_unmeasured_slices() {
+        use garmin_core::sleep::{Stage, StageSlice};
+        let slice = |stage, from_start_mins, secs| StageSlice {
+            stage,
+            start_local: String::new(),
+            end_local: String::new(),
+            from_start_mins,
+            secs,
+        };
+        let n = SleepNight {
+            stages: vec![
+                slice(Stage::Light, 0.0, 1800.0),
+                slice(Stage::Unmeasurable, 30.0, 60.0),
+                slice(Stage::Deep, 31.0, 600.0),
+            ],
+            ..Default::default()
+        };
+        let t = timeline(&n);
+        assert_eq!(t.len(), 2);
+        assert_eq!((t[0].key.as_str(), t[0].mins), ("light", 30.0));
+        assert_eq!((t[1].key.as_str(), t[1].from_mins), ("deep", 31.0));
+    }
+
+    #[test]
     fn empty_cache_says_so() {
         let v = sleep_view(&db("empty"), sample_day()).unwrap();
         assert!(v.empty && v.last_night.is_none() && v.insights.is_empty());
@@ -375,6 +499,24 @@ mod tests {
         assert_eq!(v.week.bars.len(), 7);
         assert!(v.week.bars.iter().all(|b| b.hours.is_none()));
         assert_eq!(v.week.summary, "No sleep recorded in the last 7 nights.");
+    }
+
+    #[test]
+    fn a_range_clips_the_windows_and_their_summaries() {
+        let db = db("range");
+        let day = sample_day();
+        seed(&db, Persona::HealthOnly, day).unwrap();
+        seed_sleep(&db, Persona::HealthOnly, day).unwrap();
+        let live = sleep_view(&db, day).unwrap();
+        assert!(live.month.summary.contains("of the last 30 nights"));
+        let range = Focus::range(day - chrono::Duration::days(2), day);
+        let v = sleep_view_in(&db, range).unwrap();
+        assert_eq!((v.week.bars.len(), v.month.bars.len()), (3, 3));
+        assert_eq!(v.month.days, 3);
+        assert_eq!(v.month.bars[0].date, date_key(range.start));
+        assert!(v.month.summary.contains("of the 3 nights of the range"));
+        assert!(v.week.summary.contains("the 3 nights of the range"));
+        assert!(!v.empty);
     }
 
     #[test]

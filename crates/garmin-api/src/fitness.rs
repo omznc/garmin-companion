@@ -22,6 +22,7 @@ const RUN_RECORDS: std::ops::RangeInclusive<i64> = 1..=7;
 const RIDE_RECORDS: std::ops::RangeInclusive<i64> = 8..=9;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LoadBar {
     pub label: String,
@@ -29,12 +30,15 @@ pub struct LoadBar {
     pub min: f64,
     pub max: f64,
     /// `over`, `under` or `in`, against the range that Garmin wants.
+    // shortcut: a copy of the three states in the type, update it with the code that sets them.
+    #[cfg_attr(feature = "ts-rs", ts(type = "\"in\" | \"over\" | \"under\""))]
     pub state: String,
     /// For example `473 of 200 to 400`.
     pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Balance {
     pub intro: String,
@@ -42,6 +46,7 @@ pub struct Balance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Predictions {
     pub intro: String,
@@ -49,6 +54,7 @@ pub struct Predictions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RecordRow {
     pub label: String,
@@ -58,6 +64,7 @@ pub struct RecordRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FitnessView {
     pub date: String,

@@ -5,11 +5,16 @@
 
 pub mod analysis;
 pub mod auth;
+pub mod calendar;
 pub mod client;
 pub mod coach;
+pub mod courses;
 pub mod db;
+pub mod devices;
 pub mod findings;
 pub mod goals;
+pub mod intraday;
+pub mod nutrition;
 pub mod paths;
 pub mod query;
 pub mod records;
@@ -21,7 +26,9 @@ pub mod stats;
 pub mod store;
 pub mod strength;
 pub mod sync;
+mod sync_extra;
 pub mod theme;
+pub mod vo2;
 pub mod workout;
 
 pub use analysis::ActivityAnalysis;
@@ -44,7 +51,36 @@ use std::sync::Arc;
 /// athlete's data is stamped in local dates by Garmin, so a UTC "today" is the
 /// wrong day for anyone west of London for part of every evening.
 pub fn today() -> chrono::NaiveDate {
-    chrono::Local::now().date_naive()
+    AS_OF
+        .with(std::cell::Cell::get)
+        .unwrap_or_else(|| chrono::Local::now().date_naive())
+}
+
+thread_local! {
+    static AS_OF: std::cell::Cell<Option<chrono::NaiveDate>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run `f` with "today" set to `date` on this thread. A read in `f` then ends
+/// on `date`: `today()` returns it, and `until()` hides the rows after it.
+/// Use it only for a synchronous read, because the setting is per thread.
+pub fn with_as_of<R>(date: chrono::NaiveDate, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<chrono::NaiveDate>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            AS_OF.with(|c| c.set(self.0));
+        }
+    }
+    let _restore = Restore(AS_OF.with(|c| c.replace(Some(date))));
+    f()
+}
+
+/// The last `YYYY-MM-DD` date a windowed read may return. Without `with_as_of`
+/// no date is hidden.
+pub fn until() -> String {
+    match AS_OF.with(std::cell::Cell::get) {
+        Some(d) => d.format("%Y-%m-%d").to_string(),
+        None => "9999-12-31".into(),
+    }
 }
 
 /// The `YYYY-MM-DD` cutoff for a window of `days` ending today, inclusive of
@@ -81,6 +117,9 @@ pub fn days_between(date: &str, from: chrono::NaiveDate) -> Option<i64> {
 /// Returns `Ok(None)` when nothing is stored yet — "not connected" is a normal
 /// state, not an error.
 pub fn client_from_keyring() -> Result<Option<GarminClient>> {
+    if paths::SANDBOXED {
+        anyhow::bail!("a live Garmin client is not allowed in tests");
+    }
     let Some(tokens) = store::load_tokens()? else {
         return Ok(None);
     };
@@ -99,6 +138,22 @@ pub fn require_client() -> Result<GarminClient> {
         "No Garmin session stored. Connect an account in the desktop app, or \
          import an existing ~/.garminconnect token file.",
     )
+}
+
+#[cfg(test)]
+mod sandbox_tests {
+    use crate::{GarminClient, Tokens};
+
+    #[test]
+    fn no_live_client_in_tests() {
+        assert!(super::client_from_keyring().is_err());
+        let tokens = Tokens {
+            di_token: String::new(),
+            di_refresh_token: String::new(),
+            di_client_id: String::new(),
+        };
+        assert!(GarminClient::new(tokens, std::sync::Arc::new(|_| {})).is_err());
+    }
 }
 
 #[cfg(test)]

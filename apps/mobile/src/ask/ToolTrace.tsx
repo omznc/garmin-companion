@@ -1,18 +1,13 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import type { Step } from "../data/chatTypes";
 import { Glyph } from "./Glyph";
 import { Spinner } from "./Spinner";
 import { useChatTheme } from "./theme";
 
-export type TraceStep = {
-  /** A note is what the model said between tool rounds. `label` is its text. */
-  kind?: "tool" | "note";
-  callId: string;
-  label: string;
-  running: boolean;
-  /** True when the tool worked, false when it failed, null while it runs. */
-  ok: boolean | null;
-};
+// A note is a step with `kind: "note"`: what the model said between tool rounds. A kind from a
+// newer build reads as a tool.
+export type TraceStep = Step;
 
 // The tools of the turn in flight: open while the turn works, and one line
 // ("Used 3 tools") after it. The person can toggle it.

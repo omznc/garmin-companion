@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Platform, Pressable, Text, type TextStyle, View } from "react-native";
 import type { DraftEntry, DraftExec } from "../data/chatTypes";
 import { queryClient } from "../data/queryClient";
-import { callJson } from "../data/source";
+import { call } from "../data/source";
 import { committed } from "../ui/haptics";
 import { showSnackbar } from "../ui/snackbar-store";
 import { Glyph } from "./Glyph";
@@ -25,7 +25,7 @@ type Row = { key: string; indent: boolean; text: string; note?: string; head?: b
 // One line for a step: "Interval  3 min  zone 4".
 function execRow(key: string, step: DraftExec, indent: boolean): Row {
   const detail = [endLabel(step.end), targetLabel(step.target)].filter(Boolean).join(" · ");
-  return { key, indent, text: `${KIND_LABEL[step.kind]}  ${detail}`, note: step.note };
+  return { key, indent, text: `${KIND_LABEL[step.kind]}  ${detail}`, note: step.note ?? undefined };
 }
 
 function rowsOf(entry: DraftEntry): Row[] {
@@ -57,7 +57,7 @@ function useSave(turnId: string, entry: DraftEntry): Save {
     setFailure(null);
     // The id of a turn is "<session>:<place>".
     const sessionId = turnId.slice(0, turnId.lastIndexOf(":"));
-    callJson<{ workoutId: number }>("workout_create", {
+    call("workout_create", {
       sessionId,
       turnId,
       callId: entry.callId,
@@ -67,6 +67,8 @@ function useSave(turnId: string, entry: DraftEntry): Save {
         committed();
         showSnackbar("Workout saved to Garmin");
         void queryClient.invalidateQueries({ queryKey: threadKey(sessionId) });
+        // A saved workout can show in the plan screen.
+        void queryClient.invalidateQueries({ queryKey: ["body"] });
       })
       .catch((error: Error & { kind?: string }) =>
         setFailure({ message: error.message, kind: error.kind }),

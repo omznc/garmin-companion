@@ -12,7 +12,7 @@
 use crate::ApiError;
 use garmin_core::sync::SyncProgress;
 use garmin_core::{auth, store};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -26,8 +26,24 @@ const SERVICE_URL: &str = "https://connect.garmin.com/app";
 /// Only one sync runs at a time. A second caller waits.
 static SYNCING: Mutex<()> = Mutex::new(());
 
+/// The arguments of the `sync` command of the mobile bridge.
+#[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct SyncArgs {
+    /// How many days to read. The default is 30.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    pub days: Option<u32>,
+    /// Walk the whole history.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    pub full: Option<bool>,
+    /// Sample mode only: how many progress events the stand-in sync sends.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    pub steps: Option<u32>,
+}
+
 /// The sign-in state.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub connected: bool,
@@ -40,6 +56,7 @@ pub struct Status {
 
 /// One progress step of a sync, with the sentence that the UI shows.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncEvent {
     pub phase: String,
@@ -51,6 +68,7 @@ pub struct SyncEvent {
 
 /// What a finished sync did, as a sentence and the raw counts.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSummary {
     pub line: String,

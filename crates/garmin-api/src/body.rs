@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 
 /// The title and the text of a screen that has no data. It is a state, not an error.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EmptyNote {
     pub title: String,
@@ -26,6 +27,18 @@ fn empty(title: &str, body: &str) -> EmptyNote {
         title: title.into(),
         body: body.into(),
     }
+}
+
+/// The note of a screen that has no data at all. `what` is the plain name of the
+/// data, for example "sleep". The text names no sport.
+pub fn no_data(what: &str) -> EmptyNote {
+    empty(
+        &format!("No {what} data yet."),
+        &format!(
+            "Garmin has no {what} data for you in the cache. Sync your watch, then check again. \
+             This page fills when the data is there."
+        ),
+    )
 }
 
 fn label(date: &str) -> String {
@@ -41,6 +54,7 @@ fn moved(v: f64) -> String {
 const WEIGHT_DAYS: u32 = 180;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightWindowView {
     pub days: u32,
@@ -49,6 +63,7 @@ pub struct WeightWindowView {
 
 /// The latest reading that carries a body composition figure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Composition {
     pub date: String,
@@ -59,6 +74,7 @@ pub struct Composition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightPointView {
     pub date: String,
@@ -70,6 +86,7 @@ pub struct WeightPointView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightView {
     pub empty: Option<EmptyNote>,
@@ -197,6 +214,7 @@ pub fn weight_view(db: &Db, today: NaiveDate) -> Result<WeightView, ApiError> {
 const FOOD_DAYS: u32 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FoodDay {
     pub date: String,
@@ -210,6 +228,7 @@ pub struct FoodDay {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WaterView {
     pub avg_ml: f64,
@@ -219,6 +238,7 @@ pub struct WaterView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FoodView {
     /// Set when no day in the window has a food log.
@@ -309,6 +329,7 @@ pub fn food_view(db: &Db, today: NaiveDate) -> Result<FoodView, ApiError> {
 const STRENGTH_SESSIONS: u32 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StrengthRow {
     pub activity_id: i64,
@@ -321,6 +342,7 @@ pub struct StrengthRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ExerciseDay {
     pub date: String,
@@ -331,6 +353,7 @@ pub struct ExerciseDay {
 
 /// One guessed movement across the sessions. Volume is sets and reps, because the watch records no load.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ExerciseHistory {
     pub name: String,
@@ -348,6 +371,7 @@ pub struct ExerciseHistory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StrengthView {
     /// True when the profile shows gym sessions or the cache holds sets. A UI hides the screen when false.
@@ -603,6 +627,25 @@ fn seed_lifting(db: &Db, today: NaiveDate) -> Result<(), Box<dyn std::error::Err
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_no_data_note_names_the_screen_and_no_sport() {
+        for what in [
+            "sleep",
+            "health",
+            "fitness",
+            "gear",
+            "activities",
+            "reports",
+        ] {
+            let note = no_data(what);
+            let text = format!("{} {}", note.title, note.body).to_lowercase();
+            assert!(text.contains(what), "{what}");
+            for word in ["run", "pace", "marathon", "shoe", "golf", "ride"] {
+                assert!(!text.contains(word), "{what}: {word}");
+            }
+        }
+    }
 
     fn seeded() -> (Db, NaiveDate, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!(

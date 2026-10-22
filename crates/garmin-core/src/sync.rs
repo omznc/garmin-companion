@@ -3,7 +3,7 @@
 //! Sync is incremental and idempotent: activities upsert by id, daily metrics
 //! upsert by date. Re-running it is always safe.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use chrono::{Duration, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
@@ -26,7 +26,7 @@ const PAGE: u32 = 50;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncProgress {
-    /// Which stage: `activities`, `wellness`, `workouts`, `tracks`, `done`.
+    /// Which stage: `activities`, `wellness`, `workouts`, `tracks`, `extras`, `done`.
     pub phase: &'static str,
     /// What that stage is doing right now, e.g. `2025-11-04`.
     pub detail: String,
@@ -196,6 +196,19 @@ pub async fn sync_daily(
                 metrics.hrv_last_night = num(&v, &["hrvSummary", "lastNightAvg"]);
                 metrics.hrv_weekly_avg = num(&v, &["hrvSummary", "weeklyAvg"]);
                 metrics.hrv_status = text(&v, &["hrvSummary", "status"]);
+                metrics.hrv_low_upper = num(&v, &["hrvSummary", "baseline", "lowUpper"]);
+                metrics.hrv_balanced_low = num(&v, &["hrvSummary", "baseline", "balancedLow"]);
+                metrics.hrv_balanced_upper = num(&v, &["hrvSummary", "baseline", "balancedUpper"]);
+                // The same response holds the night's readings. Only the recent
+                // days keep them, so the full history import stays as it was.
+                if is_recent(*date) {
+                    let readings = crate::intraday::parse_hrv_readings(&v);
+                    if let Err(e) = db.save_hrv_readings(&date_str, &readings) {
+                        report
+                            .warnings
+                            .push(format!("hrv readings {date_str}: {e}"));
+                    }
+                }
             }
             Err(e) => warn_or_abort(report, "hrv", &date_str, e, &mut had_5xx)?,
         }
@@ -277,6 +290,15 @@ pub async fn sync_daily(
     Ok(())
 }
 
+/// How many days back (today counts) the per-day curves are kept. The history
+/// import never reaches further than this for them.
+const CURVE_DAYS: i64 = 3;
+
+/// Whether `date` is inside the window of the per-day curves.
+fn is_recent(date: NaiveDate) -> bool {
+    (crate::today() - date).num_days() < CURVE_DAYS
+}
+
 /// A reply that says "no data" is a warning. A failed request is not a reply:
 /// a dropped network would count every day as empty, end the walk early and
 /// report success. So a transport error, a 429 or a dead token stops the walk.
@@ -289,18 +311,60 @@ fn warn_or_abort(
     e: anyhow::Error,
     had_5xx: &mut bool,
 ) -> Result<()> {
-    let status = e
-        .downcast_ref::<crate::client::HttpStatus>()
-        .map(|h| h.status);
-    let fatal = status == Some(429)
-        || e.downcast_ref::<reqwest::Error>().is_some()
-        || e.downcast_ref::<crate::auth::AuthFailed>().is_some();
-    if fatal {
+    if is_fatal(&e) {
         return Err(e.context(format!("{what} {date}")));
     }
-    *had_5xx |= status.is_some_and(|s| s >= 500);
+    *had_5xx |= http_status(&e).is_some_and(|s| s >= 500);
     report.warnings.push(format!("{what} {date}: {e}"));
     Ok(())
+}
+
+pub(crate) fn http_status(e: &anyhow::Error) -> Option<u16> {
+    e.downcast_ref::<crate::client::HttpStatus>()
+        .map(|h| h.status)
+}
+
+/// A failure that must stop a sync: a 429, a dropped network or a dead token.
+pub(crate) fn is_fatal(e: &anyhow::Error) -> bool {
+    http_status(e) == Some(429)
+        || e.downcast_ref::<reqwest::Error>().is_some()
+        || e.downcast_ref::<crate::auth::AuthFailed>().is_some()
+}
+
+/// The reply of an optional endpoint, as data or as "no data".
+///
+/// A 404, a 403, an empty body and a JSON null are all "no data" and give
+/// `None` with no warning. Any other status gives `None` and a warning. Only
+/// the failures in [`is_fatal`] give an error, as for the older calls. A server
+/// error is never counted toward the outage streak of the wellness walk.
+pub(crate) fn optional(
+    report: &mut SyncReport,
+    what: &str,
+    reply: Result<Value>,
+) -> Result<Option<Value>> {
+    match reply {
+        Ok(Value::Null) => Ok(None),
+        Ok(v) => Ok(Some(v)),
+        Err(e) if is_fatal(&e) => Err(e.context(what.to_string())),
+        Err(e) => {
+            if !matches!(http_status(&e), Some(403 | 404 | 204)) {
+                report.warnings.push(format!("{what}: {e}"));
+            }
+            Ok(None)
+        }
+    }
+}
+
+/// The result of the extras phase. A fatal failure becomes a warning, because
+/// the required steps already succeeded. Any other error stays an error.
+fn extras_outcome(report: &mut SyncReport, extras: Result<()>) -> Result<()> {
+    match extras {
+        Err(e) if is_fatal(&e) => {
+            report.warnings.push(format!("extras stopped: {e:#}"));
+            Ok(())
+        }
+        other => other,
+    }
 }
 
 /// A per-item failure is a warning, but a dead network stops the loop. Each
@@ -385,7 +449,7 @@ pub async fn sync_weight(
         total: None,
     });
 
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let start = today - Duration::days(days.saturating_sub(1) as i64);
 
     match client
@@ -498,7 +562,7 @@ pub async fn sync_fitness(
         Err(e) => report.warnings.push(format!("personal records: {e}")),
     }
 
-    let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
+    let today = crate::today().format("%Y-%m-%d").to_string();
 
     let status = match client.training_status(&today).await {
         Ok(v) => crate::records::parse_training_status(&v),
@@ -626,6 +690,43 @@ pub async fn sync_all_with(
     full: bool,
     on: Progress<'_>,
 ) -> Result<SyncReport> {
+    // One sync at a time across the desktop app, the mobile app and the MCP
+    // server. A second caller waits, as the in-process lock of the app did.
+    let _lock = acquire_sync_lock(&crate::paths::ensure_base_dir()?).await?;
+    sync_all_locked(client, db, days, full, on).await
+}
+
+/// How often a waiting sync checks the lock.
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// Take the exclusive lock file of the data directory. The operating system
+/// frees the lock when the process ends, so a crash leaves no stale lock.
+async fn acquire_sync_lock(dir: &std::path::Path) -> Result<std::fs::File> {
+    let path = dir.join("sync.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("could not open {}", path.display()))?;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => tokio::time::sleep(LOCK_POLL).await,
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(e).context("could not lock the sync file")
+            }
+        }
+    }
+}
+
+async fn sync_all_locked(
+    client: &GarminClient,
+    db: &Db,
+    days: u32,
+    full: bool,
+    on: Progress<'_>,
+) -> Result<SyncReport> {
     let mut report = SyncReport::default();
 
     sync_activities(client, db, full, &mut report, on).await?;
@@ -677,6 +778,12 @@ pub async fn sync_all_with(
     // the activities that carry GPS.
     sync_strength(client, db, if full { 200 } else { 25 }, &mut report, on).await?;
 
+    // Last, so that no optional endpoint can come between the sync and the
+    // steps above. A fatal failure there only stops the extras: the required
+    // steps are done, so the sync still ends and writes `last_sync`.
+    let extras = crate::sync_extra::sync_extras(client, db, &mut report, on).await;
+    extras_outcome(&mut report, extras)?;
+
     db.set_sync_state("last_sync", &Utc::now().to_rfc3339())?;
     on(SyncProgress {
         phase: "done",
@@ -709,7 +816,7 @@ const RECHECK_DAYS: u32 = 3;
 /// yet when the last sync ran, are holes rather than stale rows, and they get
 /// filled without making every ordinary refresh pay for a month of requests.
 fn wellness_dates(db: &Db, days: u32, full: bool) -> Result<Vec<NaiveDate>> {
-    let today = Utc::now().date_naive();
+    let today = crate::today();
     let all = (0..days).map(|o| today - Duration::days(o as i64));
 
     if full {
@@ -751,12 +858,51 @@ fn history_days(db: &Db) -> u32 {
         return 0;
     };
     // +1 so the day of the first activity is itself included.
-    (Utc::now().date_naive() - date).num_days().max(0) as u32 + 1
+    (crate::today() - date).num_days().max(0) as u32 + 1
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_second_sync_waits_for_the_lock_file() {
+        let dir =
+            std::env::temp_dir().join(format!("garmin-companion-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = acquire_sync_lock(&dir).await.unwrap();
+        // Each `open` has its own lock, so one process can test the wait.
+        let second = tokio::time::timeout(LOCK_POLL * 3, acquire_sync_lock(&dir)).await;
+        assert!(second.is_err(), "the second caller must wait");
+        drop(first);
+        tokio::time::timeout(LOCK_POLL * 8, acquire_sync_lock(&dir))
+            .await
+            .expect("the lock is free after the first drops")
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_fatal_failure_in_the_extras_does_not_fail_the_sync() {
+        let status = |code| {
+            anyhow::Error::new(crate::client::HttpStatus {
+                path: "/x".into(),
+                status: code,
+                body: String::new(),
+            })
+        };
+        let mut report = SyncReport::default();
+        assert!(extras_outcome(&mut report, Ok(())).is_ok());
+        assert!(report.warnings.is_empty());
+        assert!(extras_outcome(&mut report, Err(status(429).context("courses"))).is_ok());
+        let dead = anyhow::Error::new(crate::auth::AuthFailed("refresh failed".into()));
+        assert!(extras_outcome(&mut report, Err(dead)).is_ok());
+        let transport = reqwest::Client::new().get("not a url").build().unwrap_err();
+        assert!(extras_outcome(&mut report, Err(anyhow::Error::new(transport))).is_ok());
+        assert_eq!(report.warnings.len(), 3);
+        // An error that is not fatal (for example a database error) still fails.
+        assert!(extras_outcome(&mut report, Err(anyhow::anyhow!("disk full"))).is_err());
+    }
 
     #[test]
     fn a_failed_request_aborts_but_a_status_error_only_warns() {

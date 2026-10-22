@@ -1,0 +1,551 @@
+{
+  "charts": {
+    "date": "2026-03-11",
+    "distanceByMonth": [
+      {
+        "families": [],
+        "month": "2025-04",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-05",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-06",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-07",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-08",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-09",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-10",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-11",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2025-12",
+        "totalKm": -0.0
+      },
+      {
+        "families": [],
+        "month": "2026-01",
+        "totalKm": -0.0
+      },
+      {
+        "families": [
+          {
+            "family": "endurance",
+            "km": 28.5,
+            "label": "Endurance"
+          }
+        ],
+        "month": "2026-02",
+        "totalKm": 28.5
+      },
+      {
+        "families": [
+          {
+            "family": "endurance",
+            "km": 42.75,
+            "label": "Endurance"
+          }
+        ],
+        "month": "2026-03",
+        "totalKm": 42.75
+      }
+    ],
+    "monthCompare": {
+      "lastMonth": {
+        "distanceKm": -0.0,
+        "easyAvgHr": null,
+        "secs": -0.0,
+        "sessions": 0
+      },
+      "thisMonth": {
+        "distanceKm": 42.75,
+        "easyAvgHr": null,
+        "secs": 25950.0,
+        "sessions": 10
+      },
+      "throughDay": 11
+    },
+    "setsByMuscle": {
+      "groups": [
+        {
+          "group": "Chest",
+          "sets": 12
+        },
+        {
+          "group": "Legs",
+          "sets": 12
+        },
+        {
+          "group": "Arms",
+          "sets": 6
+        }
+      ],
+      "unassignedSets": 6
+    },
+    "setsPerWeek": [
+      {
+        "isoWeek": "2025-W52",
+        "sets": 0,
+        "weekStart": "2025-12-22"
+      },
+      {
+        "isoWeek": "2026-W01",
+        "sets": 0,
+        "weekStart": "2025-12-29"
+      },
+      {
+        "isoWeek": "2026-W02",
+        "sets": 0,
+        "weekStart": "2026-01-05"
+      },
+      {
+        "isoWeek": "2026-W03",
+        "sets": 0,
+        "weekStart": "2026-01-12"
+      },
+      {
+        "isoWeek": "2026-W04",
+        "sets": 0,
+        "weekStart": "2026-01-19"
+      },
+      {
+        "isoWeek": "2026-W05",
+        "sets": 0,
+        "weekStart": "2026-01-26"
+      },
+      {
+        "isoWeek": "2026-W06",
+        "sets": 0,
+        "weekStart": "2026-02-02"
+      },
+      {
+        "isoWeek": "2026-W07",
+        "sets": 0,
+        "weekStart": "2026-02-09"
+      },
+      {
+        "isoWeek": "2026-W08",
+        "sets": 0,
+        "weekStart": "2026-02-16"
+      },
+      {
+        "isoWeek": "2026-W09",
+        "sets": 18,
+        "weekStart": "2026-02-23"
+      },
+      {
+        "isoWeek": "2026-W10",
+        "sets": 12,
+        "weekStart": "2026-03-02"
+      },
+      {
+        "isoWeek": "2026-W11",
+        "sets": 6,
+        "weekStart": "2026-03-09"
+      }
+    ],
+    "timeBySport": [
+      {
+        "family": "endurance",
+        "label": "Running",
+        "secs": 23250.0,
+        "sharePct": 56.36363636363636
+      },
+      {
+        "family": "gym",
+        "label": "Strength training",
+        "secs": 18000.0,
+        "sharePct": 43.63636363636363
+      }
+    ]
+  },
+  "extras": {
+    "activePlan": null,
+    "bodyBattery": [
+      {
+        "level": 40.0,
+        "minute": 0
+      },
+      {
+        "level": 48.0,
+        "minute": 60
+      },
+      {
+        "level": 56.0,
+        "minute": 120
+      },
+      {
+        "level": 64.0,
+        "minute": 180
+      },
+      {
+        "level": 72.0,
+        "minute": 240
+      },
+      {
+        "level": 80.0,
+        "minute": 300
+      },
+      {
+        "level": 88.0,
+        "minute": 360
+      },
+      {
+        "level": 96.0,
+        "minute": 420
+      },
+      {
+        "level": 89.0,
+        "minute": 480
+      },
+      {
+        "level": 82.0,
+        "minute": 540
+      },
+      {
+        "level": 75.0,
+        "minute": 600
+      },
+      {
+        "level": 68.0,
+        "minute": 660
+      },
+      {
+        "level": 61.0,
+        "minute": 720
+      },
+      {
+        "level": 54.0,
+        "minute": 780
+      },
+      {
+        "level": 47.0,
+        "minute": 840
+      },
+      {
+        "level": 40.0,
+        "minute": 900
+      },
+      {
+        "level": 33.0,
+        "minute": 960
+      }
+    ],
+    "date": "2026-03-11",
+    "devices": [],
+    "fitnessAge": null,
+    "hrvReadings": [
+      {
+        "time": "01:00",
+        "value": 52.0
+      },
+      {
+        "time": "01:30",
+        "value": 56.0
+      },
+      {
+        "time": "02:00",
+        "value": 60.0
+      },
+      {
+        "time": "02:30",
+        "value": 52.0
+      },
+      {
+        "time": "03:00",
+        "value": 56.0
+      },
+      {
+        "time": "03:30",
+        "value": 60.0
+      },
+      {
+        "time": "04:00",
+        "value": 52.0
+      },
+      {
+        "time": "04:30",
+        "value": 56.0
+      }
+    ],
+    "nutrition": {
+      "goals": {
+        "adjustedCalories": 2650.0,
+        "calories": 2400.0,
+        "carbsG": 300.0,
+        "fatG": 80.0,
+        "proteinG": 150.0
+      },
+      "loggedKcal": 1300.0,
+      "meals": [
+        {
+          "carbsG": 78.0,
+          "fatG": 12.0,
+          "kcal": 520.0,
+          "name": "Oats and berries",
+          "proteinG": 22.0,
+          "time": "07:40"
+        },
+        {
+          "carbsG": 90.0,
+          "fatG": 22.0,
+          "kcal": 780.0,
+          "name": "Chicken rice bowl",
+          "proteinG": 48.0,
+          "time": "12:30"
+        }
+      ]
+    },
+    "planned": [
+      {
+        "date": "2026-03-12",
+        "eventTimeLocal": null,
+        "isRace": false,
+        "itemId": null,
+        "kind": "workout",
+        "sport": "running",
+        "steps": null,
+        "title": "Easy run",
+        "trainingPlanId": null,
+        "workoutId": null
+      },
+      {
+        "date": "2026-03-14",
+        "eventTimeLocal": null,
+        "isRace": false,
+        "itemId": null,
+        "kind": "workout",
+        "sport": "running",
+        "steps": null,
+        "title": "Tempo intervals",
+        "trainingPlanId": null,
+        "workoutId": null
+      },
+      {
+        "date": "2026-03-17",
+        "eventTimeLocal": null,
+        "isRace": false,
+        "itemId": null,
+        "kind": "workout",
+        "sport": "cycling",
+        "steps": null,
+        "title": "Long ride",
+        "trainingPlanId": null,
+        "workoutId": null
+      }
+    ],
+    "race": {
+      "date": "2026-05-13",
+      "eventKey": "sample-race",
+      "location": "Sample City",
+      "name": "City Half Marathon",
+      "targetSecs": 6300.0
+    },
+    "vo2": []
+  },
+  "tiles": {
+    "bedWake": {
+      "bedMinute": 1355.2142857142858,
+      "consistencyMins": 14.117762729618171,
+      "nights": 14,
+      "wakeMinute": 394.14285714285717
+    },
+    "date": "2026-03-11",
+    "paceDrift": null,
+    "sleepDebt": {
+      "debtSecs": 26100.0,
+      "nights": 14
+    },
+    "sleepScores": {
+      "average": 75.78571428571429,
+      "points": [
+        73.0,
+        82.0,
+        76.0,
+        70.0,
+        79.0,
+        73.0,
+        82.0,
+        76.0,
+        70.0,
+        79.0,
+        73.0,
+        82.0,
+        76.0,
+        70.0
+      ]
+    },
+    "tiles": [
+      {
+        "bandHigh": null,
+        "bandLow": null,
+        "baseline": 51.5,
+        "delta": 4.5,
+        "key": "resting_hr",
+        "label": "Resting HR",
+        "latest": 56.0,
+        "secondary": null,
+        "secondaryLabel": null,
+        "series": [
+          50.5,
+          52.0,
+          51.0,
+          50.0,
+          51.5,
+          50.5,
+          52.0,
+          51.0,
+          50.0,
+          51.5,
+          50.5,
+          56.0,
+          56.0,
+          56.0
+        ],
+        "status": null,
+        "unit": "bpm"
+      },
+      {
+        "bandHigh": null,
+        "bandLow": null,
+        "baseline": 51.833333333333336,
+        "delta": -10.833333333333336,
+        "key": "hrv",
+        "label": "HRV",
+        "latest": 41.0,
+        "secondary": null,
+        "secondaryLabel": null,
+        "series": [
+          53.0,
+          56.0,
+          54.0,
+          52.0,
+          55.0,
+          53.0,
+          56.0,
+          54.0,
+          52.0,
+          41.0,
+          41.0,
+          41.0,
+          41.0,
+          41.0
+        ],
+        "status": null,
+        "unit": "ms"
+      },
+      {
+        "bandHigh": null,
+        "bandLow": null,
+        "baseline": 27000.0,
+        "delta": -1800.0,
+        "key": "sleep",
+        "label": "Sleep",
+        "latest": 25200.0,
+        "secondary": 70.0,
+        "secondaryLabel": "score",
+        "series": [
+          26100.0,
+          28800.0,
+          27000.0,
+          25200.0,
+          27900.0,
+          26100.0,
+          28800.0,
+          27000.0,
+          25200.0,
+          27900.0,
+          26100.0,
+          28800.0,
+          27000.0,
+          25200.0
+        ],
+        "status": null,
+        "unit": "s"
+      },
+      {
+        "bandHigh": null,
+        "bandLow": null,
+        "baseline": 74.0,
+        "delta": 6.0,
+        "key": "body_battery",
+        "label": "Body Battery",
+        "latest": 80.0,
+        "secondary": null,
+        "secondaryLabel": null,
+        "series": [
+          77.0,
+          68.0,
+          74.0,
+          80.0,
+          71.0,
+          77.0,
+          68.0,
+          74.0,
+          80.0,
+          71.0,
+          77.0,
+          68.0,
+          74.0,
+          80.0
+        ],
+        "status": null,
+        "unit": ""
+      },
+      {
+        "bandHigh": null,
+        "bandLow": null,
+        "baseline": 30.0,
+        "delta": -2.0,
+        "key": "stress",
+        "label": "Stress",
+        "latest": 28.0,
+        "secondary": null,
+        "secondaryLabel": null,
+        "series": [
+          29.0,
+          32.0,
+          30.0,
+          28.0,
+          31.0,
+          29.0,
+          32.0,
+          30.0,
+          28.0,
+          31.0,
+          29.0,
+          32.0,
+          30.0,
+          28.0
+        ],
+        "status": null,
+        "unit": ""
+      }
+    ]
+  }
+}

@@ -109,6 +109,25 @@ impl SmoothScroll {
         f32::from(self.handle.max_offset().y) + f32::from(self.handle.offset().y)
     }
 
+    /// The offset in pixels: zero at the top and negative below it.
+    pub fn offset_y(&self) -> f32 {
+        f32::from(self.handle.offset().y)
+    }
+
+    /// Scroll to `y` pixels below the top. The offset stops at the bottom edge.
+    pub fn scroll_to(&self, y: f32) {
+        let mut inner = self.inner.borrow_mut();
+        let max = f32::from(self.handle.max_offset().y);
+        let target = -y.clamp(0.0, max.max(0.0));
+        if inner.reduced {
+            inner.spring.set(target);
+            let x = self.handle.offset().x;
+            self.handle.set_offset(point(x, px(target)));
+        } else {
+            inner.spring.to(target);
+        }
+    }
+
     /// Jump to the bottom edge, for a thread that follows new text.
     pub fn pin_bottom(&self) {
         let offset = self.handle.offset();

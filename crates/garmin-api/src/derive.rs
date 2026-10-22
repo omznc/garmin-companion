@@ -82,6 +82,7 @@ pub fn comparable_resting_hr(rows: &[DailyMetrics]) -> Vec<DailyMetrics> {
 
 /// The most recent day that has a value, with its date.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 pub struct Latest {
     pub value: f64,
     pub date: String,
@@ -99,6 +100,7 @@ pub fn latest(rows: &[DailyMetrics], get: impl Fn(&DailyMetrics) -> Option<f64>)
 /* ------------------------------------------------------------------ fuel --- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Fuel {
     /// The most recent day with a food log, or `None` if the window has none.
@@ -149,6 +151,7 @@ fn hydration_ml(d: &DailyMetrics) -> Option<f64> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HydrationLatest {
     pub ml: f64,
@@ -156,6 +159,7 @@ pub struct HydrationLatest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Hydration {
     pub logged: usize,
@@ -290,14 +294,19 @@ pub fn count_sessions(activities: &[CachedActivity], days: i64, today: NaiveDate
 /* ---------------------------------------------------------- observations --- */
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 pub struct Link {
     pub label: String,
     pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
+    /// A stable name for the kind of note. The text holds live numbers, so
+    /// a notification de-duplicates on the kind.
+    pub kind: String,
     /// Accent items are the ones worth acting on today.
     pub accent: bool,
     pub text: String,
@@ -308,16 +317,26 @@ pub struct Observation {
     pub spark_unit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<Link>,
+    /// The id of the Insights item that tells more about this note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight: Option<String>,
 }
 
-fn note(accent: bool, text: String) -> Observation {
+fn note(kind: &str, accent: bool, text: String) -> Observation {
     Observation {
+        kind: kind.into(),
         accent,
         text,
         spark: None,
         spark_unit: None,
         link: None,
+        insight: None,
     }
+}
+
+fn with_insight(mut o: Observation, id: &str) -> Observation {
+    o.insight = Some(id.into());
+    o
 }
 
 fn with_link(mut o: Observation, label: &str, to: &str) -> Observation {
@@ -377,8 +396,11 @@ fn resting_hr_note(daily: &[DailyMetrics]) -> Option<Observation> {
         rhr.iter().flatten().count(),
         recent.len()
     );
-    let o = with_spark(note(true, text), &rhr, "bpm");
-    Some(with_link(o, "Ask about this", "/ask"))
+    let o = with_spark(note("resting-hr", true, text), &rhr, "bpm");
+    Some(with_insight(
+        with_link(o, "Ask about this", "/ask"),
+        "recovery-drivers",
+    ))
 }
 
 /// HRV falling over the last five nights against the fortnight before.
@@ -397,7 +419,10 @@ fn hrv_note(daily: &[DailyMetrics]) -> Option<Observation> {
     let text = format!(
         "HRV has averaged {recent:.0} ms over the last five nights, down from {prior:.0} ms in the fortnight before."
     );
-    Some(with_spark(note(true, text), &hrv, "ms"))
+    Some(with_insight(
+        with_spark(note("hrv", true, text), &hrv, "ms"),
+        "recovery-drivers",
+    ))
 }
 
 /// Zone drift: too much of the recent running was above Z2.
@@ -407,7 +432,10 @@ fn zone_drift_note(runs: &[&CachedActivity]) -> Option<Observation> {
         "{:.0}% of your last {} runs with heart-rate data was above Z2. The 80/20 target is 20%.",
         split.hard_pct, split.counted
     );
-    Some(with_link(note(true, text), "Insights", "/insights"))
+    Some(with_insight(
+        with_link(note("zone-drift", true, text), "Insights", "/insights"),
+        "hard-runs",
+    ))
 }
 
 fn cadence_note(runs: &[&CachedActivity]) -> Option<Observation> {
@@ -420,9 +448,13 @@ fn cadence_note(runs: &[&CachedActivity]) -> Option<Observation> {
         return None;
     }
     let avg = mean(low)?;
-    Some(note(
-        false,
-        format!("Cadence is averaging {avg:.0} spm across your recent runs. Quicker, lighter steps nearer 170 cut joint load."),
+    Some(with_insight(
+        note(
+            "cadence",
+            false,
+            format!("Cadence is averaging {avg:.0} spm across your recent runs. Quicker, lighter steps nearer 170 cut joint load."),
+        ),
+        "low-cadence",
     ))
 }
 
@@ -440,13 +472,17 @@ fn fuel_note(daily: &[DailyMetrics]) -> Option<Observation> {
             "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to be active on — under-fuelling shows up as low energy, slow recovery and a resting heart rate that won't settle.",
             balance.abs()
         );
-        Some(with_link(note(true, text), "Food", "/food"))
+        Some(with_link(note("fuel-deficit", true, text), "Food", "/food"))
     } else if balance >= 700.0 {
         let text = format!(
             "You're averaging a {balance:.0} kcal daily surplus{over}. Worth knowing rather than worth fixing — at {:.0} kcal burned a day it's a choice, not a slip.",
             f.avg_burn.unwrap_or(0.0)
         );
-        Some(with_link(note(false, text), "Food", "/food"))
+        Some(with_link(
+            note("fuel-surplus", false, text),
+            "Food",
+            "/food",
+        ))
     } else {
         None
     }
@@ -465,6 +501,7 @@ fn gps_note(activities: &[CachedActivity], today: NaiveDate) -> Option<Observati
         return None;
     }
     Some(note(
+        "gps",
         false,
         "No outdoor GPS run in the last six weeks, so VO2 max still isn't calculating. One easy outdoor run starts it tracking.".into(),
     ))
@@ -509,6 +546,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: zones,
+            training_load: None,
         }
     }
 
@@ -612,7 +650,31 @@ mod tests {
         for (i, r) in rows.iter_mut().enumerate() {
             r.hrv_last_night = Some(if i >= 15 { 40.0 } else { 60.0 });
         }
-        assert!(hrv_note(&rows).unwrap().text.contains("40 ms"));
+        let n = hrv_note(&rows).unwrap();
+        assert!(n.text.contains("40 ms"));
+        // The HRV and the resting-rate notes share one insight but not one kind.
+        assert_eq!(
+            (n.kind.as_str(), n.insight.as_deref()),
+            ("hrv", Some("recovery-drivers"))
+        );
+    }
+
+    #[test]
+    fn each_note_has_its_own_kind() {
+        let mut rows: Vec<_> = (10..=20).map(|i| day(&format!("2026-03-{i}"))).collect();
+        for r in rows.iter_mut() {
+            r.resting_hr = Some(50.0);
+            r.hrv_last_night = Some(60.0);
+        }
+        for r in rows.iter_mut().rev().take(3) {
+            r.resting_hr = Some(56.0);
+            r.hrv_last_night = Some(30.0);
+        }
+        let kinds: Vec<String> = attention(&rows, &[], d("2026-03-21"))
+            .into_iter()
+            .map(|n| n.kind)
+            .collect();
+        assert_eq!(kinds, ["resting-hr", "hrv"]);
     }
 
     #[test]

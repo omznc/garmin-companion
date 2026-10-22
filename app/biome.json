@@ -1,7 +1,0 @@
-{
-  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
-  "extends": ["../biome.json"],
-  "files": {
-    "includes": ["**", "!dist", "!src-tauri/gen", "!src-tauri/target"]
-  }
-}

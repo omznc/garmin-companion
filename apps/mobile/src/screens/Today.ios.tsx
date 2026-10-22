@@ -1,6 +1,7 @@
 // Today on iOS: native large title, grouped sections, system colours, Dynamic Type.
 // The core sends the sections in order. A section that has no data is not drawn.
 import { Stack, useRouter } from "expo-router";
+import { FocusAction } from "../components/FocusChip";
 import { SymbolView } from "expo-symbols";
 import type { ReactNode } from "react";
 import {
@@ -276,6 +277,9 @@ export function TodayScreen() {
       contentContainerStyle={{ paddingBottom: 32 }}
     >
       <Stack.Toolbar placement="right">
+        <Stack.Toolbar.View>
+          <FocusAction />
+        </Stack.Toolbar.View>
         <Stack.Toolbar.Button
           icon="bubble.left"
           accessibilityLabel="Ask the coach"

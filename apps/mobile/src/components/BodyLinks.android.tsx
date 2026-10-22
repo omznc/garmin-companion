@@ -2,14 +2,14 @@
 // the first sentence of its screen. Strength shows only for a gym profile.
 import { useRouter } from "expo-router";
 import { type BodyKind, useBodyLine, useStrengthShown } from "../data/body";
-import { Group, type IconName, ListRow, type Tone } from "./MdKit";
+import { Group, type IconName, ListRow } from "./MdKit";
 
-type BodyRowInfo = { kind: BodyKind; label: string; icon: IconName; tone: Tone };
+type BodyRowInfo = { kind: BodyKind; label: string; icon: IconName };
 
 export const BODY_ROWS: BodyRowInfo[] = [
-  { kind: "weight", label: "Weight", icon: "monitor-weight", tone: "tertiary" },
-  { kind: "food", label: "Food", icon: "restaurant", tone: "secondary" },
-  { kind: "strength", label: "Strength", icon: "fitness-center", tone: "primary" },
+  { kind: "weight", label: "Weight", icon: "monitor-weight" },
+  { kind: "food", label: "Food", icon: "restaurant" },
+  { kind: "strength", label: "Strength", icon: "fitness-center" },
 ];
 
 export function BodyRow({ info, base }: { info: BodyRowInfo; base: string }) {
@@ -18,7 +18,7 @@ export function BodyRow({ info, base }: { info: BodyRowInfo; base: string }) {
   return (
     <ListRow
       icon={info.icon}
-      tone={info.tone}
+      tone="primary"
       title={info.label}
       supporting={data ?? undefined}
       chevron

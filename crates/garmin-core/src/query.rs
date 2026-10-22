@@ -361,6 +361,7 @@ pub fn recovery(db: &Db, days: u32) -> Result<Vec<RecoveryDay>> {
 /* --------------------------------------------------------------- nutrition --- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NutritionDay {
     pub date: String,
@@ -379,6 +380,7 @@ pub struct NutritionDay {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct NutritionReport {
     pub days: Vec<NutritionDay>,
@@ -452,6 +454,7 @@ const SPIKE_FLOOR_KG: f64 = 3.0;
 const SPIKE_PER_DAY_KG: f64 = 0.2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightPoint {
     pub date: String,
@@ -474,6 +477,7 @@ pub struct WeightPoint {
 /// them together is that the size and direction of the disagreement is
 /// informative, and that a thin food log explains most of it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct EnergyCheck {
     /// Days between the first and last weigh-in used.
@@ -496,6 +500,7 @@ pub struct EnergyCheck {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightGoal {
     pub target_kg: f64,
@@ -517,6 +522,7 @@ pub struct WeightGoal {
 /// window with one weigh-in in it can be described as the thin thing it is
 /// rather than as a trend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightWindow {
     /// Days the window covers, counting back from today.
@@ -581,6 +587,7 @@ fn windows(points: &[WeightPoint], today: chrono::NaiveDate) -> Vec<WeightWindow
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightReport {
     /// Oldest first, for drawing.
@@ -891,6 +898,9 @@ pub struct RouteOuting {
     pub distance_m: Option<f64>,
     pub duration_s: Option<f64>,
     pub points: Vec<[f64; 2]>,
+    /// Metres climbed. `None` when the activity has no elevation.
+    #[serde(default)]
+    pub elevation_gain_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -937,6 +947,7 @@ pub const TRACED_ROUTES: usize = 40;
 /// decides which routes get coordinates, so sorting after the fact would leave
 /// the top of the list without traces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum RouteSort {
     /// Most recent outing first.
@@ -1021,6 +1032,7 @@ fn route_groups(db: &Db, sort: RouteSort) -> Result<Vec<Route>> {
                         distance_m: t.distance_m,
                         duration_s: t.duration_s,
                         points: t.points,
+                        elevation_gain_m: t.elevation_gain_m,
                     })
                     .collect(),
             }

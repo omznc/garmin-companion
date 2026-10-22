@@ -1,84 +1,44 @@
 // The Activities list and detail view models of the Rust core (`garmin_api::activities`).
 // The core owns the figures and the sentences. The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
-import golferList from "../../../../crates/garmin-api/fixtures/activities.golfer.json";
-import gymList from "../../../../crates/garmin-api/fixtures/activities.gym.json";
-import healthOnlyList from "../../../../crates/garmin-api/fixtures/activities.health_only.json";
-import newUserList from "../../../../crates/garmin-api/fixtures/activities.new_user.json";
-import sampleList from "../../../../crates/garmin-api/fixtures/activities.sample.json";
-import golferDetail from "../../../../crates/garmin-api/fixtures/activity.golfer.json";
-import gymDetail from "../../../../crates/garmin-api/fixtures/activity.gym.json";
-import sampleDetail from "../../../../crates/garmin-api/fixtures/activity.sample.json";
-import { callJson } from "./source";
+import { type Focus, focusArgs, focusKey, useFocus } from "./focus";
+import { call } from "./source";
 
-export type ActivityCard = {
-  activityId: number;
-  name: string;
-  sportLabel: string;
-  family: string;
-  time: string | null;
-  headline: string;
-  detail: string;
-};
+// The wire types come from the Rust core, through `generated/`.
+import type { ActivitiesView } from "./generated/ActivitiesView";
+import type { ActivityDetailView } from "./generated/ActivityDetailView";
 
-export type ActivitiesView = {
-  empty: boolean;
-  groups: { date: string; label: string; sessions: ActivityCard[] }[];
-};
-
-export type ActivityDetail = {
-  activityId: number;
-  name: string;
-  sportLabel: string;
-  family: string;
-  when: string;
-  stats: { label: string; value: string }[];
-  zones: { rows: { zone: number; percent: number; time: string }[]; sentence: string } | null;
-  laps: {
-    label: string;
-    distance: string | null;
-    time: string | null;
-    pace: string | null;
-    avgHr: string | null;
-  }[];
-  strength: {
-    sentence: string;
-    sets: {
-      label: string;
-      reps: string | null;
-      work: string | null;
-      rest: string | null;
-      exercise: string | null;
-    }[];
-  } | null;
-  chart: { hr: (number | null)[]; elevation: (number | null)[]; span: string } | null;
-};
+export type { ActivitiesView };
+export type { ActivityCard } from "./generated/ActivityCard";
+export type ActivityDetail = ActivityDetailView;
 
 // Dev only: EXPO_PUBLIC_PERSONA shows a recorded persona, as it does for Today.
-const personas: Record<string, { list: unknown; detail: unknown }> = {
-  sample: { list: sampleList, detail: sampleDetail },
-  golfer: { list: golferList, detail: golferDetail },
-  gym: { list: gymList, detail: gymDetail },
-  health_only: { list: healthOnlyList, detail: null },
-  new_user: { list: newUserList, detail: null },
-};
-const persona = __DEV__ ? personas[process.env.EXPO_PUBLIC_PERSONA ?? ""] : undefined;
+const personas = (__DEV__ ? require("./activityPersonas") : null) as
+  | typeof import("./activityPersonas")
+  | null;
+const persona = personas?.activityPersonas[process.env.EXPO_PUBLIC_PERSONA ?? ""];
 
-export const fetchActivities = () =>
+export const fetchActivities = (focus: Focus = null) =>
   persona
     ? Promise.resolve(persona.list as ActivitiesView)
-    : callJson<ActivitiesView>("activities", { limit: 60 });
+    : call("activities", { limit: 60, ...focusArgs(focus) });
 
 // A persona has one recorded detail. Another id has none.
 export const fetchActivityDetail = (id: number) => {
   const recorded = persona?.detail as ActivityDetail | null | undefined;
   return persona
     ? Promise.resolve(recorded?.activityId === id ? recorded : null)
-    : callJson<ActivityDetail | null>("activity_detail", { activityId: id });
+    : call("activity_detail", { activityId: id });
 };
 
-export const useActivities = () =>
-  useQuery({ queryKey: ["activities"], queryFn: fetchActivities, retry: false });
+export const useActivities = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["activities", focusKey(focus)],
+    queryFn: () => fetchActivities(focus),
+    retry: false,
+  });
+};
 
 export const useActivityDetail = (id: number) =>
   useQuery({

@@ -27,9 +27,6 @@ const files: Record<string, Record<string, unknown>> = {
   },
 };
 
-// Dev only: EXPO_PUBLIC_PERSONA picks the user, as it does for Today.
-export const devPersona = __DEV__ ? process.env.EXPO_PUBLIC_PERSONA : undefined;
-
 /** The recorded view of a command for a persona, or `undefined` when there is none. */
 export function wellnessFixture(cmd: string, persona = "sample"): unknown {
   return files[cmd]?.[persona];

@@ -26,27 +26,21 @@ jobs:
 
       - uses: swatinem/rust-cache@v2
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: app/pnpm-lock.yaml
-
-      - name: Install frontend dependencies
-        working-directory: app
-        run: pnpm install --frozen-lockfile
-
-      # `tsc` runs as part of the build script, so this covers both.
-      - name: Build frontend
-        working-directory: app
-        run: pnpm build
-
       - name: Format
         run: cargo fmt --all --check
+
+      # Every crate that links garmin-core must enable test-sandbox in its
+      # dev-dependencies, and no normal dependency may enable it.
+      - name: Test sandbox
+        run: |
+          cargo metadata --no-deps --format-version 1 | jq -e '
+            [.packages[] | select(.name != "garmin-core")
+             | . as $p | .dependencies | map(select(.name == "garmin-core"))
+             | select(length > 0)
+             | select(
+                 any(.[]; .kind == null and (.features | index("test-sandbox")))
+                 or (any(.[]; .kind == "dev" and (.features | index("test-sandbox"))) | not))
+             | $p.name] == []'
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
@@ -55,6 +49,15 @@ jobs:
       # needs a key out of the OS keyring, neither of which belongs in CI.
       - name: Test
         run: cargo test --workspace
+
+      # The mobile app reads its TypeScript types from the Rust wire types. A
+      # change to a wire type must come with the new files. `git add -N` makes
+      # a new file show in the diff, and the script removes the stale ones.
+      - name: Check the generated TypeScript types
+        run: |
+          scripts/gen-types.sh
+          git add --intent-to-add apps/mobile/src/data/generated
+          git diff --exit-code -- apps/mobile/src/data/generated
 
   # The Linux packaging metadata, which is the one thing here that can be wrong
   # without anything failing. A stale <release> entry or a malformed
@@ -80,7 +83,7 @@ jobs:
           # and fetching eight PNGs to prove a schema is fine is not this job's
           # business. A broken link surfaces in the software centre, not here.
           appstreamcli validate --no-net --explain \
-            app/src-tauri/linux/com.omznc.garmincompanion.metainfo.xml
+            apps/desktop/linux/com.omznc.garmincompanion.metainfo.xml
 
   # Its own job rather than a step in `check`: the worker shares no toolchain
   # with the rest of this, and a Rust compile failure shouldn't hide a broken

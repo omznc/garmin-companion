@@ -12,7 +12,8 @@ use crate::derive::{
     daily_series, date_key, days_since, fuel, has_zone_data, hydration, is_run, latest, mean, Fuel,
     Hydration, Latest, Observation,
 };
-use crate::insights::runs_now;
+use crate::headline::{headline, Headline, HeadlineInput, HrvRead};
+use crate::insights::{load, runs_now};
 use crate::profile::{activity_profile, ActivityProfile, WINDOW_DAYS};
 use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence, weight_sentence};
 use crate::ApiError;
@@ -26,12 +27,15 @@ use serde::{Deserialize, Serialize};
 const DAILY_DAYS: u32 = 45;
 /// Enough rows to cover the 56-day activity profile.
 const ACTIVITY_LIMIT: u32 = 300;
+/// Days of resting heart rate that make a baseline for the headline.
+const MIN_BASELINE_DAYS: usize = 4;
 /// Runs in the zone drift strip. A phone UI can show fewer from the end.
 const DRIFT_RUNS: usize = 8;
 /// The 80/20 model asks for 20% of time above Z2.
 const DRIFT_TARGET_PCT: f64 = 20.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
     /// The day the view was built for, `YYYY-MM-DD`.
@@ -61,11 +65,22 @@ pub struct TodayView {
     /// Section keys in drawing order. A UI draws these and skips a key that it
     /// does not know. Keys: `health_tiles`, `attention`, `fuel`, `weight`,
     /// `last_session`, `week`, `zone_drift`.
+    // shortcut: a copy of the section keys in the type, update it with `sections()` below.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(
+            type = "Array<\"health_tiles\" | \"attention\" | \"fuel\" | \"weight\" | \"last_session\" | \"week\" | \"zone_drift\">"
+        )
+    )]
     pub sections: Vec<String>,
+    /// The verdict and the sentence under it. Built from readiness, resting
+    /// heart rate, HRV, sleep and load.
+    pub headline: Headline,
 }
 
 /// This morning's overnight resting HR against the 30-day mean.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RestingHr {
     pub value: f64,
@@ -76,6 +91,7 @@ pub struct RestingHr {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightGlance {
     pub trend_kg: Option<f64>,
@@ -86,6 +102,7 @@ pub struct WeightGlance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LastSession {
     pub activity: CachedActivity,
@@ -101,6 +118,7 @@ pub struct LastSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DriftRun {
     pub activity_id: i64,
@@ -112,6 +130,7 @@ pub struct DriftRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneDrift {
     /// What the strip counts, for the heading. Always "runs" today, because
@@ -126,6 +145,7 @@ pub struct ZoneDrift {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Week {
     /// Distance in km for each of the last seven days, oldest first.
@@ -155,6 +175,10 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
 
     let empty = stored.is_empty() && activities.is_empty();
     let data_days = stored.len();
+    let oldest_day = stored
+        .iter()
+        .filter_map(|d| NaiveDate::parse_from_str(&d.date, "%Y-%m-%d").ok())
+        .min();
     let rows = daily_series(stored, DAILY_DAYS, today);
     let comparable = comparable_resting_hr(&rows);
     let food = fuel(&rows, 7);
@@ -195,9 +219,62 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
         week: week(&activities, today),
         profile,
         sections: Vec::new(),
+        headline: headline(&headline_input(
+            &rows,
+            &comparable,
+            &activities,
+            oldest_day,
+            today,
+        )),
     };
     view.sections = sections(&view);
     Ok(view)
+}
+
+/// A reading counts for the headline when it is from today or yesterday. An
+/// older one says nothing about this morning.
+fn fresh(l: Option<Latest>, today: NaiveDate) -> Option<Latest> {
+    l.filter(|l| {
+        NaiveDate::parse_from_str(&l.date, "%Y-%m-%d").is_ok_and(|d| (today - d).num_days() <= 1)
+    })
+}
+
+/// A session counts as hard when much of it was above Z2, or when Garmin
+/// rates its aerobic effect as high.
+fn is_hard(a: &CachedActivity) -> bool {
+    (has_zone_data(a) && above_z2_pct(a) >= 40.0) || a.aerobic_te.is_some_and(|te| te >= 4.0)
+}
+
+fn headline_input(
+    rows: &[garmin_core::DailyMetrics],
+    comparable: &[garmin_core::DailyMetrics],
+    activities: &[CachedActivity],
+    oldest_day: Option<NaiveDate>,
+    today: NaiveDate,
+) -> HeadlineInput {
+    let hrv = fresh(latest(rows, |d| d.hrv_last_night), today).map(|l| {
+        let row = rows.iter().find(|d| d.date == l.date);
+        HrvRead {
+            value: l.value,
+            balanced_low: row.and_then(|d| d.hrv_balanced_low),
+            balanced_high: row.and_then(|d| d.hrv_balanced_upper),
+        }
+    });
+    let yesterday = date_key(today - chrono::Duration::days(1));
+    HeadlineInput {
+        readiness: fresh(latest(rows, |d| d.training_readiness), today).map(|l| l.value),
+        // A new user has no baseline yet: the delta would be 0 and read as "recovered".
+        resting_delta: fresh(latest(comparable, |d| d.resting_hr), today)
+            .zip(resting_baseline(comparable))
+            .map(|(l, baseline)| l.value - baseline),
+        hrv,
+        sleep_secs: fresh(latest(rows, |d| d.sleep_secs), today).map(|l| l.value),
+        load_ratio: load(activities, oldest_day, today).map(|l| l.ratio),
+        hard_yesterday: activities
+            .iter()
+            .find(|a| a.local_date.as_deref() == Some(yesterday.as_str()) && is_hard(a))
+            .map(|a| sport_label(a.type_key.as_deref())),
+    }
 }
 
 /// The sessions that run-only copy may read. A run counts only when the user
@@ -245,9 +322,17 @@ fn sections(v: &TodayView) -> Vec<String> {
         .collect()
 }
 
+/// The mean resting heart rate, once there are enough days to be a baseline.
+fn resting_baseline(comparable: &[garmin_core::DailyMetrics]) -> Option<f64> {
+    let days = comparable.iter().filter(|d| d.resting_hr.is_some()).count();
+    (days >= MIN_BASELINE_DAYS)
+        .then(|| mean(comparable.iter().map(|d| d.resting_hr)))
+        .flatten()
+}
+
 fn resting_hr(comparable: &[garmin_core::DailyMetrics]) -> Option<RestingHr> {
     let value = latest(comparable, |d| d.resting_hr)?.value;
-    let baseline = mean(comparable.iter().map(|d| d.resting_hr))?;
+    let baseline = resting_baseline(comparable)?;
     let delta = value - baseline;
     Some(RestingHr {
         value,
@@ -349,6 +434,7 @@ mod tests {
     fn seeded_cache_fills_the_view() {
         let db = db();
         for (date, rhr, sleep) in [
+            ("2026-03-07", 50.0, 7.0 * 3600.0),
             ("2026-03-08", 50.0, 7.0 * 3600.0),
             ("2026-03-09", 51.0, 7.0 * 3600.0),
             ("2026-03-10", 56.0, 7.0 * 3600.0),
@@ -373,6 +459,28 @@ mod tests {
     }
 
     #[test]
+    fn a_new_user_is_not_told_that_they_are_recovered() {
+        let db = db();
+        for date in ["2026-03-09", "2026-03-10", "2026-03-11"] {
+            db.upsert_daily(&DailyMetrics {
+                date: date.into(),
+                resting_hr: Some(50.0),
+                // Under 4 h of sleep clears the resting HR as not comparable.
+                sleep_secs: Some(5.0 * 3600.0),
+                ..DailyMetrics::default()
+            })
+            .unwrap();
+        }
+        let v = today_view(&db, today()).unwrap();
+        assert!(
+            !v.headline.detail.contains("resting heart rate"),
+            "{:?}",
+            v.headline
+        );
+        assert!(v.resting_hr.is_none());
+    }
+
+    #[test]
     fn run_copy_needs_three_runs_like_insights() {
         let run = |id: i64, date: &str, key: &str| CachedActivity {
             activity_id: id,
@@ -392,6 +500,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         };
         let one = [
             run(1, "2026-03-10", "running"),
@@ -423,6 +532,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [100.0 - hard, 0.0, hard, 0.0, 0.0],
+            training_load: None,
         };
         // Newest first, as the database returns them.
         let d = zone_drift(&[mk(3, 60.0), mk(2, 30.0), mk(1, 0.0), mk(0, 0.0)]);
@@ -453,6 +563,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         };
         let w = week(
             &[mk("2026-03-11"), mk("2026-03-10"), mk("2026-03-02")],

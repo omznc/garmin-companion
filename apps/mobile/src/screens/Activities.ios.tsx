@@ -1,8 +1,12 @@
 // Activities on iOS: native large title, grouped lists by day, system colours, Dynamic Type.
 // A row pushes the detail route onto the stack.
-import { useRouter } from "expo-router";
-import { ActivityIndicator, PlatformColor, Pressable, ScrollView, Text, View } from "react-native";
-import { type ActivityCard, useActivities } from "../data/activities";
+import { Stack, useRouter } from "expo-router";
+import { FocusHeader } from "../components/FocusChip";
+import { ActivityIndicator, FlatList, PlatformColor, Pressable, Text, View } from "react-native";
+import { ShareButton } from "../components/ShareButton";
+import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { emptyActivitiesText, useFocus } from "../data/focus";
+import { shareActivitiesCsv } from "../data/share";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -48,47 +52,68 @@ function Message({ children }: { children: string }) {
   );
 }
 
+type Day = ActivitiesView["groups"][number];
+
+function DayGroup({ g }: { g: Day }) {
+  return (
+    <View style={{ marginTop: 24 }}>
+      <Text
+        accessibilityRole="header"
+        style={{
+          fontSize: 13,
+          color: secondary,
+          textTransform: "uppercase",
+          marginLeft: 32,
+          marginBottom: 6,
+        }}
+      >
+        {g.label}
+      </Text>
+      <View
+        style={{
+          backgroundColor: cell,
+          borderRadius: 26,
+          marginHorizontal: 16,
+          overflow: "hidden",
+        }}
+      >
+        {g.sessions.map((c, i) => (
+          <SessionRow key={c.activityId} c={c} last={i === g.sessions.length - 1} />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// One list item for each day, so a long history draws only the days near the screen.
 export function ActivitiesScreen() {
   const { data, error } = useActivities();
+  const focus = useFocus();
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
-      contentContainerStyle={{ paddingBottom: 32 }}
-    >
-      {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
-      {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
-      {data?.empty ? (
-        <Message>No sessions yet. When your watch records a session, it shows here.</Message>
-      ) : null}
-      {data?.groups.map((g) => (
-        <View key={g.date} style={{ marginTop: 24 }}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              fontSize: 13,
-              color: secondary,
-              textTransform: "uppercase",
-              marginLeft: 32,
-              marginBottom: 6,
-            }}
-          >
-            {g.label}
-          </Text>
-          <View
-            style={{
-              backgroundColor: cell,
-              borderRadius: 26,
-              marginHorizontal: 16,
-              overflow: "hidden",
-            }}
-          >
-            {g.sessions.map((c, i) => (
-              <SessionRow key={c.activityId} c={c} last={i === g.sessions.length - 1} />
-            ))}
-          </View>
-        </View>
-      ))}
-    </ScrollView>
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <ShareButton label="Export as CSV" onPress={() => void shareActivitiesCsv()} />
+          ),
+        }}
+      />
+      <FlatList
+        contentInsetAdjustmentBehavior="automatic"
+        style={{ backgroundColor: PlatformColor("systemGroupedBackground") }}
+        contentContainerStyle={{ paddingBottom: 32 }}
+        data={data?.groups ?? []}
+        keyExtractor={(g) => g.date}
+        renderItem={({ item }) => <DayGroup g={item} />}
+        ListHeaderComponent={
+          <>
+            <FocusHeader />
+            {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
+            {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
+            {data?.empty ? <Message>{emptyActivitiesText(focus)}</Message> : null}
+          </>
+        }
+      />
+    </>
   );
 }

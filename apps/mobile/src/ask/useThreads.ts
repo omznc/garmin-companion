@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Thread, ThreadMeta, Turn } from "../data/chatTypes";
 import { queryClient } from "../data/queryClient";
-import { callJson } from "../data/source";
+import { call } from "../data/source";
 import { dropLive, hasLive, startTurn, threadKey, threadsKey, useLive, useRunningId } from "./runs";
 import { historyFor, overlay } from "./turns";
 
@@ -14,8 +14,7 @@ const POLL_MS = 1000;
 export const useThreadList = () =>
   useQuery({
     queryKey: threadsKey,
-    queryFn: async () =>
-      (await callJson<{ threads: ThreadMeta[] }>("chat_list", { limit: LIST_LIMIT })).threads,
+    queryFn: async () => (await call("chat_list", { limit: LIST_LIMIT })).threads,
   });
 
 export function useThread(sessionId: string | null) {
@@ -23,7 +22,7 @@ export function useThread(sessionId: string | null) {
   const query = useQuery({
     queryKey: threadKey(sessionId ?? ""),
     enabled: sessionId !== null,
-    queryFn: () => callJson<Thread | null>("chat_get", { sessionId }),
+    queryFn: () => call("chat_get", { sessionId: sessionId ?? "" }),
     // A turn that runs with no live copy here (the app reloaded) is read again and again.
     refetchInterval: (q) => (q.state.data?.running && !hasLive(sessionId ?? "") ? POLL_MS : false),
   });
@@ -43,7 +42,7 @@ export function useThread(sessionId: string | null) {
 export async function sendMessage(sessionId: string, text: string): Promise<boolean> {
   try {
     // Read the saved thread now: the cache can be a turn behind.
-    const stored = (await callJson<Thread | null>("chat_get", { sessionId }))?.turns ?? [];
+    const stored = (await call("chat_get", { sessionId }))?.turns ?? [];
     return await startTurn(sessionId, stored.length, text, historyFor(stored, text));
   } catch {
     return false;
@@ -51,7 +50,7 @@ export async function sendMessage(sessionId: string, text: string): Promise<bool
 }
 
 export async function renameThread(sessionId: string, title: string) {
-  await callJson("chat_rename", { sessionId, title });
+  await call("chat_rename", { sessionId, title });
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: threadsKey }),
     queryClient.invalidateQueries({ queryKey: threadKey(sessionId) }),
@@ -59,7 +58,7 @@ export async function renameThread(sessionId: string, title: string) {
 }
 
 export async function deleteThread(sessionId: string) {
-  await callJson("chat_delete", { sessionId });
+  await call("chat_delete", { sessionId });
   dropLive(sessionId);
   // removeQueries does not tell the screens. The null tells them the thread is gone.
   queryClient.setQueryData(threadKey(sessionId), null);

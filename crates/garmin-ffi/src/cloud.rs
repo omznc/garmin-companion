@@ -8,20 +8,41 @@
 use chrono::Utc;
 use garmin_coach::{AccountView, Balance, CloudClient};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::ask::{bad, failed};
 use crate::FfiError;
 
+/// The arguments of `cloud_account`.
 #[derive(Deserialize)]
-struct Email {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct CloudAccountArgs {
+    /// Ask the worker for a balance, and enrol this install if needed. The
+    /// Ask tab only looks, so it leaves this out.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    enrol: Option<bool>,
+}
+
+/// The arguments of `cloud_send_code`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct CloudEmailArgs {
     email: String,
 }
 
+/// The arguments of `cloud_verify`.
 #[derive(Deserialize)]
-struct Verify {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct CloudVerifyArgs {
     email: String,
     code: String,
+}
+
+/// The result of `cloud_verify`: the email that the code proved.
+#[derive(serde::Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct CloudVerified {
+    email: String,
 }
 
 /// Handle a `cloud_*` command, or return `None` for any other command.
@@ -67,7 +88,8 @@ async fn live(cmd: &str, args: &Value) -> Result<String, FfiError> {
         "cloud_account" => {
             // The coach page asks with `enrol`. The Ask tab only looks: it must
             // not use up a new install id for an app that is only open.
-            let balance = if args["enrol"].as_bool() == Some(true) {
+            let a: CloudAccountArgs = serde_json::from_value(args.clone()).map_err(bad)?;
+            let balance = if a.enrol == Some(true) {
                 Some(cloud.balance().await.map_err(failed)?)
             } else {
                 cloud.balance_if_enrolled().await.map_err(failed)?
@@ -75,17 +97,17 @@ async fn live(cmd: &str, args: &Value) -> Result<String, FfiError> {
             to_json(&balance.map(|b| b.view(Utc::now())))
         }
         "cloud_send_code" => {
-            let a: Email = serde_json::from_value(args.clone()).map_err(bad)?;
+            let a: CloudEmailArgs = serde_json::from_value(args.clone()).map_err(bad)?;
             cloud.send_code(a.email.trim()).await.map_err(failed)?;
             Ok("{}".into())
         }
         "cloud_verify" => {
-            let a: Verify = serde_json::from_value(args.clone()).map_err(bad)?;
+            let a: CloudVerifyArgs = serde_json::from_value(args.clone()).map_err(bad)?;
             let email = cloud
                 .verify_code(a.email.trim(), a.code.trim())
                 .await
                 .map_err(failed)?;
-            Ok(json!({ "email": email }).to_string())
+            to_json(&CloudVerified { email })
         }
         "cloud_sign_out" => {
             cloud.sign_out().await.map_err(failed)?;
@@ -98,6 +120,7 @@ async fn live(cmd: &str, args: &Value) -> Result<String, FfiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[tokio::test]
     async fn only_cloud_commands_are_taken() {
@@ -115,6 +138,15 @@ mod tests {
         assert_eq!(v["creditsLine"], "27 of 30 credits left today.");
         let sent = handle("cloud_send_code", &json!({"email":"a@b.c"}), true).await;
         assert!(matches!(sent, Some(Err(FfiError::Command { .. }))));
+    }
+
+    #[tokio::test]
+    async fn an_account_with_a_bad_enrol_is_a_bad_argument() {
+        // The arguments fail to parse before any keyring or network use.
+        let out = handle("cloud_account", &json!({"enrol":"x"}), false)
+            .await
+            .unwrap();
+        assert!(matches!(out, Err(FfiError::BadArgs { .. })));
     }
 
     #[tokio::test]

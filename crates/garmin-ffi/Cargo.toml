@@ -19,8 +19,17 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+ts-rs = { workspace = true, optional = true }
 uniffi = { version = "0.31", features = ["tokio"] }
 
 # iOS only: the data folder is marked "exclude from backup".
 [target.'cfg(target_os = "ios")'.dependencies]
 core-foundation = "0.10"
+
+[features]
+# Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
+ts-rs = ["dep:ts-rs", "garmin-api/ts-rs", "garmin-coach/ts-rs", "garmin-core/ts-rs"]
+
+[dev-dependencies]
+# Tests must not reach real user state. See garmin-core `paths.rs`.
+garmin-core = { workspace = true, features = ["test-sandbox"] }

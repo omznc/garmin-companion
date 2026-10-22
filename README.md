@@ -37,10 +37,24 @@ mid-conversation. Sync is the only thing that talks to Garmin.
   sample size, and weekly summaries
 - **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
   and shoe and bike mileage
+- **Export** — activities to CSV, and the weekly and monthly reports to PDF
 
-| A session, read back to you | Where the heart rate actually went | Asked in your own words |
+Version 1.0.7 brings a new desktop design. The style is like Zed, with no
+entrance animations:
+
+- **Cards** — every screen is a grid of cards, and you arrange the ones on Today
+- **Date focus calendar** — a calendar in the sidebar sets a day or a range of
+  days, and every screen and the coach follow it
+- **Status bar menus** — sync, pick the coach provider and the palette, and
+  update, all from the bottom bar
+- **Detail pages** — activities, workouts and insights open with more data, and
+  breadcrumbs replace the back links
+- **Layout** — the sidebar, the coach panel and the window resize by dragging,
+  and Appearance has an interface scale
+
+| A session, with its heart-rate zones | A strength session, set by set | Asked in your own words |
 |---|---|---|
-| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Zones](docs/screenshots/activity-zones-dark.png)](docs/screenshots/activity-zones-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
+| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Strength](docs/screenshots/activity-strength-dark.png)](docs/screenshots/activity-strength-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
 
 | Correlations, with their sample size | Recovery over time | Routes out of the GPS traces |
 |---|---|---|
@@ -56,7 +70,7 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
   server of ours.
 - **Chat** sends your question plus whatever a tool returned for it — a handful
   of summary rows, never the whole database and never GPS traces. Where it sends
-  that depends on which of the three providers you pick:
+  that depends on which of the six providers you pick:
   - **Built-in coach** (the default) — through a small proxy this project runs,
     on to a hosted model. It sees the metrics a question needs and keeps none of
     them; the code is in [`worker/`](worker) and so is what it does and doesn't
@@ -64,6 +78,10 @@ without the backdrop — are in [`docs/screenshots`](docs/screenshots).
     run, which is why it says so on the Ask screen and in Settings.
   - **OpenRouter** with your own key — straight from the app to OpenRouter.
   - **Ollama** on your machine — nothing leaves the computer at all.
+  - **Claude Code**, **OpenCode** or **Codex** (desktop only) — the app starts
+    the command you already use and gives it read-only tools over MCP. The
+    command sends the data on to its own model provider, under your account.
+    Not yet tested on Windows or macOS.
 - **Switching** is one click in Settings, in either direction, at any time.
 - **The cache** is a single SQLite file you can delete. Its path is printed in
   Settings.
@@ -113,31 +131,35 @@ The same app and the same data, with three things worth knowing:
   beside the data, because reaching the Android Keystore needs native code this
   build doesn't have. `crates/garmin-core/src/secrets.rs` is honest about the
   details.
-- **The nav is a bottom bar.** Today, Ask and Health get tabs; everything else
-  is behind **More**. Press and hold a screen in that sheet and drop it on the
-  tab it should replace — the phone keeps its own three, so rearranging them
-  doesn't disturb the sidebar on the desktop.
+- **The nav is a bottom bar.** It has five tabs: Today, Activities, Health,
+  Sleep and **More**. Everything else is behind More. To change the order of
+  the tabs, open More, then Appearance, then Tabs. You can also choose the tab that the app opens
+  on. More stays last. The phone keeps its own order, so the sidebar on the
+  desktop does not change. On iOS, the new order shows after you close the app
+  fully and open it again.
 
 ## Building from source
 
-Requires Rust, Node 22+, pnpm, and on Linux `webkit2gtk-4.1`.
+The desktop app needs Rust. On Linux it also needs the development packages
+that `.github/workflows/ci.yml` installs.
+
+Build the sign-in helper first. The desktop app looks for
+`garmin-companion-login` next to its own executable.
 
 ```sh
-cd app
-pnpm install
-pnpm tauri dev
+cargo build -p garmin-companion-login && cargo run -p garmin-companion-desktop
 ```
 
+The Android and iOS app is in `apps/mobile` (Expo). It needs Node 22+ and pnpm.
 For Android, add the SDK, NDK 28, and a JDK no newer than 21, then:
 
 ```sh
 source scripts/android-env.sh
-cd app && pnpm tauri android build --apk --debug
+cd apps/mobile && pnpm install
 ```
 
-The env script explains what it sets and why — see
-[RELEASING.md](RELEASING.md#android) for the sharp edges, of which there are
-three.
+The env script explains what it sets and why. See `apps/mobile/package.json`
+for the bridge and prebuild scripts.
 
 Connect an account in Settings, or adopt tokens from an existing
 [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) install in
@@ -204,17 +226,19 @@ cargo build --release -p garmin-mcp
 |---|---|
 | `crates/garmin-core` | Garmin client, token store, SQLite cache, sync, queries |
 | `crates/garmin-mcp` | MCP server over `garmin-core` |
-| `app/src-tauri` | Tauri commands, chat and tool dispatch |
-| `app/src` | React frontend |
+| `crates/garmin-api`, `crates/garmin-coach` | Garmin API types, coach logic |
+| `apps/desktop` | The gpui desktop app and its packaging config |
+| `apps/login` | The sign-in window, a helper of the desktop app |
+| `apps/mobile` | The Expo app for Android and iOS |
 
 The two Rust binaries share `garmin-core` so they can never drift onto
 different versions of the Garmin client.
 
 ## Releases
 
-See [RELEASING.md](RELEASING.md). Tagging `v*` builds installers for macOS
-(Apple Silicon and Intel), Windows, Linux and Android, and the desktop app
-updates itself from Settings.
+See [RELEASING.md](RELEASING.md). A manual run of the release workflow builds
+installers for macOS (Apple Silicon and Intel), Windows, Linux and Android.
+The desktop app updates itself from Settings.
 
 ## Licence
 

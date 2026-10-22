@@ -8,11 +8,10 @@
  * place anyone is told why their OS is shouting at them, but it now comes
  * *after* the list this writes.
  *
- * This matters more than a release page: `tauri-action` copies the body into
- * `latest.json` as `notes`, and the app renders that in Settings once an
- * update is staged. So this text is the whole of the answer to "what did I
- * just install?", on every desktop, and — through `releaseNotes()` in
- * `app/src/lib/apk.ts` — on Android too.
+ * No workflow runs this script now. The desktop app shows `notes` from
+ * `latest.json` (`apps/desktop/src/updater.rs` reads it). The Android app
+ * shows no notes. The notes come from the workflow input, through the
+ * manifest step in `release-rewrite.mjs`.
  *
  * Usage:
  *   node scripts/changelog.mjs            # HEAD, against the last tag before it

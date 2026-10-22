@@ -41,6 +41,7 @@ const INTERVAL_PCT: f64 = 90.0;
 
 /// A number with the uncertainty that belongs to it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Estimate {
     /// The point estimate — what the older code would have returned alone.
@@ -372,7 +373,7 @@ pub fn rank_stability(columns: &[Vec<Option<f64>>], outcome: &[Option<f64>]) -> 
         .iter()
         .map(|c| {
             rows.iter()
-                .map(|&i| (c[i].unwrap(), outcome[i].unwrap()))
+                .filter_map(|&i| Some((c.get(i).copied()??, outcome.get(i).copied()??)))
                 .collect()
         })
         .collect();

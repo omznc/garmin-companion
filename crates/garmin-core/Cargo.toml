@@ -15,6 +15,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+ts-rs = { workspace = true, optional = true }
 
 # The keyring is the secret store everywhere it exists. Android has no backend
 # for it, so that target gets the encrypted-file implementation in `secrets`
@@ -43,3 +44,10 @@ getrandom = { workspace = true }
 # TLS libraries to make a build easier is how you find out at runtime, on a
 # phone, that sign-in now 403s.
 openssl = { workspace = true }
+
+[features]
+# Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
+ts-rs = ["dep:ts-rs"]
+# Tests only: temp data folder, in-memory secrets, no live Garmin client.
+# Every crate enables it in `[dev-dependencies]`. See `src/paths.rs`.
+test-sandbox = []

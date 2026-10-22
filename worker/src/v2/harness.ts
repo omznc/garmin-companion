@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import worker from "../index";
 import type { Mailer } from "./auth";
+import { Limits } from "./limits";
 import { Wallet } from "./wallet";
 
 type Env = Parameters<typeof worker.fetch>[1];
@@ -53,22 +54,22 @@ function d1() {
   };
 }
 
-function walletNamespace() {
-  const wallets = new Map<string, Wallet>();
+function objectNamespace(make: (state: { storage: DurableObjectStorage }) => Wallet | Limits) {
+  const objects = new Map<string, Wallet | Limits>();
   const get = (name: string) => {
-    let w = wallets.get(name);
-    if (!w) {
+    let o = objects.get(name);
+    if (!o) {
       const mem = new Map<string, unknown>();
-      w = new Wallet({
+      o = make({
         storage: {
           get: async (k: string) => mem.get(k),
           put: async (k: string, v: unknown) => void mem.set(k, structuredClone(v)),
           deleteAll: async () => mem.clear(),
         } as unknown as DurableObjectStorage,
       });
-      wallets.set(name, w);
+      objects.set(name, o);
     }
-    return w;
+    return o;
   };
   return {
     idFromName: (n: string) => n,
@@ -119,8 +120,6 @@ export function harness(vars: Record<string, unknown> = {}) {
 
   const env = {
     OPENROUTER_KEY: "not-a-real-key",
-    MODEL: "unused-by-v2",
-    DAILY_BUDGET_USD: "5",
     COUNTERS: {
       get: async (k: string) => kv.get(k) ?? null,
       put: async (k: string, v: string) => void kv.set(k, v),
@@ -128,7 +127,8 @@ export function harness(vars: Record<string, unknown> = {}) {
     BURST: { limit: async () => ({ success: true }) },
     ISSUE: { limit: async () => ({ success: true }) },
     DB: db,
-    WALLET: walletNamespace(),
+    WALLET: objectNamespace((st) => new Wallet(st)),
+    LIMITS: objectNamespace((st) => new Limits(st)),
     MAILER: mailer,
     MODEL_PROFILE: "haiku",
     POLAR_TOKEN: "polar-test-token",

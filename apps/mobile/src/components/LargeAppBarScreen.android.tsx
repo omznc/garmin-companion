@@ -3,7 +3,7 @@
 import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
-import type { ReactNode } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { RefreshControl, View } from "react-native";
 import Animated, {
   Extrapolation,
@@ -20,32 +20,51 @@ import { useHostTheme, useMd } from "../theme/md";
 const EXPANDED = 136;
 const COLLAPSED = 64;
 
-type Props = {
+/** Rows for a list that draws only the rows near the screen. `children` then sit above the rows. */
+type ListRows<T> = {
+  data: readonly T[];
+  renderItem: (item: T) => ReactElement;
+  keyExtractor: (item: T) => string;
+};
+
+type ShareAction = { label: string; onPress: () => void };
+
+type Props<T> = {
   title: string;
+  /** A share button at the end of the bar. */
+  share?: ShareAction;
+  list?: ListRows<T>;
   back?: boolean;
   /** A small bar that does not collapse. */
   small?: boolean;
+  /** A control at the end of the bar, for example the date focus. */
+  actions?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Called with the scroll offset, for a FAB that collapses. */
   onScrollOffset?: (offset: number) => void;
   /** Space below the last row, for a FAB. */
   bottomSpace?: number;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
-export function LargeAppBarScreen({
+export function LargeAppBarScreen<T = never>({
   title,
+  share,
+  list,
   back = false,
   small = false,
+  actions,
   refreshing = false,
   onRefresh,
   onScrollOffset,
   bottomSpace = 0,
   children,
-}: Props) {
+}: Props<T>) {
   const md = useMd();
   const insets = useSafeAreaInsets();
+  const [actionsWidth, setActionsWidth] = useState(0);
+  const end = Boolean(actions || share);
   const expanded = small ? COLLAPSED : EXPANDED;
   const range = Math.max(expanded - COLLAPSED, 1);
   const scrollY = useSharedValue(0);
@@ -74,29 +93,37 @@ export function LargeAppBarScreen({
     lineHeight: interpolate(scrollY.value, [0, range], [small ? 28 : 42, 28], Extrapolation.CLAMP),
   }));
 
+  const scrollProps = {
+    onScroll,
+    // One event per frame. 16 ms holds the bar to 60 Hz on a 90 or 120 Hz
+    // screen, where it steps unevenly against the list under it.
+    scrollEventThrottle: 1,
+    refreshControl: onRefresh ? (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        progressViewOffset={insets.top + expanded}
+      />
+    ) : undefined,
+    contentContainerStyle: {
+      paddingTop: insets.top + expanded,
+      paddingBottom: 24 + bottomSpace,
+    },
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: md.surface }}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        // One event per frame. 16 ms holds the bar to 60 Hz on a 90 or 120 Hz
-        // screen, where it steps unevenly against the list under it.
-        scrollEventThrottle={1}
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              progressViewOffset={insets.top + expanded}
-            />
-          ) : undefined
-        }
-        contentContainerStyle={{
-          paddingTop: insets.top + expanded,
-          paddingBottom: 24 + bottomSpace,
-        }}
-      >
-        {children}
-      </Animated.ScrollView>
+      {list ? (
+        <Animated.FlatList
+          {...scrollProps}
+          data={list.data}
+          keyExtractor={list.keyExtractor}
+          renderItem={({ item }) => list.renderItem(item)}
+          ListHeaderComponent={children ? <>{children}</> : undefined}
+        />
+      ) : (
+        <Animated.ScrollView {...scrollProps}>{children}</Animated.ScrollView>
+      )}
       <Animated.View style={[{ position: "absolute", top: 0, left: 0, right: 0 }, barStyle]}>
         <Animated.Text
           accessibilityRole="header"
@@ -104,7 +131,8 @@ export function LargeAppBarScreen({
           style={[
             {
               position: "absolute",
-              right: 72,
+              // The title ends before the actions, so a narrow phone cuts it only when it must.
+              right: end ? actionsWidth + 16 : 72,
               bottom: small ? 18 : 16,
               color: md.onSurface,
               fontWeight: "500",
@@ -115,7 +143,42 @@ export function LargeAppBarScreen({
           {title}
         </Animated.Text>
         {back ? <BackButton top={insets.top} /> : null}
+        {end ? (
+          <View
+            onLayout={(e) => setActionsWidth(e.nativeEvent.layout.width)}
+            style={{
+              position: "absolute",
+              top: insets.top + 8,
+              right: 8,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            {actions}
+            {share ? <ShareButton {...share} /> : null}
+          </View>
+        ) : null}
       </Animated.View>
+    </View>
+  );
+}
+
+// The share action of the screen, last in the row at the end of the bar.
+function ShareButton({ label, onPress }: ShareAction) {
+  const md = useMd();
+  const host = useHostTheme();
+  return (
+    <View style={{ width: 48, height: 48 }}>
+      <Host matchContents {...host}>
+        <IconButton onClick={onPress}>
+          <Icon
+            source={require("../../assets/icons/share.xml")}
+            size={24}
+            tint={md.onSurface}
+            contentDescription={label}
+          />
+        </IconButton>
+      </Host>
     </View>
   );
 }

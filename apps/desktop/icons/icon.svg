@@ -1,0 +1,8 @@
+<!-- Garmin Companion · Horizon mark. A sun rising over a horizon, with two lines below like a chart. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#15140f"/>
+  <path d="M 292 592 A 220 220 0 0 1 732 592 Z" fill="#c97354"/>
+  <path d="M 212 592 H 812" fill="none" stroke="#ede8de" stroke-width="64" stroke-linecap="round"/>
+  <path d="M 312 712 H 712" fill="none" stroke="#4a453c" stroke-width="56" stroke-linecap="round"/>
+  <path d="M 412 816 H 612" fill="none" stroke="#4a453c" stroke-width="56" stroke-linecap="round"/>
+</svg>

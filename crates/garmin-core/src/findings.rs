@@ -35,6 +35,7 @@ const HARD_DAY_SECS: f64 = 300.0;
 const HOUR: f64 = 3600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "FindingTone"))]
 #[serde(rename_all = "lowercase")]
 pub enum Tone {
     Good,
@@ -55,6 +56,7 @@ pub enum Section {
 /// this shape crosses a serialization boundary now. The frontend maps these
 /// back to the same formatters it always used.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Unit {
     Spm,
@@ -116,6 +118,39 @@ pub struct Finding {
     pub labels: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rows: Vec<FindingRow>,
+    /// The activity ids that the finding counted, oldest first. Empty when the
+    /// finding rests on days, not on sessions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<i64>,
+}
+
+/// One plain sentence of what to do about a finding. It makes no promise and
+/// it names no sport or device, so it fits each user. `None` for an unknown kind.
+pub fn action(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "fitness-at-fixed-hr" => {
+            "Compare runs at a similar effort, not at a similar pace. Keep the easy runs easy so the comparison stays fair."
+        }
+        "cadence-lever" => {
+            "Try a slightly quicker step rate on an easy run. Change it a little at a time and watch how the effort feels."
+        }
+        "recovery-drivers" => {
+            "Treat the table as a list of things to watch, not as a plan. Change one habit at a time and give it a few weeks."
+        }
+        "week-shape" => {
+            "Look at the day that you skip most often. Move one planned session to the day that you keep most often."
+        }
+        "rest-day-contrast" => {
+            "Plan your rest days on purpose. A rest day that you choose helps more than a rest day that happens to you."
+        }
+        "easy-share-trend" => {
+            "Make the easy sessions easier. Keep most of your time in the low heart-rate zones and keep the hard days few."
+        }
+        "block-ended" => {
+            "If the break was a choice, restart with an easy week. If it was not, start again below the old level and build slowly."
+        }
+        _ => return None,
+    })
 }
 
 /* ---------------------------------------------------------------- helpers --- */
@@ -406,6 +441,7 @@ pub fn fitness_at_fixed_hr(activities: &[CachedActivity]) -> Option<Finding> {
         }],
         labels: band.iter().filter_map(|a| a.local_date.clone()).collect(),
         rows: vec![],
+        sessions: band.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -521,6 +557,7 @@ pub fn cadence_lever(activities: &[CachedActivity]) -> Option<Finding> {
         ],
         labels: runs.iter().filter_map(|a| a.local_date.clone()).collect(),
         rows: vec![],
+        sessions: runs.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -716,6 +753,7 @@ pub fn recovery_drivers(daily: &[DailyMetrics], activities: &[CachedActivity]) -
                 accent: r.excludes_zero(),
             })
             .collect(),
+        sessions: vec![],
     })
 }
 
@@ -784,11 +822,11 @@ pub fn week_shape(daily: &[DailyMetrics], activities: &[CachedActivity]) -> Opti
         .iter()
         .map(|s| s.trained as f64 / s.seen as f64 * 100.0)
         .collect();
-    let best = (0..7).max_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
-    let worst = (0..7).min_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
+    let best = (0..7).max_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
+    let worst = (0..7).min_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
     let second = (0..7)
         .filter(|i| *i != worst)
-        .min_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
+        .min_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
     // A flat week is a fine outcome and not a finding.
     if rate[best] - rate[worst] < 20.0 {
         return None;
@@ -843,6 +881,7 @@ pub fn week_shape(daily: &[DailyMetrics], activities: &[CachedActivity]) -> Opti
                 accent: i == worst,
             })
             .collect(),
+        sessions: vec![],
     })
 }
 
@@ -963,6 +1002,7 @@ pub fn rest_day_contrast(daily: &[DailyMetrics], activities: &[CachedActivity]) 
         series: vec![],
         labels: vec![],
         rows: out_rows,
+        sessions: vec![],
     })
 }
 
@@ -1084,6 +1124,7 @@ pub fn easy_share_trend(activities: &[CachedActivity]) -> Option<Finding> {
         }],
         labels: ordered.iter().map(|(m, _)| month_short(m)).collect(),
         rows: vec![],
+        sessions: vec![],
     })
 }
 
@@ -1187,6 +1228,7 @@ pub fn block_ended(activities: &[CachedActivity], today: chrono::NaiveDate) -> O
                 accent: true,
             },
         ],
+        sessions: block.iter().map(|a| a.activity_id).collect(),
     })
 }
 
@@ -1240,6 +1282,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0, mins * 60.0 * 0.6, mins * 60.0 * 0.4, 0.0, 0.0],
+            training_load: None,
         }
     }
 
@@ -1302,6 +1345,25 @@ mod tests {
         let f = block_ended(&runs, today).expect("a stopped block is worth saying");
         assert_eq!(f.tone, Tone::Watch);
         assert!(f.claim.contains("stopped"));
+        // The finding names the sessions of the block.
+        assert_eq!(f.sessions.len(), 8);
+        assert!(f.sessions.contains(&1000));
+    }
+
+    #[test]
+    fn each_kind_of_finding_has_one_action_and_an_unknown_kind_has_none() {
+        for kind in [
+            "fitness-at-fixed-hr",
+            "cadence-lever",
+            "recovery-drivers",
+            "week-shape",
+            "rest-day-contrast",
+            "easy-share-trend",
+            "block-ended",
+        ] {
+            assert!(action(kind).is_some_and(|a| !a.is_empty()), "{kind}");
+        }
+        assert!(action("nothing").is_none());
     }
 
     #[test]

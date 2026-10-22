@@ -14,6 +14,7 @@ use crate::{activity_profile, ApiError};
 use chrono::{Datelike, Duration, NaiveDate};
 use garmin_core::findings::{self, edwards_trimp, Finding, Section, Tone};
 use garmin_core::sport::is_exercise;
+use garmin_core::stats::Estimate;
 use garmin_core::{CachedActivity, Db, Family};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -31,6 +32,7 @@ const RUN_ONLY: [&str; 4] = [
 
 /// A label with a figure. The load, the report and the fitness screens use it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Figure {
     pub label: String,
@@ -39,6 +41,7 @@ pub struct Figure {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSeries {
     pub name: String,
@@ -46,9 +49,16 @@ pub struct InsightSeries {
     pub values: Vec<Option<f64>>,
     /// Drawn as the comparison line.
     pub muted: bool,
+    /// Low values at the top. Pace is the case.
+    #[serde(default)]
+    pub invert: bool,
+    /// How the figures read. `None` for a series that the view builds.
+    #[serde(default)]
+    pub format: Option<findings::Unit>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRow {
     pub label: String,
@@ -58,6 +68,7 @@ pub struct InsightRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightItem {
     pub id: String,
@@ -72,9 +83,26 @@ pub struct InsightItem {
     /// The first and the last label under the chart. Empty for no labels.
     pub ends: Vec<String>,
     pub rows: Vec<InsightRow>,
+    /// The first day this finding showed in the cache, `YYYY-MM-DD`. The view
+    /// sets it. A UI turns it into an age such as "new this week".
+    #[serde(default)]
+    pub first_seen: Option<String>,
+    /// One label for each point of the series. Empty for no labels.
+    #[serde(default)]
+    pub labels: Vec<String>,
+    /// The estimate that the claim rests on, with its interval.
+    #[serde(default)]
+    pub estimate: Option<Estimate>,
+    /// What to do about the finding, in one sentence.
+    #[serde(default)]
+    pub action: Option<String>,
+    /// The ids of the sessions that the finding counted.
+    #[serde(default)]
+    pub sessions: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSection {
     pub key: String,
@@ -83,6 +111,7 @@ pub struct InsightSection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsView {
     pub date: String,
@@ -128,9 +157,15 @@ fn finding_item(f: &Finding) -> InsightItem {
                 name: s.name.clone(),
                 values: s.values.clone(),
                 muted: s.muted,
+                invert: s.invert,
+                format: Some(s.format),
             })
             .collect(),
         ends: ends(&f.labels),
+        labels: f.labels.clone(),
+        estimate: f.estimate,
+        action: findings::action(&f.kind).map(String::from),
+        sessions: f.sessions.clone(),
         rows: f
             .rows
             .iter()
@@ -141,6 +176,19 @@ fn finding_item(f: &Finding) -> InsightItem {
                 accent: r.accent,
             })
             .collect(),
+        first_seen: None,
+    }
+}
+
+/// Record each item as seen today and set its first day. It reuses the nudge
+/// table, under the key `insight:<id>`, so a finding that leaves and comes back
+/// keeps its first day. A failed write leaves the item without a day.
+fn stamp_first_seen(db: &Db, today: &str, sections: &mut [InsightSection]) {
+    for item in sections.iter_mut().flat_map(|s| s.items.iter_mut()) {
+        item.first_seen = db
+            .saw_nudge(&format!("insight:{}", item.id), today)
+            .ok()
+            .map(|n| n.first_seen);
     }
 }
 
@@ -330,6 +378,8 @@ fn load_item(l: &Load, shape: Option<&[WeekLoad]>) -> InsightItem {
                 name: "Weekly load".into(),
                 values: s.iter().map(|w| Some(w.trimp.round())).collect(),
                 muted: false,
+                invert: false,
+                format: None,
             }]
         }),
         ends: shape.map_or_else(Vec::new, |s| {
@@ -337,6 +387,11 @@ fn load_item(l: &Load, shape: Option<&[WeekLoad]>) -> InsightItem {
             vec![label(&s[0]), label(&s[s.len() - 1])]
         }),
         rows: Vec::new(),
+        first_seen: None,
+        labels: Vec::new(),
+        estimate: None,
+        action: None,
+        sessions: Vec::new(),
     }
 }
 
@@ -353,6 +408,11 @@ fn flag(id: &str, accent: bool, claim: &str, detail: String) -> InsightItem {
         series: Vec::new(),
         ends: Vec::new(),
         rows: Vec::new(),
+        first_seen: None,
+        labels: Vec::new(),
+        estimate: None,
+        action: None,
+        sessions: Vec::new(),
     }
 }
 
@@ -439,8 +499,19 @@ fn sections(
     out
 }
 
-/// Build the Insights view for `today`.
+/// Build the Insights view for the day `today`. The nudge rows record the real
+/// day, also when `today` is a past day.
 pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError> {
+    insights_view_seen(db, today, chrono::Local::now().date_naive())
+}
+
+/// The same view, with `seen_on` as the day that the nudge rows record. A
+/// fixture uses it, so that its file does not depend on the clock.
+pub fn insights_view_seen(
+    db: &Db,
+    today: NaiveDate,
+    seen_on: NaiveDate,
+) -> Result<InsightsView, ApiError> {
     let from = date_key(today - Duration::days(YEAR - 1));
     let daily = db.daily_since(&from)?;
     let oldest_day = daily
@@ -469,7 +540,8 @@ pub fn insights_view(db: &Db, today: NaiveDate) -> Result<InsightsView, ApiError
     } else {
         Vec::new()
     };
-    let sections = sections(found, extra, flags);
+    let mut sections = sections(found, extra, flags);
+    stamp_first_seen(db, &date_key(seen_on), &mut sections);
     Ok(InsightsView {
         date: date_key(today),
         eyebrow: "Last 365 days".into(),
@@ -502,6 +574,7 @@ mod tests {
             aerobic_te: None,
             anaerobic_te: None,
             zone_secs: [0.0; 5],
+            training_load: None,
         }
     }
 
@@ -584,5 +657,44 @@ mod tests {
             act("2026-03-06", "running", 30.0),
         ];
         assert!(runs_now(&runner, today()));
+    }
+
+    #[test]
+    fn a_finding_keeps_the_first_day_it_showed() {
+        let db = Db::open(&std::env::temp_dir().join(format!(
+            "garmin-api-insights-{}/cache.sqlite3",
+            std::process::id()
+        )))
+        .unwrap();
+        let section = |id: &str| InsightSection {
+            key: "k".into(),
+            title: "T".into(),
+            items: vec![flag(id, false, "c", String::new())],
+        };
+        let mut first = [section("a")];
+        stamp_first_seen(&db, "2026-03-01", &mut first);
+        let mut later = [section("a"), section("b")];
+        stamp_first_seen(&db, "2026-03-11", &mut later);
+        assert_eq!(first[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
+        assert_eq!(later[0].items[0].first_seen.as_deref(), Some("2026-03-01"));
+        assert_eq!(later[1].items[0].first_seen.as_deref(), Some("2026-03-11"));
+    }
+
+    #[test]
+    fn a_past_focus_writes_the_real_day_to_the_nudges() {
+        let db = Db::open(&std::env::temp_dir().join(format!(
+            "garmin-api-insights-past-{}/cache.sqlite3",
+            std::process::id()
+        )))
+        .unwrap();
+        let sample = crate::personas::sample_day();
+        crate::personas::seed(&db, crate::personas::Persona::Sample, sample).unwrap();
+        let view = insights_view(&db, sample).unwrap();
+        let items: Vec<_> = view.sections.iter().flat_map(|s| &s.items).collect();
+        assert!(!items.is_empty());
+        let real = date_key(chrono::Local::now().date_naive());
+        for item in items {
+            assert_eq!(item.first_seen.as_deref(), Some(real.as_str()));
+        }
     }
 }

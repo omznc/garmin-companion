@@ -1,22 +1,23 @@
-//! Window chrome: the drag strip, the three window buttons and the resize
+//! Window chrome: the drag handle, the three window buttons and the resize
 //! edges. From `app/src/components/WindowChrome.tsx`.
 //!
 //! The window has no system frame, as in the current app. On Linux the app
 //! asks for client side decorations, and draws the buttons only while the
 //! compositor leaves them to the app. macOS keeps its own traffic lights.
 
+use crate::scale::px;
 use gpui::{
-    div, prelude::*, px, AnyElement, CursorStyle, Decorations, MouseButton, ResizeEdge, Window,
-    WindowControlArea,
+    div, prelude::*, AnyElement, CursorStyle, Decorations, Div, MouseButton, ResizeEdge, Stateful,
+    Window, WindowControlArea,
 };
 
 use crate::icons::{icon_hover, Icon};
 use crate::theme::Theme;
 
-/// The strip height. It matches the sidebar's top padding.
+/// The height of the title bar and of the strip that drags the window.
 pub const STRIP: f32 = 38.0;
 /// The width of the grab strip along each window edge.
-const GRAB: f32 = 5.0;
+const GRAB: f32 = 7.0;
 
 /// Whether the app draws the three buttons.
 fn buttons_are_ours(window: &Window) -> bool {
@@ -29,16 +30,10 @@ fn buttons_are_ours(window: &Window) -> bool {
     true
 }
 
-/// The strip that drags the window. A double click zooms it.
-pub fn drag_strip() -> impl IntoElement {
-    div()
-        .id("drag-strip")
-        .absolute()
-        .top_0()
-        .left_0()
-        .right_0()
-        .h(px(STRIP))
-        .window_control_area(WindowControlArea::Drag)
+/// Make an element drag the window. A double click zooms it. A child that
+/// handles the mouse down itself, such as a button, keeps its click.
+pub fn draggable(bar: Stateful<Div>) -> Stateful<Div> {
+    bar.window_control_area(WindowControlArea::Drag)
         .on_mouse_down(MouseButton::Left, |event, window, _| {
             if event.click_count == 2 {
                 window.zoom_window();
@@ -57,28 +52,28 @@ fn button(
     t: &Theme,
     action: fn(&mut Window),
 ) -> impl IntoElement {
-    let (faint, sel) = (t.faint, t.sel);
+    let (mutd, hover) = (t.mutd, t.hover);
     div()
         .id(id)
         .group(id)
         .flex()
         .items_center()
         .justify_center()
-        .size(px(26.0))
-        .rounded(px(3.0))
+        .size(px(28.0))
+        .rounded(px(6.0))
         .cursor_pointer()
         .window_control_area(area)
-        .hover(move |s| s.bg(sel))
+        .hover(move |s| s.bg(hover))
         // Mouse down, and claimed: the strip under the button starts a window
         // move on the same event.
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             cx.stop_propagation();
             action(window);
         })
-        .child(icon_hover(glyph, size, t, faint, Some((id, hover_colour))))
+        .child(icon_hover(glyph, size, t, mutd, Some((id, hover_colour))))
 }
 
-/// The three buttons at the top right, or nothing where the system draws them.
+/// The three buttons in a row, or nothing where the system draws them.
 pub fn controls(window: &Window, t: &Theme) -> Option<AnyElement> {
     if !buttons_are_ours(window) {
         return None;
@@ -91,11 +86,7 @@ pub fn controls(window: &Window, t: &Theme) -> Option<AnyElement> {
     };
     Some(
         div()
-            .absolute()
-            .top_0()
-            .right_0()
-            .h(px(STRIP))
-            .pr(px(10.0))
+            .flex_none()
             .flex()
             .items_center()
             .gap(px(2.0))
@@ -152,6 +143,9 @@ pub fn resize_handles(window: &Window) -> Vec<AnyElement> {
             place(div().absolute(), g)
                 .id(id)
                 .cursor(cursor)
+                // Occlude: the title bar under the strip gets no mouse down, so
+                // its window move does not replace the resize.
+                .occlude()
                 .on_mouse_down(MouseButton::Left, move |_, window, _| {
                     window.start_window_resize(edge)
                 })
@@ -191,28 +185,28 @@ pub fn resize_handles(window: &Window) -> Vec<AnyElement> {
         "rs-tl",
         ResizeEdge::TopLeft,
         CursorStyle::ResizeUpLeftDownRight,
-        |d, g| d.top_0().left_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.top_0().left_0().w(g * 1.5).h(g * 1.5),
         tiling.top || tiling.left,
     );
     edge(
         "rs-tr",
         ResizeEdge::TopRight,
         CursorStyle::ResizeUpRightDownLeft,
-        |d, g| d.top_0().right_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.top_0().right_0().w(g * 1.5).h(g * 1.5),
         tiling.top || tiling.right,
     );
     edge(
         "rs-bl",
         ResizeEdge::BottomLeft,
         CursorStyle::ResizeUpRightDownLeft,
-        |d, g| d.bottom_0().left_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.bottom_0().left_0().w(g * 1.5).h(g * 1.5),
         tiling.bottom || tiling.left,
     );
     edge(
         "rs-br",
         ResizeEdge::BottomRight,
         CursorStyle::ResizeUpLeftDownRight,
-        |d, g| d.bottom_0().right_0().w(g * 2.0).h(g * 2.0),
+        |d, g| d.bottom_0().right_0().w(g * 1.5).h(g * 1.5),
         tiling.bottom || tiling.right,
     );
     out

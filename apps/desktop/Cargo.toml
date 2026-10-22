@@ -30,6 +30,10 @@ minisign-verify = "0.2"
 semver = "1"
 tar = "0.4"
 
+# The temp folders of a coach turn (cli_agent.rs): a random name, mode 0700.
+# Already in the tree.
+tempfile = "3"
+
 # The VS Code themes (openvsx.rs): a .vsix is a zip. Deflate only. Already in the tree.
 zip = { version = "4", default-features = false, features = ["deflate-flate2"] }
 
@@ -46,8 +50,14 @@ gpui_platform = { package = "gpui_ce_platform", version = "0.1", features = [
 ] }
 
 [dev-dependencies]
+# Tests must not reach real user state. See garmin-core `paths.rs`.
+garmin-core = { workspace = true, features = ["test-sandbox"] }
 # Headless windows, to send wheel events through a real layout in a test.
 gpui = { package = "gpui-ce", version = "0.2.2", features = ["test-support"] }
+
+# The kill of a process group (cli_agent.rs). Already in the tree.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # The admin-rights start of the NSIS setup (updater.rs). Already in the tree.
 [target.'cfg(windows)'.dependencies]

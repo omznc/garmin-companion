@@ -5,20 +5,21 @@
 //! split as `crates/garmin-core/src/theme.rs` and `app/src/lib/customTheme.ts`.
 //! No colour literal lives outside this file.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use gpui::{rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
+use gpui::{hsla, hsla_to_rgba, rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
 
-/// The motion tokens. Durations in milliseconds. The slow step is the page entrance.
-pub const DUR_SLOW: u64 = 180;
-
-/// The type scale. Every size below display comes from these six steps.
-pub const FS_MICRO: f32 = 12.0;
-pub const FS_CAPTION: f32 = 13.0;
-pub const FS_SMALL: f32 = 14.0;
-pub const FS_BASE: f32 = 15.0;
-pub const FS_MD: f32 = 16.0;
-pub const FS_LG: f32 = 17.5;
+/// The type scale of the design. Every size below display comes from these steps.
+/// Micro is the mono meta and key hint. Caption is a card title and a button.
+/// Small is an input and a table cell. Base is the text. Md is the lede.
+pub const FS_MICRO: f32 = 11.0;
+pub const FS_CAPTION: f32 = 12.0;
+pub const FS_SMALL: f32 = 12.5;
+pub const FS_BASE: f32 = 13.0;
+pub const FS_MD: f32 = 13.5;
+/// The page title.
+pub const FS_H1: f32 = 20.0;
 
 /// One palette. Colours are final: derived tokens are already applied.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,6 +29,8 @@ pub struct Theme {
     pub bg: Hsla,
     /// The nav ground, one step off the page.
     pub bg2: Hsla,
+    /// The title bar and the status bar: bg2 mixed 5% toward the text.
+    pub bg3: Hsla,
     pub fg: Hsla,
     pub mutd: Hsla,
     pub faint: Hsla,
@@ -35,10 +38,16 @@ pub struct Theme {
     pub line: Hsla,
     /// The divider between rows of one list.
     pub line2: Hsla,
+    /// The outline of a dialog and of an empty block.
+    pub line_strong: Hsla,
     pub acc: Hsla,
     pub warn: Hsla,
-    /// The tint under the pointer.
+    /// The tint under the pointer. The same value as `hover`.
     pub sel: Hsla,
+    /// The tint of a row under the pointer.
+    pub hover: Hsla,
+    /// The tint of the lit row.
+    pub active: Hsla,
     /// The back layer of a duotone icon, with its alpha applied.
     pub icon2: Hsla,
     /// The hairline lift under the lit nav row. The stylesheet fixes it for every palette.
@@ -259,7 +268,93 @@ impl Palette {
 
     /// Light and dark Paper are two palettes here, as in the stylesheet.
     pub fn theme(self) -> Theme {
-        derive(&self.authored())
+        let theme = derive(&self.authored());
+        if high_contrast() {
+            boost(theme)
+        } else {
+            theme
+        }
+    }
+}
+
+static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
+
+/// Turn the high contrast switch on or off. Every `Palette::theme` call follows it.
+pub fn set_high_contrast(on: bool) {
+    HIGH_CONTRAST.store(on, Ordering::Relaxed);
+}
+
+pub fn high_contrast() -> bool {
+    HIGH_CONTRAST.load(Ordering::Relaxed)
+}
+
+/// The contrast ratio that the muted text and the faint text reach at least.
+const MUTED_RATIO: f32 = 7.0;
+const FAINT_RATIO: f32 = 4.5;
+
+fn luminance(c: Hsla) -> f32 {
+    let c = hsla_to_rgba(c);
+    let lin = |v: f32| {
+        if v <= 0.039_28 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.red) + 0.7152 * lin(c.green) + 0.0722 * lin(c.blue)
+}
+
+/// The WCAG contrast ratio of two colours, from 1 to 21.
+pub fn contrast_ratio(a: Hsla, b: Hsla) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// A colour moved toward `to` by `share`, in sRGB.
+fn toward(from: Hsla, to: Hsla, share: f32) -> Hsla {
+    let (a, b) = (hsla_to_rgba(from), hsla_to_rgba(to));
+    let m = |x: f32, y: f32| x + (y - x) * share;
+    rgb_to_hsla(Rgba::new(
+        m(a.red, b.red),
+        m(a.green, b.green),
+        m(a.blue, b.blue),
+        from.alpha,
+    ))
+}
+
+/// `colour`, moved toward the text colour in 5% steps until it reaches `ratio`
+/// on the three grounds. The text colour itself ends the walk.
+fn at_least(colour: Hsla, ratio: f32, t: &Theme) -> Hsla {
+    (0..=20)
+        .map(|i| toward(colour, t.fg, i as f32 * 0.05))
+        .find(|c| {
+            [t.bg, t.bg2, t.bg3]
+                .iter()
+                .all(|g| contrast_ratio(*c, *g) >= ratio)
+        })
+        .unwrap_or(t.fg)
+}
+
+/// The high contrast form of a theme: stronger muted text, faint text, accent
+/// and borders. The grounds and the tints stay, so the palette keeps its look.
+fn boost(t: Theme) -> Theme {
+    let hover = t.fg.opacity(if t.dark { 0.09 } else { 0.08 });
+    let acc = at_least(t.acc, FAINT_RATIO, &t);
+    let warn = at_least(t.warn, FAINT_RATIO, &t);
+    Theme {
+        mutd: at_least(t.mutd, MUTED_RATIO, &t),
+        faint: at_least(t.faint, FAINT_RATIO, &t),
+        acc,
+        warn,
+        line: t.fg.opacity(0.38),
+        line2: t.fg.opacity(0.22),
+        line_strong: t.fg.opacity(0.6),
+        accline: acc.opacity(0.9),
+        warnline: warn.opacity(0.9),
+        sel: hover,
+        hover,
+        active: t.fg.opacity(if t.dark { 0.16 } else { 0.14 }),
+        ..t
     }
 }
 
@@ -282,36 +377,37 @@ fn hex(value: u32) -> Hsla {
 fn derive(a: &Authored) -> Theme {
     let fg = hex(a.fg);
     let acc = hex(a.acc);
-    // The numbers are lifted from the built-in palettes in `styles.css`.
-    let (line, line2, sel, default_alpha) = if a.dark {
-        (0.13, 0.06, 0.05, 0.42)
-    } else {
-        (0.11, 0.055, 0.045, 0.3)
-    };
+    // The alphas are from the design: dark first, then light.
+    let pick = |dark: f32, light: f32| if a.dark { dark } else { light };
+    let default_alpha = pick(0.42, 0.3);
     // On a dark page the accent is lifted toward the foreground first,
     // or the tint reads as a smudge. See the `--icon2` note in `styles.css`.
     let icon2 = if a.dark { mix(a.acc, a.fg, 0.74) } else { acc };
     let warn = hex(a.warn);
-    let (acc_tint, warn_tint) = if a.dark { (0.22, 0.12) } else { (0.12, 0.07) };
+    let hover = fg.opacity(pick(0.05, 0.045));
     Theme {
         dark: a.dark,
         bg: hex(a.bg),
         bg2: hex(a.bg2),
+        bg3: mix(a.bg2, a.fg, 0.95),
         fg,
         mutd: hex(a.mutd),
         faint: hex(a.faint),
-        line: fg.opacity(line),
-        line2: fg.opacity(line2),
+        line: fg.opacity(pick(0.10, 0.12)),
+        line2: fg.opacity(0.06),
+        line_strong: fg.opacity(pick(0.20, 0.22)),
         acc,
         warn,
-        sel: fg.opacity(sel),
+        sel: hover,
+        hover,
+        active: fg.opacity(pick(0.09, 0.075)),
         icon2: icon2.opacity(a.icon_alpha.unwrap_or(default_alpha)),
         shadow: hex(0x1b1a17).opacity(0.04),
-        acctint: acc.opacity(acc_tint),
-        accline: acc.opacity(0.4),
-        warntint: warn.opacity(warn_tint),
-        warnline: warn.opacity(0.4),
-        scrim: fg.opacity(0.32),
+        acctint: acc.opacity(pick(0.14, 0.10)),
+        accline: acc.opacity(0.45),
+        warntint: warn.opacity(0.10),
+        warnline: warn.opacity(0.40),
+        scrim: hsla(0.0, 0.0, 0.0, pick(0.5, 0.18)),
         dshadow: fg.opacity(0.18),
     }
 }
@@ -336,14 +432,73 @@ mod tests {
     #[test]
     fn the_tints_and_lines_follow_the_design_alphas() {
         let (paper, ink) = (Palette::Paper.theme(), Palette::Ink.theme());
-        assert!(
-            (paper.acctint.alpha - 0.12).abs() < 1e-6 && (ink.acctint.alpha - 0.22).abs() < 1e-6
-        );
-        assert!(
-            (paper.warntint.alpha - 0.07).abs() < 1e-6 && (ink.warntint.alpha - 0.12).abs() < 1e-6
-        );
-        assert!((ink.accline.alpha - 0.4).abs() < 1e-6 && (ink.warnline.alpha - 0.4).abs() < 1e-6);
-        assert!((ink.scrim.alpha - 0.32).abs() < 1e-6 && (ink.dshadow.alpha - 0.18).abs() < 1e-6);
+        let near = |a: Hsla, alpha: f32| (a.alpha - alpha).abs() < 1e-6;
+        assert!(near(paper.acctint, 0.10) && near(ink.acctint, 0.14));
+        assert!(near(paper.warntint, 0.10) && near(ink.warntint, 0.10));
+        assert!(near(ink.accline, 0.45) && near(ink.warnline, 0.40));
+        assert!(near(paper.line, 0.12) && near(ink.line, 0.10) && near(ink.line2, 0.06));
+        assert!(near(paper.line_strong, 0.22) && near(ink.line_strong, 0.20));
+        assert!(near(paper.hover, 0.045) && near(ink.hover, 0.05));
+        assert!(near(paper.active, 0.075) && near(ink.active, 0.09));
+        assert!(near(ink.scrim, 0.5) && near(paper.scrim, 0.18));
+        assert!(ink.scrim.color.lightness == 0.0 && near(ink.dshadow, 0.18));
+    }
+
+    #[test]
+    fn high_contrast_lifts_text_and_borders_in_every_palette() {
+        for p in Palette::ALL {
+            let (base, high) = (derive(&p.authored()), boost(derive(&p.authored())));
+            for bg in [high.bg, high.bg2, high.bg3] {
+                assert!(contrast_ratio(high.mutd, bg) >= MUTED_RATIO, "{}", p.name());
+                assert!(
+                    contrast_ratio(high.faint, bg) >= FAINT_RATIO,
+                    "{}",
+                    p.name()
+                );
+                assert!(contrast_ratio(high.acc, bg) >= FAINT_RATIO, "{}", p.name());
+            }
+            assert!(contrast_ratio(high.mutd, high.bg) >= contrast_ratio(base.mutd, base.bg));
+            assert!(high.line.alpha > base.line.alpha && high.line_strong.alpha > high.line.alpha);
+            assert!(high.line.alpha > high.line2.alpha, "{}", p.name());
+            // The grounds stay, so the palette keeps its look.
+            assert_eq!(
+                (high.bg, high.bg2, high.dark),
+                (base.bg, base.bg2, base.dark)
+            );
+        }
+    }
+
+    #[test]
+    fn the_contrast_ratio_runs_from_one_to_twenty_one() {
+        let (black, white) = (hsla(0.0, 0.0, 0.0, 1.0), hsla(0.0, 0.0, 1.0, 1.0));
+        assert!((contrast_ratio(black, white) - 21.0).abs() < 0.01);
+        assert!((contrast_ratio(white, white) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bg3_is_bg2_mixed_five_percent_toward_the_text() {
+        // The design table lists #26251f for Ink and #e9e7e2 for Paper.
+        // The table rounds to 8 bits, so compare to within one step.
+        let close = |a: Hsla, b: Hsla| (a.color.lightness - b.color.lightness).abs() < 0.004;
+        assert!(close(Palette::Ink.theme().bg3, hex(0x26251f)));
+        assert!(close(Palette::Paper.theme().bg3, hex(0xe9e7e2)));
+    }
+
+    #[test]
+    fn every_new_token_derives_for_a_custom_palette_too() {
+        let t = derive(&Authored {
+            dark: true,
+            bg: 0x2e3440,
+            bg2: 0x3b4252,
+            fg: 0xd8dee9,
+            mutd: 0xa3adbd,
+            faint: 0x7b88a1,
+            acc: 0x88c0d0,
+            warn: 0xebcb8b,
+            icon_alpha: None,
+        });
+        assert_eq!(t.bg3, mix(0x3b4252, 0xd8dee9, 0.95));
+        assert!(t.active.alpha > t.hover.alpha && t.line_strong.alpha > t.line.alpha);
     }
 
     #[test]

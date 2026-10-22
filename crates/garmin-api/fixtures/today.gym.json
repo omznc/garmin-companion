@@ -53,7 +53,10 @@
       "netCalorieGoal": null,
       "hydrationMl": null,
       "hydrationGoalMl": null,
-      "sweatLossMl": null
+      "sweatLossMl": null,
+      "hrvLowUpper": null,
+      "hrvBalancedLow": null,
+      "hrvBalancedUpper": null
     },
     "age": 1,
     "window": 7,
@@ -92,7 +95,8 @@
         800.0,
         300.0,
         0.0
-      ]
+      ],
+      "trainingLoad": null
     },
     "hasZoneData": true,
     "aboveZ2Pct": 33.33333333333333,
@@ -156,5 +160,10 @@
     "fuel",
     "last_session",
     "week"
-  ]
+  ],
+  "headline": {
+    "tone": "go",
+    "verdict": "Recovered. Go ahead as planned.",
+    "detail": "Your resting heart rate is at your baseline or below and you slept 7h 00m."
+  }
 }

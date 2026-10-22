@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use garmin_coach::{Event, EventSink, HistoryMessage};
+use garmin_coach::{with_period_note, Event, EventSink, HistoryMessage, Period};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -188,25 +188,46 @@ pub(crate) fn failed(e: impl ToString) -> FfiError {
     }
 }
 
+/// The arguments of `ask_send`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Send {
+pub(crate) struct SendArgs {
     session_id: String,
+    /// The id that the app gives to this turn. The events carry it.
     turn_id: String,
     history: Vec<HistoryRow>,
+    /// The first day of the period that the coach reads, `YYYY-MM-DD`.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    from: Option<String>,
+    /// The last day of the period. With `from` alone, `to` is the real today.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    to: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct HistoryRow {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct HistoryRow {
+    // shortcut: a copy of the roles in the type. The bridge accepts any string.
+    #[cfg_attr(feature = "ts-rs", ts(type = "\"user\" | \"assistant\""))]
     role: String,
     content: String,
 }
 
+/// The arguments of `ask_save_config`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Save {
+pub(crate) struct SaveConfigArgs {
+    // shortcut: a copy of the providers that a phone can use. The core knows more.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"cloud\" | \"openrouter\" | \"ollama\"")
+    )]
     provider: String,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     model: Option<String>,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     key: Option<String>,
 }
 
@@ -234,14 +255,9 @@ fn stop() {
     }
 }
 
-fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
-    let a: Send = serde_json::from_value(args.clone()).map_err(bad)?;
-    if a.session_id.is_empty() {
-        return Err(bad("sessionId is empty"));
-    }
-    if a.turn_id.is_empty() {
-        return Err(bad("turnId is empty"));
-    }
+/// The question for the thread, the history for the model and the period of
+/// the focus. The last message of the history names the period.
+fn turn_input(a: &SendArgs) -> Result<(String, Vec<HistoryMessage>, Option<Period>), FfiError> {
     let question = a
         .history
         .iter()
@@ -249,14 +265,32 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
         .find(|m| m.role == "user")
         .map(|m| m.content.clone())
         .ok_or_else(|| bad("history has no user message"))?;
-    let history: Vec<HistoryMessage> = a
+    let period = garmin_api::focus::Focus::parse(a.from.as_deref(), a.to.as_deref())
+        .map_err(bad)?
+        .map(|f| Period {
+            start: f.start,
+            end: f.end,
+        });
+    let history = a
         .history
-        .into_iter()
+        .iter()
         .map(|m| HistoryMessage {
-            role: m.role,
-            content: m.content,
+            role: m.role.clone(),
+            content: m.content.clone(),
         })
         .collect();
+    Ok((question, with_period_note(history, period), period))
+}
+
+fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
+    let a: SendArgs = serde_json::from_value(args.clone()).map_err(bad)?;
+    if a.session_id.is_empty() {
+        return Err(bad("sessionId is empty"));
+    }
+    if a.turn_id.is_empty() {
+        return Err(bad("turnId is empty"));
+    }
+    let (question, history, period) = turn_input(&a)?;
     stop();
     let turn = chat::begin_turn(fixture, &a.session_id, &question).map_err(failed)?;
     let flag = Arc::new(AtomicBool::new(false));
@@ -274,7 +308,9 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let task = if fixture {
         tokio::spawn(async move { fixture_turn(&run).await })
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag, true).await })
+        tokio::spawn(
+            async move { garmin_coach::ask_in(history, &run, &run.0.flag, true, period).await },
+        )
     };
     tokio::spawn(report_panic(task, sink));
     Ok("{}".into())
@@ -353,11 +389,14 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
     if fixture {
         let saved = SAMPLE_CONFIG.lock().unwrap_or_else(|e| e.into_inner());
         let (provider, model) = saved.clone().unwrap_or(("cloud".into(), String::new()));
-        return Ok(
-            json!({ "provider": provider, "model": model, "hasKey": false,
-            "ollamaReachable": false, "ollamaModels": [] })
-            .to_string(),
-        );
+        return serde_json::to_string(&garmin_coach::ChatConfig {
+            provider: garmin_coach::Provider::parse(&provider).map(garmin_coach::Provider::as_str),
+            model: Some(model),
+            has_key: false,
+            ollama_reachable: false,
+            ollama_models: Vec::new(),
+        })
+        .map_err(failed);
     }
     let (provider, model) = tokio::task::spawn_blocking(|| {
         let db = garmin_api::open_default_db().map_err(|e| e.to_string())?;
@@ -380,7 +419,7 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
 }
 
 fn save(args: &Value, fixture: bool) -> Result<String, FfiError> {
-    let a: Save = serde_json::from_value(args.clone()).map_err(bad)?;
+    let a: SaveConfigArgs = serde_json::from_value(args.clone()).map_err(bad)?;
     let provider =
         garmin_coach::Provider::parse(&a.provider).ok_or_else(|| bad("unknown provider"))?;
     if fixture {
@@ -545,6 +584,41 @@ mod tests {
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
     }
 
+    fn send_args(extra: Value) -> SendArgs {
+        let mut args = json!({ "sessionId": "s", "turnId": "t",
+            "history": [{ "role": "user", "content": "How did I sleep?" }] });
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(args).unwrap()
+    }
+
+    #[test]
+    fn a_send_with_dates_hands_the_period_to_the_coach() {
+        let a = send_args(json!({ "from": "2026-10-14", "to": "2026-10-20" }));
+        let (question, history, period) = turn_input(&a).unwrap();
+        let period = period.unwrap();
+        assert_eq!(period.start.to_string(), "2026-10-14");
+        assert_eq!(period.end.to_string(), "2026-10-20");
+        // The thread keeps the plain question. The model gets the period note.
+        assert_eq!(question, "How did I sleep?");
+        let last = &history.last().unwrap().content;
+        assert!(last.starts_with("How did I sleep?"));
+        assert!(last.contains("Focus period: 2026-10-14 to 2026-10-20"));
+    }
+
+    #[test]
+    fn a_send_without_dates_has_no_period_and_a_bad_date_is_refused() {
+        let (_, history, period) = turn_input(&send_args(json!({}))).unwrap();
+        assert!(period.is_none());
+        assert_eq!(history.last().unwrap().content, "How did I sleep?");
+        let bad_date = send_args(json!({ "from": "soon" }));
+        assert!(matches!(
+            turn_input(&bad_date),
+            Err(FfiError::BadArgs { .. })
+        ));
+    }
+
     fn thread(id: &str) -> Value {
         let out = chat::handle("chat_get", &json!({ "sessionId": id }), true)
             .unwrap()
@@ -623,10 +697,11 @@ mod tests {
         send_to("t-reuse", "Q2").await;
         // The old turn ends at about 400 ms, while the new turn still runs.
         tokio::time::sleep(Duration::from_millis(700)).await;
-        let saved = chat::with_store(true, |s| s.get("t-reuse"))
+        // `running` keeps the last turn as stored, so this reads the stored status.
+        let saved = garmin_api::chat::get_thread(garmin_api::Source::Sample, "t-reuse", true, None)
             .unwrap()
             .unwrap();
-        let turns = chat::decode(&saved.messages);
+        let turns = saved.turns;
         assert_eq!(turns.len(), 1);
         assert_eq!(
             (turns[0].question.as_str(), turns[0].status),

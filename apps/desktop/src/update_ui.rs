@@ -5,7 +5,8 @@
 
 use std::time::{Duration, SystemTime};
 
-use gpui::{div, prelude::*, px, ClickEvent, Context, Div};
+use crate::scale::px;
+use gpui::{div, prelude::*, ClickEvent, Context, Div};
 
 use crate::cloud::on_thread;
 use crate::controls::quiet;
@@ -31,7 +32,7 @@ pub struct UpdateState {
 }
 
 impl UpdateState {
-    fn busy(&self) -> bool {
+    pub(crate) fn busy(&self) -> bool {
         self.checking || self.installing
     }
 }
@@ -171,6 +172,21 @@ impl Root {
     }
 }
 
+/// The title bar button: its label, and whether a click works. `None` hides it.
+/// It shows only an offer that the app can install itself. It hides a manual
+/// offer, a check in progress and a demo run.
+pub fn title_button(state: &UpdateState, demo: bool) -> Option<(String, bool)> {
+    let offer = state.offer.as_ref().filter(|_| !demo && !state.checking)?;
+    if offer.kind == Kind::Manual {
+        return None;
+    }
+    Some(if state.installing {
+        ("Installing...".into(), false)
+    } else {
+        (format!("Update to {}", offer.version), true)
+    })
+}
+
 async fn check_job() -> Result<Option<Offer>, String> {
     updater::check().await.map_err(|e| format!("{e:#}"))
 }
@@ -220,8 +236,8 @@ pub fn banner(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Option<Div> {
     Some(
         div()
             .absolute()
-            // Under the title strip, clear of the Ask composer at the bottom.
-            .top(px(56.0))
+            // Under the title bar, over the page.
+            .top(px(46.0))
             .right(px(24.0))
             .max_w(px(340.0))
             .px(px(18.0))
@@ -292,9 +308,48 @@ pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
             .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx))),
         );
     }
-    let mut value = panel::stack().child(buttons);
-    if let Some(note) = status(state, t) {
-        value = value.child(note);
+    panel::row_note(
+        "Updates",
+        None,
+        status(state, t),
+        panel::stack().child(buttons),
+        t,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(kind: Kind) -> UpdateState {
+        UpdateState {
+            offer: Some(Offer {
+                version: "1.0.9".into(),
+                notes: None,
+                kind,
+                download: None,
+            }),
+            ..Default::default()
+        }
     }
-    panel::row(false, "Updates", None, value, t)
+
+    #[test]
+    fn title_button_shows_only_an_installable_offer() {
+        let mut s = state(Kind::Windows);
+        assert_eq!(
+            title_button(&s, false),
+            Some(("Update to 1.0.9".into(), true))
+        );
+        assert_eq!(title_button(&s, true), None);
+        s.installing = true;
+        assert_eq!(
+            title_button(&s, false),
+            Some(("Installing...".into(), false))
+        );
+        s.installing = false;
+        s.checking = true;
+        assert_eq!(title_button(&s, false), None);
+        assert_eq!(title_button(&state(Kind::Manual), false), None);
+        assert_eq!(title_button(&UpdateState::default(), false), None);
+    }
 }

@@ -397,11 +397,8 @@ describe("chat", () => {
     expect(r.status).toBe(200);
     await r.text();
     const sent = JSON.parse(h.fetchCalls[0].init.body as string);
-    expect(sent.model).toBeUndefined();
-    expect(sent.models).toEqual([
-      "minimax/minimax-m3.1-flash:free",
-      "deepseek/deepseek-v4.1-flash-1017",
-    ]);
+    expect(sent.model).toBe("deepseek/deepseek-v4.1-flash-1017");
+    expect(sent.models).toBeUndefined();
     expect(sent.provider).toMatchObject({ sort: "price" });
     expect(sent.reasoning).toEqual({ effort: "low" });
     // The bill uses the profile prices, so the cap must be the same prices.
@@ -410,7 +407,7 @@ describe("chat", () => {
   });
 
   it("charges nothing when the free model answered", () => {
-    const p = profileOf("deepseek");
+    const p = { ...profileOf("deepseek"), free: "minimax/minimax-m3.1-flash:free" };
     const usage = { prompt_tokens: 100_000, completion_tokens: 8000 };
     expect(costUnits(p, usage, "minimax/minimax-m3.1-flash:free")).toBe(0);
     expect(costUnits(p, usage, "minimax/minimax-m3.1-flash")).toBe(0);
@@ -548,13 +545,6 @@ describe("chat", () => {
     const r = await h.ask(id, { stream: false });
     expect(r.status).toBe(502);
     expect((await h.balance(id)).credits_remaining).toBe(30);
-  });
-
-  it("does not depend on the /v1 budget", async () => {
-    const h = harness({ DAILY_BUDGET_USD: "0" });
-    const id = await h.install();
-    h.upstream(() => sse({ choices: [] }, usageChunk(10, 10)));
-    expect((await h.ask(id)).status).toBe(200);
   });
 
   it("refuses a blocked install and, with the switch on, anonymous installs", async () => {

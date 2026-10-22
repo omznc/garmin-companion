@@ -3,8 +3,11 @@
 // The screens draw the blocks and have no other copy.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { bodyLine, DASH, one, whole } from "./bodyLine";
+import { type Focus, focusArgs, focusKey, todayIso, useFocus } from "./focus";
+import { followsFocus } from "./focusChip";
 import { fetchPlaces, type PlacesKind } from "./places";
-import { callJson } from "./source";
+import { call } from "./source";
+import { presentPlanExtras, presentStrengthCharts } from "./viewsPresent";
 import {
   type FitnessView,
   type InsightsView,
@@ -14,70 +17,13 @@ import {
   type ReportView,
 } from "./training";
 
-export type EmptyNote = { title: string; body: string };
+// The wire types come from the Rust core, through `generated/`.
+import type { EmptyNote } from "./generated/EmptyNote";
+import type { FoodView } from "./generated/FoodView";
+import type { StrengthView } from "./generated/StrengthView";
+import type { WeightView } from "./generated/WeightView";
 
-export type WeightView = {
-  empty: EmptyNote | null;
-  count: number;
-  sentence: string | null;
-  trendKg: number | null;
-  latestKg: number | null;
-  changeKg: number | null;
-  bmi: number | null;
-  windows: { days: number; sentence: string }[];
-  points: { date: string; label: string; kg: number; trendKg: number | null; outlier: boolean }[];
-  composition: {
-    date: string;
-    bodyFatPct: number | null;
-    bodyWaterPct: number | null;
-    muscleKg: number | null;
-    boneKg: number | null;
-  } | null;
-  goalSentence: string | null;
-};
-
-export type FoodView = {
-  empty: EmptyNote | null;
-  daysLogged: number;
-  avgEatenKcal: number | null;
-  avgBurnedKcal: number | null;
-  avgBalanceKcal: number | null;
-  goalKcal: number | null;
-  sentence: string;
-  water: { avgMl: number; goalMl: number | null; sentence: string } | null;
-  days: {
-    date: string;
-    label: string;
-    logged: boolean;
-    eatenKcal: number | null;
-    burnedKcal: number | null;
-    balanceKcal: number | null;
-    waterMl: number | null;
-  }[];
-};
-
-export type StrengthView = {
-  shown: boolean;
-  empty: EmptyNote | null;
-  sessionsExamined: number;
-  sessionsText: string;
-  avgSets: number | null;
-  avgReps: number | null;
-  medianRestS: number | null;
-  identifiedPct: number | null;
-  sentence: string;
-  caveat: string;
-  sessions: { activityId: number; label: string; summary: string; movements: string | null }[];
-  exercises: {
-    name: string;
-    sessions: number;
-    sets: number;
-    reps: number;
-    repsText: string;
-    detail: string;
-    history: { reps: number }[];
-  }[];
-};
+export type { EmptyNote, FoodView, StrengthView, WeightView };
 
 export type BodyKind = "weight" | "food" | "strength";
 /** A screen that draws blocks. Insights, Fitness and the weekly report come from `training.ts`. */
@@ -100,7 +46,8 @@ export type Block =
   | { kind: "empty"; title: string; body: string }
   | { kind: "actions"; actions: { id: string; label: string }[] };
 
-export type BodyScreenData = { title: string; blocks: Block[] };
+/** `weekLabel` is the date range of the report week on screen, for the share dialog. */
+export type BodyScreenData = { title: string; blocks: Block[]; weekLabel?: string };
 
 const signed = (v: number | null) =>
   v == null ? DASH : `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("en-US")}`;
@@ -251,49 +198,75 @@ export function presentStrength(v: StrengthView): BodyScreenData {
 
 const commands = { weight: "weight_view", food: "food_view", strength: "strength_view" } as const;
 
-async function fetchBody(kind: ScreenKind, offset: number): Promise<BodyScreenData> {
-  if (kind === "insights") return presentInsights(await callJson<InsightsView>("insights_view"));
-  if (kind === "fitness") return presentFitness(await callJson<FitnessView>("fitness_view"));
-  if (kind === "report")
-    return presentReport(await callJson<ReportView>("report_view", { offset }));
-  if (kind === "plan" || kind === "routes" || kind === "gear") return fetchPlaces(kind);
-  if (kind === "weight") return presentWeight(await callJson<WeightView>(commands.weight));
-  if (kind === "food") return presentFood(await callJson<FoodView>(commands.food));
-  return presentStrength(await callJson<StrengthView>(commands.strength));
+// The extra blocks come from a second view. If it fails, the screen shows without them.
+async function withExtra(
+  screen: BodyScreenData,
+  extra: () => Promise<Block[]>,
+): Promise<BodyScreenData> {
+  try {
+    return { ...screen, blocks: [...screen.blocks, ...(await extra())] };
+  } catch {
+    return screen;
+  }
 }
 
-export const useBody = (kind: ScreenKind, offset = 0) =>
-  useQuery({
-    queryKey: ["body", kind, offset],
-    queryFn: () => fetchBody(kind, offset),
+async function fetchBody(kind: ScreenKind, offset: number, focus: Focus): Promise<BodyScreenData> {
+  const args = focusArgs(focus);
+  if (kind === "insights") return presentInsights(await call("insights_view", args));
+  if (kind === "fitness") return presentFitness(await call("fitness_view", args));
+  if (kind === "report") return presentReport(await call("report_view", { offset }));
+  if (kind === "plan") {
+    const plan = await fetchPlaces(kind, focus);
+    const past = focus !== null && focus.to < todayIso();
+    return withExtra(plan, async () => presentPlanExtras(await call("extras_view", args), past));
+  }
+  if (kind === "routes" || kind === "gear") return fetchPlaces(kind, focus);
+  if (kind === "weight") return presentWeight(await call(commands.weight, args));
+  if (kind === "food") return presentFood(await call(commands.food, args));
+  const strength = presentStrength(await call(commands.strength, args));
+  return withExtra(strength, async () => presentStrengthCharts(await call("charts_view", args)));
+}
+
+export const useBody = (kind: ScreenKind, offset = 0) => {
+  const focus = useFocus();
+  return useQuery({
+    // Gear, Routes and Report ignore the focus, so it stays out of their key.
+    queryKey: ["body", kind, offset, followsFocus(kind) ? focusKey(focus) : "live"],
+    queryFn: () => fetchBody(kind, offset, focus),
     // Keep the old week on screen while the next one loads.
     placeholderData: keepPreviousData,
     // Gear asks Garmin live, so it must not refetch on each focus.
     staleTime: kind === "gear" ? 10 * 60_000 : 0,
     retry: false,
   });
+};
 
 // Fitness shows only when the cache has a training status or a record.
-export const useFitnessShown = () =>
-  useQuery({
-    queryKey: ["body", "fitness-shown"],
-    queryFn: async () => (await callJson<FitnessView>("fitness_view")).empty == null,
+export const useFitnessShown = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["body", "fitness-shown", focusKey(focus)],
+    queryFn: async () => (await call("fitness_view", focusArgs(focus))).empty == null,
     retry: false,
   });
+};
 
 // The Health list shows Strength only when the profile shows gym sessions.
-export const useStrengthShown = () =>
-  useQuery({
-    queryKey: ["body", "strength-shown"],
-    queryFn: async () => (await callJson<StrengthView>(commands.strength)).shown,
+export const useStrengthShown = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["body", "strength-shown", focusKey(focus)],
+    queryFn: async () => (await call(commands.strength, focusArgs(focus))).shown,
     retry: false,
   });
+};
 
 /** The value line of a row on the Health and More lists. */
-export const useBodyLine = (kind: BodyKind) =>
-  useQuery({
-    queryKey: ["body", "line", kind],
-    queryFn: async () =>
-      bodyLine(kind, await callJson<WeightView | FoodView | StrengthView>(commands[kind])),
+export const useBodyLine = (kind: BodyKind) => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["body", "line", kind, focusKey(focus)],
+    queryFn: async () => bodyLine(kind, await call(commands[kind], focusArgs(focus))),
     retry: false,
   });
+};

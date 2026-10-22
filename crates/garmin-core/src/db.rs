@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use crate::client::ActivitySummary;
 
 pub struct Db {
-    conn: Connection,
+    /// Visible to the crate so the storage modules for the newer tables can
+    /// keep their own SQL beside their own types.
+    pub(crate) conn: Connection,
 }
 
 /// Column list shared by every `CachedActivity` query, so the indices in
@@ -22,7 +24,7 @@ pub struct Db {
 const ACTIVITY_COLS: &str = "activity_id, name, type_key, start_time_local, local_date,
      distance_m, duration_s, moving_duration_s, avg_hr, max_hr, avg_cadence,
      calories, elevation_gain, steps, aerobic_te, anaerobic_te,
-     z1_secs, z2_secs, z3_secs, z4_secs, z5_secs";
+     z1_secs, z2_secs, z3_secs, z4_secs, z5_secs, training_load";
 
 /// Rows that are in the table but are not sessions.
 ///
@@ -88,6 +90,7 @@ fn map_activity(r: &rusqlite::Row) -> rusqlite::Result<CachedActivity> {
         aerobic_te: r.get(14)?,
         anaerobic_te: r.get(15)?,
         zone_secs: [r.get(16)?, r.get(17)?, r.get(18)?, r.get(19)?, r.get(20)?],
+        training_load: r.get(21)?,
     })
 }
 
@@ -105,6 +108,17 @@ fn map_weigh_in(r: &rusqlite::Row) -> rusqlite::Result<WeighIn> {
     })
 }
 
+/// A cache of its own for one test, empty at the start.
+#[cfg(test)]
+pub(crate) fn scratch_db(name: &str) -> Db {
+    let path = std::env::temp_dir().join(format!(
+        "garmin-companion-test-{}-{name}.sqlite",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&path);
+    Db::open(&path).expect("scratch cache")
+}
+
 /// Default on-disk location, alongside the other app data for this user.
 ///
 /// `None` means there was nowhere to put it — see `paths::base_dir`, which on
@@ -115,6 +129,12 @@ pub fn default_path() -> Option<PathBuf> {
         .map(|d| d.join("cache.sqlite3"))
 }
 
+/// How long a connection waits for a lock held by another process.
+const BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The schema version that `Db::migrate` produces, kept in `user_version`.
+const SCHEMA_VERSION: i64 = 1;
+
 impl Db {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
@@ -123,6 +143,10 @@ impl Db {
         }
         let conn =
             Connection::open(path).with_context(|| format!("could not open {}", path.display()))?;
+        // The desktop app, the mobile app and the MCP server can write the
+        // same file. rusqlite already sets 5 s; set it here to pin the value.
+        // Set it first, because the WAL switch needs a lock too.
+        conn.busy_timeout(BUSY_TIMEOUT)?;
         // WAL so the desktop app and the MCP server can both hold the cache
         // open without blocking each other.
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -137,7 +161,34 @@ impl Db {
         Self::open(&path)
     }
 
+    /// Bring the schema to `SCHEMA_VERSION`. A cache that is already current
+    /// runs no DDL. Migrations only add; they never drop or rewrite data.
     fn migrate(&self) -> Result<()> {
+        let version: i64 = self
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))?;
+        if version >= SCHEMA_VERSION {
+            return Ok(());
+        }
+        if version < 1 {
+            self.migrate_v1()?;
+        }
+        // Later migrations: add one `if version < N` step here and raise
+        // `SCHEMA_VERSION`.
+        // A read-only copy cannot take the stamp. It stays at its version.
+        if self.conn.is_readonly(rusqlite::MAIN_DB)? {
+            return Ok(());
+        }
+        self.conn
+            .pragma_update(None, "user_version", SCHEMA_VERSION)?;
+        Ok(())
+    }
+
+    /// Migration 1: the schema as it was before versioning. It is idempotent,
+    /// so a cache at version 0 with any subset of the columns passes through.
+    /// Frozen: this function and the `SCHEMA` constants of the modules that
+    /// it runs must not change. Put a schema change in a new migration.
+    fn migrate_v1(&self) -> Result<()> {
         self.conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS activities (
@@ -432,12 +483,22 @@ impl Db {
                 generated_at TEXT NOT NULL,
                 text         TEXT NOT NULL
             );
+
+            -- The last gear list that Garmin returned, as JSON. The Gear screen
+            -- reads it when Garmin cannot answer and in a copy of the cache.
+            CREATE TABLE IF NOT EXISTS gear_cache (
+                id       INTEGER PRIMARY KEY CHECK (id = 1),
+                saved_at TEXT NOT NULL,
+                json     TEXT NOT NULL
+            );
             "#,
         )?;
 
         // Columns added after the first release. SQLite has no
         // `ADD COLUMN IF NOT EXISTS`, and a duplicate column is the expected
-        // outcome on every run after the first, so it isn't an error here.
+        // outcome for a cache that already has it, so it isn't an error here.
+        // This list is frozen at version 1. A cache at version 1 never runs
+        // it again, so a new column needs a new `if version < N` step.
         for ddl in [
             "ALTER TABLE activities ADD COLUMN elevation_gain REAL",
             "ALTER TABLE activities ADD COLUMN moving_duration_s REAL",
@@ -459,12 +520,31 @@ impl Db {
             // session can legitimately have no sets and asking Garmin again on
             // every sync forever is the alternative.
             "ALTER TABLE activities ADD COLUMN sets_synced INTEGER",
+            // Garmin's load for the session. It stays null on an old row
+            // until a full sync writes the row again.
+            "ALTER TABLE activities ADD COLUMN training_load REAL",
+            // The HRV bands of the day, from the same response as the HRV
+            // figures. The status chart draws them as a shaded band.
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_low_upper REAL",
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_balanced_low REAL",
+            "ALTER TABLE daily_metrics ADD COLUMN hrv_balanced_upper REAL",
         ] {
             match self.conn.execute(ddl, []) {
                 Ok(_) => {}
                 Err(e) if e.to_string().contains("duplicate column name") => {}
                 Err(e) => return Err(e).context("could not migrate the cache schema"),
             }
+        }
+        // Tables of the newer data. Each module owns its SQL.
+        for schema in [
+            crate::intraday::SCHEMA,
+            crate::courses::SCHEMA,
+            crate::devices::SCHEMA,
+            crate::calendar::SCHEMA,
+            crate::nutrition::SCHEMA,
+            crate::vo2::SCHEMA,
+        ] {
+            self.conn.execute_batch(schema)?;
         }
         Ok(())
     }
@@ -479,11 +559,12 @@ impl Db {
                 distance_m, duration_s, avg_hr, max_hr, avg_cadence, max_cadence,
                 avg_speed, calories, aerobic_te, anaerobic_te,
                 z1_secs, z2_secs, z3_secs, z4_secs, z5_secs, raw,
-                elevation_gain, moving_duration_s, steps, has_polyline
+                elevation_gain, moving_duration_s, steps, has_polyline,
+                training_load
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                 ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21,
-                ?22, ?23, ?24, ?25
+                ?22, ?23, ?24, ?25, ?26
             )
             ON CONFLICT(activity_id) DO UPDATE SET
                 name=excluded.name, type_key=excluded.type_key,
@@ -499,7 +580,8 @@ impl Db {
                 z5_secs=excluded.z5_secs, raw=excluded.raw,
                 elevation_gain=excluded.elevation_gain,
                 moving_duration_s=excluded.moving_duration_s,
-                steps=excluded.steps, has_polyline=excluded.has_polyline
+                steps=excluded.steps, has_polyline=excluded.has_polyline,
+                training_load=excluded.training_load
             "#,
             params![
                 a.activity_id,
@@ -529,6 +611,7 @@ impl Db {
                 a.moving_duration,
                 a.steps,
                 a.has_polyline,
+                a.activity_training_load,
             ],
         )?;
         Ok(())
@@ -604,23 +687,24 @@ impl Db {
         let sql = format!(
             "SELECT {ACTIVITY_COLS}
              FROM activities
-             WHERE {NOT_NOISE} {}
+             WHERE {NOT_NOISE} AND (local_date IS NULL OR local_date <= ?2) {}
              ORDER BY start_time_local DESC
              LIMIT ?1",
             if type_key.is_some() {
-                "AND type_key LIKE '%' || ?2 || '%'"
+                "AND type_key LIKE '%' || ?3 || '%'"
             } else {
                 ""
             }
         );
 
         let mut stmt = self.conn.prepare(&sql)?;
+        let until = crate::until();
         let rows = match type_key {
             Some(t) => stmt
-                .query_map(params![limit, t], map_activity)?
+                .query_map(params![limit, until, t], map_activity)?
                 .collect::<rusqlite::Result<Vec<_>>>()?,
             None => stmt
-                .query_map(params![limit], map_activity)?
+                .query_map(params![limit, until], map_activity)?
                 .collect::<rusqlite::Result<Vec<_>>>()?,
         };
         Ok(rows)
@@ -632,11 +716,11 @@ impl Db {
     pub fn activities_since(&self, from: &str) -> Result<Vec<CachedActivity>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
-             WHERE local_date >= ?1 AND {NOT_NOISE}
+             WHERE local_date >= ?1 AND local_date <= ?2 AND {NOT_NOISE}
              ORDER BY start_time_local DESC"
         ))?;
         let rows = stmt
-            .query_map(params![from], map_activity)?
+            .query_map(params![from, crate::until()], map_activity)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -673,9 +757,10 @@ impl Db {
                 training_readiness, sleep_secs, sleep_score, steps, stress_avg,
                 body_battery_high, body_battery_low, raw,
                 consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
-                net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml
+                net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml,
+                hrv_low_upper, hrv_balanced_low, hrv_balanced_upper
             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,
-                      ?14,?15,?16,?17,?18,?19,?20,?21)
+                      ?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
             ON CONFLICT(date) DO UPDATE SET
                 resting_hr=COALESCE(excluded.resting_hr, resting_hr),
                 hrv_last_night=COALESCE(excluded.hrv_last_night, hrv_last_night),
@@ -696,7 +781,10 @@ impl Db {
                 net_calorie_goal=COALESCE(excluded.net_calorie_goal, net_calorie_goal),
                 hydration_ml=COALESCE(excluded.hydration_ml, hydration_ml),
                 hydration_goal_ml=COALESCE(excluded.hydration_goal_ml, hydration_goal_ml),
-                sweat_loss_ml=COALESCE(excluded.sweat_loss_ml, sweat_loss_ml)
+                sweat_loss_ml=COALESCE(excluded.sweat_loss_ml, sweat_loss_ml),
+                hrv_low_upper=COALESCE(excluded.hrv_low_upper, hrv_low_upper),
+                hrv_balanced_low=COALESCE(excluded.hrv_balanced_low, hrv_balanced_low),
+                hrv_balanced_upper=COALESCE(excluded.hrv_balanced_upper, hrv_balanced_upper)
             "#,
             params![
                 d.date,
@@ -720,6 +808,9 @@ impl Db {
                 d.hydration_ml,
                 d.hydration_goal_ml,
                 d.sweat_loss_ml,
+                d.hrv_low_upper,
+                d.hrv_balanced_low,
+                d.hrv_balanced_upper,
             ],
         )?;
         Ok(())
@@ -740,11 +831,12 @@ impl Db {
                     training_readiness, sleep_secs, sleep_score, steps,
                     stress_avg, body_battery_high, body_battery_low,
                     consumed_kcal, total_burn_kcal, active_kcal, bmr_kcal,
-                    net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml
-             FROM daily_metrics WHERE date >= ?1 ORDER BY date DESC",
+                    net_calorie_goal, hydration_ml, hydration_goal_ml, sweat_loss_ml,
+                    hrv_low_upper, hrv_balanced_low, hrv_balanced_upper
+             FROM daily_metrics WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(DailyMetrics {
                     date: r.get(0)?,
                     resting_hr: r.get(1)?,
@@ -766,6 +858,9 @@ impl Db {
                     hydration_ml: r.get(17)?,
                     hydration_goal_ml: r.get(18)?,
                     sweat_loss_ml: r.get(19)?,
+                    hrv_low_upper: r.get(20)?,
+                    hrv_balanced_low: r.get(21)?,
+                    hrv_balanced_upper: r.get(22)?,
                     raw: None,
                 })
             })?
@@ -840,10 +935,10 @@ impl Db {
                     awake_count, restless_count, avg_overnight_hrv, resting_hr, avg_hr,
                     avg_stress, body_battery_change, avg_respiration, low_respiration,
                     high_respiration, avg_spo2, lowest_spo2, score_parts, stages, hr
-             FROM sleep_nights WHERE date >= ?1 ORDER BY date DESC",
+             FROM sleep_nights WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(crate::sleep::SleepNight {
                     date: r.get(0)?,
                     score: r.get(1)?,
@@ -1034,7 +1129,8 @@ impl Db {
             "SELECT t.activity_id, t.point_count, t.start_lat, t.start_lon,
                     t.end_lat, t.end_lon, t.min_lat, t.max_lat, t.min_lon,
                     t.max_lon, {points_col},
-                    a.name, a.type_key, a.local_date, a.distance_m, a.duration_s
+                    a.name, a.type_key, a.local_date, a.distance_m, a.duration_s,
+                    a.elevation_gain
              FROM activity_tracks t
              JOIN activities a USING (activity_id)
              ORDER BY a.start_time_local DESC"
@@ -1059,6 +1155,7 @@ impl Db {
                     local_date: r.get(13)?,
                     distance_m: r.get(14)?,
                     duration_s: r.get(15)?,
+                    elevation_gain_m: r.get(16)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -1140,11 +1237,11 @@ impl Db {
         let mut stmt = self.conn.prepare(
             "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
                     body_water, bone_mass, muscle_mass, source_type
-             FROM weigh_ins WHERE calendar_date >= ?1
+             FROM weigh_ins WHERE calendar_date >= ?1 AND calendar_date <= ?2
              ORDER BY calendar_date ASC, sample_pk ASC",
         )?;
         let rows = stmt
-            .query_map(params![from], map_weigh_in)?
+            .query_map(params![from, crate::until()], map_weigh_in)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -1160,8 +1257,9 @@ impl Db {
             .query_row(
                 "SELECT sample_pk, calendar_date, weight_g, bmi, body_fat,
                         body_water, bone_mass, muscle_mass, source_type
-                 FROM weigh_ins ORDER BY calendar_date DESC, sample_pk DESC LIMIT 1",
-                [],
+                 FROM weigh_ins WHERE calendar_date <= ?1
+                 ORDER BY calendar_date DESC, sample_pk DESC LIMIT 1",
+                params![crate::until()],
                 map_weigh_in,
             )
             .optional()?)
@@ -1236,9 +1334,13 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT activity_id FROM activity_tags WHERE tag = ?1)
+               AND (local_date IS NULL OR local_date <= ?3)
              ORDER BY start_time_local DESC LIMIT ?2"
         ))?;
-        let rows = stmt.query_map(params![tag.trim().to_lowercase(), limit], map_activity)?;
+        let rows = stmt.query_map(
+            params![tag.trim().to_lowercase(), limit, crate::until()],
+            map_activity,
+        )?;
         Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
     }
 
@@ -1354,10 +1456,11 @@ impl Db {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT {ACTIVITY_COLS} FROM activities
              WHERE activity_id IN (SELECT DISTINCT activity_id FROM exercise_sets)
+               AND (local_date IS NULL OR local_date <= ?2)
              ORDER BY start_time_local DESC LIMIT ?1"
         ))?;
         let rows = stmt
-            .query_map(params![limit], map_activity)?
+            .query_map(params![limit, crate::until()], map_activity)?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
     }
@@ -1503,10 +1606,10 @@ impl Db {
                     aerobic_high, aerobic_high_min, aerobic_high_max,
                     anaerobic, anaerobic_min, anaerobic_max, balance_phrase,
                     vo2max, race_5k_s, race_10k_s, race_half_s, race_marathon_s
-             FROM fitness_days WHERE date >= ?1 ORDER BY date DESC",
+             FROM fitness_days WHERE date >= ?1 AND date <= ?2 ORDER BY date DESC",
         )?;
         let rows = stmt
-            .query_map(params![from], |r| {
+            .query_map(params![from, crate::until()], |r| {
                 Ok(FitnessDay {
                     date: r.get(0)?,
                     status: crate::TrainingStatus {
@@ -1605,6 +1708,15 @@ impl Db {
         Ok(changed > 0)
     }
 
+    /// Claim today's notification for a Today note, by its stable kind.
+    ///
+    /// The `note:` prefix keeps these ids apart from the coach nudge ids.
+    pub fn claim_note_notification(&self, kind: &str, today: &str) -> Result<bool> {
+        let id = format!("note:{kind}");
+        self.saw_nudge(&id, today)?;
+        self.claim_nudge_notification(&id, today)
+    }
+
     /* ------------------------------------------------------------ analysis --- */
 
     /// The stored analysis for one activity, if it was computed from `key`.
@@ -1638,6 +1750,25 @@ impl Db {
                  computed_at = excluded.computed_at,
                  json = excluded.json",
             params![activity_id, key, computed_at, json],
+        )?;
+        Ok(())
+    }
+
+    /// The last gear list that was saved, as JSON.
+    pub fn gear_json(&self) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT json FROM gear_cache WHERE id = 1", [], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn save_gear_json(&self, saved_at: &str, json: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO gear_cache (id, saved_at, json) VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                 saved_at = excluded.saved_at,
+                 json = excluded.json",
+            params![saved_at, json],
         )?;
         Ok(())
     }
@@ -1803,6 +1934,7 @@ impl Db {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CachedActivity {
     pub activity_id: i64,
@@ -1823,6 +1955,9 @@ pub struct CachedActivity {
     pub anaerobic_te: Option<f64>,
     /// Seconds in HR zones 1–5.
     pub zone_secs: [f64; 5],
+    /// Garmin's load for the session, if it sent one.
+    #[serde(default)]
+    pub training_load: Option<f64>,
 }
 
 impl CachedActivity {
@@ -1928,9 +2063,13 @@ pub struct ActivityTrack {
     pub local_date: Option<String>,
     pub distance_m: Option<f64>,
     pub duration_s: Option<f64>,
+    /// Metres climbed in the activity. Absent for an indoor session.
+    #[serde(default)]
+    pub elevation_gain_m: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyMetrics {
     pub date: String,
@@ -1957,7 +2096,13 @@ pub struct DailyMetrics {
     pub hydration_ml: Option<f64>,
     pub hydration_goal_ml: Option<f64>,
     pub sweat_loss_ml: Option<f64>,
+    /// The HRV bands of the day: the top of the "low" band and the two ends of
+    /// the "balanced" band, in ms. The first night of a new user has none.
+    pub hrv_low_upper: Option<f64>,
+    pub hrv_balanced_low: Option<f64>,
+    pub hrv_balanced_upper: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     pub raw: Option<String>,
 }
 
@@ -2056,6 +2201,17 @@ mod tests {
         Db::open(&path).expect("scratch cache")
     }
 
+    #[test]
+    fn a_note_notification_is_claimed_once_a_day_for_each_kind() {
+        let db = scratch("claim-note");
+        assert!(db.claim_note_notification("hrv", "2026-03-01").unwrap());
+        assert!(!db.claim_note_notification("hrv", "2026-03-01").unwrap());
+        assert!(db
+            .claim_note_notification("resting-hr", "2026-03-01")
+            .unwrap());
+        assert!(db.claim_note_notification("hrv", "2026-03-02").unwrap());
+    }
+
     fn day(date: &str, resting_hr: f64) -> DailyMetrics {
         DailyMetrics {
             date: date.into(),
@@ -2110,6 +2266,56 @@ mod tests {
     }
 
     #[test]
+    fn an_as_of_date_keeps_a_row_with_no_local_date() {
+        let db = scratch("null-local-date");
+        db.upsert_activity(&activity(
+            1,
+            "running",
+            "2026-03-10",
+            30.0,
+            serde_json::json!(140),
+        ))
+        .unwrap();
+        db.upsert_activity(&activity(
+            2,
+            "running",
+            "2026-03-10",
+            30.0,
+            serde_json::json!(140),
+        ))
+        .unwrap();
+        db.conn
+            .execute(
+                "UPDATE activities SET local_date = NULL WHERE activity_id = 2",
+                [],
+            )
+            .unwrap();
+        db.set_activity_tags(2, &["easy".to_string()]).unwrap();
+        db.save_exercise_sets(
+            2,
+            &[crate::ExerciseSet {
+                activity_id: 2,
+                set_index: 0,
+                active: true,
+                duration_s: None,
+                reps: Some(5),
+                exercise: None,
+                exercise_confidence: None,
+                weight_kg: None,
+                start_time: None,
+            }],
+        )
+        .unwrap();
+        let as_of = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap();
+        crate::with_as_of(as_of, || {
+            let ids = |v: Vec<CachedActivity>| v.iter().map(|a| a.activity_id).collect::<Vec<_>>();
+            assert_eq!(ids(db.recent_activities(10, None).unwrap()), vec![2]);
+            assert_eq!(ids(db.activities_with_tag("easy", 10).unwrap()), vec![2]);
+            assert_eq!(ids(db.strength_activities(10).unwrap()), vec![2]);
+        });
+    }
+
+    #[test]
     fn a_ride_keeps_its_cadence() {
         let db = scratch("ride-cadence");
         let row = |id: i64, key: &str, field: &str| {
@@ -2137,6 +2343,53 @@ mod tests {
         assert_eq!(cadence(1), Some(88.0));
         assert_eq!(cadence(2), Some(88.0));
         assert_eq!(cadence(3), None);
+    }
+
+    #[test]
+    fn the_training_load_of_a_session_is_kept_and_read_back() {
+        let db = scratch("training-load");
+        let row = |id: i64, load: Option<f64>| {
+            serde_json::from_value::<ActivitySummary>(serde_json::json!({
+                "activityId": id,
+                "startTimeLocal": "2026-03-10 07:00:00",
+                "activityTrainingLoad": load,
+            }))
+            .unwrap()
+        };
+        db.upsert_activity(&row(1, Some(87.5))).unwrap();
+        db.upsert_activity(&row(2, None)).unwrap();
+        assert_eq!(db.activity(1).unwrap().unwrap().training_load, Some(87.5));
+        assert_eq!(db.activity(2).unwrap().unwrap().training_load, None);
+    }
+
+    #[test]
+    fn the_hrv_bands_of_a_day_are_kept_and_a_later_empty_reply_keeps_them() {
+        let db = scratch("hrv-bands");
+        db.upsert_daily(&DailyMetrics {
+            date: "2026-03-10".into(),
+            hrv_last_night: Some(50.0),
+            hrv_low_upper: Some(40.0),
+            hrv_balanced_low: Some(45.0),
+            hrv_balanced_upper: Some(60.0),
+            ..Default::default()
+        })
+        .unwrap();
+        db.upsert_daily(&DailyMetrics {
+            date: "2026-03-10".into(),
+            hrv_last_night: Some(52.0),
+            ..Default::default()
+        })
+        .unwrap();
+        let row = &db.daily_since("2026-03-10").unwrap()[0];
+        assert_eq!(row.hrv_last_night, Some(52.0));
+        assert_eq!(
+            (
+                row.hrv_low_upper,
+                row.hrv_balanced_low,
+                row.hrv_balanced_upper
+            ),
+            (Some(40.0), Some(45.0), Some(60.0))
+        );
     }
 
     fn hours_since(db: &Db, from: &str) -> f64 {
@@ -2263,5 +2516,147 @@ mod tests {
             Some("2026-06-08"),
             "the newest date, not the last one written"
         );
+    }
+
+    fn version_of(db: &Db) -> i64 {
+        db.conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap()
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "garmin-companion-test-{}-{name}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
+    fn has_column(db: &Db, table: &str, column: &str) -> bool {
+        let mut stmt = db
+            .conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get(1))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        names.iter().any(|n| n == column)
+    }
+
+    #[test]
+    fn a_fresh_cache_is_at_the_current_version() {
+        let db = scratch("version-fresh");
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert!(has_column(&db, "daily_metrics", "hrv_balanced_upper"));
+    }
+
+    #[test]
+    fn an_old_cache_gains_the_new_columns_and_keeps_its_rows() {
+        let path = temp_path("version-old");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE activities (
+                     activity_id INTEGER PRIMARY KEY, name TEXT, type_key TEXT,
+                     start_time_local TEXT, local_date TEXT, distance_m REAL,
+                     duration_s REAL, avg_hr REAL, max_hr REAL, avg_cadence REAL,
+                     max_cadence REAL, avg_speed REAL, calories REAL,
+                     aerobic_te REAL, anaerobic_te REAL,
+                     z1_secs REAL NOT NULL DEFAULT 0, z2_secs REAL NOT NULL DEFAULT 0,
+                     z3_secs REAL NOT NULL DEFAULT 0, z4_secs REAL NOT NULL DEFAULT 0,
+                     z5_secs REAL NOT NULL DEFAULT 0, raw TEXT);
+                 CREATE TABLE daily_metrics (
+                     date TEXT PRIMARY KEY, resting_hr REAL, hrv_last_night REAL,
+                     hrv_weekly_avg REAL, hrv_status TEXT, training_readiness REAL,
+                     sleep_secs REAL, sleep_score REAL, steps INTEGER,
+                     stress_avg REAL, body_battery_high REAL,
+                     body_battery_low REAL, raw TEXT);
+                 CREATE TABLE chat_sessions (
+                     session_id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL, title TEXT NOT NULL,
+                     message_count INTEGER NOT NULL DEFAULT 0, messages TEXT NOT NULL);
+                 INSERT INTO activities (activity_id, name) VALUES (7, 'Old run');
+                 INSERT INTO daily_metrics (date, resting_hr) VALUES ('2025-01-01', 51.0);
+                 INSERT INTO chat_sessions VALUES ('s', 'a', 'b', 'Q', 1, '[]');",
+            )
+            .unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert!(has_column(&db, "activities", "training_load"));
+        assert!(has_column(&db, "daily_metrics", "hydration_ml"));
+        let name: String = db
+            .conn
+            .query_row(
+                "SELECT name FROM activities WHERE activity_id = 7",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(name, "Old run");
+        let chats: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(chats, 1);
+    }
+
+    #[test]
+    fn a_current_cache_at_version_zero_is_stamped_and_keeps_its_rows() {
+        let path = temp_path("version-zero");
+        {
+            let db = Db::open(&path).unwrap();
+            db.upsert_daily(&day("2026-06-06", 50.0)).unwrap();
+            db.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        assert_eq!(version_of(&db), SCHEMA_VERSION);
+        assert_eq!(
+            db.newest_daily_date().unwrap().as_deref(),
+            Some("2026-06-06")
+        );
+    }
+
+    #[test]
+    fn a_read_only_cache_at_version_zero_still_opens() {
+        let path = temp_path("version-readonly");
+        {
+            let db = Db::open(&path).unwrap();
+            db.conn.pragma_update(None, "user_version", 0).unwrap();
+        }
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&path, perms).unwrap();
+        let opened = Db::open(&path).map(|db| version_of(&db));
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        std::fs::set_permissions(&path, perms).unwrap();
+        assert_eq!(opened.unwrap(), 0);
+    }
+
+    #[test]
+    fn reopening_a_current_cache_runs_no_ddl() {
+        let path = temp_path("version-reopen");
+        drop(Db::open(&path).unwrap());
+        // A table that the migration would recreate stays gone only when the
+        // migration is skipped.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("DROP TABLE gear_cache").unwrap();
+        }
+        let db = Db::open(&path).unwrap();
+        let tables: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'gear_cache'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0);
     }
 }

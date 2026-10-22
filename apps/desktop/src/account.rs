@@ -51,13 +51,22 @@ pub struct Account {
     /// Made-up data. Nothing reaches Garmin or the data folder.
     pub demo: bool,
     pub sync: Sync,
+    /// When the last sync failed. It starts the back-off of the timed sync.
+    pub sync_failed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub sign_in: SignIn,
     pub settings: Option<SettingsView>,
     pub synced_ago: Option<String>,
     pub mode: ThemeMode,
+    /// Stronger text and border contrast. A demo keeps it in memory only.
+    pub high_contrast: bool,
     /// The light and dark palette, the themes folder and the theme store.
     pub themes: Themes,
     pub token_path: Field,
+    /// The search field of Settings, and the section that it shows.
+    pub settings_search: Field,
+    pub settings_page: usize,
+    /// The window y of the top of each section, from the last layout.
+    pub settings_tops: std::rc::Rc<std::cell::RefCell<Vec<f32>>>,
     pub token_path_default: Option<String>,
     /// The coach settings and the cloud account.
     pub cloud: Cloud,
@@ -79,10 +88,14 @@ impl Account {
             ),
             _ => SignIn::Idle,
         };
+        let high_contrast = !demo && settings::prefs().high_contrast;
+        crate::theme::set_high_contrast(high_contrast);
         Self {
+            high_contrast,
             connected: demo || status.as_ref().is_some_and(|s| s.connected),
             demo,
             sync: Sync::Idle,
+            sync_failed_at: None,
             sign_in,
             settings: None,
             synced_ago: if demo { None } else { settings::synced_ago() },
@@ -93,6 +106,13 @@ impl Account {
             },
             themes: Themes::new(demo, cx),
             token_path: Field::new("Path to garmin_tokens.json", false, cx),
+            settings_search: {
+                let mut f = Field::new("Search settings", false, cx);
+                f.sans = true;
+                f
+            },
+            settings_page: 0,
+            settings_tops: Default::default(),
             token_path_default: status.and_then(|s| s.importable_token_path),
             cloud: Cloud::new(cx),
             update: Default::default(),
@@ -217,9 +237,13 @@ impl Root {
             Msg::Progress(line) => self.account.sync = Sync::Running(line),
             Msg::Finished(Ok(line)) => {
                 self.account.sync = Sync::Done(line);
+                self.account.sync_failed_at = None;
                 self.reload(cx);
             }
-            Msg::Finished(Err(error)) => self.account.sync = Sync::Failed(error),
+            Msg::Finished(Err(error)) => {
+                self.account.sync = Sync::Failed(error);
+                self.account.sync_failed_at = Some(chrono::Utc::now());
+            }
         }
     }
 
@@ -298,12 +322,28 @@ impl Root {
         cx.notify();
     }
 
+    /// Turn high contrast on or off. The choice is saved, except in demo mode.
+    pub fn set_high_contrast(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.account.high_contrast = on;
+        crate::theme::set_high_contrast(on);
+        if !self.account.demo {
+            if let Err(e) = settings::set_high_contrast(on) {
+                eprintln!("could not save high contrast: {e}");
+            }
+        }
+        cx.notify();
+    }
+
     /// Read the Today view and the settings again, after a sync. The reads run
     /// on the background executor. The screens keep the old data until then.
-    fn reload(&mut self, cx: &mut Context<Self>) {
-        let source = self.source.clone();
+    pub(crate) fn reload(&mut self, cx: &mut Context<Self>) {
+        self.roll_focus(cx);
+        let source = self.focused_source();
+        self.places.set_day(self.focus.end);
+        let (cache, day) = self.places.cache();
+        // The store, the exports and the report follow the focused day.
+        self.store.set_day(day);
         let store = self.store.clone();
-        let offset = self.training.as_ref().map_or(0, |t| t.report.offset);
         let live = !self.account.demo;
         load_async(
             self,
@@ -313,8 +353,10 @@ impl Root {
                 today: data::load_today(&source),
                 wellness: wellness::load(&source),
                 body: body::load_body(&source),
-                training: training::load(&source, offset),
+                training: training::load(&source, 0),
+                activities: store.count(),
                 list: store.list(),
+                views: crate::views::Views::load(&cache, day),
                 synced_ago: live.then(settings::synced_ago),
             },
             |root, read, cx| {
@@ -343,7 +385,9 @@ impl Root {
             Ok(training) => self.training = Some(training),
             Err(e) => eprintln!("could not reload Insights, Fitness and Reports: {e:#}"),
         }
+        self.views = read.views;
         self.list = read.list;
+        self.set_activity_count(read.activities);
         if let Some(synced_ago) = read.synced_ago {
             self.account.synced_ago = synced_ago;
         }
@@ -378,6 +422,8 @@ struct Reloaded {
     body: anyhow::Result<body::BodyData>,
     training: anyhow::Result<training::Training>,
     list: anyhow::Result<garmin_api::ActivitiesView>,
+    activities: Option<i64>,
+    views: crate::views::Views,
     synced_ago: Option<Option<String>>,
 }
 

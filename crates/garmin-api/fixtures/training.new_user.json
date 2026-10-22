@@ -40,7 +40,15 @@
       "figures": [],
       "dailyTitle": "",
       "daily": [],
-      "sessions": []
+      "sessions": [],
+      "extras": {
+        "load": null,
+        "priorLoad": null,
+        "avgHrv": null,
+        "priorAvgHrv": null,
+        "weightKg": null,
+        "weightChangeKg": null
+      }
     }
   ]
 }

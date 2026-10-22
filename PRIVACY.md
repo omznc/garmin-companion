@@ -1,6 +1,6 @@
 # Privacy policy
 
-Garmin Companion. Last change: 2026-10-20.
+Garmin Companion. Last change: 2026-10-21.
 
 Garmin Companion is a free, open source app for Android, iOS, Windows, macOS
 and Linux. Omar Zunic makes it. Garmin Ltd. does not make or support it.
@@ -17,6 +17,9 @@ cloud coach, and only when you use the cloud coach.
 - The app downloads your Garmin data (activities, routes, sleep, heart rate,
   weight, body data and other health data) from Garmin to your device. It keeps
   this data in a local database on the device.
+- The app can sync in the background and show notifications. You turn the
+  notifications on in the app. The app makes them on your device from the data
+  on your device. It uses no push server and sends nothing for them.
 - The app does not send this data to the developer. It has no analytics, no
   advertising and no crash reports.
 
@@ -33,6 +36,13 @@ The coach answers questions about your data. You choose where it runs:
   directly to OpenRouter. The coach server gets nothing.
 - **Ollama**: the app sends the question and the data rows to the Ollama
   computer that you choose. Nobody else gets them.
+- **Claude Code, OpenCode or Codex** (desktop only): the app starts the
+  command that you choose (`claude`, `opencode` or `codex`) on your computer.
+  It sends your question and the Garmin data that the tools of the app return
+  to this command. The command sends them to its AI model provider, under your
+  own account and the policies of that provider. With OpenCode, the provider is
+  the one that you set in OpenCode. This can be a model on your computer. The
+  coach server gets nothing.
 
 Chat history stays on your device.
 

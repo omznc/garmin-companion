@@ -21,7 +21,19 @@ pub enum Provider {
     Cloud,
     Openrouter,
     Ollama,
+    /// The `claude` command on this computer, with the app's own tools over
+    /// MCP. A desktop only: a phone cannot start a process.
+    #[serde(rename = "claude_code")]
+    ClaudeCode,
+    /// The `opencode` command, same design as `ClaudeCode`.
+    #[serde(rename = "opencode")]
+    OpenCode,
+    /// The `codex` command, same design as `ClaudeCode`.
+    Codex,
 }
+
+/// The model alias that Claude Code gets when none was chosen.
+pub const DEFAULT_CLAUDE_MODEL: &str = "sonnet";
 
 impl Provider {
     pub fn parse(s: &str) -> Option<Self> {
@@ -29,6 +41,9 @@ impl Provider {
             "cloud" => Some(Self::Cloud),
             "openrouter" => Some(Self::Openrouter),
             "ollama" => Some(Self::Ollama),
+            "claude_code" => Some(Self::ClaudeCode),
+            "opencode" => Some(Self::OpenCode),
+            "codex" => Some(Self::Codex),
             _ => None,
         }
     }
@@ -38,13 +53,26 @@ impl Provider {
             Self::Cloud => "cloud",
             Self::Openrouter => "openrouter",
             Self::Ollama => "ollama",
+            Self::ClaudeCode => "claude_code",
+            Self::OpenCode => "opencode",
+            Self::Codex => "codex",
         }
+    }
+
+    /// A local command that answers with the app's tools over MCP.
+    pub fn is_cli(self) -> bool {
+        matches!(self, Self::ClaudeCode | Self::OpenCode | Self::Codex)
+    }
+
+    /// A choice that needs this computer: Ollama or a local command.
+    pub fn is_local(self) -> bool {
+        self == Self::Ollama || self.is_cli()
     }
 
     /// The base URL of the chat API. The hosted coach has its own client.
     pub(crate) fn base(self) -> Option<&'static str> {
         match self {
-            Self::Cloud => None,
+            Self::Cloud | Self::ClaudeCode | Self::OpenCode | Self::Codex => None,
             Self::Openrouter => Some(OPENROUTER_BASE),
             Self::Ollama => Some(OLLAMA_BASE),
         }
@@ -55,13 +83,15 @@ impl Provider {
     fn default_model(self) -> Option<&'static str> {
         match self {
             Self::Openrouter => Some(DEFAULT_OPENROUTER_MODEL),
-            Self::Cloud | Self::Ollama => None,
+            Self::ClaudeCode => Some(DEFAULT_CLAUDE_MODEL),
+            Self::Cloud | Self::Ollama | Self::OpenCode | Self::Codex => None,
         }
     }
 }
 
 /// What a settings screen needs to draw the current choice.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ChatConfig {
     pub provider: Option<&'static str>,
@@ -81,9 +111,10 @@ pub(crate) fn default_provider(has_own_key: bool) -> Provider {
     }
 }
 
-/// A phone cannot reach a local Ollama, so a phone drops that choice.
+/// A phone cannot reach a local Ollama or start a local command, so a phone
+/// drops those choices.
 fn usable(saved: Option<Provider>, phone: bool) -> Option<Provider> {
-    saved.filter(|p| !(phone && *p == Provider::Ollama))
+    saved.filter(|p| !(phone && p.is_local()))
 }
 
 /// The saved choice, or the default. The provider is always set.
@@ -155,7 +186,14 @@ mod tests {
 
     #[test]
     fn providers_round_trip_through_their_names() {
-        for p in [Provider::Cloud, Provider::Openrouter, Provider::Ollama] {
+        for p in [
+            Provider::Cloud,
+            Provider::Openrouter,
+            Provider::Ollama,
+            Provider::ClaudeCode,
+            Provider::OpenCode,
+            Provider::Codex,
+        ] {
             assert_eq!(Provider::parse(p.as_str()), Some(p));
         }
         assert_eq!(Provider::parse("nope"), None);
@@ -180,6 +218,15 @@ mod tests {
             usable(Some(Provider::Ollama), false),
             Some(Provider::Ollama)
         );
+        assert_eq!(usable(Some(Provider::ClaudeCode), true), None);
+        assert_eq!(
+            usable(Some(Provider::ClaudeCode), false),
+            Some(Provider::ClaudeCode)
+        );
+        for p in [Provider::OpenCode, Provider::Codex] {
+            assert_eq!(usable(Some(p), true), None);
+            assert_eq!(usable(Some(p), false), Some(p));
+        }
         assert_eq!(usable(Some(Provider::Cloud), true), Some(Provider::Cloud));
     }
 

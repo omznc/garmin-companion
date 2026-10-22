@@ -2,7 +2,9 @@
 // "Material You" takes the colours of the wallpaper (Android 12 and later). The other
 // swatches are seed colours. Compose builds a full Material 3 scheme from each seed.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { Pressable, Switch, View } from "react-native";
+import { useTabsEditor } from "../nav/useTabsEditor";
 import { ListRow, SectionLabel, T } from "../components/MdKit";
 import { THEMES as SCHEMES, useSettingsActions } from "../data/useSettingsActions";
 import { isMaterialYouAvailable, useMd } from "../theme/md";
@@ -119,14 +121,51 @@ function HighContrastRow() {
       supporting="Darker text and lines"
       onPress={toggle}
       trailing={
-        // The row takes the touch, so the switch only shows the state.
+        // The Android switch ignores pointerEvents and flips itself, so it must report the change.
         <Switch
-          pointerEvents="none"
           value={highContrast}
+          onValueChange={(on) => setThemePref("highContrast", on)}
           trackColor={{ false: md.surfaceContainerHighest, true: md.primary }}
           thumbColor={highContrast ? md.onPrimary : md.outline}
         />
       }
+    />
+  );
+}
+
+function NoVibrationRow() {
+  const md = useMd();
+  const { noVibration } = useThemePrefs();
+  const set = (on: boolean) => setThemePref("noVibration", on);
+  return (
+    <ListRow
+      icon="vibration"
+      title="No vibration"
+      supporting="Turn off the haptic feedback"
+      onPress={() => set(!noVibration)}
+      trailing={
+        // The Android switch ignores pointerEvents and flips itself, so it must report the change.
+        <Switch
+          value={noVibration}
+          onValueChange={set}
+          trackColor={{ false: md.surfaceContainerHighest, true: md.primary }}
+          thumbColor={noVibration ? md.onPrimary : md.outline}
+        />
+      }
+    />
+  );
+}
+
+function TabsRow() {
+  const router = useRouter();
+  const { start } = useTabsEditor();
+  return (
+    <ListRow
+      icon="tab"
+      title="Tabs"
+      supporting={`Order and start tab. Opens on ${start.title}.`}
+      chevron
+      onPress={() => router.push("/more/tabs")}
     />
   );
 }
@@ -150,6 +189,12 @@ export function AppearancePage() {
       <Swatches />
       <Section title="Contrast">
         <HighContrastRow />
+      </Section>
+      <Section title="Navigation">
+        <TabsRow />
+      </Section>
+      <Section title="Feedback">
+        <NoVibrationRow />
       </Section>
     </Page>
   );

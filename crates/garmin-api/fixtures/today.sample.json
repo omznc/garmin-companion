@@ -53,7 +53,10 @@
       "netCalorieGoal": null,
       "hydrationMl": null,
       "hydrationGoalMl": null,
-      "sweatLossMl": null
+      "sweatLossMl": null,
+      "hrvLowUpper": null,
+      "hrvBalancedLow": null,
+      "hrvBalancedUpper": null
     },
     "age": 1,
     "window": 7,
@@ -69,6 +72,7 @@
   "weight": null,
   "attention": [
     {
+      "kind": "resting-hr",
       "accent": true,
       "text": "Resting heart rate is 5 bpm above your 40-day baseline across the last 3 mornings.",
       "spark": [
@@ -91,9 +95,11 @@
       "link": {
         "label": "Ask about this",
         "to": "/ask"
-      }
+      },
+      "insight": "recovery-drivers"
     },
     {
+      "kind": "hrv",
       "accent": true,
       "text": "HRV has averaged 41 ms over the last five nights, down from 54 ms in the fortnight before.",
       "spark": [
@@ -112,7 +118,8 @@
         41.0,
         41.0
       ],
-      "sparkUnit": "ms"
+      "sparkUnit": "ms",
+      "insight": "recovery-drivers"
     }
   ],
   "lastSession": {
@@ -139,7 +146,8 @@
         300.0,
         100.0,
         0.0
-      ]
+      ],
+      "trainingLoad": null
     },
     "hasZoneData": true,
     "aboveZ2Pct": 25.806451612903224,
@@ -270,5 +278,10 @@
     "last_session",
     "week",
     "zone_drift"
-  ]
+  ],
+  "headline": {
+    "tone": "rest",
+    "verdict": "Take it easy today.",
+    "detail": "Your resting heart rate is 5 bpm above your baseline and your load this week is high against your usual. You slept 7h 00m."
+  }
 }

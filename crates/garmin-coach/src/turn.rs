@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 
 use crate::prompt::{grounding_message, system_message, trim_history};
 use crate::sse::ToolCall;
-use crate::tools;
+use crate::tools::{self, Period};
 use crate::transport::{HttpTransport, Transport};
 
 /// Cap on tool rounds in one turn. Every tool reads a bounded slice, so a model
@@ -27,6 +27,7 @@ pub struct HistoryMessage {
 /// What a turn reports to the host. The JSON form is the payload of the mobile
 /// `ask` event: `{"type":"delta","text":"..."}`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export, rename = "AskEvent"))]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -72,20 +73,38 @@ pub trait EventSink: Send + Sync {
 
 /// Run one turn with the saved config. The result goes to the sink as `Done`
 /// or `Error`. A stopped turn ends with `Done`, and the host keeps the text.
-pub async fn ask(
+/// A `period` bounds what the tools read.
+pub async fn ask_in(
     history: Vec<HistoryMessage>,
     sink: &dyn EventSink,
     stop: &AtomicBool,
     drafts: bool,
+    period: Option<Period>,
 ) {
     let transport = Db::open_default().and_then(|db| HttpTransport::from_config(&db));
     match transport {
         Ok(t) => {
             // The turn reports its own end to the sink.
-            let _ = run_turn(&t, sink, stop, history, &Db::open_default, drafts).await;
+            let _ = run_turn_in(&t, sink, stop, history, &Db::open_default, drafts, period).await;
         }
         Err(e) => sink.emit(Event::Error { text: chain(&e) }),
     }
+}
+
+/// The last message gets one more line that names the period, so the model
+/// answers from that period. The thread on screen does not show the line.
+pub fn with_period_note(
+    mut messages: Vec<HistoryMessage>,
+    period: Option<Period>,
+) -> Vec<HistoryMessage> {
+    if let (Some(p), Some(last)) = (period, messages.last_mut()) {
+        last.content = format!(
+            "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
+             The tools read this period: they count days back from its last day.",
+            last.content, p.start, p.end
+        );
+    }
+    messages
 }
 
 /// The engine. `open_db` opens the cache for each tool call and for the
@@ -100,7 +119,21 @@ pub async fn run_turn<T: Transport>(
     open_db: &(dyn Fn() -> Result<Db> + Sync),
     drafts: bool,
 ) -> Result<Vec<String>> {
-    match rounds(transport, sink, stop, history, open_db, drafts).await {
+    run_turn_in(transport, sink, stop, history, open_db, drafts, None).await
+}
+
+/// [`run_turn`] with a `period`. When set, "today" for every tool is the end
+/// of the period, and a tool call without `days` reads the whole period.
+pub async fn run_turn_in<T: Transport>(
+    transport: &T,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+    history: Vec<HistoryMessage>,
+    open_db: &(dyn Fn() -> Result<Db> + Sync),
+    drafts: bool,
+    period: Option<Period>,
+) -> Result<Vec<String>> {
+    match rounds(transport, sink, stop, history, open_db, drafts, period).await {
         Ok(sources) => {
             sink.emit(Event::Done {
                 sources: sources.clone(),
@@ -129,10 +162,11 @@ async fn rounds<T: Transport>(
     history: Vec<HistoryMessage>,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
     drafts: bool,
+    period: Option<Period>,
 ) -> Result<Vec<String>> {
     let mut messages = vec![
         system_message(transport.caches_prompt(), drafts),
-        grounding_message(&open_db()?)?,
+        grounding_message(&open_db()?, period)?,
     ];
     messages.extend(
         trim_history(history)
@@ -188,7 +222,7 @@ async fn rounds<T: Transport>(
             let args: Value = serde_json::from_str(&call.arguments).unwrap_or(json!({}));
             let label = tools::describe(&call.name, &args);
             sink.emit(tool_event(&call.id, &label, true, true));
-            let result = run_call(&call.name, &args, drafts, open_db);
+            let result = run_call(&call.name, &args, drafts, open_db, period);
             let ok = result.get("error").is_none();
             sink.emit(tool_event(&call.id, &label, false, ok));
             report_call(sink, &mut sources, call, &args, label, ok);
@@ -226,11 +260,12 @@ fn run_call(
     args: &Value,
     drafts: bool,
     open_db: &(dyn Fn() -> Result<Db> + Sync),
+    period: Option<Period>,
 ) -> Value {
     if name == tools::DRAFT_TOOL && !drafts {
         return json!({ "error": format!("unknown tool {name}") });
     }
-    tools::run(name, args, open_db)
+    tools::run(name, args, open_db, period)
 }
 
 /// Tell the host what a finished call produced. A read adds its label to the
@@ -287,6 +322,25 @@ mod tests {
     use super::*;
     use crate::sse::{SseParser, StreamResult};
     use std::sync::Mutex;
+
+    #[test]
+    fn a_period_adds_its_dates_to_the_last_message_only() {
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        let msg = |t: &str| HistoryMessage {
+            role: "user".into(),
+            content: t.into(),
+        };
+        let period = Some(Period {
+            start: day(14),
+            end: day(20),
+        });
+        let out = with_period_note(vec![msg("a"), msg("b")], period);
+        assert_eq!(out[0].content, "a");
+        assert!(out[1]
+            .content
+            .contains("Focus period: 2026-10-14 to 2026-10-20 (ISO dates)."));
+        assert_eq!(with_period_note(vec![msg("a")], None)[0].content, "a");
+    }
 
     #[derive(Default)]
     struct Rec(Mutex<Vec<Event>>);
