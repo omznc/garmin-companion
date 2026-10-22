@@ -51,10 +51,14 @@ pub struct Account {
     /// Made-up data. Nothing reaches Garmin or the data folder.
     pub demo: bool,
     pub sync: Sync,
+    /// When the last sync failed. It starts the back-off of the timed sync.
+    pub sync_failed_at: Option<chrono::DateTime<chrono::Utc>>,
     pub sign_in: SignIn,
     pub settings: Option<SettingsView>,
     pub synced_ago: Option<String>,
     pub mode: ThemeMode,
+    /// Stronger text and border contrast. A demo keeps it in memory only.
+    pub high_contrast: bool,
     /// The light and dark palette, the themes folder and the theme store.
     pub themes: Themes,
     pub token_path: Field,
@@ -84,10 +88,14 @@ impl Account {
             ),
             _ => SignIn::Idle,
         };
+        let high_contrast = !demo && settings::prefs().high_contrast;
+        crate::theme::set_high_contrast(high_contrast);
         Self {
+            high_contrast,
             connected: demo || status.as_ref().is_some_and(|s| s.connected),
             demo,
             sync: Sync::Idle,
+            sync_failed_at: None,
             sign_in,
             settings: None,
             synced_ago: if demo { None } else { settings::synced_ago() },
@@ -229,9 +237,13 @@ impl Root {
             Msg::Progress(line) => self.account.sync = Sync::Running(line),
             Msg::Finished(Ok(line)) => {
                 self.account.sync = Sync::Done(line);
+                self.account.sync_failed_at = None;
                 self.reload(cx);
             }
-            Msg::Finished(Err(error)) => self.account.sync = Sync::Failed(error),
+            Msg::Finished(Err(error)) => {
+                self.account.sync = Sync::Failed(error);
+                self.account.sync_failed_at = Some(chrono::Utc::now());
+            }
         }
     }
 
@@ -307,6 +319,18 @@ impl Root {
             }
         }
         self.reload_settings(cx);
+        cx.notify();
+    }
+
+    /// Turn high contrast on or off. The choice is saved, except in demo mode.
+    pub fn set_high_contrast(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.account.high_contrast = on;
+        crate::theme::set_high_contrast(on);
+        if !self.account.demo {
+            if let Err(e) = settings::set_high_contrast(on) {
+                eprintln!("could not save high contrast: {e}");
+            }
+        }
         cx.notify();
     }
 

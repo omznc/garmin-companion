@@ -22,6 +22,11 @@ theme_light: string,
  */
 theme_dark: string, 
 /**
+ * Stronger text and border contrast in the active palette. The desktop
+ * app reads it. The mobile apps keep their own switch.
+ */
+high_contrast: boolean, 
+/**
  * The mobile tabs, left to right, as stable keys. It lists the tabs that can
  * move: `More` is not in it and stays last. Empty means the shipped order.
  * The desktop sidebar has its own `nav_order`.

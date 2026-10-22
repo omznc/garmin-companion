@@ -65,6 +65,7 @@ icons! {
     ChevronLeft => "stroke/chevron-left",
     ChevronRight => "stroke/chevron-right",
     Plus => "stroke/plus",
+    History => "stroke/history",
     X => "stroke/x",
     Grip => "stroke/grip",
     GridPlus => "stroke/grid-plus",

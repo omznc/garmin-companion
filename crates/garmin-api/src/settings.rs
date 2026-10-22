@@ -47,6 +47,9 @@ pub struct Prefs {
     pub theme_light: String,
     /// The palette for dark mode. The same form as `theme_light`.
     pub theme_dark: String,
+    /// Stronger text and border contrast in the active palette. The desktop
+    /// app reads it. The mobile apps keep their own switch.
+    pub high_contrast: bool,
     /// The mobile tabs, left to right, as stable keys. It lists the tabs that can
     /// move: `More` is not in it and stays last. Empty means the shipped order.
     /// The desktop sidebar has its own `nav_order`.
@@ -129,6 +132,11 @@ pub fn set_palettes(theme_light: String, theme_dark: String) -> Result<Prefs, Ap
     })
 }
 
+/// Save the high contrast switch. The other settings stay as they were.
+pub fn set_high_contrast(high_contrast: bool) -> Result<Prefs, ApiError> {
+    update(|p| p.high_contrast = high_contrast)
+}
+
 fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
     let json =
         serde_json::to_string_pretty(&prefs).map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -191,9 +199,13 @@ pub fn settings_view() -> Result<SettingsView, ApiError> {
 /// How long ago the last sync ran, such as "3 hours ago". `None` when the cache
 /// has never synced or cannot open.
 pub fn synced_ago() -> Option<String> {
-    let (_, last_sync) = cache_facts();
-    let when = DateTime::parse_from_rfc3339(&last_sync?).ok()?;
-    Some(since(when.with_timezone(&Utc), Utc::now()))
+    Some(since(last_sync()?, Utc::now()))
+}
+
+/// When the last good sync ended. `None` when the cache has never synced.
+pub fn last_sync() -> Option<DateTime<Utc>> {
+    let when = DateTime::parse_from_rfc3339(&cache_facts().1?).ok()?;
+    Some(when.with_timezone(&Utc))
 }
 
 /// The cached activity count and the last sync time. A cache that cannot open
@@ -338,6 +350,15 @@ mod tests {
         set_palettes("linen".into(), "custom:x".into()).unwrap();
         assert_eq!(prefs().theme, ThemeMode::Dark);
         assert_eq!(prefs().theme_dark, "custom:x");
+        // High contrast saves, reads back, and keeps the other settings.
+        assert!(!prefs().high_contrast);
+        assert!(set_high_contrast(true).unwrap().high_contrast);
+        assert!(prefs().high_contrast);
+        assert_eq!(prefs().theme_dark, "custom:x");
+        set_theme(ThemeMode::Light).unwrap();
+        assert!(prefs().high_contrast);
+        assert!(!set_high_contrast(false).unwrap().high_contrast);
+        assert!(!prefs().high_contrast);
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
         the_tab_order_is_checked_and_kept_apart_from_the_sidebar();

@@ -126,6 +126,11 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -
     }
     let (hover, fg) = (t.hover, t.fg);
     let screen = root.active;
+    // The Ask screen names its thread, or Recents.
+    let ask_tail = (screen == crate::screen::Screen::Ask)
+        .then(|| root.ask.read(cx).crumb_tail())
+        .flatten();
+    let crumb = ask_tail.unwrap_or_else(|| root.crumb(t));
     let home = div()
         .id("crumb-home")
         .flex_none()
@@ -154,7 +159,7 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
-                    .child(SharedString::from(root.crumb(t))),
+                    .child(SharedString::from(crumb.clone())),
             )
             .child(icon(Icon::ChevronDown, 10.0, t, t.faint));
     let pick = if root.crumb_picks() {
@@ -168,7 +173,7 @@ pub fn crumb_bar(root: &Root, narrow: bool, t: &Theme, cx: &mut Context<Root>) -
             .overflow_hidden()
             .text_ellipsis()
             .text_color(t.fg)
-            .child(SharedString::from(root.crumb(t)))
+            .child(SharedString::from(crumb.clone()))
     };
     let synced = root
         .account

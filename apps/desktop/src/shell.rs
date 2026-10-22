@@ -45,7 +45,10 @@ pub struct AskStart {
 /// Build the Ask screen with its start state.
 pub fn new_ask(start: AskStart, palette: Palette, cx: &mut Context<Root>) -> Entity<Ask> {
     let ask = cx.new(|cx| Ask::new(start.source, palette, cx));
-    ask.update(cx, |ask, cx| ask.refresh_credits(cx));
+    ask.update(cx, |ask, cx| {
+        ask.refresh_credits(cx);
+        ask.restore(cx);
+    });
     cx.subscribe(&ask, |root, _, event: &AskEvent, cx| root.on_ask(event, cx))
         .detach();
     if let Some(question) = start.question {
@@ -541,6 +544,9 @@ impl Root {
         if screen == Screen::Activities {
             self.close_activity(cx);
         } else {
+            if screen == Screen::Ask {
+                self.ask.update(cx, |ask, cx| ask.show_chat(cx));
+            }
             self.page = Page::List;
             self.restart_page(cx);
         }
