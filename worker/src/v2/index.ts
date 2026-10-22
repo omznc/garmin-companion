@@ -4,7 +4,7 @@
  * The limits here are meant to hold even though the app binary is public:
  * credits are decided on the server, every request holds an upper-bound estimate
  * before it reaches the model, and the OpenRouter key has its own spend limit.
- * Like /v1, nothing here reads or logs a conversation.
+ * Nothing here reads or logs a conversation.
  */
 import { normalizeEmail, isSessionToken, sendCode, sessionUser, signOut, verifyCode } from "./auth";
 import { createCheckout, createPortal, entitlementOf, handlePolarWebhook } from "./billing";
@@ -516,7 +516,7 @@ async function callUpstream(env: V2Env, body: string): Promise<Response> {
     return await fetch(UPSTREAM, {
       method: "POST",
       headers: {
-        // A separate key keeps a /v2 key limit from stopping /v1 users.
+        // An optional separate key gives /v2 its own OpenRouter limit.
         Authorization: `Bearer ${env.OPENROUTER_KEY_V2 ?? env.OPENROUTER_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/omznc/garmin-companion",

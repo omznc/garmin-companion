@@ -120,8 +120,6 @@ export function harness(vars: Record<string, unknown> = {}) {
 
   const env = {
     OPENROUTER_KEY: "not-a-real-key",
-    MODEL: "unused-by-v2",
-    DAILY_BUDGET_USD: "5",
     COUNTERS: {
       get: async (k: string) => kv.get(k) ?? null,
       put: async (k: string, v: string) => void kv.set(k, v),

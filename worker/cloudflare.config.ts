@@ -18,12 +18,7 @@ export default defineConfig({
     // Deletes expired login codes and sessions, and old webhook ids. 03:17 UTC daily.
     triggers: [triggers.scheduled({ schedule: "17 3 * * *" })],
     env: {
-      // --- /v1: frozen for v0.9.1 users. Do not change. ---
-      MODEL: bindings.text("inclusionai/ling-3.0-flash"),
-      // USD across all /v1 users per UTC day.
-      DAILY_BUDGET_USD: bindings.text("5"),
-      // Per-day request counts and the running spend. Eventually consistent,
-      // which is fine: the budget is a ceiling with a soft edge, not a ledger.
+      // Install ids and block flags. Eventually consistent.
       COUNTERS: bindings.kv({
         id: "b34d6d482b4e43e9afa0864c9faac10e",
         dev: { remote: true },
@@ -33,7 +28,7 @@ export default defineConfig({
       BURST: bindings.rateLimit({ namespace: "1001", simple: { limit: 30, period: 60 } }),
       ISSUE: bindings.rateLimit({ namespace: "1002", simple: { limit: 3, period: 60 } }),
 
-      // --- /v2: the paid coach. See V2.md. ---
+      // The paid coach. See V2.md.
       // `haiku` or `deepseek`, from src/v2/models.ts. The swap is this one line.
       MODEL_PROFILE: bindings.text("deepseek"),
       // "true" stops free grants for anonymous installs. Keep it off until abuse shows.
