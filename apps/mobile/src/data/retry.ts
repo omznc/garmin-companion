@@ -1,7 +1,7 @@
 // The retry policy of the queries. The Rust core already retries a GET 3 times
 // for a transport error, a 429 and a 5xx. The app must not repeat that work.
-// shortcut: the kind is "internal" for all core faults, so we read the message.
-// Use a typed kind when the core gives one.
+// shortcut: the kind is "internal" for most core faults, so we read the message.
+// Only "offline" is a typed transport kind.
 
 const NO_RETRY_KINDS = new Set(["not_connected", "bad_arguments", "unknown_command"]);
 // "request to <path> failed" is the core text for a transport error.
@@ -15,6 +15,7 @@ const MAX_RETRIES = 1;
 export function isTransient(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const kind = (error as { kind?: string }).kind;
+  if (kind === "offline") return true;
   if (kind && NO_RETRY_KINDS.has(kind)) return false;
   const message = error.message;
   return !REFUSED.test(message) && TRANSPORT.test(message.replace(/^internal: /, ""));

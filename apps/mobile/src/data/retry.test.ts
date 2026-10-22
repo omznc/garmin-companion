@@ -5,7 +5,7 @@ import { isTransient, shouldRetry } from "./retry.ts";
 const fault = (message: string, kind?: string) => Object.assign(new Error(message), { kind });
 
 test("retries a transport error once", () => {
-  const error = fault("internal: request to /sleep failed: timed out", "internal");
+  const error = fault("No connection to Garmin.", "offline");
   assert.equal(shouldRetry(0, error), true);
   assert.equal(shouldRetry(1, error), false);
 });

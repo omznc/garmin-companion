@@ -72,30 +72,22 @@ const SYNC_KEYS = [
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
-const untilActive = () =>
-  new Promise<void>((resolve) => {
-    if (AppState.currentState === "active") return resolve();
-    const sub = AppState.addEventListener("change", (s) => {
-      if (s !== "active") return;
-      sub.remove();
-      resolve();
-    });
-  });
+// A run that the system cut off in the background shows no error. The next return to the
+// foreground runs it again. It does not wait in the queue, so the OS background task is never stuck.
+type CutOff = { cutOff?: boolean };
+const isCutOff = (e: unknown) => (e as CutOff | null)?.cutOff === true;
 
-// Run the sync. If the system blocked the network in the background, wait for the foreground and run it
-// once more. The promise ends only when the sync really ended, so a caller can await it.
-async function runWithRetry(args: SyncArgs): Promise<SyncSummary> {
+async function runTracked(args: SyncArgs): Promise<SyncSummary> {
   const states: string[] = [String(AppState.currentState)];
   const sub = AppState.addEventListener("change", (s) => states.push(s));
   try {
     return await runSync(args);
   } catch (e) {
-    if (!shouldRetryOffline(e, states)) throw e;
+    if (shouldRetryOffline(e, states)) Object.assign(e as object, { cutOff: true });
+    throw e;
   } finally {
     sub.remove();
   }
-  await untilActive();
-  return runSync(args);
 }
 
 function runOnce(args: SyncArgs): Promise<SyncSummary> {
@@ -113,7 +105,7 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     if (state.phase !== null && p.phase !== state.phase) refetchSyncData();
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
-  return runWithRetry(args)
+  return runTracked(args)
     .then(async (summary) => {
       markSynced();
       set({ line: summary.line });
@@ -122,7 +114,7 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
       return summary;
     })
     .catch((e: unknown) => {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      if (!isCutOff(e)) set({ error: e instanceof Error ? e.message : String(e) });
       throw e;
     })
     .finally(() => {
@@ -151,8 +143,9 @@ export async function quickSync(): Promise<boolean> {
     await startSync({ days: QUICK_DAYS });
     failedAt = null;
     return true;
-  } catch {
-    failedAt = Date.now();
+  } catch (e) {
+    // A cut-off run is not a Garmin fault, so the next return to the foreground may sync at once.
+    if (!isCutOff(e)) failedAt = Date.now();
     set({ error: null });
     return false;
   }
@@ -179,13 +172,23 @@ export async function importHistory() {
     clearHistoryPending();
     set({ importing: false, importPass: null });
   } catch (e) {
+    importCut = isCutOff(e);
     // Today offers a retry.
     set({
       importing: false,
       importPass: null,
-      importError: e instanceof Error ? e.message : String(e),
+      importError: importCut ? null : e instanceof Error ? e.message : String(e),
     });
   }
+}
+
+let importCut = false;
+
+// Called when the app comes back to the foreground: take up an import that the system cut off.
+export function resumeCutImport() {
+  if (!importCut || state.importing) return;
+  importCut = false;
+  void importHistory();
 }
 
 export function useSync() {
