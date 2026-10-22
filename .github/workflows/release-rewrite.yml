@@ -423,6 +423,7 @@ jobs:
           cp parts/*/* release/
           printf '%s\n' "$NOTES" > notes.md
           node scripts/release-rewrite.mjs manifest "$VERSION" "$GITHUB_REPOSITORY" notes.md release release/latest.json
+          sh scripts/latest-names.sh release "$VERSION"
           cat release/latest.json
           ls -la release
 
@@ -464,6 +465,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
         run: |
-          # The desktop files and latest.json only. The mobile files are already there.
-          gh release upload "v$VERSION" --clobber release/latest.json $(ls parts/desktop-*/* | xargs -n1 basename | sed 's|^|release/|')
+          # The desktop files, latest.json and the copies without the version.
+          # The mobile files are already there.
+          gh release upload "v$VERSION" --clobber release/latest.json \
+            $(ls parts/desktop-*/* | xargs -n1 basename | sed 's|^|release/|') \
+            $(sh scripts/latest-names.sh release "$VERSION")
           git push --force origin "$GITHUB_SHA:refs/tags/v$VERSION"
