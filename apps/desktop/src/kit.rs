@@ -553,7 +553,6 @@ pub fn segmented(id: &'static str, options: &[&'static str], chosen: usize, t: &
 }
 
 /// `.switch`: 30 by 17, with a round thumb.
-#[allow(dead_code)]
 pub fn switch(on: bool, t: &Theme) -> Div {
     let (ground, thumb) = if on { (t.acc, t.bg) } else { (t.line, t.faint) };
     let thumb = div().size(px(13.0)).rounded_full().bg(thumb);

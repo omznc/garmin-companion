@@ -46,6 +46,9 @@ pub struct Prefs {
     pub theme_light: String,
     /// The palette for dark mode. The same form as `theme_light`.
     pub theme_dark: String,
+    /// Stronger text and border contrast in the active palette. The desktop
+    /// app reads it. The mobile apps keep their own switch.
+    pub high_contrast: bool,
 }
 
 fn prefs_path() -> Result<PathBuf, ApiError> {
@@ -79,6 +82,14 @@ pub fn set_palettes(theme_light: String, theme_dark: String) -> Result<Prefs, Ap
     save(Prefs {
         theme_light,
         theme_dark,
+        ..prefs()
+    })
+}
+
+/// Save the high contrast switch. The other settings stay as they were.
+pub fn set_high_contrast(high_contrast: bool) -> Result<Prefs, ApiError> {
+    save(Prefs {
+        high_contrast,
         ..prefs()
     })
 }

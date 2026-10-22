@@ -5,9 +5,10 @@
 //! split as `crates/garmin-core/src/theme.rs` and `app/src/lib/customTheme.ts`.
 //! No colour literal lives outside this file.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use gpui::{hsla, rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
+use gpui::{hsla, hsla_to_rgba, rgb, rgb_to_hsla, ColorExt, Hsla, Rgba};
 
 /// The type scale of the design. Every size below display comes from these steps.
 /// Micro is the mono meta and key hint. Caption is a card title and a button.
@@ -267,7 +268,89 @@ impl Palette {
 
     /// Light and dark Paper are two palettes here, as in the stylesheet.
     pub fn theme(self) -> Theme {
-        derive(&self.authored())
+        let theme = derive(&self.authored());
+        if high_contrast() {
+            boost(theme)
+        } else {
+            theme
+        }
+    }
+}
+
+static HIGH_CONTRAST: AtomicBool = AtomicBool::new(false);
+
+/// Turn the high contrast switch on or off. Every `Palette::theme` call follows it.
+pub fn set_high_contrast(on: bool) {
+    HIGH_CONTRAST.store(on, Ordering::Relaxed);
+}
+
+pub fn high_contrast() -> bool {
+    HIGH_CONTRAST.load(Ordering::Relaxed)
+}
+
+/// The contrast ratio that the muted text and the faint text reach at least.
+const MUTED_RATIO: f32 = 7.0;
+const FAINT_RATIO: f32 = 4.5;
+
+fn luminance(c: Hsla) -> f32 {
+    let c = hsla_to_rgba(c);
+    let lin = |v: f32| {
+        if v <= 0.039_28 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.red) + 0.7152 * lin(c.green) + 0.0722 * lin(c.blue)
+}
+
+/// The WCAG contrast ratio of two colours, from 1 to 21.
+pub fn contrast_ratio(a: Hsla, b: Hsla) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// A colour moved toward `to` by `share`, in sRGB.
+fn toward(from: Hsla, to: Hsla, share: f32) -> Hsla {
+    let (a, b) = (hsla_to_rgba(from), hsla_to_rgba(to));
+    let m = |x: f32, y: f32| x + (y - x) * share;
+    rgb_to_hsla(Rgba::new(
+        m(a.red, b.red),
+        m(a.green, b.green),
+        m(a.blue, b.blue),
+        from.alpha,
+    ))
+}
+
+/// `colour`, moved toward the text colour in 5% steps until it reaches `ratio`
+/// on both grounds. The text colour itself ends the walk.
+fn at_least(colour: Hsla, ratio: f32, t: &Theme) -> Hsla {
+    (0..=20)
+        .map(|i| toward(colour, t.fg, i as f32 * 0.05))
+        .find(|c| contrast_ratio(*c, t.bg) >= ratio && contrast_ratio(*c, t.bg2) >= ratio)
+        .unwrap_or(t.fg)
+}
+
+/// The high contrast form of a theme: stronger muted text, faint text, accent
+/// and borders. The grounds and the tints stay, so the palette keeps its look.
+fn boost(t: Theme) -> Theme {
+    let hover = t.fg.opacity(if t.dark { 0.09 } else { 0.08 });
+    let acc = at_least(t.acc, FAINT_RATIO, &t);
+    let warn = at_least(t.warn, FAINT_RATIO, &t);
+    Theme {
+        mutd: at_least(t.mutd, MUTED_RATIO, &t),
+        faint: at_least(t.faint, FAINT_RATIO, &t),
+        acc,
+        warn,
+        line: t.fg.opacity(0.38),
+        line2: t.fg.opacity(0.22),
+        line_strong: t.fg.opacity(0.6),
+        accline: acc.opacity(0.9),
+        warnline: warn.opacity(0.9),
+        sel: hover,
+        hover,
+        active: t.fg.opacity(if t.dark { 0.16 } else { 0.14 }),
+        ..t
     }
 }
 
@@ -355,6 +438,37 @@ mod tests {
         assert!(near(paper.active, 0.075) && near(ink.active, 0.09));
         assert!(near(ink.scrim, 0.5) && near(paper.scrim, 0.18));
         assert!(ink.scrim.color.lightness == 0.0 && near(ink.dshadow, 0.18));
+    }
+
+    #[test]
+    fn high_contrast_lifts_text_and_borders_in_every_palette() {
+        for p in Palette::ALL {
+            let (base, high) = (derive(&p.authored()), boost(derive(&p.authored())));
+            for bg in [high.bg, high.bg2] {
+                assert!(contrast_ratio(high.mutd, bg) >= MUTED_RATIO, "{}", p.name());
+                assert!(
+                    contrast_ratio(high.faint, bg) >= FAINT_RATIO,
+                    "{}",
+                    p.name()
+                );
+                assert!(contrast_ratio(high.acc, bg) >= FAINT_RATIO, "{}", p.name());
+            }
+            assert!(contrast_ratio(high.mutd, high.bg) >= contrast_ratio(base.mutd, base.bg));
+            assert!(high.line.alpha > base.line.alpha && high.line_strong.alpha > high.line.alpha);
+            assert!(high.line.alpha > high.line2.alpha, "{}", p.name());
+            // The grounds stay, so the palette keeps its look.
+            assert_eq!(
+                (high.bg, high.bg2, high.dark),
+                (base.bg, base.bg2, base.dark)
+            );
+        }
+    }
+
+    #[test]
+    fn the_contrast_ratio_runs_from_one_to_twenty_one() {
+        let (black, white) = (hsla(0.0, 0.0, 0.0, 1.0), hsla(0.0, 0.0, 1.0, 1.0));
+        assert!((contrast_ratio(black, white) - 21.0).abs() < 0.01);
+        assert!((contrast_ratio(white, white) - 1.0).abs() < 1e-6);
     }
 
     #[test]

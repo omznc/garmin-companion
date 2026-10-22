@@ -20,4 +20,9 @@ theme_light: string,
 /**
  * The palette for dark mode. The same form as `theme_light`.
  */
-theme_dark: string, };
+theme_dark: string,
+/**
+ * Stronger text and border contrast in the active palette. The desktop
+ * app reads it. The mobile apps keep their own switch.
+ */
+high_contrast: boolean, };

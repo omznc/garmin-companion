@@ -448,6 +448,11 @@ fn main() -> anyhow::Result<()> {
                     {
                         root.account.settings_page = at;
                     }
+                    // For screenshots: `GC_HIGH_CONTRAST=1` turns high contrast on.
+                    #[cfg(debug_assertions)]
+                    if std::env::var("GC_HIGH_CONTRAST").is_ok() {
+                        root.set_high_contrast(true, cx);
+                    }
                     // For screenshots: `GC_SHOW_SETUP=1` shows the Setup screen on a demo run.
                     #[cfg(debug_assertions)]
                     if std::env::var("GC_SHOW_SETUP").is_ok() {

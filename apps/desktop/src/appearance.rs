@@ -59,6 +59,24 @@ fn mode_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
     panel::row(true, "Mode", Some(help), panel::stack().child(control), t)
 }
 
+/// `High contrast`: stronger text and borders in the active palette.
+fn contrast_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
+    let on = root.account.high_contrast;
+    let control = div()
+        .id("high-contrast")
+        .cursor_pointer()
+        .child(crate::kit::switch(on, t))
+        .on_click(cx.listener(move |root, _: &ClickEvent, _, cx| root.set_high_contrast(!on, cx)));
+    let help = "Stronger text, accent and border colours in the active palette.";
+    panel::row(
+        false,
+        "High contrast",
+        Some(help),
+        panel::stack().justify_center().child(control),
+        t,
+    )
+}
+
 /// `.mini`: a small picture of a palette in its own colours.
 fn mini(p: &Theme) -> Div {
     let bar = |share: f32, h: f32, colour: Hsla| {
@@ -286,6 +304,10 @@ pub fn rows(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Vec<(&'static str
     vec![
         ("mode match system light dark theme", mode_row(root, t, cx)),
         ("interface scale zoom size text controls", scale_row(t, cx)),
+        (
+            "high contrast accessibility stronger text border",
+            contrast_row(root, t, cx),
+        ),
         (
             "light palette colours theme",
             palette_row(root, false, t, cx),

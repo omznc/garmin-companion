@@ -88,10 +88,14 @@ impl Account {
             ),
             _ => SignIn::Idle,
         };
+        let high_contrast = !demo && settings::prefs().high_contrast;
+        crate::theme::set_high_contrast(high_contrast);
         Self {
+            high_contrast,
             connected: demo || status.as_ref().is_some_and(|s| s.connected),
             demo,
             sync: Sync::Idle,
+            sync_failed_at: None,
             sign_in,
             settings: None,
             synced_ago: if demo { None } else { settings::synced_ago() },
@@ -233,9 +237,13 @@ impl Root {
             Msg::Progress(line) => self.account.sync = Sync::Running(line),
             Msg::Finished(Ok(line)) => {
                 self.account.sync = Sync::Done(line);
+                self.account.sync_failed_at = None;
                 self.reload(cx);
             }
-            Msg::Finished(Err(error)) => self.account.sync = Sync::Failed(error),
+            Msg::Finished(Err(error)) => {
+                self.account.sync = Sync::Failed(error);
+                self.account.sync_failed_at = Some(chrono::Utc::now());
+            }
         }
     }
 
