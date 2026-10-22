@@ -140,7 +140,10 @@ fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
     let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     write_synced(&temp, &json)
         .and_then(|()| std::fs::rename(&temp, &path))
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&temp);
+            ApiError::Internal(e.to_string())
+        })?;
     Ok(prefs)
 }
 
@@ -339,6 +342,7 @@ mod tests {
         assert_eq!(prefs().theme, ThemeMode::System);
         the_tab_order_is_checked_and_kept_apart_from_the_sidebar();
         saves_in_parallel_all_succeed_and_keep_the_other_fields();
+        parallel_saves_lose_no_change();
         let _ = std::fs::remove_file(base.join(PREFS_FILE));
     }
 
@@ -398,5 +402,28 @@ mod tests {
         assert_eq!(saved.tab_order.len(), 4);
         assert_eq!(saved.start_tab, "today");
         assert!(saved.theme_light.starts_with("light"));
+    }
+
+    /// It runs inside the round-trip test. Each thread is the only writer of its field.
+    fn parallel_saves_lose_no_change() {
+        let order = |i: usize| {
+            let mut tabs: Vec<String> = MOVABLE_TABS.iter().map(|t| t.to_string()).collect();
+            tabs.rotate_left(i % 4);
+            tabs
+        };
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                for i in 0..100 {
+                    set_tab_order(order(i), "today".into()).unwrap();
+                    assert_eq!(prefs().tab_order, order(i));
+                }
+            });
+            scope.spawn(|| {
+                for i in 0..100 {
+                    set_palettes(format!("light{i}"), format!("dark{i}")).unwrap();
+                    assert_eq!(prefs().theme_light, format!("light{i}"));
+                }
+            });
+        });
     }
 }

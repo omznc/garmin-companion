@@ -133,7 +133,7 @@ The same app and the same data, with three things worth knowing:
   details.
 - **The nav is a bottom bar.** It has five tabs: Today, Activities, Health,
   Sleep and **More**. Everything else is behind More. To change the order of
-  the tabs, open More, then Tabs. You can also choose the tab that the app opens
+  the tabs, open More, then Appearance, then Tabs. You can also choose the tab that the app opens
   on. More stays last. The phone keeps its own order, so the sidebar on the
   desktop does not change. On iOS, the new order shows after you close the app
   fully and open it again.

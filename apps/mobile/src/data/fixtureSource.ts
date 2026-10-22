@@ -52,14 +52,15 @@ const fixtureSync: SyncSummary = {
   warnings: [],
 };
 
-function fixtureTabsCall(cmd: string, args: unknown): unknown {
-  if (cmd !== "prefs" && cmd !== "set_tab_order") return undefined;
-  if (cmd === "set_tab_order") {
-    const a = args as { tabOrder: string[]; startTab: string };
-    fixtureTabs.tab_order = a.tabOrder;
-    fixtureTabs.start_tab = a.startTab;
-  }
+function fixturePrefs(): unknown {
   return { ...fixtureTabs, theme: fixtureAccount.theme };
+}
+
+function fixtureSetTabOrder(args: unknown): unknown {
+  const a = args as { tabOrder: string[]; startTab: string };
+  fixtureTabs.tab_order = a.tabOrder;
+  fixtureTabs.start_tab = a.startTab;
+  return fixturePrefs();
 }
 
 function fixtureAccountCall(cmd: string, args: unknown): unknown {
@@ -115,6 +116,8 @@ const firstFixtures: Record<string, (args: unknown) => unknown> = {
   today: () => fixture,
   activities: () => activitiesFixture,
   activity_detail: activityDetail,
+  prefs: fixturePrefs,
+  set_tab_order: fixtureSetTabOrder,
 };
 
 const lastFixtures: Record<string, (args: unknown) => unknown> = {
@@ -128,7 +131,7 @@ export const fixtureSource: Source = {
   async call(cmd, args) {
     const first = firstFixtures[cmd];
     if (first) return JSON.stringify(first(args));
-    const account = fixtureTabsCall(cmd, args) ?? fixtureAccountCall(cmd, args);
+    const account = fixtureAccountCall(cmd, args);
     if (account !== undefined) return JSON.stringify(account);
     const recorded = wellnessFixture(cmd) ?? trainingFixture(cmd, args) ?? placesFixture(cmd);
     if (recorded) return JSON.stringify(recorded);
