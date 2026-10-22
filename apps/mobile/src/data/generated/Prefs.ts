@@ -20,4 +20,14 @@ theme_light: string,
 /**
  * The palette for dark mode. The same form as `theme_light`.
  */
-theme_dark: string, };
+theme_dark: string, 
+/**
+ * The mobile tabs, left to right, as stable keys. It lists the tabs that can
+ * move: `More` is not in it and stays last. Empty means the shipped order.
+ * The desktop sidebar has its own `nav_order`.
+ */
+tab_order: Array<string>, 
+/**
+ * The mobile tab that the app opens on, as a stable key. Empty means `today`.
+ */
+start_tab: string, };

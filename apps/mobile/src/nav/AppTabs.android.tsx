@@ -5,7 +5,14 @@ import { Tabs, useRouter } from "expo-router";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostTheme, useMd } from "../theme/md";
-import { TABS } from "./tabs";
+import { launchTabPrefs, useTabPrefs } from "./tabPrefs";
+import { orderedTabs, startTab } from "./tabs";
+
+// The screens in the router state. The order is fixed at launch: the start tab, then the rest.
+function launchScreens() {
+  const first = startTab(launchTabPrefs.start);
+  return [first, ...orderedTabs(launchTabPrefs.order).filter((t) => t.name !== first.name)];
+}
 
 const ICONS = {
   today: require("../../assets/icons/today.xml"),
@@ -15,21 +22,23 @@ const ICONS = {
   more: require("../../assets/icons/more.xml"),
 };
 
-function TabBar({ index }: { index: number }) {
+// The bar draws the tabs in the saved order. The router state keeps the order of the first launch.
+function TabBar({ current }: { current: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const md = useMd();
   const host = useHostTheme();
+  const prefs = useTabPrefs();
   return (
     <View style={{ paddingBottom: insets.bottom, backgroundColor: md.surfaceContainer }}>
       <Host matchContents={{ vertical: true }} {...host} style={{ width: "100%" }}>
         <NavigationBar>
-          {TABS.map((tab, i) => (
+          {orderedTabs(prefs.order).map((tab) => (
             <NavigationBarItem
               key={tab.name}
-              selected={index === i}
+              selected={current === tab.name}
               onClick={() => {
-                if (index !== i) {
+                if (current !== tab.name) {
                   router.navigate(`/${tab.name}`);
                 }
               }}
@@ -53,9 +62,10 @@ export function AppTabs() {
   return (
     <Tabs
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: md.surface } }}
-      tabBar={(props) => <TabBar index={props.state.index} />}
+      tabBar={(props) => <TabBar current={props.state.routes[props.state.index]?.name ?? ""} />}
     >
-      {TABS.map((tab) => (
+      {/* The start tab comes first, so the back key from another tab returns to it. */}
+      {launchScreens().map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.title }} />
       ))}
     </Tabs>

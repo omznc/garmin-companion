@@ -264,6 +264,15 @@ pub struct NavOrderArgs {
     default_screen: String,
 }
 
+/// The arguments of `set_tab_order`. An empty list and an empty string reset.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TabOrderArgs {
+    tab_order: Vec<String>,
+    start_tab: String,
+}
+
 /// The arguments of `set_palettes`.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
@@ -295,6 +304,10 @@ fn account_call(cmd: &str, args: &str) -> Result<String, ApiError> {
         "set_theme" => run(args, |a: ThemeArgs| settings::set_theme(a.theme)),
         "set_nav_order" => run(args, |a: NavOrderArgs| {
             settings::set_nav_order(a.nav_order, a.default_screen)
+        }),
+        "prefs" => encode(&settings::prefs()),
+        "set_tab_order" => run(args, |a: TabOrderArgs| {
+            settings::set_tab_order(a.tab_order, a.start_tab)
         }),
         "set_palettes" => run(args, |a: PalettesArgs| {
             settings::set_palettes(a.theme_light, a.theme_dark)
@@ -389,6 +402,17 @@ mod tests {
             call("set_nav_order", "{}"),
             Err(ApiError::BadArguments(_))
         ));
+        // A bad tab list is refused before the prefs file is written.
+        for args in [
+            "{}",
+            r#"{"tabOrder":["today"],"startTab":""}"#,
+            r#"{"tabOrder":[],"startTab":"gear"}"#,
+        ] {
+            assert!(matches!(
+                call("set_tab_order", args),
+                Err(ApiError::BadArguments(_))
+            ));
+        }
     }
 
     #[test]

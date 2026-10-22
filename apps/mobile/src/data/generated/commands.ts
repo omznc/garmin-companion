@@ -44,6 +44,7 @@ import type { StrengthView } from "./StrengthView";
 import type { SyncArgs } from "./SyncArgs";
 import type { SyncEvent } from "./SyncEvent";
 import type { SyncSummary } from "./SyncSummary";
+import type { TabOrderArgs } from "./TabOrderArgs";
 import type { ThemeArgs } from "./ThemeArgs";
 import type { Thread } from "./Thread";
 import type { ThreadList } from "./ThreadList";
@@ -92,6 +93,8 @@ export type Commands = {
   set_theme: { args: ThemeArgs; result: Prefs };
   set_nav_order: { args: NavOrderArgs; result: Prefs };
   set_palettes: { args: PalettesArgs; result: Prefs };
+  prefs: { args: undefined; result: Prefs };
+  set_tab_order: { args: TabOrderArgs; result: Prefs };
   sync: { args: SyncArgs | undefined; result: SyncSummary };
   ask_send: { args: SendArgs; result: Empty };
   ask_stop: { args: undefined; result: Empty };

@@ -46,7 +46,16 @@ pub struct Prefs {
     pub theme_light: String,
     /// The palette for dark mode. The same form as `theme_light`.
     pub theme_dark: String,
+    /// The mobile tabs, left to right, as stable keys. It lists the tabs that can
+    /// move: `More` is not in it and stays last. Empty means the shipped order.
+    /// The desktop sidebar has its own `nav_order`.
+    pub tab_order: Vec<String>,
+    /// The mobile tab that the app opens on, as a stable key. Empty means `today`.
+    pub start_tab: String,
 }
+
+/// The mobile tabs that the person can move.
+const MOVABLE_TABS: [&str; 4] = ["today", "activities", "health", "sleep"];
 
 fn prefs_path() -> Result<PathBuf, ApiError> {
     Ok(paths::base_dir()?.join(PREFS_FILE))
@@ -70,6 +79,30 @@ pub fn set_nav_order(nav_order: Vec<String>, default_screen: String) -> Result<P
     save(Prefs {
         nav_order,
         default_screen,
+        ..prefs()
+    })
+}
+
+/// Save the mobile tab order and the start tab. An empty order and an empty
+/// start tab mean the shipped values. The order must list each movable tab once.
+pub fn set_tab_order(tab_order: Vec<String>, start_tab: String) -> Result<Prefs, ApiError> {
+    let mut sorted: Vec<&str> = tab_order.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    let mut movable = MOVABLE_TABS;
+    movable.sort_unstable();
+    if !tab_order.is_empty() && sorted != movable {
+        return Err(ApiError::BadArguments(
+            "tabOrder must list today, activities, health and sleep once each".into(),
+        ));
+    }
+    if !start_tab.is_empty() && start_tab != "more" && !MOVABLE_TABS.contains(&start_tab.as_str()) {
+        return Err(ApiError::BadArguments(format!(
+            "unknown start tab: {start_tab}"
+        )));
+    }
+    save(Prefs {
+        tab_order,
+        start_tab,
         ..prefs()
     })
 }
@@ -290,6 +323,39 @@ mod tests {
         assert_eq!(prefs().theme_dark, "custom:x");
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
+        the_tab_order_is_checked_and_kept_apart_from_the_sidebar();
         let _ = std::fs::remove_file(base.join(PREFS_FILE));
+    }
+
+    /// It runs inside the round-trip test: both write the one prefs file of the process.
+    fn the_tab_order_is_checked_and_kept_apart_from_the_sidebar() {
+        let keys = |k: &[&str]| k.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let order = keys(&["sleep", "today", "health", "activities"]);
+        let saved = set_tab_order(order.clone(), "more".into()).unwrap();
+        assert_eq!(
+            (saved.tab_order, saved.start_tab),
+            (order.clone(), "more".into())
+        );
+        // The sidebar order and the theme stay as they were, and so do the tabs.
+        set_nav_order(keys(&["gear"]), "gear".into()).unwrap();
+        set_theme(ThemeMode::Dark).unwrap();
+        assert_eq!(prefs().tab_order, order);
+        assert_eq!(prefs().nav_order, keys(&["gear"]));
+        // A bad value is refused, and the saved value stays.
+        for (bad, start) in [
+            (keys(&["today"]), ""),
+            (keys(&["today", "today", "health", "sleep"]), ""),
+            (keys(&["today", "activities", "health", "more"]), ""),
+            (order.clone(), "gear"),
+        ] {
+            assert!(matches!(
+                set_tab_order(bad, start.into()),
+                Err(ApiError::BadArguments(_))
+            ));
+        }
+        assert_eq!(prefs().tab_order, order);
+        // An empty order and start tab reset to the shipped values.
+        let reset = set_tab_order(Vec::new(), String::new()).unwrap();
+        assert!(reset.tab_order.is_empty() && reset.start_tab.is_empty());
     }
 }

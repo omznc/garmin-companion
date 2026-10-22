@@ -6,6 +6,7 @@ import { AppState, useColorScheme } from "react-native";
 import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
 import { importHistory, syncIfStale } from "../src/data/useSync";
+import { syncTabPrefs } from "../src/nav/tabPrefs";
 import { useSystemBack } from "../src/nav/useSystemBack";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
@@ -27,6 +28,11 @@ export default function RootLayout() {
       if (status === "active") void syncIfStale();
     });
     return () => sub.remove();
+  }, []);
+
+  // The core keeps the tab order. Take its value if the local copy differs.
+  useEffect(() => {
+    void syncTabPrefs();
   }, []);
 
   // The app stopped during the history import: take it up again.

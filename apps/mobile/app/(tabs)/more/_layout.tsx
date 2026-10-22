@@ -6,6 +6,7 @@ const pages = {
   garmin: "Garmin account",
   sync: "Sync",
   appearance: "Appearance",
+  tabs: "Tabs",
   coach: "Coach",
   about: "About",
 };
