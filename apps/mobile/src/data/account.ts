@@ -57,7 +57,7 @@ export const markSynced = () => {
   try {
     const marker = syncedMarker();
     if (!marker.exists) marker.create();
-    marker.write(String(Date.now()));
+    marker.writeSync(String(Date.now()));
   } catch {
     // A missing marker only means one more quick sync at the next start.
   }

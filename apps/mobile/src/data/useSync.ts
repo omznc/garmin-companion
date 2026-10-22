@@ -94,12 +94,25 @@ export const startSync = createSyncQueue(runOnce, (busy) => set({ busy }));
 
 // Called when the app opens and when it comes back to the foreground. Not in sample mode, not signed out.
 // An import that waits to resume starts itself, so this does not start a second sync then.
+// A failed run waits for the retry pause, so a dead token or no network does not call Garmin at each
+// return to the foreground. The pause lasts until the app restarts. The person sees no error then.
+const RETRY_PAUSE_MS = 30 * 60 * 1000;
+let failedAt: number | null = null;
+
 export async function syncIfStale(): Promise<void> {
   if (state.busy || historyPending()) return;
+  const now = Date.now();
+  if (failedAt !== null && now - failedAt < RETRY_PAUSE_MS) return;
+  if (!syncIsStale(lastSyncedAt(), now)) return;
   const status = await getStatus().catch(() => null);
   if (!status?.connected || isSampleData()) return;
-  if (!syncIsStale(lastSyncedAt(), Date.now())) return;
-  await startSync({ days: QUICK_DAYS }).catch(() => {});
+  try {
+    await startSync({ days: QUICK_DAYS });
+    failedAt = null;
+  } catch {
+    failedAt = Date.now();
+    set({ error: null });
+  }
 }
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.

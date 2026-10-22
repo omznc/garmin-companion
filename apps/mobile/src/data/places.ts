@@ -2,9 +2,13 @@
 // (`garmin_api::plan`, `routes` and `gear`). This file types the JSON and turns
 // it into the blocks that `screens/Body.*` draws.
 import type { Block, BodyScreenData, EmptyNote } from "./body";
-import { placesFixture } from "./placesFixtures";
+import { devPersona } from "./devPersona";
 import { callJson } from "./source";
-import { devPersona } from "./wellnessFixtures";
+
+// The condition stays inline, so Metro drops the fixtures from a release build.
+const fixtures = (__DEV__ ? require("./placesFixtures") : null) as
+  | typeof import("./placesFixtures")
+  | null;
 
 type Tile = { label: string; value: string };
 
@@ -125,7 +129,7 @@ const commands = { plan: "plan_view", routes: "routes_view", gear: "gear_view" }
 
 // Dev only: EXPO_PUBLIC_PERSONA shows a made-up user, as it does for Today.
 async function read<T>(kind: PlacesKind): Promise<T> {
-  const recorded = devPersona ? placesFixture(commands[kind], devPersona) : undefined;
+  const recorded = devPersona ? fixtures?.placesFixture(commands[kind], devPersona) : undefined;
   return (recorded as T | undefined) ?? callJson<T>(commands[kind]);
 }
 

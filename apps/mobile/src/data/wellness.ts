@@ -1,8 +1,13 @@
 // The `health_view` and `sleep_view` results of the Rust core, as JSON.
 // The core owns the numbers and the sentences. The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
+import { devPersona } from "./devPersona";
 import { callJson } from "./source";
-import { devPersona, wellnessFixture } from "./wellnessFixtures";
+
+// The condition stays inline, so Metro drops the fixtures from a release build.
+const fixtures = (__DEV__ ? require("./wellnessFixtures") : null) as
+  | typeof import("./wellnessFixtures")
+  | null;
 
 export type MetricTrend = {
   key: string;
@@ -69,7 +74,7 @@ export type SleepView = {
 };
 
 async function view<T>(cmd: string): Promise<T> {
-  const recorded = devPersona ? wellnessFixture(cmd, devPersona) : undefined;
+  const recorded = devPersona ? fixtures?.wellnessFixture(cmd, devPersona) : undefined;
   return (recorded as T | undefined) ?? callJson<T>(cmd);
 }
 
