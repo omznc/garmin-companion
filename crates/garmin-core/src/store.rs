@@ -198,7 +198,7 @@ pub fn import_python_tokens(path: &Path) -> Result<Tokens> {
 mod tests {
     use super::{is_install_id, is_session_token};
 
-    /// The same shape the worker's `deviceId` accepts. Both ends check it, and
+    /// The same shape the worker accepts (`worker/src/v2/index.ts`). Both ends check it, and
     /// they have to agree: an id this side would store but that side refuses is
     /// an install that enrols successfully and then cannot ask anything.
     #[test]

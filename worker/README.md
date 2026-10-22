@@ -25,7 +25,6 @@ Everything. Know what the app does before you put money behind it:
 - Each round sends the system prompt and the tool schemas again, about two
   thousand tokens. The app marks that prefix as cacheable, and the worker
   passes the marker through.
-- An answer is followed by a small suggestions call.
 
 Set a spend limit on the OpenRouter key. The `DAILY_BUDGET_V2_USD` guard in the
 worker has a soft edge.
@@ -80,10 +79,11 @@ deployed URL with `/v2` on the end.
 ## What it knows about the people using it
 
 An install id, a wallet balance, and, for one day at a time, a hashed bucket per
-address that asked for an id.
+network that asked for an id. An account stores the email address, the login
+codes, the sessions and the entitlements in D1.
 
-The id is 128 random bits. It has no account, no email and no link to a Garmin
-login. The address bucket is a truncated SHA-256 of the address. It is salted
+An install id is a random UUID. It has no link to a Garmin login. The network
+bucket is a truncated SHA-256 of the network (a /64 for IPv6). It is salted
 with the day and with the worker's own API key. So it changes each night, and
 nobody can reverse it by walking the IPv4 space. The raw address is never
 written.

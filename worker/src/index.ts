@@ -26,14 +26,17 @@ export default {
     if (url.pathname === "/health") return new Response("ok");
     if (url.pathname.startsWith("/v2/")) return handleV2(request, env, ctx);
 
-    // The old v0.9.1 app. A clear answer keeps it from retrying or hanging.
+    // The old v0.9.1 app. A clear answer keeps it from hanging.
     if (url.pathname.startsWith("/v1/")) return gone();
 
     return new Response("not found", { status: 404 });
   },
 } satisfies ExportedHandler<V2Env>;
 
-/** The OpenAI error shape, so the old app shows the message. It has no final period: the old app adds one. */
+/**
+ * The OpenAI error shape. An old app with no stored id shows the message. An old
+ * app with a stored id shows the status and the raw body. Both are readable.
+ */
 function gone(): Response {
   const message = "This version of Garmin Companion is no longer supported. Update the app";
   return new Response(JSON.stringify({ error: { message, code: 410, type: "gone" } }), {
