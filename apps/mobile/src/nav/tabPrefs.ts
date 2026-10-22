@@ -5,20 +5,17 @@ import { File, Paths } from "expo-file-system";
 import { useSyncExternalStore } from "react";
 import { call } from "../data/source";
 import { notifyError } from "../ui/notify-error";
+import { coreWins, latestWins, parseTabPrefs, SHIPPED_PREFS, type TabPrefs } from "./tabs";
 
-export type TabPrefs = { order: string[]; start: string };
-
-const SHIPPED: TabPrefs = { order: [], start: "" };
+export type { TabPrefs };
 const file = () => new File(Paths.document, "tabs.json");
 
 const read = (): TabPrefs => {
   try {
-    const p = JSON.parse(file().textSync()) as Partial<TabPrefs>;
-    const order = Array.isArray(p.order) ? p.order.filter((k) => typeof k === "string") : [];
-    return { order, start: typeof p.start === "string" ? p.start : "" };
+    return parseTabPrefs(file().textSync());
   } catch {
-    // No file yet, or an unreadable one: the shipped order is a complete tab bar.
-    return SHIPPED;
+    // No file yet: the shipped order is a complete tab bar.
+    return SHIPPED_PREFS;
   }
 };
 
@@ -53,20 +50,25 @@ export const useTabPrefs = (): TabPrefs =>
     () => current,
   );
 
-/** Apply the choice at once, then save it in the core. A failed save shows the reason. */
-export async function saveTabPrefs(next: TabPrefs) {
-  apply(next);
+// One save at a time, and the last tap wins, so the stored order is the one on screen.
+const send = latestWins(async (next: TabPrefs) => {
   try {
     await call("set_tab_order", { tabOrder: next.order, startTab: next.start });
   } catch (e) {
     notifyError("Could not save the tabs", e);
   }
+});
+
+/** Apply the choice at once, then save it in the core. A failed save shows the reason. */
+export function saveTabPrefs(next: TabPrefs) {
+  apply(next);
+  return send(next);
 }
 
 /** The core is the source of truth. Take its value when the copy differs, for example after a restore. */
 export async function syncTabPrefs() {
+  // An error here is not shown: the copy is a full tab bar, and the next start syncs again.
   const core = await call("prefs").catch(() => null);
-  if (!core) return;
-  const same = core.start_tab === current.start && core.tab_order.join() === current.order.join();
-  if (!same) apply({ order: core.tab_order, start: core.start_tab });
+  const next = core && coreWins(core, current);
+  if (next) apply(next);
 }

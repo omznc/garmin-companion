@@ -6,13 +6,7 @@ import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHostTheme, useMd } from "../theme/md";
 import { launchTabPrefs, useTabPrefs } from "./tabPrefs";
-import { orderedTabs, startTab } from "./tabs";
-
-// The screens in the router state. The order is fixed at launch: the start tab, then the rest.
-function launchScreens() {
-  const first = startTab(launchTabPrefs.start);
-  return [first, ...orderedTabs(launchTabPrefs.order).filter((t) => t.name !== first.name)];
-}
+import { launchScreens, orderedTabs } from "./tabs";
 
 const ICONS = {
   today: require("../../assets/icons/today.xml"),
@@ -65,7 +59,7 @@ export function AppTabs() {
       tabBar={(props) => <TabBar current={props.state.routes[props.state.index]?.name ?? ""} />}
     >
       {/* The start tab comes first, so the back key from another tab returns to it. */}
-      {launchScreens().map((tab) => (
+      {launchScreens(launchTabPrefs).map((tab) => (
         <Tabs.Screen key={tab.name} name={tab.name} options={{ title: tab.title }} />
       ))}
     </Tabs>

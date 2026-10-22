@@ -1,4 +1,5 @@
 // The five tabs, in the shipped order. Settings live in More.
+// The core lists the movable tabs too: `MOVABLE_TABS` in crates/garmin-api/src/settings.rs. Keep both in step.
 export const TABS = [
   { name: "today", title: "Today", sf: "sun.max", sfSelected: "sun.max.fill" },
   { name: "activities", title: "Activities", sf: "figure.run", sfSelected: "figure.run" },
@@ -57,4 +58,58 @@ export function moveTab(saved: readonly string[], name: string, by: -1 | 1): Tab
 export function isShipped(saved: readonly string[], start: string): boolean {
   const same = movableTabs(saved).every((t, i) => t.name === MOVABLE[i]?.name);
   return same && startTab(start).name === TABS[0].name;
+}
+
+export type TabPrefs = { order: string[]; start: string };
+
+/** The tab order and the start tab as the app saves them in tabs.json. */
+export const SHIPPED_PREFS: TabPrefs = { order: [], start: "" };
+
+/** Read the text of tabs.json. A missing or broken file gives the shipped values. */
+export function parseTabPrefs(text: string): TabPrefs {
+  try {
+    const p = JSON.parse(text) as Partial<TabPrefs> | null;
+    const order = Array.isArray(p?.order) ? p.order.filter((k) => typeof k === "string") : [];
+    return { order, start: typeof p?.start === "string" ? p.start : "" };
+  } catch {
+    return SHIPPED_PREFS;
+  }
+}
+
+/** The core is the source of truth. The prefs to apply when the core differs from the copy, else null. */
+export function coreWins(
+  core: { tab_order: readonly string[]; start_tab: string },
+  copy: TabPrefs,
+): TabPrefs | null {
+  const same = core.start_tab === copy.start && core.tab_order.join() === copy.order.join();
+  return same ? null : { order: [...core.tab_order], start: core.start_tab };
+}
+
+/** The screens in the router state: the start tab first, then the rest in the saved order. */
+export function launchScreens(prefs: TabPrefs): Tab[] {
+  const first = startTab(prefs.start);
+  return [first, ...orderedTabs(prefs.order).filter((t) => t.name !== first.name)];
+}
+
+/**
+ * Run `send` for one value at a time. A value that arrives during a send waits, and a newer
+ * value replaces it, so the last value is the one that is stored.
+ */
+export function latestWins<T>(send: (value: T) => Promise<void>): (value: T) => Promise<void> {
+  let waiting: { value: T } | null = null;
+  let running = false;
+  return async (value) => {
+    waiting = { value };
+    if (running) return;
+    running = true;
+    try {
+      while (waiting) {
+        const { value: next } = waiting;
+        waiting = null;
+        await send(next);
+      }
+    } finally {
+      running = false;
+    }
+  };
 }

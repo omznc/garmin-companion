@@ -131,10 +131,12 @@ The same app and the same data, with three things worth knowing:
   beside the data, because reaching the Android Keystore needs native code this
   build doesn't have. `crates/garmin-core/src/secrets.rs` is honest about the
   details.
-- **The nav is a bottom bar.** Today, Ask and Health get tabs; everything else
-  is behind **More**. Press and hold a screen in that sheet and drop it on the
-  tab it should replace — the phone keeps its own three, so rearranging them
-  doesn't disturb the sidebar on the desktop.
+- **The nav is a bottom bar.** It has five tabs: Today, Activities, Health,
+  Sleep and **More**. Everything else is behind More. To change the order of
+  the tabs, open More, then Tabs. You can also choose the tab that the app opens
+  on. More stays last. The phone keeps its own order, so the sidebar on the
+  desktop does not change. On iOS, the new order shows after you close the app
+  fully and open it again.
 
 ## Building from source
 

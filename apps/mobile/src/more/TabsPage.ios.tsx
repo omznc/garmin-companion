@@ -86,7 +86,7 @@ export function TabsPage() {
         ))}
         <Item title="More" value="Always last" />
       </Section>
-      <Note>The new order shows when you open the app again.</Note>
+      <Note>The new order shows after you close the app fully and open it again.</Note>
       <Section title="Start tab">
         {t.all.map((tab) => (
           <Item

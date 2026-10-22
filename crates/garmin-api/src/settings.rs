@@ -9,6 +9,7 @@ use chrono::{DateTime, Local, NaiveDate, Utc};
 use garmin_core::{paths, secrets};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 const PREFS_FILE: &str = "prefs.json";
 
@@ -49,13 +50,28 @@ pub struct Prefs {
     /// The mobile tabs, left to right, as stable keys. It lists the tabs that can
     /// move: `More` is not in it and stays last. Empty means the shipped order.
     /// The desktop sidebar has its own `nav_order`.
+    // The mobile app has its own tab list: `TABS` in apps/mobile/src/nav/tabs.ts. Keep both in step.
     pub tab_order: Vec<String>,
     /// The mobile tab that the app opens on, as a stable key. Empty means `today`.
     pub start_tab: String,
 }
 
-/// The mobile tabs that the person can move.
+/// The mobile tabs that the person can move. The app lists them too, in `TABS`
+/// in apps/mobile/src/nav/tabs.ts. Keep both lists in step.
 const MOVABLE_TABS: [&str; 4] = ["today", "activities", "health", "sleep"];
+
+/// One save at a time. A save reads the file, changes one field and writes it
+/// back, so two saves at once would lose a change.
+static PREFS_LOCK: Mutex<()> = Mutex::new(());
+
+/// Read the saved preferences, change them and save them, as one step.
+fn update(change: impl FnOnce(&mut Prefs)) -> Result<Prefs, ApiError> {
+    // A panic in another save leaves the file whole, so a poisoned lock is safe to use.
+    let _guard = PREFS_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut next = prefs();
+    change(&mut next);
+    save(next)
+}
 
 fn prefs_path() -> Result<PathBuf, ApiError> {
     Ok(paths::base_dir()?.join(PREFS_FILE))
@@ -71,15 +87,14 @@ pub fn prefs() -> Prefs {
 }
 
 pub fn set_theme(theme: ThemeMode) -> Result<Prefs, ApiError> {
-    save(Prefs { theme, ..prefs() })
+    update(|p| p.theme = theme)
 }
 
 /// Save the sidebar order and the default screen. The theme stays as it was.
 pub fn set_nav_order(nav_order: Vec<String>, default_screen: String) -> Result<Prefs, ApiError> {
-    save(Prefs {
-        nav_order,
-        default_screen,
-        ..prefs()
+    update(|p| {
+        p.nav_order = nav_order;
+        p.default_screen = default_screen;
     })
 }
 
@@ -100,19 +115,17 @@ pub fn set_tab_order(tab_order: Vec<String>, start_tab: String) -> Result<Prefs,
             "unknown start tab: {start_tab}"
         )));
     }
-    save(Prefs {
-        tab_order,
-        start_tab,
-        ..prefs()
+    update(|p| {
+        p.tab_order = tab_order;
+        p.start_tab = start_tab;
     })
 }
 
 /// Save the light and the dark palette. The other settings stay as they were.
 pub fn set_palettes(theme_light: String, theme_dark: String) -> Result<Prefs, ApiError> {
-    save(Prefs {
-        theme_light,
-        theme_dark,
-        ..prefs()
+    update(|p| {
+        p.theme_light = theme_light;
+        p.theme_dark = theme_dark;
     })
 }
 
@@ -123,7 +136,8 @@ fn save(prefs: Prefs) -> Result<Prefs, ApiError> {
     let path = prefs_path()?;
     // Write a temp file and flush it to disk, then rename it. A crash or a
     // power loss never leaves half a file.
-    let temp = path.with_extension("json.tmp");
+    // The name is unique for each process, so no other writer shares it.
+    let temp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     write_synced(&temp, &json)
         .and_then(|()| std::fs::rename(&temp, &path))
         .map_err(|e| ApiError::Internal(e.to_string()))?;
@@ -324,6 +338,7 @@ mod tests {
         std::fs::write(base.join(PREFS_FILE), "{").unwrap();
         assert_eq!(prefs().theme, ThemeMode::System);
         the_tab_order_is_checked_and_kept_apart_from_the_sidebar();
+        saves_in_parallel_all_succeed_and_keep_the_other_fields();
         let _ = std::fs::remove_file(base.join(PREFS_FILE));
     }
 
@@ -357,5 +372,31 @@ mod tests {
         // An empty order and start tab reset to the shipped values.
         let reset = set_tab_order(Vec::new(), String::new()).unwrap();
         assert!(reset.tab_order.is_empty() && reset.start_tab.is_empty());
+    }
+
+    /// It runs inside the round-trip test, in the same folder.
+    fn saves_in_parallel_all_succeed_and_keep_the_other_fields() {
+        set_theme(ThemeMode::Dark).unwrap();
+        let order = |i: usize| {
+            let mut tabs: Vec<String> = MOVABLE_TABS.iter().map(|t| t.to_string()).collect();
+            tabs.rotate_left(i % 4);
+            tabs
+        };
+        std::thread::scope(|scope| {
+            for t in 0..4 {
+                scope.spawn(move || {
+                    for i in 0..50 {
+                        set_tab_order(order(t + i), "today".into()).unwrap();
+                        set_palettes(format!("light{t}"), format!("dark{t}")).unwrap();
+                    }
+                });
+            }
+        });
+        // The file is whole, and a save never dropped the theme.
+        let saved = prefs();
+        assert_eq!(saved.theme, ThemeMode::Dark);
+        assert_eq!(saved.tab_order.len(), 4);
+        assert_eq!(saved.start_tab, "today");
+        assert!(saved.theme_light.starts_with("light"));
     }
 }
