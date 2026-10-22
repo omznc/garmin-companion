@@ -72,6 +72,7 @@
   "weight": null,
   "attention": [
     {
+      "kind": "resting-hr",
       "accent": true,
       "text": "Resting heart rate is 5 bpm above your 40-day baseline across the last 3 mornings.",
       "spark": [
@@ -98,6 +99,7 @@
       "insight": "recovery-drivers"
     },
     {
+      "kind": "hrv",
       "accent": true,
       "text": "HRV has averaged 41 ms over the last five nights, down from 54 ms in the fortnight before.",
       "spark": [

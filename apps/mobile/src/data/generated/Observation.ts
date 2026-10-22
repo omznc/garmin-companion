@@ -3,6 +3,11 @@ import type { Link } from "./Link";
 
 export type Observation = { 
 /**
+ * A stable name for the kind of note. The text holds live numbers, so
+ * a notification de-duplicates on the kind.
+ */
+kind: string, 
+/**
  * Accent items are the ones worth acting on today.
  */
 accent: boolean, text: string, 

@@ -5,7 +5,9 @@ import { TabStack } from "../../../src/nav/TabStack";
 const pages = {
   garmin: "Garmin account",
   sync: "Sync",
+  notifications: "Notifications",
   appearance: "Appearance",
+  tabs: "Tabs",
   coach: "Coach",
   about: "About",
 };

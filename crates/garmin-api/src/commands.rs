@@ -39,6 +39,7 @@ pub const COMMANDS: &[Command] = &[
         "Array<CachedActivity>",
     ),
     cmd("cached_activity", "ActivityIdArgs", "CachedActivity | null"),
+    cmd("claim_notification", "ClaimArgs", "boolean"),
     cmd("nutrition", "DaysArgs | undefined", "NutritionReport"),
     cmd("weight", "DaysArgs | undefined", "WeightReport"),
     cmd("activities", "ActivitiesArgs | undefined", "ActivitiesView"),
@@ -70,6 +71,8 @@ pub const COMMANDS: &[Command] = &[
     cmd("set_theme", "ThemeArgs", "Prefs"),
     cmd("set_nav_order", "NavOrderArgs", "Prefs"),
     cmd("set_palettes", "PalettesArgs", "Prefs"),
+    cmd("prefs", "undefined", "Prefs"),
+    cmd("set_tab_order", "TabOrderArgs", "Prefs"),
 ];
 
 /// The TypeScript text of a command map: `export type Commands = { ... }`.

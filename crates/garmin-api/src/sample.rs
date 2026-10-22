@@ -26,6 +26,7 @@ const NEEDS_CACHE: &[&str] = &[
     "cached_activity",
     "nutrition",
     "weight",
+    "claim_notification",
 ];
 
 fn json(text: &str) -> Value {

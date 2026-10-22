@@ -140,6 +140,16 @@ pub struct RoutesArgs {
     sort: Option<crate::routes::RouteSort>,
 }
 
+/// The arguments of `claim_notification`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ClaimArgs {
+    /// The `kind` of a Today note.
+    kind: String,
+    /// The local day, `YYYY-MM-DD`.
+    date: String,
+}
+
 fn parse<T: DeserializeOwned>(args: &str) -> Result<T, ApiError> {
     // A caller with no arguments may send an empty string.
     let json = if args.trim().is_empty() { "{}" } else { args };
@@ -228,6 +238,16 @@ fn cache_call(cmd: &str, args: &str) -> Result<String, ApiError> {
         }),
         "weight" => run(args, |a: DaysArgs| {
             Ok(query::weight(&open_default_db()?, a.days_or(180))?)
+        }),
+        "claim_notification" => run(args, |a: ClaimArgs| {
+            chrono::NaiveDate::parse_from_str(&a.date, "%Y-%m-%d")
+                .map_err(|_| ApiError::BadArguments("date must be YYYY-MM-DD".into()))?;
+            if a.kind.is_empty() || a.kind.len() > 64 {
+                return Err(ApiError::BadArguments(
+                    "kind must be 1-64 characters".into(),
+                ));
+            }
+            Ok(open_default_db()?.claim_note_notification(&a.kind, &a.date)?)
         }),
         other => screen_call(other, args),
     }
@@ -323,6 +343,15 @@ pub struct NavOrderArgs {
     default_screen: String,
 }
 
+/// The arguments of `set_tab_order`. An empty list and an empty string reset.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct TabOrderArgs {
+    tab_order: Vec<String>,
+    start_tab: String,
+}
+
 /// The arguments of `set_palettes`.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
@@ -354,6 +383,10 @@ fn account_call(cmd: &str, args: &str) -> Result<String, ApiError> {
         "set_theme" => run(args, |a: ThemeArgs| settings::set_theme(a.theme)),
         "set_nav_order" => run(args, |a: NavOrderArgs| {
             settings::set_nav_order(a.nav_order, a.default_screen)
+        }),
+        "prefs" => encode(&settings::prefs()),
+        "set_tab_order" => run(args, |a: TabOrderArgs| {
+            settings::set_tab_order(a.tab_order, a.start_tab)
         }),
         "set_palettes" => run(args, |a: PalettesArgs| {
             settings::set_palettes(a.theme_light, a.theme_dark)
@@ -461,6 +494,35 @@ mod tests {
         ));
         assert!(matches!(
             call("set_nav_order", "{}"),
+            Err(ApiError::BadArguments(_))
+        ));
+        // A bad tab list is refused before the prefs file is written.
+        for args in [
+            "{}",
+            r#"{"tabOrder":["today"],"startTab":""}"#,
+            r#"{"tabOrder":[],"startTab":"gear"}"#,
+        ] {
+            assert!(matches!(
+                call("set_tab_order", args),
+                Err(ApiError::BadArguments(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn claim_notification_checks_its_arguments_before_the_cache() {
+        for bad in [
+            r#"{"kind":"hrv","date":"soon"}"#,
+            r#"{"kind":"","date":"2026-03-01"}"#,
+            r#"{"date":"2026-03-01"}"#,
+        ] {
+            assert!(matches!(
+                call("claim_notification", bad),
+                Err(ApiError::BadArguments(_))
+            ));
+        }
+        assert!(matches!(
+            call_with(Source::Sample, "claim_notification", "{}"),
             Err(ApiError::BadArguments(_))
         ));
     }

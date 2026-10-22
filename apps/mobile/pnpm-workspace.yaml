@@ -1,1 +1,5 @@
 packages: []
+minimumReleaseAgeExclude:
+  - '@expo/env@2.5.3'
+  - expo-constants@58.0.13
+  - expo-notifications@58.1.6

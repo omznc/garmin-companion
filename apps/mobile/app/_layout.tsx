@@ -6,7 +6,11 @@ import { AppState, useColorScheme } from "react-native";
 import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
 import { importHistory, syncIfStale } from "../src/data/useSync";
+import { syncTabPrefs } from "../src/nav/tabPrefs";
 import { useSystemBack } from "../src/nav/useSystemBack";
+import { registerBackgroundSync } from "../src/notify/backgroundSync";
+import { configureNotifications } from "../src/notify/notifications";
+import { useNotificationTap } from "../src/notify/useNotificationTap";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
 import { useRootColor } from "../src/theme/useRootColor";
@@ -14,11 +18,17 @@ import { DialogHost } from "../src/ui/DialogHost";
 import { SnackbarHost } from "../src/ui/SnackbarHost";
 import { UpdateBanner } from "../src/update/UpdateBanner";
 
+configureNotifications();
+
 export default function RootLayout() {
   const root = useRootColor();
   const dark = useColorScheme() === "dark";
   const reduceMotion = useReduceMotion();
   useSystemBack();
+  useNotificationTap();
+  useEffect(() => {
+    registerBackgroundSync().catch((e) => console.warn("background sync not registered", e));
+  }, []);
   // Refetch stale data when the app returns to the foreground. A quick sync runs if the last one is old.
   useEffect(() => {
     void syncIfStale();
@@ -27,6 +37,11 @@ export default function RootLayout() {
       if (status === "active") void syncIfStale();
     });
     return () => sub.remove();
+  }, []);
+
+  // The core keeps the tab order. Take its value if the local copy differs.
+  useEffect(() => {
+    void syncTabPrefs();
   }, []);
 
   // The app stopped during the history import: take it up again.
