@@ -183,32 +183,44 @@ export function IconTile({
  * corners between two rows are small, as in the Android 16 settings.
  */
 export function Group({ children }: { children: ReactNode }) {
-  const md = useMd();
   const rows = Children.toArray(children).filter(Boolean);
   return (
     <View style={{ gap: 2 }}>
-      {rows.map((row, i) => {
-        const first = i === 0;
-        const last = i === rows.length - 1;
-        const top = first ? OUTER : INNER;
-        const bottom = last ? OUTER : INNER;
-        return (
-          <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: the rows never reorder
-            key={i}
-            style={{
-              backgroundColor: md.surfaceContainer,
-              borderTopLeftRadius: top,
-              borderTopRightRadius: top,
-              borderBottomLeftRadius: bottom,
-              borderBottomRightRadius: bottom,
-              overflow: "hidden",
-            }}
-          >
-            {row}
-          </View>
-        );
-      })}
+      {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: the rows never reorder
+        <GroupRow key={i} first={i === 0} last={i === rows.length - 1}>
+          {row}
+        </GroupRow>
+      ))}
+    </View>
+  );
+}
+
+/** One row container of a group. A list draws a group row by row, so it uses this with the 2 px gap. */
+export function GroupRow({
+  first,
+  last,
+  children,
+}: {
+  first: boolean;
+  last: boolean;
+  children: ReactNode;
+}) {
+  const md = useMd();
+  const top = first ? OUTER : INNER;
+  const bottom = last ? OUTER : INNER;
+  return (
+    <View
+      style={{
+        backgroundColor: md.surfaceContainer,
+        borderTopLeftRadius: top,
+        borderTopRightRadius: top,
+        borderBottomLeftRadius: bottom,
+        borderBottomRightRadius: bottom,
+        overflow: "hidden",
+      }}
+    >
+      {children}
     </View>
   );
 }

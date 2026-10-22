@@ -3,9 +3,9 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
-import { Card, Content, Group, ListRow, Loading, SectionLabel, T } from "../components/MdKit";
+import { Card, GAP, Group, ListRow, Loading, MARGIN, SectionLabel, T } from "../components/MdKit";
 import { FAMILY_ICON } from "../components/TodayKit";
-import { type ActivityCard, useActivities } from "../data/activities";
+import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
 import { useMd } from "../theme/md";
 
 function SessionRow({ c }: { c: ActivityCard }) {
@@ -30,36 +30,72 @@ function SessionRow({ c }: { c: ActivityCard }) {
   );
 }
 
-export function ActivitiesScreen() {
-  const md = useMd();
-  const { data, error } = useActivities();
+type Day = ActivitiesView["groups"][number];
+
+// The padding of Content, spread over the list parts: it has no one wrapper any more.
+function DayGroup({ g, first, last }: { g: Day; first: boolean; last: boolean }) {
   return (
-    <LargeAppBarScreen title="Activities">
-      <Content>
-        {!data && !error ? <Loading /> : null}
-        {error ? (
-          <Card tone="error">
-            <T color={md.onErrorContainer}>{`The list could not be read. ${String(error)}`}</T>
-          </Card>
-        ) : null}
-        {data?.empty ? (
-          <Card tone="secondary">
-            <T v="body" color={md.onSecondaryContainer}>
-              No sessions yet. When your watch records a session, it shows here.
-            </T>
-          </Card>
-        ) : null}
-        {data?.groups.map((g) => (
-          <View key={g.date} style={{ gap: 8 }}>
-            <SectionLabel>{g.label}</SectionLabel>
-            <Group>
-              {g.sessions.map((c) => (
-                <SessionRow key={c.activityId} c={c} />
-              ))}
-            </Group>
-          </View>
+    <View
+      style={{
+        gap: 8,
+        paddingHorizontal: MARGIN,
+        paddingTop: first ? MARGIN : GAP,
+        paddingBottom: last ? MARGIN : 0,
+      }}
+    >
+      <SectionLabel>{g.label}</SectionLabel>
+      <Group>
+        {g.sessions.map((c) => (
+          <SessionRow key={c.activityId} c={c} />
         ))}
-      </Content>
+      </Group>
+    </View>
+  );
+}
+
+// Loading, the error and the empty note. They sit above the days.
+function Head({ data, error }: { data: ActivitiesView | undefined; error: unknown }) {
+  const md = useMd();
+  return (
+    <View style={{ padding: MARGIN, gap: GAP }}>
+      {!data && !error ? <Loading /> : null}
+      {error ? (
+        <Card tone="error">
+          <T color={md.onErrorContainer}>{`The list could not be read. ${String(error)}`}</T>
+        </Card>
+      ) : null}
+      {data?.empty ? (
+        <Card tone="secondary">
+          <T v="body" color={md.onSecondaryContainer}>
+            No sessions yet. When your watch records a session, it shows here.
+          </T>
+        </Card>
+      ) : null}
+    </View>
+  );
+}
+
+// One list item for each day, so a long history draws only the days near the screen.
+export function ActivitiesScreen() {
+  const { data, error } = useActivities();
+  const groups = data?.groups ?? [];
+  const showHead = !data || Boolean(error) || data.empty;
+  return (
+    <LargeAppBarScreen
+      title="Activities"
+      list={{
+        data: groups,
+        keyExtractor: (g) => g.date,
+        renderItem: (g) => (
+          <DayGroup
+            g={g}
+            first={g === groups[0] && !showHead}
+            last={g === groups[groups.length - 1]}
+          />
+        ),
+      }}
+    >
+      {showHead ? <Head data={data} error={error} /> : null}
     </LargeAppBarScreen>
   );
 }

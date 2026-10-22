@@ -9,12 +9,13 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  FlatList,
   Platform,
-  ScrollView,
   Text,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import type { Turn } from "../data/chatTypes";
 import { needsSetup, openers, useCoachConfig } from "../data/useAsk";
 import { useCloudAccount } from "../data/useCloud";
 import { ChatHeader } from "./ChatHeader";
@@ -57,7 +58,7 @@ function useKeyboardOpen() {
 // Follows a growing answer only while the person is near the end. A drag lets go of
 // the pin, and a scroll back near the end takes it again.
 function usePinnedScroll() {
-  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scroll = useRef<ComponentRef<typeof FlatList<Turn>>>(null);
   const pinned = useRef(true);
   const size = useRef({ content: 0, layout: 0 });
   const lastY = useRef(0);
@@ -119,23 +120,25 @@ function useSend(id: string | null, onStarted: (sessionId: string) => void, pin:
 
 type Thread = ReturnType<typeof useThread>;
 
-function Transcript({
+// The skeleton, the error and the opening. They sit above the turns.
+function TranscriptHead({
   id,
   thread,
+  showHero,
   onPick,
 }: {
   id: string | null;
   thread: Thread;
+  showHero: boolean;
   onPick: (question: string) => void;
 }) {
   const theme = useChatTheme();
   const config = useCoachConfig();
   const [suggestions] = useState(openers);
   const runningId = useRunningId();
-  const { turns, loading, error, refetch } = thread;
-  const showHero = id === null || (!loading && !error && turns.length === 0);
+  const { loading, error, refetch } = thread;
   return (
-    <>
+    <View style={{ gap: 24 }}>
       {loading ? (
         <View style={{ gap: 12 }}>
           <Skeleton height={48} width="60%" />
@@ -164,10 +167,53 @@ function Transcript({
           ) : null}
         </View>
       ) : null}
-      {turns.map((turn) => (
-        <TurnView key={turn.id} turn={turn} />
-      ))}
-    </>
+    </View>
+  );
+}
+
+const TurnGap = () => <View style={{ height: 24 }} />;
+
+// The turns are a list, so a long chat draws only the turns near the screen.
+function Transcript({
+  id,
+  thread,
+  pinned,
+  top,
+  onPick,
+}: {
+  id: string | null;
+  thread: Thread;
+  pinned: ReturnType<typeof usePinnedScroll>;
+  top: number;
+  onPick: (question: string) => void;
+}) {
+  const { turns, loading, error } = thread;
+  const showHero = id === null || (!loading && !error && turns.length === 0);
+  const hasHead = loading || error !== null || showHero;
+  return (
+    <FlatList
+      ref={pinned.scroll}
+      data={turns}
+      keyExtractor={(turn) => turn.id}
+      renderItem={({ item }) => <TurnView turn={item} />}
+      ItemSeparatorComponent={TurnGap}
+      ListHeaderComponent={
+        hasHead ? (
+          <TranscriptHead id={id} thread={thread} showHero={showHero} onPick={onPick} />
+        ) : undefined
+      }
+      ListHeaderComponentStyle={{ marginBottom: hasHead && turns.length > 0 ? 24 : 0 }}
+      style={{ flex: 1 }}
+      contentContainerStyle={{ padding: 16, paddingTop: top, flexGrow: 1 }}
+      keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
+      scrollEventThrottle={64}
+      onScrollBeginDrag={pinned.onScrollBeginDrag}
+      onScroll={pinned.onScroll}
+      onScrollToTop={pinned.onScrollToTop}
+      onContentSizeChange={pinned.onContentSizeChange}
+      onLayout={pinned.onLayout}
+    />
   );
 }
 
@@ -281,21 +327,13 @@ export function ChatScreen({
           behavior="padding"
           keyboardVerticalOffset={offset}
         >
-          <ScrollView
-            ref={pinned.scroll}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 16, paddingTop: top, gap: 24, flexGrow: 1 }}
-            keyboardDismissMode="interactive"
-            keyboardShouldPersistTaps="handled"
-            scrollEventThrottle={64}
-            onScrollBeginDrag={pinned.onScrollBeginDrag}
-            onScroll={pinned.onScroll}
-            onScrollToTop={pinned.onScrollToTop}
-            onContentSizeChange={pinned.onContentSizeChange}
-            onLayout={pinned.onLayout}
-          >
-            <Transcript id={id} thread={thread} onPick={(question) => void send(question)} />
-          </ScrollView>
+          <Transcript
+            id={id}
+            thread={thread}
+            pinned={pinned}
+            top={top}
+            onPick={(question) => void send(question)}
+          />
           <Footer id={id} root={root} keyboardOpen={keyboardOpen} onSend={send} />
         </KeyboardAvoidingView>
       </View>
