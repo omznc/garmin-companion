@@ -170,6 +170,15 @@ export async function syncIfStale(): Promise<void> {
   await quickSync();
 }
 
+// The import runs without the service if the system refuses it or the native call throws.
+function startService(): boolean {
+  try {
+    return AppState.currentState === "active" && SyncService?.start() === true;
+  } catch {
+    return false;
+  }
+}
+
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
 // On Android a foreground service keeps the network open when the person leaves the app. The system
 // refuses to start it in the background. Then a cut import resumes in the foreground (resumeCutImport).
@@ -179,7 +188,7 @@ export async function importHistory() {
   set({ importing: true, importError: null, importPass: "quick" });
   inImport = true;
   importCut = false;
-  const service = AppState.currentState === "active" && SyncService?.start() === true;
+  const service = startService();
   try {
     // The marker comes first, so a stop in the quick pass still resumes at the next start.
     markHistoryPending();

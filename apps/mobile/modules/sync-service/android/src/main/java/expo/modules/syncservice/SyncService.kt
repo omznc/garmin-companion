@@ -22,6 +22,7 @@ import androidx.core.app.ServiceCompat
  */
 class SyncService : Service() {
   private var wakeLock: PowerManager.WakeLock? = null
+  private var inForeground = false
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -36,6 +37,7 @@ class SyncService : Service() {
         notification(),
         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
       )
+      inForeground = true
     } catch (e: RuntimeException) {
       // The system refused the foreground state. Without it the service has no use.
       stopSelf()
@@ -45,8 +47,9 @@ class SyncService : Service() {
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     if (intent?.action == ACTION_STOP) {
       releaseWakeLock()
-      stopSelf()
-    } else {
+      // With the start id, a start that came after this stop keeps the service.
+      stopSelf(startId)
+    } else if (inForeground) {
       acquireWakeLock()
     }
     // The import is not resumable from the service. The app resumes it at the next start.
