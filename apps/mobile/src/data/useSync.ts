@@ -1,12 +1,22 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { committed } from "../ui/haptics";
-import { clearHistoryPending, markHistoryPending, runSync } from "./account";
+import {
+  clearHistoryPending,
+  getStatus,
+  historyPending,
+  lastSyncedAt,
+  markHistoryPending,
+  markSynced,
+  runSync,
+} from "./account";
 import { QUICK_DAYS } from "./importLabel";
 import { queryClient } from "./queryClient";
-import { subscribe } from "./source";
+import { isSampleData, subscribe } from "./source";
+import { syncIsStale } from "./staleSync";
+import { createSyncQueue, type SyncArgs } from "./syncQueue";
 import type { SyncProgress, SyncSummary } from "./types";
 
-type Args = { days?: number; full?: boolean };
+type Args = SyncArgs;
 
 export type SyncState = {
   busy: boolean;
@@ -44,13 +54,13 @@ const watch = (l: () => void) => {
   return () => listeners.delete(l);
 };
 
-// One sync at a time for the whole app. A second call gets the run that is active.
-let inflight: Promise<SyncSummary> | null = null;
+// The query keys that a sync can change. Threads and the cloud account do not change.
+const SYNC_KEYS = ["today", "activities", "activity", "body", "health", "sleep", "settings"];
+const refetchSyncData = () =>
+  queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
-export function startSync(args: Args = {}): Promise<SyncSummary> {
-  if (inflight) return inflight;
+function runOnce(args: Args): Promise<SyncSummary> {
   set({
-    busy: true,
     error: null,
     line: null,
     phase: null,
@@ -61,11 +71,12 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
     if (event.kind !== "sync-progress") return;
     const p = event.payload as SyncProgress;
     // A finished stage shows on Today now, not after the whole pass.
-    if (state.phase !== null && p.phase !== state.phase) queryClient.invalidateQueries();
+    if (state.phase !== null && p.phase !== state.phase) refetchSyncData();
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
-  inflight = runSync(args)
+  return runSync(args)
     .then((summary) => {
+      markSynced();
       set({ line: summary.line });
       return summary;
     })
@@ -75,17 +86,22 @@ export function startSync(args: Args = {}): Promise<SyncSummary> {
     })
     .finally(() => {
       stop();
-      inflight = null;
-      set({ busy: false });
-      queryClient.invalidateQueries();
+      refetchSyncData();
     });
-  return inflight;
 }
 
-// startSync joins a run that is active, for example a pull-to-refresh. A pass of the import must run itself.
-async function ownSync(args: Args): Promise<SyncSummary> {
-  while (inflight) await inflight.catch(() => {});
-  return startSync(args);
+// One sync at a time for the whole app. A call with the same args joins the last run.
+// A call with other args waits, so the full import is never met by a quick pull-to-refresh.
+export const startSync = createSyncQueue(runOnce, (busy) => set({ busy }));
+
+// Called when the app opens and when it comes back to the foreground. Not in sample mode, not signed out.
+// An import that waits to resume starts itself, so this does not start a second sync then.
+export async function syncIfStale(): Promise<void> {
+  if (state.busy || historyPending()) return;
+  const status = await getStatus().catch(() => null);
+  if (!status?.connected || isSampleData()) return;
+  if (!syncIsStale(lastSyncedAt(), Date.now())) return;
+  await startSync({ days: QUICK_DAYS }).catch(() => {});
 }
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
@@ -94,9 +110,9 @@ export async function importHistory() {
   try {
     // The marker comes first, so a stop in the quick pass still resumes at the next start.
     markHistoryPending();
-    await ownSync({ days: QUICK_DAYS });
+    await startSync({ days: QUICK_DAYS });
     set({ importPass: "full" });
-    await ownSync({ full: true, days: 365 });
+    await startSync({ full: true, days: 365 });
     clearHistoryPending();
     set({ importing: false, importPass: null });
   } catch (e) {
