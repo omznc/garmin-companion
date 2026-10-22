@@ -12,16 +12,15 @@ members = [
 
 # Cargo only honours `[profile.*]` at the workspace root, so this is the only
 # place these can live — a member crate's own `[profile.*]` would be ignored silently.
-# Settings are the ones Tauri recommends for shipping size, and they apply to
-# the MCP server binary too.
+# Settings favour a small binary. They apply to the MCP server binary too.
 [profile.dev]
 incremental = true
 
 [profile.release]
 codegen-units = 1
 lto = true
-# "s" over "3": the app spends its time waiting on Garmin's API and the webview,
-# not in Rust, so bytes are worth more here than throughput.
+# "s" over "3": the crates spend their time waiting on Garmin's API, not in
+# Rust, so bytes are worth more here than throughput.
 opt-level = "s"
 # garmin-ffi (uniffi) needs unwinding, so it must build with `release-mobile`.
 panic = "abort"
@@ -37,7 +36,7 @@ panic = "unwind"
 # swash), path tessellation (lyon) and the GPU backend (wgpu, naga). Those
 # crates and the app itself get opt-level 3. The size-first default stays for
 # everything else, because `[profile.release.package."*"]` would also speed up
-# the Tauri app and the MCP server, where bytes matter more. None of the
+# the MCP server and the sign-in helper, where bytes matter more. None of the
 # crates below are in those two builds.
 [profile.release.package.garmin-companion-desktop]
 opt-level = 3
@@ -88,16 +87,15 @@ opt-level = 3
 [profile.release.package."tiny-skia"]
 opt-level = 3
 
-# Shared across the Tauri app and the MCP server so the two can never drift
-# onto different versions of the Garmin client's dependencies.
+# Shared across the desktop app, the mobile bridge and the MCP server so they
+# can never drift onto different versions of the Garmin client's dependencies.
 [workspace.dependencies]
 garmin-core = { path = "crates/garmin-core" }
 
 anyhow = "1.0.104"
 base64 = "0.23.1"
-# `serde` is on for the notification plan, which crosses into the frontend as a
-# local wall-clock time and would otherwise have to travel as a string and be
-# reparsed on the way back.
+# `serde` is on for the notification plan, which holds a local wall-clock time
+# and would otherwise have to travel as a string and be reparsed on the way back.
 chrono = { version = "0.4.45", features = ["serde"] }
 dirs = "6.0.0"
 keyring = "4.1.6"
@@ -110,7 +108,6 @@ openssl = { version = "0.10.68", features = ["vendored"] }
 rusqlite = { version = "0.40.1", features = ["bundled", "chrono"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10.9"
 thiserror = "2.0.19"
 # `sync` and `time` are for the chat turn: a question the model puts to the
 # athlete parks the turn on a oneshot channel until they answer, under a timeout
