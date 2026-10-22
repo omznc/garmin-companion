@@ -6,7 +6,11 @@
 //! OpenCode has no flag for a per-run MCP server. The app makes a temporary
 //! config folder and points `XDG_CONFIG_HOME` at it. That hides the user's own
 //! plugins, MCP servers and agents. The login stays, because OpenCode keeps it
-//! in its data folder.
+//! in its data folder (`auth.json` in OpenCode 1, `opencode.db` in OpenCode 2).
+//! The last used model stays too, because it is in the state folder. A model
+//! or a provider that only the user's config defines is not visible to a turn.
+//! The free OpenCode models refuse a request with no `read` tool. The app keeps
+//! `read` denied, so a turn needs a login for a paid model.
 //!
 //! `opencode run --format json` writes one JSON event per line. It sends whole
 //! text parts, not token deltas.
@@ -76,12 +80,12 @@ impl Stream for Parser {
             return Vec::new();
         }
         let events = self.answer.done(self.sources());
-        self.finished = matches!(events[..], [Event::Done { .. }]);
-        if self.finished {
-            events
-        } else {
-            Vec::new()
+        // No text means no answer: `watch` then reports the failure of the command.
+        if !matches!(events[..], [Event::Done { .. }]) {
+            return Vec::new();
         }
+        self.finished = true;
+        events
     }
 
     fn sources(&self) -> Vec<String> {
@@ -138,7 +142,9 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
             "enabled": true,
             "timeout": MCP_TIMEOUT_MS,
         } },
-        "permission": { "*": "deny", "garmin_*": "allow" },
+        // OpenCode 2 gives the model the MCP tools only through its `execute`
+        // tool. That tool runs code with no file or network access.
+        "permission": { "*": "deny", "garmin_*": "allow", "execute": "allow" },
         "agent": { AGENT: {
             "mode": "primary",
             "description": "Running coach",
@@ -363,7 +369,10 @@ mod tests {
             end: day,
         });
         let v = config(Path::new("/app"), Some(Path::new("/c.db")), period);
-        assert_eq!(v["permission"], json!({ "*": "deny", "garmin_*": "allow" }));
+        assert_eq!(
+            v["permission"],
+            json!({ "*": "deny", "garmin_*": "allow", "execute": "allow" })
+        );
         let server = &v["mcp"]["garmin"];
         assert_eq!(
             server["command"],
