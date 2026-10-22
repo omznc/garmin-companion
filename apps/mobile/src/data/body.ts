@@ -46,7 +46,8 @@ export type Block =
   | { kind: "empty"; title: string; body: string }
   | { kind: "actions"; actions: { id: string; label: string }[] };
 
-export type BodyScreenData = { title: string; blocks: Block[] };
+/** `weekLabel` is the date range of the report week on screen, for the share dialog. */
+export type BodyScreenData = { title: string; blocks: Block[]; weekLabel?: string };
 
 const signed = (v: number | null) =>
   v == null ? DASH : `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("en-US")}`;

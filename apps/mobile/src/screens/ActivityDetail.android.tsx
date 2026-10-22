@@ -19,6 +19,7 @@ import {
 } from "../components/MdKit";
 import { FAMILY_ICON, sportIcon, zoneTones } from "../components/TodayKit";
 import { type ActivityDetail, barHeights, useActivityDetail } from "../data/activities";
+import { shareActivitySummary } from "../data/share";
 import { useMd } from "../theme/md";
 
 function Stats({ d }: { d: ActivityDetail }) {
@@ -240,7 +241,15 @@ export function ActivityDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, isPending } = useActivityDetail(Number(id));
   return (
-    <LargeAppBarScreen title={data?.name ?? "Activity"} back>
+    <LargeAppBarScreen
+      title={data?.name ?? "Activity"}
+      back
+      share={
+        data
+          ? { label: "Share summary", onPress: () => void shareActivitySummary(data) }
+          : undefined
+      }
+    >
       {isPending ? <Loading /> : null}
       {error ? (
         <Content>

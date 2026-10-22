@@ -1,5 +1,7 @@
 packages: []
 minimumReleaseAgeExclude:
+  - '@expo/config-plugins@58.0.10'
+  - expo-sharing@58.0.20
   - '@expo/env@2.5.3'
   - expo-constants@58.0.13
   - expo-notifications@58.1.6

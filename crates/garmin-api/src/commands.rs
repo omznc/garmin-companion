@@ -62,6 +62,8 @@ pub const COMMANDS: &[Command] = &[
     cmd("tiles_view", "FocusArgs | undefined", "TilesView"),
     cmd("extras_view", "FocusArgs | undefined", "ExtrasView"),
     cmd("charts_view", "FocusArgs | undefined", "ChartsView"),
+    cmd("export_csv", "ExportCsvArgs", "string"),
+    cmd("export_report", "ExportReportArgs", "string"),
     cmd("status", "undefined", "Status"),
     cmd("sign_in_url", "undefined", "string"),
     cmd("redeem_ticket", "TicketArgs", "Status"),
@@ -129,13 +131,6 @@ mod tests {
         ("training_views", "builds the fixture file"),
         ("insights_view_seen", "fixture builder with a fixed clock"),
         ("activities_view_rows", "a helper of activities_view"),
-        // A binary result: a JSON bridge has no use for it. The desktop saves it to a file.
-        ("weekly_report_pdf", "returns PDF bytes"),
-        ("monthly_report_pdf", "returns PDF bytes"),
-        (
-            "activities_csv",
-            "returns a CSV file for the desktop save dialog",
-        ),
     ];
 
     /// Functions that are not views, but the desktop calls them, so the mobile app needs them too.

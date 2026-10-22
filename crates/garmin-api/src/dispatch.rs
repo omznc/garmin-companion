@@ -7,6 +7,7 @@
 //! [`crate::commands::COMMANDS`] lists every command with its argument and
 //! result types. The TypeScript `Commands` map is generated from that list.
 
+use crate::export::{write_export, Kind};
 use crate::focus::{clip_activities, Focus};
 use crate::settings::{self, ThemeMode};
 use crate::{
@@ -208,6 +209,9 @@ pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
 /// In sample mode a command returns its recorded view, and a command that
 /// needs the cache returns an error. The account commands work in both modes.
 pub fn call_with(source: Source, cmd: &str, args_json: &str) -> Result<String, ApiError> {
+    if let Some(out) = export_call(source, cmd, args_json) {
+        return out;
+    }
     if source == Source::Sample {
         let args = serde_json::from_str(args_json).unwrap_or_default();
         if let Some(out) = crate::sample::call(cmd, &args) {
@@ -215,6 +219,54 @@ pub fn call_with(source: Source, cmd: &str, args_json: &str) -> Result<String, A
         }
     }
     cache_call(cmd, args_json)
+}
+
+/// The arguments of `export_csv`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ExportCsvArgs {
+    /// The folder to write into. The app passes its cache folder.
+    dir: String,
+}
+
+/// The period of `export_report`.
+#[derive(Deserialize, Clone, Copy)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "lowercase")]
+pub enum ExportPeriod {
+    Week,
+    Month,
+}
+
+/// The arguments of `export_report`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ExportReportArgs {
+    /// The folder to write into. The app passes its cache folder.
+    dir: String,
+    period: ExportPeriod,
+    /// 0 is the newest week, or the month of today.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    offset: Option<u32>,
+}
+
+/// The commands that write a file. They return the path, not the bytes. Sample
+/// mode exports the sample data.
+fn export_call(source: Source, cmd: &str, args: &str) -> Option<Result<String, ApiError>> {
+    Some(match cmd {
+        "export_csv" => run(args, |a: ExportCsvArgs| {
+            write_export(source, &a.dir, Kind::Csv)
+        }),
+        "export_report" => run(args, |a: ExportReportArgs| {
+            let offset = a.offset.unwrap_or(0);
+            let kind = match a.period {
+                ExportPeriod::Week => Kind::Week(offset as usize),
+                ExportPeriod::Month => Kind::Month(offset),
+            };
+            write_export(source, &a.dir, kind)
+        }),
+        _ => return None,
+    })
 }
 
 /// The commands that read the cache, one value or one window.
@@ -429,6 +481,108 @@ mod tests {
         }
         let list = call("activities", week).unwrap();
         assert!(list.contains(r#""empty":true"#));
+        // An empty cache still exports a header-only CSV and a valid PDF.
+        let out = dir.join("out");
+        let args = serde_json::json!({ "dir": out }).to_string();
+        let csv: String = serde_json::from_str(&call("export_csv", &args).unwrap()).unwrap();
+        assert!(std::fs::read_to_string(csv)
+            .unwrap()
+            .starts_with("date,name"));
+        let args = serde_json::json!({ "dir": out, "period": "week" }).to_string();
+        let pdf: String = serde_json::from_str(&call("export_report", &args).unwrap()).unwrap();
+        assert!(std::fs::read(pdf).unwrap().starts_with(b"%PDF"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sample_mode_exports_the_sample_data_into_the_folder() {
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-export-cmd-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = |cmd: &str, args: serde_json::Value| -> std::path::PathBuf {
+            let out = call_with(Source::Sample, cmd, &args.to_string()).unwrap();
+            serde_json::from_str::<String>(&out).unwrap().into()
+        };
+        let csv = path("export_csv", serde_json::json!({ "dir": dir }));
+        assert_eq!(csv, dir.join("garmin-activities.csv"));
+        assert!(std::fs::read_to_string(&csv).unwrap().lines().count() > 1);
+        let week = path(
+            "export_report",
+            serde_json::json!({ "dir": dir, "period": "week" }),
+        );
+        let month = path(
+            "export_report",
+            serde_json::json!({ "dir": dir, "period": "month", "offset": 1 }),
+        );
+        assert_eq!(month, dir.join("garmin-2026-02.pdf"));
+        for pdf in [week, month] {
+            assert!(std::fs::read(pdf).unwrap().starts_with(b"%PDF"));
+        }
+        // The scratch cache of the sample is gone, and the files are all that is left.
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The week of each sample export is the week that the report screen shows
+    /// (its label is in the fixture), and parallel exports do not clash.
+    #[test]
+    fn sample_week_exports_match_the_report_screen_in_parallel() {
+        use crate::personas::{sample_day, seed, Persona};
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-export-weeks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = crate::open_db(&dir.join("fixture").join("cache.sqlite3")).unwrap();
+        seed(&db, Persona::Sample, sample_day()).unwrap();
+        crate::training_fixtures::seed_training(&db, Persona::Sample, sample_day()).unwrap();
+        let reports = crate::training_fixtures::training_views(&db, sample_day())
+            .unwrap()
+            .reports;
+        assert!(reports.len() > 4, "the fixture holds the older weeks");
+        let out = dir.join("out");
+        std::thread::scope(|s| {
+            for (offset, report) in reports.iter().enumerate() {
+                let out = &out;
+                s.spawn(move || {
+                    let args =
+                        serde_json::json!({ "dir": out, "period": "week", "offset": offset });
+                    let path = call_with(Source::Sample, "export_report", &args.to_string());
+                    let path: String = serde_json::from_str(&path.unwrap()).unwrap();
+                    let name = std::path::Path::new(&path).file_name().unwrap();
+                    let day = name.to_string_lossy().replace("garmin-week-", "");
+                    let start = chrono::NaiveDate::parse_from_str(&day[..10], "%Y-%m-%d").unwrap();
+                    let label = start.format("%d %b").to_string();
+                    assert!(
+                        report.eyebrow.contains(&label),
+                        "offset {offset}: {} lacks {label}",
+                        report.eyebrow
+                    );
+                    assert!(std::fs::read(path).unwrap().starts_with(b"%PDF"));
+                });
+            }
+        });
+        // Only the PDFs are left: no scratch cache.
+        let left = std::fs::read_dir(&out).unwrap().count();
+        assert_eq!(left, reports.len());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_export_checks_its_arguments() {
+        for args in [r#"{"dir":""}"#, r#"{"dir":" "}"#, "{}"] {
+            let out = call_with(Source::Sample, "export_csv", args);
+            assert!(matches!(out, Err(ApiError::BadArguments(_))), "{args}");
+        }
+        let bad = call_with(
+            Source::Sample,
+            "export_report",
+            r#"{"dir":"x","period":"year"}"#,
+        );
+        assert!(matches!(bad, Err(ApiError::BadArguments(_))));
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-export-huge-{}", std::process::id()));
+        let huge = serde_json::json!({ "dir": dir, "period": "month", "offset": u32::MAX });
+        let out = call_with(Source::Sample, "export_report", &huge.to_string());
+        assert!(matches!(out, Err(ApiError::BadArguments(_))));
         let _ = std::fs::remove_dir_all(dir);
     }
 

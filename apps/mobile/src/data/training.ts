@@ -134,6 +134,8 @@ export function presentReport(v: ReportView): BodyScreenData {
   ];
   return {
     title,
+    // The eyebrow reads "No. 6 · 02 Mar - 08 Mar". The share dialog names the range.
+    weekLabel: v.eyebrow.split(" · ")[1],
     blocks: [
       note(v.eyebrow),
       { kind: "text", text: v.headline, tone: "lede" },
