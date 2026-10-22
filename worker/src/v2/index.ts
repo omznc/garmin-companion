@@ -4,7 +4,7 @@
  * The limits here are meant to hold even though the app binary is public:
  * credits are decided on the server, every request holds an upper-bound estimate
  * before it reaches the model, and the OpenRouter key has its own spend limit.
- * Like /v1, nothing here reads or logs a conversation.
+ * Nothing here reads or logs a conversation.
  */
 import { normalizeEmail, isSessionToken, sendCode, sessionUser, signOut, verifyCode } from "./auth";
 import { createCheckout, createPortal, entitlementOf, handlePolarWebhook } from "./billing";

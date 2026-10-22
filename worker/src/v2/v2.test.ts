@@ -550,13 +550,6 @@ describe("chat", () => {
     expect((await h.balance(id)).credits_remaining).toBe(30);
   });
 
-  it("does not depend on the /v1 budget", async () => {
-    const h = harness({ DAILY_BUDGET_USD: "0" });
-    const id = await h.install();
-    h.upstream(() => sse({ choices: [] }, usageChunk(10, 10)));
-    expect((await h.ask(id)).status).toBe(200);
-  });
-
   it("refuses a blocked install and, with the switch on, anonymous installs", async () => {
     const h = harness();
     const id = await h.install();
