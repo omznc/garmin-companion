@@ -48,7 +48,7 @@ pub const STORE: &str = "the app's encrypted store";
 
 /* ------------------------------------------------------ desktop and ios --- */
 
-#[cfg(not(target_os = "android"))]
+#[cfg(all(not(target_os = "android"), not(any(test, feature = "test-sandbox"))))]
 mod imp {
     use anyhow::{Context, Result};
     #[cfg(not(target_os = "ios"))]
@@ -94,6 +94,35 @@ mod imp {
             Ok(()) | Err(Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+/* ------------------------------------------------------------- sandbox --- */
+
+/// In tests the secrets live in memory. No test can reach the OS keyring.
+#[cfg(all(not(target_os = "android"), any(test, feature = "test-sandbox")))]
+mod imp {
+    use anyhow::Result;
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    fn bag() -> &'static Mutex<HashMap<String, String>> {
+        static BAG: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+        BAG.get_or_init(Default::default)
+    }
+
+    pub fn get(account: &str) -> Result<Option<String>> {
+        Ok(bag().lock().unwrap().get(account).cloned())
+    }
+
+    pub fn set(account: &str, value: &str) -> Result<()> {
+        bag().lock().unwrap().insert(account.into(), value.into());
+        Ok(())
+    }
+
+    pub fn delete(account: &str) -> Result<()> {
+        bag().lock().unwrap().remove(account);
+        Ok(())
     }
 }
 
@@ -234,4 +263,17 @@ pub fn set(account: &str, value: &str) -> Result<()> {
 /// Remove the entry. Removing one that was never there succeeds.
 pub fn delete(account: &str) -> Result<()> {
     imp::delete(account)
+}
+
+#[cfg(all(test, not(target_os = "android")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secrets_stay_in_memory_in_tests() {
+        set("sandbox-probe", "a").unwrap();
+        assert_eq!(get("sandbox-probe").unwrap().as_deref(), Some("a"));
+        delete("sandbox-probe").unwrap();
+        assert_eq!(get("sandbox-probe").unwrap(), None);
+    }
 }

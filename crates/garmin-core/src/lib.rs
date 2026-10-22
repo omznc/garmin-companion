@@ -117,6 +117,9 @@ pub fn days_between(date: &str, from: chrono::NaiveDate) -> Option<i64> {
 /// Returns `Ok(None)` when nothing is stored yet — "not connected" is a normal
 /// state, not an error.
 pub fn client_from_keyring() -> Result<Option<GarminClient>> {
+    if paths::SANDBOXED {
+        anyhow::bail!("a live Garmin client is not allowed in tests");
+    }
     let Some(tokens) = store::load_tokens()? else {
         return Ok(None);
     };
@@ -135,6 +138,22 @@ pub fn require_client() -> Result<GarminClient> {
         "No Garmin session stored. Connect an account in the desktop app, or \
          import an existing ~/.garminconnect token file.",
     )
+}
+
+#[cfg(test)]
+mod sandbox_tests {
+    use crate::{GarminClient, Tokens};
+
+    #[test]
+    fn no_live_client_in_tests() {
+        assert!(super::client_from_keyring().is_err());
+        let tokens = Tokens {
+            di_token: String::new(),
+            di_refresh_token: String::new(),
+            di_client_id: String::new(),
+        };
+        assert!(GarminClient::new(tokens, std::sync::Arc::new(|_| {})).is_err());
+    }
 }
 
 #[cfg(test)]

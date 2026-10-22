@@ -50,6 +50,8 @@ gpui_platform = { package = "gpui_ce_platform", version = "0.1", features = [
 ] }
 
 [dev-dependencies]
+# Tests must not reach real user state. See garmin-core `paths.rs`.
+garmin-core = { workspace = true, features = ["test-sandbox"] }
 # Headless windows, to send wheel events through a real layout in a test.
 gpui = { package = "gpui-ce", version = "0.2.2", features = ["test-support"] }
 

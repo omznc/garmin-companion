@@ -17,6 +17,9 @@ cloud coach, and only when you use the cloud coach.
 - The app downloads your Garmin data (activities, routes, sleep, heart rate,
   weight, body data and other health data) from Garmin to your device. It keeps
   this data in a local database on the device.
+- The app can sync in the background and show notifications. You turn the
+  notifications on in the app. The app makes them on your device from the data
+  on your device. It uses no push server and sends nothing for them.
 - The app does not send this data to the developer. It has no analytics, no
   advertising and no crash reports.
 

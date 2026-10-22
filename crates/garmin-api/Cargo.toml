@@ -26,3 +26,7 @@ ts-rs = { workspace = true, optional = true }
 [features]
 # Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
 ts-rs = ["dep:ts-rs", "garmin-core/ts-rs"]
+
+[dev-dependencies]
+# Tests must not reach real user state. See garmin-core `paths.rs`.
+garmin-core = { workspace = true, features = ["test-sandbox"] }
