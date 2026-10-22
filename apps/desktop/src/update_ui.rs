@@ -3,7 +3,7 @@
 //! The logic is in `updater.rs`. A job runs on its own thread with `on_thread`,
 //! and the result comes back to the view. Nothing here blocks the UI thread.
 
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use crate::scale::px;
 use gpui::{div, prelude::*, ClickEvent, Context, Div};
@@ -38,9 +38,8 @@ impl UpdateState {
 }
 
 impl Root {
-    /// Check once after a short delay, then again every six hours while the
-    /// app runs. A check that ran less than six hours ago, in any run of the
-    /// app, is skipped. Demo runs never call the network.
+    /// Check once after a short delay at each start, then again every six
+    /// hours while the app runs. Demo runs never call the network.
     pub fn watch_for_updates(&mut self, cx: &mut Context<Self>) {
         if self.account.demo || !updater::enabled() {
             return;
@@ -48,12 +47,10 @@ impl Root {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(START_DELAY).await;
             loop {
-                if updater::due(updater::last_check(), SystemTime::now()) {
-                    let result = on_thread(check_job()).await;
-                    let alive = this.update(cx, |root, cx| root.on_checked(result, false, cx));
-                    if alive.is_err() {
-                        break;
-                    }
+                let result = on_thread(check_job()).await;
+                let alive = this.update(cx, |root, cx| root.on_checked(result, false, cx));
+                if alive.is_err() {
+                    break;
                 }
                 cx.background_executor().timer(updater::CHECK_EVERY).await;
             }
@@ -86,10 +83,6 @@ impl Root {
         state.checking = false;
         match result {
             Ok(offer) => {
-                // An offer is not recorded, so a restart shows the banner again.
-                if offer.is_none() {
-                    updater::record_check();
-                }
                 state.note = offer
                     .is_none()
                     .then(|| ("This is the latest version.".into(), false));
