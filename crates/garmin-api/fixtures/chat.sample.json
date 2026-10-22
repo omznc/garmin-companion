@@ -1,5 +1,116 @@
 [
   {
+    "sessionId": "sample-threshold",
+    "title": "Plan a threshold run for Thursday",
+    "updatedAt": "2026-10-19T18:20:00.000Z",
+    "turns": [
+      {
+        "id": "sample-threshold:0",
+        "question": "Plan a threshold run for Thursday. I want to get under 45 min for the 10K.",
+        "answer": "Your recovery is good for it. HRV is **68 ms**, inside your normal range, and your training load is *productive* at 412.\n\nYour last three 5K efforts averaged **4:28 /km**. A 44:30 10K needs about **4:27 /km**, so you are close.\n\n## Thursday: 4 × 6 min at threshold\n\n- 15 min easy warm-up in zone 2\n- 4 × 6 min in zone 4, with 2 min easy jog between\n- 10 min cool-down\n\nKeep the reps at **4:15 to 4:20 /km**. If your heart rate goes over 172 in the last rep, stop there. I saved the workout to Garmin, so it is on your watch for Thursday.",
+        "steps": [
+          {
+            "kind": "note",
+            "callId": "note-0",
+            "label": "I will check your recovery and your recent pace first.",
+            "running": false,
+            "ok": null
+          },
+          {
+            "callId": "t1",
+            "label": "Reading 14 days of recovery signals",
+            "running": false,
+            "ok": true
+          },
+          {
+            "callId": "t2",
+            "label": "Reading 6 weeks of runs",
+            "running": false,
+            "ok": true
+          },
+          {
+            "callId": "t3",
+            "label": "Reading your heart rate zones",
+            "running": false,
+            "ok": true
+          },
+          {
+            "callId": "t4",
+            "label": "Building the workout",
+            "running": false,
+            "ok": true
+          }
+        ],
+        "status": "done",
+        "error": null,
+        "drafts": [
+          {
+            "callId": "t4",
+            "savedWorkoutId": 1874203,
+            "draft": {
+              "name": "Threshold 4 × 6 min",
+              "sport": "running",
+              "description": "10K goal pace work. Reps at 4:15 to 4:20 /km.",
+              "steps": [
+                {
+                  "type": "exec",
+                  "kind": "warmup",
+                  "end": {
+                    "type": "time",
+                    "seconds": 900
+                  },
+                  "target": {
+                    "type": "hr_zone",
+                    "zone": 2
+                  }
+                },
+                {
+                  "type": "repeat",
+                  "times": 4,
+                  "steps": [
+                    {
+                      "kind": "interval",
+                      "end": {
+                        "type": "time",
+                        "seconds": 360
+                      },
+                      "target": {
+                        "type": "hr_zone",
+                        "zone": 4
+                      },
+                      "note": "Strong but steady"
+                    },
+                    {
+                      "kind": "recovery",
+                      "end": {
+                        "type": "time",
+                        "seconds": 120
+                      },
+                      "target": {
+                        "type": "none"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "exec",
+                  "kind": "cooldown",
+                  "end": {
+                    "type": "time",
+                    "seconds": 600
+                  },
+                  "target": {
+                    "type": "none"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
     "sessionId": "sample-recovery",
     "title": "Am I recovered enough for a hard day?",
     "updatedAt": "2026-10-18T07:30:00.000Z",
@@ -9,8 +120,19 @@
         "question": "Am I recovered enough for a hard day?",
         "answer": "Yes, with one note. Your resting heart rate is close to your usual value, and your HRV is steady. Sleep was a little short last night, so keep the first part of the day easy.",
         "steps": [
-          { "kind": "note", "callId": "note-0", "label": "I will read your recovery signals first.", "running": false, "ok": null },
-          { "callId": "s1", "label": "Reading 14 days of recovery signals", "running": false, "ok": true }
+          {
+            "kind": "note",
+            "callId": "note-0",
+            "label": "I will read your recovery signals first.",
+            "running": false,
+            "ok": null
+          },
+          {
+            "callId": "s1",
+            "label": "Reading 14 days of recovery signals",
+            "running": false,
+            "ok": true
+          }
         ],
         "status": "done",
         "error": null
@@ -27,9 +149,24 @@
         "question": "How did my week go?",
         "answer": "# Your week in short\n\nSleep and recovery held up well. Activity was a little lower than last month.\n\n## What the data shows\n\n- Sleep: **7 h 12 min** a night on average\n- Resting heart rate: *flat* at 52 bpm\n- HRV: inside your normal range\n\n## What to do next\n\n1. Keep your bedtime the same.\n2. Add one easy walk on a low day.\n3. Check the `body battery` in the morning.\n\n---\n\n| Day | Sleep | Resting HR |\n| --- | --- | --- |\n| Mon | 7 h 40 min | 52 |\n| Tue | 6 h 50 min | 53 |\n| Wed | 7 h 05 min | 52 |\n\nFor the full numbers, open your [Garmin Connect](https://connect.garmin.com) account.",
         "steps": [
-          { "callId": "w1", "label": "Reading 7 days of sleep", "running": false, "ok": true },
-          { "callId": "w2", "label": "Reading resting heart rate and HRV", "running": false, "ok": true },
-          { "callId": "w3", "label": "Reading activities of the week", "running": false, "ok": true }
+          {
+            "callId": "w1",
+            "label": "Reading 7 days of sleep",
+            "running": false,
+            "ok": true
+          },
+          {
+            "callId": "w2",
+            "label": "Reading resting heart rate and HRV",
+            "running": false,
+            "ok": true
+          },
+          {
+            "callId": "w3",
+            "label": "Reading activities of the week",
+            "running": false,
+            "ok": true
+          }
         ],
         "status": "done",
         "error": null

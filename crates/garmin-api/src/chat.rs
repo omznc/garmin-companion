@@ -619,13 +619,15 @@ mod tests {
     }
 
     #[test]
-    fn the_sample_store_has_two_threads_and_no_stale_turn() {
+    fn the_sample_store_has_three_threads_and_no_stale_turn() {
         let rows = seed();
-        assert_eq!(rows.len(), 2);
-        assert!(rows
-            .iter()
-            .flat_map(|r| decode(&r.messages))
-            .all(|t| t.status == Status::Done));
+        assert_eq!(rows.len(), 3);
+        let turns: Vec<Turn> = rows.iter().flat_map(|r| decode(&r.messages)).collect();
+        assert!(turns.iter().all(|t| t.status == Status::Done));
+        // One thread shows a saved workout.
+        let draft = turns.iter().flat_map(|t| &t.drafts).next().unwrap();
+        assert!(draft.saved_workout_id.is_some());
+        assert!(draft.draft.validate().is_ok());
     }
 
     fn put_body(id: &str, at: &str, body: &str) {
