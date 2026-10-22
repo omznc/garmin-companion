@@ -169,6 +169,7 @@ function SectionView({ s, hero }: { s: Section; hero: Hero | null }) {
     case "health": {
       // The hero card shows its metric, so the list skips it.
       const metrics = s.metrics.filter((m) => m.id !== hero?.id);
+      if (!metrics.length) return null;
       return (
         <Group title="Health">
           {metrics.map((m, i) => (
@@ -233,7 +234,14 @@ function HeroRow({ hero }: { hero: Hero }) {
       accessibilityRole="button"
       accessibilityLabel={`${hero.label} ${hero.text}${hero.pct != null ? " out of 100" : ""}`}
       onPress={() => router.push(metricRoute(hero.id))}
-      style={{ flexDirection: "row", alignItems: "center", gap: 20, padding: 16, paddingBottom: 0 }}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 20,
+        padding: 16,
+        paddingBottom: 0,
+        opacity: pressed ? 0.6 : 1,
+      })}
     >
       {hero.pct != null ? (
         <Host style={{ width: 88, height: 88 }}>
@@ -244,7 +252,7 @@ function HeroRow({ hero }: { hero: Hero }) {
             currentValueLabel={<SwiftText>{hero.text}</SwiftText>}
             modifiers={[
               gaugeStyle("circularCapacity"),
-              tintStyle("#FF9500"),
+              tintStyle(tint),
               scaleEffect(1.35),
               frame({ width: 88, height: 88 }),
             ]}

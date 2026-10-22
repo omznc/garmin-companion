@@ -102,7 +102,7 @@ export function FocusHeader({ children }: { children?: ReactNode }) {
             onPress={() => setOpen(true)}
           />
         ) : (
-          <Stack.Toolbar.Button accessibilityLabel="Choose dates" onPress={() => setOpen(true)}>
+          <Stack.Toolbar.Button accessibilityHint="Choose dates" onPress={() => setOpen(true)}>
             {label}
           </Stack.Toolbar.Button>
         )}

@@ -1,7 +1,8 @@
 import { Stack } from "expo-router";
 import { TabStack } from "../../../src/nav/TabStack";
 
-// The More list is the root of the tab. Without it, iOS opened a sub-page (Tabs) as the root.
+// The More list is the root of the tab. Without an anchor, the root follows the last route
+// name, which is "tabs", so iOS opened the Tabs page as the root.
 export const unstable_settings = { anchor: "index" };
 
 // Each sub-page takes its title here, before the page mounts. It uses the large title of the stack.
