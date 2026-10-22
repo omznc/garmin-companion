@@ -255,14 +255,9 @@ fn stop() {
     }
 }
 
-fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
-    let a: SendArgs = serde_json::from_value(args.clone()).map_err(bad)?;
-    if a.session_id.is_empty() {
-        return Err(bad("sessionId is empty"));
-    }
-    if a.turn_id.is_empty() {
-        return Err(bad("turnId is empty"));
-    }
+/// The question for the thread, the history for the model and the period of
+/// the focus. The last message of the history names the period.
+fn turn_input(a: &SendArgs) -> Result<(String, Vec<HistoryMessage>, Option<Period>), FfiError> {
     let question = a
         .history
         .iter()
@@ -276,15 +271,26 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
             start: f.start,
             end: f.end,
         });
-    let history: Vec<HistoryMessage> = a
+    let history = a
         .history
-        .into_iter()
+        .iter()
         .map(|m| HistoryMessage {
-            role: m.role,
-            content: m.content,
+            role: m.role.clone(),
+            content: m.content.clone(),
         })
         .collect();
-    let history = with_period_note(history, period);
+    Ok((question, with_period_note(history, period), period))
+}
+
+fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
+    let a: SendArgs = serde_json::from_value(args.clone()).map_err(bad)?;
+    if a.session_id.is_empty() {
+        return Err(bad("sessionId is empty"));
+    }
+    if a.turn_id.is_empty() {
+        return Err(bad("turnId is empty"));
+    }
+    let (question, history, period) = turn_input(&a)?;
     stop();
     let turn = chat::begin_turn(fixture, &a.session_id, &question).map_err(failed)?;
     let flag = Arc::new(AtomicBool::new(false));
@@ -576,6 +582,41 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
+    }
+
+    fn send_args(extra: Value) -> SendArgs {
+        let mut args = json!({ "sessionId": "s", "turnId": "t",
+            "history": [{ "role": "user", "content": "How did I sleep?" }] });
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(args).unwrap()
+    }
+
+    #[test]
+    fn a_send_with_dates_hands_the_period_to_the_coach() {
+        let a = send_args(json!({ "from": "2026-10-14", "to": "2026-10-20" }));
+        let (question, history, period) = turn_input(&a).unwrap();
+        let period = period.unwrap();
+        assert_eq!(period.start.to_string(), "2026-10-14");
+        assert_eq!(period.end.to_string(), "2026-10-20");
+        // The thread keeps the plain question. The model gets the period note.
+        assert_eq!(question, "How did I sleep?");
+        let last = &history.last().unwrap().content;
+        assert!(last.starts_with("How did I sleep?"));
+        assert!(last.contains("Focus period: 2026-10-14 to 2026-10-20"));
+    }
+
+    #[test]
+    fn a_send_without_dates_has_no_period_and_a_bad_date_is_refused() {
+        let (_, history, period) = turn_input(&send_args(json!({}))).unwrap();
+        assert!(period.is_none());
+        assert_eq!(history.last().unwrap().content, "How did I sleep?");
+        let bad_date = send_args(json!({ "from": "soon" }));
+        assert!(matches!(
+            turn_input(&bad_date),
+            Err(FfiError::BadArgs { .. })
+        ));
     }
 
     fn thread(id: &str) -> Value {

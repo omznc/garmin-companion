@@ -5,7 +5,7 @@ import type { SleepWindow } from "./SleepWindow";
 
 export type SleepView = { date: string, 
 /**
- * True when the last 30 days hold no sleep.
+ * True when the last 30 days hold no sleep. A range does not change it.
  */
 empty: boolean, lede: string, 
 /**

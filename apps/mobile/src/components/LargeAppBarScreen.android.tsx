@@ -3,7 +3,7 @@
 import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { RefreshControl, View } from "react-native";
 import Animated, {
   Extrapolation,
@@ -58,6 +58,7 @@ export function LargeAppBarScreen<T = never>({
 }: Props<T>) {
   const md = useMd();
   const insets = useSafeAreaInsets();
+  const [actionsWidth, setActionsWidth] = useState(0);
   const expanded = small ? COLLAPSED : EXPANDED;
   const range = Math.max(expanded - COLLAPSED, 1);
   const scrollY = useSharedValue(0);
@@ -122,7 +123,8 @@ export function LargeAppBarScreen<T = never>({
           style={[
             {
               position: "absolute",
-              right: actions ? 200 : 72,
+              // The title ends before the actions, so a narrow phone cuts it only when it must.
+              right: actions ? actionsWidth + 16 : 72,
               bottom: small ? 18 : 16,
               color: md.onSurface,
               fontWeight: "500",
@@ -134,7 +136,12 @@ export function LargeAppBarScreen<T = never>({
         </Animated.Text>
         {back ? <BackButton top={insets.top} /> : null}
         {actions ? (
-          <View style={{ position: "absolute", top: insets.top + 8, right: 8 }}>{actions}</View>
+          <View
+            onLayout={(e) => setActionsWidth(e.nativeEvent.layout.width)}
+            style={{ position: "absolute", top: insets.top + 8, right: 8 }}
+          >
+            {actions}
+          </View>
         ) : null}
       </Animated.View>
     </View>

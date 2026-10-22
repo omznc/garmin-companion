@@ -7,6 +7,7 @@ import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Card, GAP, Group, ListRow, Loading, MARGIN, SectionLabel, T } from "../components/MdKit";
 import { FAMILY_ICON } from "../components/TodayKit";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { emptyActivitiesText, useFocus } from "../data/focus";
 import { useMd } from "../theme/md";
 
 function SessionRow({ c }: { c: ActivityCard }) {
@@ -57,6 +58,7 @@ function DayGroup({ g, first, last }: { g: Day; first: boolean; last: boolean })
 // Loading, the error and the empty note. They sit above the days.
 function Head({ data, error }: { data: ActivitiesView | undefined; error: unknown }) {
   const md = useMd();
+  const focus = useFocus();
   return (
     <View style={{ padding: MARGIN, gap: GAP }}>
       {!data && !error ? <Loading /> : null}
@@ -68,7 +70,7 @@ function Head({ data, error }: { data: ActivitiesView | undefined; error: unknow
       {data?.empty ? (
         <Card tone="secondary">
           <T v="body" color={md.onSecondaryContainer}>
-            No sessions yet. When your watch records a session, it shows here.
+            {emptyActivitiesText(focus)}
           </T>
         </Card>
       ) : null}

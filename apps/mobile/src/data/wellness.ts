@@ -1,10 +1,10 @@
 // The `health_view` and `sleep_view` results of the Rust core, as JSON.
-// The core owns the numbers and the sentences. The screens only draw them.
+// The core owns the numbers and the sentences, and clips them to a focus range.
+// The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
 import { devPersona } from "./devPersona";
 import { focusArgs, focusKey, useFocus } from "./focus";
-import { clipHealth, clipSleep } from "./focusClip";
-import { call, isSampleData } from "./source";
+import { call } from "./source";
 
 // The condition stays inline, so Metro drops the fixtures from a release build.
 const fixtures = (__DEV__ ? require("./wellnessFixtures") : null) as
@@ -32,9 +32,6 @@ export const useHealth = () => {
     queryKey: ["health", focusKey(focus)],
     queryFn: async () =>
       (recorded("health_view") as HealthView | undefined) ?? call("health_view", focusArgs(focus)),
-    // The core ends the view on the last day. A range also drops the days before its start.
-    // Sample data is old, so a range of real dates would empty it.
-    select: (view) => clipHealth(view, isSampleData() ? null : focus),
     retry: false,
   });
 };
@@ -45,7 +42,6 @@ export const useSleep = () => {
     queryKey: ["sleep", focusKey(focus)],
     queryFn: async () =>
       (recorded("sleep_view") as SleepView | undefined) ?? call("sleep_view", focusArgs(focus)),
-    select: (view) => clipSleep(view, isSampleData() ? null : focus),
     retry: false,
   });
 };

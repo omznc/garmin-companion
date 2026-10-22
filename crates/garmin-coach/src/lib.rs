@@ -30,6 +30,4 @@ pub use config::{
 pub use sse::{SseParser, StreamResult, ToolCall};
 pub use tools::Period;
 pub use transport::{HttpTransport, Transport};
-pub use turn::{
-    ask, ask_in, run_turn, run_turn_in, with_period_note, Event, EventSink, HistoryMessage,
-};
+pub use turn::{ask_in, run_turn, run_turn_in, with_period_note, Event, EventSink, HistoryMessage};

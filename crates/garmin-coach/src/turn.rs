@@ -73,16 +73,7 @@ pub trait EventSink: Send + Sync {
 
 /// Run one turn with the saved config. The result goes to the sink as `Done`
 /// or `Error`. A stopped turn ends with `Done`, and the host keeps the text.
-pub async fn ask(
-    history: Vec<HistoryMessage>,
-    sink: &dyn EventSink,
-    stop: &AtomicBool,
-    drafts: bool,
-) {
-    ask_in(history, sink, stop, drafts, None).await;
-}
-
-/// [`ask`] with a `period` that bounds what the tools read.
+/// A `period` bounds what the tools read.
 pub async fn ask_in(
     history: Vec<HistoryMessage>,
     sink: &dyn EventSink,

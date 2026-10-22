@@ -170,6 +170,19 @@ fn view<T: Serialize>(
     encode(&garmin_core::with_as_of(end, || f(&db, end))?)
 }
 
+/// Like `view`, for a view that clips its series to a range.
+fn ranged_view<T: Serialize>(
+    args: &str,
+    f: impl FnOnce(&Db, Focus) -> Result<T, ApiError>,
+) -> Result<String, ApiError> {
+    let a: FocusArgs = parse(args)?;
+    let focus = a
+        .focus()?
+        .unwrap_or_else(|| Focus::day(garmin_core::today()));
+    let db = open_default_db()?;
+    encode(&garmin_core::with_as_of(focus.end, || f(&db, focus))?)
+}
+
 /// Run one command on live data and return its result as JSON.
 ///
 /// `args_json` is a JSON object, or an empty string for no arguments. Read
@@ -247,8 +260,8 @@ fn screen_call(cmd: &str, args: &str) -> Result<String, ApiError> {
         "activity_detail" => run(args, |a: ActivityIdArgs| {
             activity_detail_view(&open_default_db()?, a.activity_id)
         }),
-        "health_view" => view(args, crate::health_view),
-        "sleep_view" => view(args, crate::sleep_view),
+        "health_view" => ranged_view(args, crate::health::health_view_in),
+        "sleep_view" => ranged_view(args, crate::sleep_view::sleep_view_in),
         "weight_view" => view(args, body::weight_view),
         "food_view" => view(args, body::food_view),
         "strength_view" => view(args, body::strength_view),
@@ -271,7 +284,7 @@ fn training_call(cmd: &str, args: &str) -> Result<String, ApiError> {
             let today = garmin_core::today();
             crate::reports::report_view(&open_default_db()?, today, a.offset.unwrap_or(0))
         }),
-        "tiles_view" => view(args, crate::tiles::tiles_view),
+        "tiles_view" => ranged_view(args, crate::tiles::tiles_view_in),
         "extras_view" => view(args, crate::extras::extras_view),
         "charts_view" => view(args, crate::charts::charts_view),
         other => account_call(other, args),

@@ -6,7 +6,7 @@
 
 use chrono::{Datelike, Duration, NaiveDate};
 
-use crate::activities::ActivitiesView;
+use crate::activities::{ActivitiesView, ActivityRow};
 use crate::ApiError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,6 +84,21 @@ impl Focus {
         label_for(*self, real_today())
     }
 
+    /// True when the focus is more than one day.
+    pub fn is_range(&self) -> bool {
+        self.days() > 1
+    }
+
+    /// The days of a daily series that fall in a range. The series ends on
+    /// the end of the focus, oldest first. A single day keeps every item.
+    pub fn tail<T: Clone>(&self, values: &[T]) -> Vec<T> {
+        if !self.is_range() {
+            return values.to_vec();
+        }
+        let n = usize::try_from(self.days()).unwrap_or(usize::MAX);
+        values[values.len().saturating_sub(n)..].to_vec()
+    }
+
     /// A daily series that ends on the end of the focus, as dated points. A
     /// range keeps only the days inside it. `values` is the series, oldest
     /// first.
@@ -129,10 +144,27 @@ pub fn clip_activities(view: &mut ActivitiesView, focus: Focus) {
     view.groups.retain(|g| {
         NaiveDate::parse_from_str(&g.date, "%Y-%m-%d").is_ok_and(|d| focus.contains(d))
     });
-    view.rows.retain(|r| {
-        NaiveDate::parse_from_str(&r.date, "%Y-%m-%d").is_ok_and(|d| focus.contains(d))
-    });
+    view.rows = rows_in_focus(&view.rows, focus)
+        .into_iter()
+        .cloned()
+        .collect();
     view.empty = view.groups.is_empty();
+}
+
+/// The rows in the focus. A range keeps the rows inside it. A single day keeps
+/// the rows up to that day.
+pub fn rows_in_focus(rows: &[ActivityRow], focus: Focus) -> Vec<&ActivityRow> {
+    rows.iter()
+        .filter(|r| {
+            NaiveDate::parse_from_str(&r.date, "%Y-%m-%d").is_ok_and(|d| {
+                if focus.is_range() {
+                    focus.contains(d)
+                } else {
+                    d <= focus.end
+                }
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -186,6 +218,50 @@ mod tests {
             week,
             [(d(2026, 10, 19), Some(3.0)), (d(2026, 10, 20), Some(4.0))]
         );
+    }
+
+    #[test]
+    fn tail_keeps_the_days_of_a_range_and_a_day_keeps_all() {
+        let values = [1, 2, 3, 4, 5];
+        assert_eq!(Focus::day(d(2026, 10, 20)).tail(&values), values);
+        let two = Focus::range(d(2026, 10, 19), d(2026, 10, 20));
+        assert_eq!(two.tail(&values), [4, 5]);
+        let long = Focus::range(d(2026, 9, 1), d(2026, 10, 20));
+        assert_eq!(long.tail(&values), values);
+    }
+
+    #[test]
+    fn rows_in_focus_read_a_range_or_the_days_up_to_a_day() {
+        let row = |date: &str| ActivityRow {
+            activity_id: 1,
+            date: date.into(),
+            name: String::new(),
+            sport_label: String::new(),
+            distance_m: None,
+            duration_s: None,
+            pace: None,
+            speed_kmh: None,
+            avg_hr: None,
+            load: None,
+        };
+        let rows = [
+            row("2026-10-20"),
+            row("2026-10-18"),
+            row("2026-10-10"),
+            row(""),
+        ];
+        let dates = |f: Focus| -> Vec<&str> {
+            rows_in_focus(&rows, f)
+                .iter()
+                .map(|r| r.date.as_str())
+                .collect()
+        };
+        assert_eq!(
+            dates(Focus::day(d(2026, 10, 18))),
+            ["2026-10-18", "2026-10-10"]
+        );
+        let range = Focus::range(d(2026, 10, 17), d(2026, 10, 20));
+        assert_eq!(dates(range), ["2026-10-20", "2026-10-18"]);
     }
 
     #[test]

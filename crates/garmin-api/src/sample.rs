@@ -35,7 +35,16 @@ fn json(text: &str) -> Value {
 /// The recorded result of a command, `None` when the command has no sample.
 /// A command with no sample and no cache need goes to the live path.
 pub(crate) fn call(cmd: &str, args: &Value) -> Option<Result<String, ApiError>> {
-    let out = match cmd {
+    if NEEDS_CACHE.contains(&cmd) {
+        return Some(Err(ApiError::BadArguments(
+            "sample mode has no cache".into(),
+        )));
+    }
+    recorded(cmd, args).map(Ok)
+}
+
+fn recorded(cmd: &str, args: &Value) -> Option<String> {
+    Some(match cmd {
         "today" => TODAY.to_owned(),
         "activities" => ACTIVITIES.to_owned(),
         "activity_detail" => detail(args),
@@ -45,14 +54,8 @@ pub(crate) fn call(cmd: &str, args: &Value) -> Option<Result<String, ApiError>> 
         "insights_view" | "fitness_view" | "report_view" => training(cmd, args),
         "plan_view" | "routes_view" | "gear_view" => part(PLACES, cmd),
         "tiles_view" | "extras_view" | "charts_view" => part(VIEWS, cmd),
-        c if NEEDS_CACHE.contains(&c) => {
-            return Some(Err(ApiError::BadArguments(
-                "sample mode has no cache".into(),
-            )))
-        }
         _ => return None,
-    };
-    Some(Ok(out))
+    })
 }
 
 /// The sample detail with the requested id, so the list and the detail agree.

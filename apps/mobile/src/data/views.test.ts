@@ -106,6 +106,22 @@ test("plan extras give the race, the planned items and the meals", () => {
   );
 });
 
+test("plan labels name the focus day for a past focus", () => {
+  const view = extras({
+    race: { eventKey: "k", date: "2026-10-22", name: "Race", targetSecs: null, location: null },
+    planned: [{ title: "Tempo", date: "2026-10-23" }] as ExtrasView["planned"],
+    nutrition: { meals: [], goals: null, loggedKcal: 650 },
+  });
+  const text = (past: boolean) => JSON.stringify(presentPlanExtras(view, past));
+  assert.match(text(false), /Next 14 days/);
+  assert.match(text(false), /Nutrition today/);
+  assert.match(text(false), /"today"/);
+  assert.match(text(true), /The 14 days after 22 Oct/);
+  assert.match(text(true), /Nutrition on 22 Oct/);
+  assert.match(text(true), /that day/);
+  assert.doesNotMatch(text(true), /Next 14 days|Nutrition today/);
+});
+
 test("strength charts are hidden with no data", () => {
   assert.deepEqual(presentStrengthCharts(charts({})), []);
 });

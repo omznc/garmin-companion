@@ -3,7 +3,7 @@
 // The screens draw the blocks and have no other copy.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { bodyLine, DASH, one, whole } from "./bodyLine";
-import { type Focus, focusArgs, focusKey, useFocus } from "./focus";
+import { type Focus, focusArgs, focusKey, todayIso, useFocus } from "./focus";
 import { followsFocus } from "./focusChip";
 import { fetchPlaces, type PlacesKind } from "./places";
 import { call } from "./source";
@@ -216,7 +216,8 @@ async function fetchBody(kind: ScreenKind, offset: number, focus: Focus): Promis
   if (kind === "report") return presentReport(await call("report_view", { offset }));
   if (kind === "plan") {
     const plan = await fetchPlaces(kind, focus);
-    return withExtra(plan, async () => presentPlanExtras(await call("extras_view", args)));
+    const past = focus !== null && focus.to < todayIso();
+    return withExtra(plan, async () => presentPlanExtras(await call("extras_view", args), past));
   }
   if (kind === "routes" || kind === "gear") return fetchPlaces(kind, focus);
   if (kind === "weight") return presentWeight(await call(commands.weight, args));

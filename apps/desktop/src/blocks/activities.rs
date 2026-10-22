@@ -207,18 +207,13 @@ fn mean(values: impl Iterator<Item = f32>) -> Option<f32> {
 /// The rows in the focus. A day shows the newest rows up to that day. A range
 /// shows the rows inside it.
 fn in_focus<'a>(rows: &'a [ActivityRow], focus: &Focus) -> Vec<&'a ActivityRow> {
-    let ranged = focus.days() > 1;
-    let kept = rows.iter().filter(|r| {
-        parse_day(&r.date).is_some_and(|d| {
-            if ranged {
-                focus.contains(d)
-            } else {
-                d <= focus.end
-            }
-        })
+    let mut kept = garmin_api::focus::rows_in_focus(rows, *focus);
+    kept.truncate(if focus.is_range() {
+        RANGE_ROWS
+    } else {
+        RECENT_ROWS
     });
-    kept.take(if ranged { RANGE_ROWS } else { RECENT_ROWS })
-        .collect()
+    kept
 }
 
 /// The title of the rate column: pace on foot, speed on wheels, both, or none.

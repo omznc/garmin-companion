@@ -25,11 +25,6 @@ export function makeFocus(a: string, b: string, today: string): NonNullable<Focu
   return { from: x as string, to: y as string };
 }
 
-/** The number of days with both ends. A single day is 1. */
-export function focusDays(f: NonNullable<Focus>): number {
-  return Math.round((atNoon(f.to).getTime() - atNoon(f.from).getTime()) / DAY_MS) + 1;
-}
-
 /** True for the live focus, and for the single day of the real today. */
 export function isLive(f: Focus, today: string): boolean {
   return f === null || (f.from === f.to && f.to === today);
@@ -62,6 +57,13 @@ export function focusLabel(f: Focus, today: string): string {
   if (s.getFullYear() !== e.getFullYear()) return `${day(f.from, true)} - ${day(f.to, true)}`;
   if (s.getMonth() !== e.getMonth()) return `${day(f.from, false)} - ${day(f.to, true)}`;
   return `${s.getDate()} - ${day(f.to, true)}`;
+}
+
+/** The note of an empty Activities list. A range has its own words. */
+export function emptyActivitiesText(f: Focus): string {
+  return f && f.from !== f.to
+    ? "No sessions in this range. Choose other dates."
+    : "No sessions yet. When your watch records a session, it shows here.";
 }
 
 /** The ready ranges of the picker. Each one ends on `today`. */

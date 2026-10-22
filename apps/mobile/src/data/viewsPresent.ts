@@ -75,19 +75,28 @@ export function clockSecs(secs: number): string {
   return `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
 }
 
-function daysText(n: number): string {
+// A view of a past focus day counts from that day, so its words name the day and not "today".
+function daysText(n: number, past: boolean): string {
   if (n < 0) return "past";
-  if (n === 0) return "today";
+  if (n === 0) return past ? "that day" : "today";
   return n === 1 ? "1 day to go" : `${n} days to go`;
 }
 
-function raceBlocks(v: ExtrasView): Block[] {
+/** `2026-10-14` as `14 Oct`. */
+const dayText = (date: string) =>
+  new Date(`${date}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+function raceBlocks(v: ExtrasView, past: boolean): Block[] {
   const r = v.race;
   if (!r) return [];
   const tiles = [
     { label: "Race", value: r.name ?? "Race" },
     { label: "Date", value: r.date },
-    { label: "Countdown", value: daysText(daysTo(r.date, v.date)), accent: true },
+    {
+      label: past ? `Countdown from ${dayText(v.date)}` : "Countdown",
+      value: daysText(daysTo(r.date, v.date), past),
+      accent: true,
+    },
     ...(r.targetSecs == null ? [] : [{ label: "Target", value: clockSecs(r.targetSecs) }]),
     ...(r.location ? [{ label: "Location", value: r.location }] : []),
   ];
@@ -97,12 +106,12 @@ function raceBlocks(v: ExtrasView): Block[] {
   ];
 }
 
-function plannedBlocks(v: ExtrasView): Block[] {
+function plannedBlocks(v: ExtrasView, past: boolean): Block[] {
   if (v.planned.length === 0) return [];
   return [
     {
       kind: "rows",
-      title: "Next 14 days",
+      title: past ? `The 14 days after ${dayText(v.date)}` : "Next 14 days",
       rows: v.planned.map((p) => {
         const n = p.steps?.steps.length ?? 0;
         return {
@@ -137,19 +146,23 @@ function nutritionTiles(n: ExtrasView["nutrition"]) {
   ];
 }
 
-function nutritionBlocks(v: ExtrasView): Block[] {
+function nutritionBlocks(v: ExtrasView, past: boolean): Block[] {
   const n = v.nutrition;
   if (n.meals.length === 0 && n.loggedKcal == null) return [];
   const tiles = nutritionTiles(n);
-  const blocks: Block[] = [{ kind: "text", text: "Nutrition today", tone: "heading" }];
+  const heading = past ? `Nutrition on ${dayText(v.date)}` : "Nutrition today";
+  const blocks: Block[] = [{ kind: "text", text: heading, tone: "heading" }];
   if (tiles.length > 0) blocks.push({ kind: "tiles", tiles });
   if (n.meals.length > 0) blocks.push({ kind: "rows", title: "Meals", rows: n.meals.map(mealRow) });
   return blocks;
 }
 
-/** The blocks that the Plan screen gets from the extras view. Empty when there is nothing. */
-export function presentPlanExtras(v: ExtrasView): Block[] {
-  return [...raceBlocks(v), ...plannedBlocks(v), ...nutritionBlocks(v)];
+/**
+ * The blocks that the Plan screen gets from the extras view. Empty when there is nothing.
+ * `past` is true when the focus day is before the real day: the labels then name that day.
+ */
+export function presentPlanExtras(v: ExtrasView, past = false): Block[] {
+  return [...raceBlocks(v, past), ...plannedBlocks(v, past), ...nutritionBlocks(v, past)];
 }
 
 /** The muscle group bars and the weekly sets of the Strength screen. */

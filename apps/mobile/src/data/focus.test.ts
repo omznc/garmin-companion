@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   clearFocus,
+  emptyActivitiesText,
   focusArgs,
-  focusDays,
   focusKey,
   focusLabel,
   focusPresets,
@@ -51,10 +51,10 @@ test("the live focus sends no date and a day sends one", () => {
   assert.ok(!isLive({ from: "2026-10-19", to: TODAY }, TODAY));
 });
 
-test("the days count both ends and across a daylight-saving change", () => {
-  assert.equal(focusDays({ from: "2026-10-14", to: "2026-10-14" }), 1);
-  assert.equal(focusDays({ from: "2026-10-14", to: "2026-10-20" }), 7);
-  assert.equal(focusDays({ from: "2026-03-20", to: "2026-04-05" }), 17);
+test("an empty range has its own note", () => {
+  assert.match(emptyActivitiesText({ from: "2026-10-14", to: "2026-10-20" }), /in this range/);
+  assert.match(emptyActivitiesText(null), /No sessions yet/);
+  assert.match(emptyActivitiesText({ from: "2026-10-14", to: "2026-10-14" }), /No sessions yet/);
 });
 
 test("the presets end on today", () => {

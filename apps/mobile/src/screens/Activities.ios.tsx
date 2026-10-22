@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { FocusHeader } from "../components/FocusChip";
 import { ActivityIndicator, FlatList, PlatformColor, Pressable, Text, View } from "react-native";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { emptyActivitiesText, useFocus } from "../data/focus";
 
 const label = PlatformColor("label");
 const secondary = PlatformColor("secondaryLabel");
@@ -85,6 +86,7 @@ function DayGroup({ g }: { g: Day }) {
 // One list item for each day, so a long history draws only the days near the screen.
 export function ActivitiesScreen() {
   const { data, error } = useActivities();
+  const focus = useFocus();
   return (
     <FlatList
       contentInsetAdjustmentBehavior="automatic"
@@ -98,9 +100,7 @@ export function ActivitiesScreen() {
           <FocusHeader />
           {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
           {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
-          {data?.empty ? (
-            <Message>No sessions yet. When your watch records a session, it shows here.</Message>
-          ) : null}
+          {data?.empty ? <Message>{emptyActivitiesText(focus)}</Message> : null}
         </>
       }
     />

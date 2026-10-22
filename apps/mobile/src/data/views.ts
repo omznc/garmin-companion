@@ -14,21 +14,3 @@ export const useTiles = () => {
     retry: false,
   });
 };
-
-export const useExtras = () => {
-  const focus = useFocus();
-  return useQuery({
-    queryKey: ["extras", focusKey(focus)],
-    queryFn: () => call("extras_view", focusArgs(focus)),
-    retry: false,
-  });
-};
-
-export const useCharts = () => {
-  const focus = useFocus();
-  return useQuery({
-    queryKey: ["charts", focusKey(focus)],
-    queryFn: () => call("charts_view", focusArgs(focus)),
-    retry: false,
-  });
-};
