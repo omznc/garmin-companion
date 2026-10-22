@@ -106,8 +106,8 @@ export function MoreHome() {
   return (
     <Page title="More" large>
       <Section title="Health">{draw(health, "primary")}</Section>
-      <Section title="Training">{draw(training, "tertiary")}</Section>
-      <Section title="Settings">{draw(prefs, "secondary")}</Section>
+      <Section title="Training">{draw(training, "secondary")}</Section>
+      <Section title="Settings">{draw(prefs, "tertiary")}</Section>
     </Page>
   );
 }
