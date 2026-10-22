@@ -148,7 +148,16 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
         // OpenCode 2 gives the model the MCP tools only through its `execute`
         // tool. That tool runs code with no file access, but its `fetch` can
         // make HTTP requests. OpenCode 2 has no setting to block it.
-        "permission": { "*": "deny", "garmin_*": "allow", "execute": "allow" },
+        // The free models refuse a turn with no `read` tool (HTTP 403), so
+        // `read` is allowed. `external_directory` stays denied: the model
+        // can read only the empty temporary work folder.
+        "permission": {
+            "*": "deny",
+            "garmin_*": "allow",
+            "execute": "allow",
+            "read": "allow",
+            "external_directory": "deny",
+        },
         "agent": { AGENT: {
             "mode": "primary",
             "description": "Running coach",
@@ -282,8 +291,8 @@ mod tests {
     }
 
     /// Needs an `opencode` with a model. Run with `GC_LIVE_DB=<cache copy>`,
-    /// `APPIMAGE=<binary>` and `GC_LIVE_MODEL=<provider>/<paid model>`. A free model refuses a turn with no
-    /// `read` tool.
+    /// `APPIMAGE=<binary>`. Set `GC_LIVE_MODEL=<provider>/<model>` to choose
+    /// a model. With no value, the test uses the default (free) model.
     #[test]
     #[ignore]
     fn a_real_turn_reads_the_copy_over_mcp() {
@@ -374,7 +383,13 @@ mod tests {
         let v = config(Path::new("/app"), Some(Path::new("/c.db")), period);
         assert_eq!(
             v["permission"],
-            json!({ "*": "deny", "garmin_*": "allow", "execute": "allow" })
+            json!({
+                "*": "deny",
+                "garmin_*": "allow",
+                "execute": "allow",
+                "read": "allow",
+                "external_directory": "deny",
+            })
         );
         let server = &v["mcp"]["garmin"];
         assert_eq!(
