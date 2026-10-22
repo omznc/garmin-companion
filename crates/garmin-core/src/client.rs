@@ -111,6 +111,10 @@ impl GarminClient {
         tokens: Tokens,
         on_tokens_changed: Arc<dyn Fn(&Tokens) + Send + Sync>,
     ) -> Result<Self> {
+        // The one place a live client is built. A test must not call Garmin.
+        if crate::paths::SANDBOXED {
+            anyhow::bail!("a live Garmin client is not allowed in tests");
+        }
         let http = reqwest::Client::builder()
             .cookie_store(true)
             .timeout(std::time::Duration::from_secs(45))
