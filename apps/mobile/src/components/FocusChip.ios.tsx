@@ -1,5 +1,5 @@
 // The date focus control on iOS. SwiftUI buttons, a native sheet, and native date pickers.
-// `FocusAction` sits in a stack header and opens the sheet. `FocusRow` sits in a body and only clears.
+// `FocusHeader` puts its buttons in a stack header and opens the sheet. `FocusRow` sits in a body and only clears.
 import {
   BottomSheet,
   Button,
@@ -14,7 +14,7 @@ import {
 } from "@expo/ui/swift-ui";
 import { accessibilityLabel, labelStyle, presentationDetents } from "@expo/ui/swift-ui/modifiers";
 import { Stack } from "expo-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { View } from "react-native";
 import {
   clearFocus,
@@ -84,48 +84,44 @@ function ClearButton() {
   );
 }
 
-function ActionButtons({ onOpen }: { onOpen: () => void }) {
-  const { live, label } = chipState(useFocus(), todayIso());
-  return live ? (
-    <Button
-      systemImage="calendar"
-      onPress={onOpen}
-      modifiers={[labelStyle("iconOnly"), accessibilityLabel("Choose dates")]}
-    />
-  ) : (
-    <HStack spacing={12}>
-      <Button label={label} systemImage="calendar" onPress={onOpen} />
-      <ClearButton />
-    </HStack>
-  );
-}
-
-/** The header action: a calendar button, or the focus label with its clear button. */
-export function FocusAction() {
+/**
+ * The right header items: a calendar button, or the focus label with a clear button, then
+ * `children` (more toolbar items). Native toolbar buttons: a SwiftUI host in the header drew
+ * an empty pill. The sheet sits in a zero-size host in the body.
+ */
+export function FocusHeader({ children }: { children?: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const { live, label } = chipState(useFocus(), todayIso());
   return (
-    <View style={{ minHeight: 44, minWidth: 44, justifyContent: "center" }}>
-      <Host matchContents>
-        <BottomSheet
-          isPresented={open}
-          onIsPresentedChange={setOpen}
-          anchor={<ActionButtons onOpen={() => setOpen(true)} />}
-        >
+    <>
+      <Stack.Toolbar placement="right">
+        {live ? (
+          <Stack.Toolbar.Button
+            icon="calendar"
+            accessibilityLabel="Choose dates"
+            onPress={() => setOpen(true)}
+          />
+        ) : (
+          <Stack.Toolbar.Button accessibilityLabel="Choose dates" onPress={() => setOpen(true)}>
+            {label}
+          </Stack.Toolbar.Button>
+        )}
+        <Stack.Toolbar.Button
+          icon="xmark.circle.fill"
+          accessibilityLabel="Clear date focus"
+          hidden={live}
+          onPress={clearFocus}
+        />
+        {children}
+      </Stack.Toolbar>
+      <Host style={{ width: 0, height: 0 }}>
+        <BottomSheet isPresented={open} onIsPresentedChange={setOpen}>
           <Sheet onClose={() => setOpen(false)} />
         </BottomSheet>
       </Host>
-    </View>
+    </>
   );
 }
-
-/** The right header item that shows `FocusAction`. Put it in a screen. */
-export const FocusHeader = () => (
-  <Stack.Toolbar placement="right">
-    <Stack.Toolbar.View>
-      <FocusAction />
-    </Stack.Toolbar.View>
-  </Stack.Toolbar>
-);
 
 /** The chip row at the top of a body. It shows nothing for the live focus. */
 export function FocusRow() {

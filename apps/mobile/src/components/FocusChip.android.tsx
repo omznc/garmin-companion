@@ -9,7 +9,7 @@ import {
   Row,
   Text,
 } from "@expo/ui/jetpack-compose";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { View } from "react-native";
 import { clearFocus, setFocus, todayIso, useFocus } from "../data/focus";
 import { chipState, pickedFocus, utcDay } from "../data/focusChip";
@@ -88,7 +88,7 @@ export function FocusAction() {
 }
 
 /** Android draws `FocusAction` in its own app bar, so the header item is empty. */
-export const FocusHeader = () => null;
+export const FocusHeader = (_: { children?: ReactNode }) => null;
 
 /** The chip row at the top of a body. It shows nothing for the live focus. */
 export function FocusRow() {
