@@ -10,21 +10,22 @@ import { useCoachConfig } from "../data/useAsk";
 import { Item, type ItemProps, Page, Section } from "./Kit";
 import { providerName } from "./pages";
 
-type Row = ItemProps & { href: string };
+type MdIcon = NonNullable<ItemProps["md"]>["icon"];
+type Row = Omit<ItemProps, "md"> & { href: string; mdIcon: MdIcon };
 
 const row = (
   title: string,
   href: string,
   sf: string,
   color: string,
-  md: ItemProps["md"],
+  mdIcon: MdIcon,
   value?: string,
 ): Row => ({
   title,
   href,
   value,
   icon: { sf, color },
-  md,
+  mdIcon,
   chevron: true,
 });
 
@@ -38,60 +39,21 @@ export function MoreHome() {
   const update = useApkUpdate();
   const updates = updatesLine(update);
   const health: Row[] = [
-    row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo", {
-      icon: "bedtime",
-      tone: "primary",
-    }),
-    row("Weight", "/more/weight", "scalemass.fill", "systemTeal", {
-      icon: "monitor-weight",
-      tone: "tertiary",
-    }),
-    row("Food", "/more/food", "fork.knife", "systemGreen", {
-      icon: "restaurant",
-      tone: "secondary",
-    }),
+    row("Sleep", "/more/sleep", "bed.double.fill", "systemIndigo", "bedtime"),
+    row("Weight", "/more/weight", "scalemass.fill", "systemTeal", "monitor-weight"),
+    row("Food", "/more/food", "fork.knife", "systemGreen", "restaurant"),
     ...(strength
-      ? [
-          row("Strength", "/more/strength", "dumbbell.fill", "systemOrange", {
-            icon: "fitness-center",
-            tone: "primary",
-          }),
-        ]
+      ? [row("Strength", "/more/strength", "dumbbell.fill", "systemOrange", "fitness-center")]
       : []),
   ];
   const training: Row[] = [
-    row("Ask the coach", "/ask", "bubble.left.fill", "systemPurple", {
-      icon: "chat",
-      tone: "secondary",
-    }),
-    row("Insights", "/more/insights", "lightbulb.fill", "systemYellow", {
-      icon: "lightbulb",
-      tone: "tertiary",
-    }),
-    ...(fitness
-      ? [
-          row("Fitness", "/more/fitness", "gauge.medium", "systemRed", {
-            icon: "speed",
-            tone: "primary",
-          }),
-        ]
-      : []),
-    row("Weekly report", "/more/reports", "doc.text.fill", "systemBlue", {
-      icon: "summarize",
-      tone: "secondary",
-    }),
-    row("Plan", "/more/plan", "list.bullet.clipboard.fill", "systemIndigo", {
-      icon: "event-note",
-      tone: "primary",
-    }),
-    row("Routes", "/more/routes", "map.fill", "systemGreen", {
-      icon: "route",
-      tone: "secondary",
-    }),
-    row("Gear", "/more/gear", "bag.fill", "systemBrown", {
-      icon: "hiking",
-      tone: "tertiary",
-    }),
+    row("Ask the coach", "/ask", "bubble.left.fill", "systemPurple", "chat"),
+    row("Insights", "/more/insights", "lightbulb.fill", "systemYellow", "lightbulb"),
+    ...(fitness ? [row("Fitness", "/more/fitness", "gauge.medium", "systemRed", "speed")] : []),
+    row("Weekly report", "/more/reports", "doc.text.fill", "systemBlue", "summarize"),
+    row("Plan", "/more/plan", "list.bullet.clipboard.fill", "systemIndigo", "event-note"),
+    row("Routes", "/more/routes", "map.fill", "systemGreen", "route"),
+    row("Gear", "/more/gear", "bag.fill", "systemBrown", "hiking"),
   ];
   const prefs: Row[] = [
     row(
@@ -99,27 +61,17 @@ export function MoreHome() {
       "/more/garmin",
       "person.crop.circle.fill",
       "systemBlue",
-      { icon: "account-circle", tone: "primary" },
+      "account-circle",
       settings ? (settings.connected ? "Connected" : "Not connected") : undefined,
     ),
-    row("Sync", "/more/sync", "arrow.triangle.2.circlepath", "systemGreen", {
-      icon: "sync",
-      tone: "secondary",
-    }),
-    row(
-      "Appearance",
-      "/more/appearance",
-      "paintbrush.fill",
-      "systemPink",
-      { icon: "palette", tone: "tertiary" },
-      theme,
-    ),
+    row("Sync", "/more/sync", "arrow.triangle.2.circlepath", "systemGreen", "sync"),
+    row("Appearance", "/more/appearance", "paintbrush.fill", "systemPink", "palette", theme),
     row(
       "Coach",
       "/more/coach",
       "sparkles",
       "systemPurple",
-      { icon: "auto-awesome", tone: "primary" },
+      "auto-awesome",
       coach && providerName(coach.provider),
     ),
     ...(SELF_UPDATE
@@ -130,10 +82,7 @@ export function MoreHome() {
               "updates",
               "arrow.down.circle.fill",
               "systemBlue",
-              {
-                icon: "system-update",
-                tone: "secondary",
-              },
+              "system-update",
               updates.value,
             ),
             chevron: false,
@@ -142,20 +91,23 @@ export function MoreHome() {
           },
         ]
       : []),
-    row("About", "/more/about", "info.circle.fill", "systemGray", {
-      icon: "info",
-      tone: "secondary",
-    }),
+    row("About", "/more/about", "info.circle.fill", "systemGray", "info"),
   ];
-  const draw = (rows: Row[]) =>
-    rows.map(({ href, ...item }) => (
-      <Item key={href} onPress={() => router.push(href as never)} {...item} />
+  // One tone for each section, so the icon tiles of a group match on Android.
+  const draw = (rows: Row[], tone: NonNullable<ItemProps["md"]>["tone"]) =>
+    rows.map(({ href, mdIcon, ...item }) => (
+      <Item
+        key={href}
+        onPress={() => router.push(href as never)}
+        md={{ icon: mdIcon, tone }}
+        {...item}
+      />
     ));
   return (
     <Page title="More" large>
-      <Section title="Health">{draw(health)}</Section>
-      <Section title="Training">{draw(training)}</Section>
-      <Section title="Settings">{draw(prefs)}</Section>
+      <Section title="Health">{draw(health, "primary")}</Section>
+      <Section title="Training">{draw(training, "tertiary")}</Section>
+      <Section title="Settings">{draw(prefs, "secondary")}</Section>
     </Page>
   );
 }
