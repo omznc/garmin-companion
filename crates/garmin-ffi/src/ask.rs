@@ -623,10 +623,11 @@ mod tests {
         send_to("t-reuse", "Q2").await;
         // The old turn ends at about 400 ms, while the new turn still runs.
         tokio::time::sleep(Duration::from_millis(700)).await;
-        let saved = chat::with_store(true, |s| s.get("t-reuse"))
+        // `running` keeps the last turn as stored, so this reads the stored status.
+        let saved = garmin_api::chat::get_thread(garmin_api::Source::Sample, "t-reuse", true, None)
             .unwrap()
             .unwrap();
-        let turns = chat::decode(&saved.messages);
+        let turns = saved.turns;
         assert_eq!(turns.len(), 1);
         assert_eq!(
             (turns[0].question.as_str(), turns[0].status),

@@ -1,19 +1,55 @@
 //! The JSON entry point for the mobile bridge.
 //!
 //! Command names and argument names match the Tauri commands that `api.ts`
-//! wraps, so the result JSON has the same shape as before. `today` is new.
+//! wrapped, so the result JSON has the same shape as before. The desktop app
+//! calls the typed functions of this crate and does not use this module.
+//!
+//! [`crate::commands::COMMANDS`] lists every command with its argument and
+//! result types. The TypeScript `Commands` map is generated from that list.
 
 use crate::settings::{self, ThemeMode};
 use crate::{
     activities_view, activity_detail_view, body, open_default_db, session, today_view, ApiError,
 };
-use garmin_core::{days_ago, query};
+use garmin_core::{days_ago, query, Db};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+/// Where a command reads from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Source {
+    /// The cache and the Garmin account of the person.
+    Live,
+    /// Recorded data, for an app with no account. No command opens the cache.
+    Sample,
+}
+
+impl Source {
+    /// `Sample` when `sample` is true.
+    pub fn sample(sample: bool) -> Self {
+        if sample {
+            Self::Sample
+        } else {
+            Self::Live
+        }
+    }
+}
+
+/// The arguments of `today`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct TodayArgs {
+    /// Demo only: the day to show, as `YYYY-MM-DD`, for a cache that is not current.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    date: Option<String>,
+}
+
+/// The arguments of the commands that read a window of days.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Days {
+pub struct DaysArgs {
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     days: Option<u32>,
 }
 
@@ -21,37 +57,54 @@ struct Days {
 /// date maths.
 const MAX_DAYS: u32 = 3650;
 
-impl Days {
+impl DaysArgs {
     fn days_or(&self, default: u32) -> u32 {
         self.days.unwrap_or(default).clamp(1, MAX_DAYS)
     }
 }
 
+/// The arguments of `cached_activities` and `activities`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Recent {
+pub struct RecentArgs {
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     limit: Option<u32>,
+    /// Only `cached_activities` reads this.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     type_key: Option<String>,
 }
 
+/// The arguments of `report_view`.
 #[derive(Deserialize)]
-struct Offset {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct OffsetArgs {
+    /// 0 is the newest week.
+    #[cfg_attr(feature = "ts-rs", ts(optional, type = "number"))]
     offset: Option<usize>,
 }
 
+/// The arguments of `cached_activities_since`.
 #[derive(Deserialize)]
-struct Since {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct SinceArgs {
+    /// `YYYY-MM-DD`.
     from: String,
 }
 
+/// The arguments of `cached_activity` and `activity_detail`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct ActivityId {
+pub struct ActivityIdArgs {
     activity_id: i64,
 }
 
+/// The arguments of `routes_view`.
 #[derive(Deserialize)]
-struct RoutesArgs {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct RoutesArgs {
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     sort: Option<crate::routes::RouteSort>,
 }
 
@@ -65,166 +118,187 @@ fn encode<T: Serialize>(v: &T) -> Result<String, ApiError> {
     serde_json::to_string(v).map_err(|e| ApiError::Internal(e.to_string()))
 }
 
-/// Run one command and return its result as JSON.
+/// Parse the arguments, run the command and encode the result.
+fn run<A: DeserializeOwned, T: Serialize>(
+    args: &str,
+    f: impl FnOnce(A) -> Result<T, ApiError>,
+) -> Result<String, ApiError> {
+    encode(&f(parse(args)?)?)
+}
+
+/// A view of the cache for one day. `args` is not read.
+fn view<T: Serialize>(
+    f: impl FnOnce(&Db, chrono::NaiveDate) -> Result<T, ApiError>,
+) -> Result<String, ApiError> {
+    encode(&f(&open_default_db()?, garmin_core::today())?)
+}
+
+/// Run one command on live data and return its result as JSON.
 ///
-/// `args_json` is a JSON object, or an empty string for no arguments. Commands:
-///
-/// - `today`: the full Today view model.
-/// - `health_view`: the Health screen, one trend for each metric the watch records.
-/// - `sleep_view`: the Sleep screen, last night and the 7 and 30 night windows.
-/// - `cached_daily` `{days}`: daily metrics, newest first.
-/// - `cached_activities` `{limit, typeKey}`: recent activities, newest first.
-/// - `cached_activities_since` `{from}`: activities on or after `YYYY-MM-DD`.
-/// - `cached_activity` `{activityId}`: one activity or `null`.
-/// - `nutrition` `{days}`: calories in against calories out.
-/// - `weight` `{days}`: weigh-ins, trend and energy cross-check.
-/// - `activities` `{limit}`: the Activities list view model, grouped by day.
-/// - `activity_detail` `{activityId}`: the detail view model of one session, or `null`.
-/// - `weight_view`, `food_view`, `strength_view`: the Weight, Food and Strength screens.
-/// - `plan_view`: the Plan screen, from the saved workouts.
-/// - `routes_view` `{sort}`: the Routes screen. `sort` is `recent`, `repeats` or `distance`.
-/// - `gear_view`: the Gear screen. It reads Garmin live, so it needs a sign-in.
-/// - `insights_view`, `fitness_view`: the Insights and Fitness screens.
-/// - `report_view` `{offset}`: the weekly report. Offset 0 is the newest week.
+/// `args_json` is a JSON object, or an empty string for no arguments. Read
+/// [`crate::commands::COMMANDS`] for the commands and their types.
 ///
 /// It opens a fresh database handle per call, like the Tauri commands do.
 pub fn call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
+    call_with(Source::Live, cmd, args_json)
+}
+
+/// Run one command on `source` and return its result as JSON.
+///
+/// In sample mode a command returns its recorded view, and a command that
+/// needs the cache returns an error. The account commands work in both modes.
+pub fn call_with(source: Source, cmd: &str, args_json: &str) -> Result<String, ApiError> {
+    if source == Source::Sample {
+        let args = serde_json::from_str(args_json).unwrap_or_default();
+        if let Some(out) = crate::sample::call(cmd, &args) {
+            return out;
+        }
+    }
+    cache_call(cmd, args_json)
+}
+
+/// The commands that read the cache, one value or one window.
+fn cache_call(cmd: &str, args: &str) -> Result<String, ApiError> {
     match cmd {
-        "today" => encode(&today_view(&open_default_db()?, garmin_core::today())?),
-        "cached_daily" => {
-            let a: Days = parse(args_json)?;
+        "cached_daily" => run(args, |a: DaysArgs| {
+            Ok(open_default_db()?.daily_since(&days_ago(a.days_or(30)))?)
+        }),
+        "cached_activities" => run(args, |a: RecentArgs| {
             let db = open_default_db()?;
-            encode(&db.daily_since(&days_ago(a.days_or(30)))?)
-        }
-        "cached_activities" => {
-            let a: Recent = parse(args_json)?;
-            let db = open_default_db()?;
-            encode(&db.recent_activities(a.limit.unwrap_or(30), a.type_key.as_deref())?)
-        }
-        "cached_activities_since" => {
-            let a: Since = parse(args_json)?;
-            encode(&open_default_db()?.activities_since(&a.from)?)
-        }
-        "cached_activity" => {
-            let a: ActivityId = parse(args_json)?;
-            encode(&open_default_db()?.activity(a.activity_id)?)
-        }
-        "nutrition" => {
-            let a: Days = parse(args_json)?;
-            encode(&query::nutrition(&open_default_db()?, a.days_or(30))?)
-        }
-        "weight" => {
-            let a: Days = parse(args_json)?;
-            encode(&query::weight(&open_default_db()?, a.days_or(180))?)
-        }
-        "activities" => {
-            let a: Recent = parse(args_json)?;
-            let db = open_default_db()?;
-            let today = garmin_core::today();
-            encode(&activities_view(&db, today, a.limit.unwrap_or(60))?)
-        }
-        "activity_detail" => {
-            let a: ActivityId = parse(args_json)?;
-            encode(&activity_detail_view(&open_default_db()?, a.activity_id)?)
-        }
-        "health_view" => encode(&crate::health_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "sleep_view" => encode(&crate::sleep_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "weight_view" => encode(&body::weight_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "food_view" => encode(&body::food_view(&open_default_db()?, garmin_core::today())?),
-        "strength_view" => encode(&body::strength_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "plan_view" => encode(&crate::plan::plan_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "routes_view" => {
-            let a: RoutesArgs = parse(args_json)?;
-            encode(&crate::routes::routes_view(
-                &open_default_db()?,
-                a.sort.unwrap_or_default(),
-            )?)
-        }
-        // This one calls Garmin: the cache holds no gear. It blocks.
-        "gear_view" => encode(&crate::gear::gear_view(&crate::gear::fetch_gear()?)),
-        "insights_view" => encode(&crate::insights::insights_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "fitness_view" => encode(&crate::fitness::fitness_view(
-            &open_default_db()?,
-            garmin_core::today(),
-        )?),
-        "report_view" => {
-            let a: Offset = parse(args_json)?;
-            encode(&crate::reports::report_view(
-                &open_default_db()?,
-                garmin_core::today(),
-                a.offset.unwrap_or(0),
-            )?)
-        }
-        other => account_call(other, args_json),
+            Ok(db.recent_activities(a.limit.unwrap_or(30), a.type_key.as_deref())?)
+        }),
+        "cached_activities_since" => run(args, |a: SinceArgs| {
+            Ok(open_default_db()?.activities_since(&a.from)?)
+        }),
+        "cached_activity" => run(args, |a: ActivityIdArgs| {
+            Ok(open_default_db()?.activity(a.activity_id)?)
+        }),
+        "nutrition" => run(args, |a: DaysArgs| {
+            Ok(query::nutrition(&open_default_db()?, a.days_or(30))?)
+        }),
+        "weight" => run(args, |a: DaysArgs| {
+            Ok(query::weight(&open_default_db()?, a.days_or(180))?)
+        }),
+        other => screen_call(other, args),
     }
 }
 
+/// The Today, Activities, Health, Sleep and body screens.
+fn screen_call(cmd: &str, args: &str) -> Result<String, ApiError> {
+    match cmd {
+        "today" => run(args, |a: TodayArgs| {
+            let day = match a.date {
+                Some(d) => chrono::NaiveDate::parse_from_str(&d, "%Y-%m-%d")
+                    .map_err(|_| ApiError::BadArguments("date must be YYYY-MM-DD".into()))?,
+                None => garmin_core::today(),
+            };
+            today_view(&open_default_db()?, day)
+        }),
+        "activities" => run(args, |a: RecentArgs| {
+            let today = garmin_core::today();
+            activities_view(&open_default_db()?, today, a.limit.unwrap_or(60))
+        }),
+        "activity_detail" => run(args, |a: ActivityIdArgs| {
+            activity_detail_view(&open_default_db()?, a.activity_id)
+        }),
+        "health_view" => view(crate::health_view),
+        "sleep_view" => view(crate::sleep_view),
+        "weight_view" => view(body::weight_view),
+        "food_view" => view(body::food_view),
+        "strength_view" => view(body::strength_view),
+        other => training_call(other, args),
+    }
+}
+
+/// The Plan, Routes, Gear, Insights, Fitness, Report and chart screens.
+fn training_call(cmd: &str, args: &str) -> Result<String, ApiError> {
+    match cmd {
+        "plan_view" => view(crate::plan::plan_view),
+        "routes_view" => run(args, |a: RoutesArgs| {
+            crate::routes::routes_view(&open_default_db()?, a.sort.unwrap_or_default())
+        }),
+        // This one calls Garmin: the cache holds no gear. It blocks.
+        "gear_view" => encode(&crate::gear::gear_view(&crate::gear::fetch_gear()?)),
+        "insights_view" => view(crate::insights::insights_view),
+        "fitness_view" => view(crate::fitness::fitness_view),
+        "report_view" => run(args, |a: OffsetArgs| {
+            let today = garmin_core::today();
+            crate::reports::report_view(&open_default_db()?, today, a.offset.unwrap_or(0))
+        }),
+        "tiles_view" => view(crate::tiles::tiles_view),
+        "extras_view" => view(crate::extras::extras_view),
+        "charts_view" => view(crate::charts::charts_view),
+        other => account_call(other, args),
+    }
+}
+
+/// The arguments of `redeem_ticket`.
 #[derive(Deserialize)]
-struct Ticket {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct TicketArgs {
     ticket: String,
 }
 
+/// The arguments of `import_tokens`.
 #[derive(Deserialize)]
-struct Path {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ImportArgs {
+    /// The token file. Empty means the default place.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     path: Option<String>,
 }
 
+/// The arguments of `set_theme`.
 #[derive(Deserialize)]
-struct Theme {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ThemeArgs {
     theme: ThemeMode,
+}
+
+/// The arguments of `set_nav_order`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct NavOrderArgs {
+    nav_order: Vec<String>,
+    default_screen: String,
+}
+
+/// The arguments of `set_palettes`.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct PalettesArgs {
+    theme_light: String,
+    theme_dark: String,
 }
 
 /// The sign-in, sign-out and settings commands. `sync` is not here, because
 /// it sends events. The bridge host runs `session::sync` itself.
-///
-/// - `status`: `{connected, importableTokenPath}`.
-/// - `sign_in_url`: the page to show in a browser view.
-/// - `redeem_ticket` `{ticket}`: trade a ticket for tokens.
-/// - `import_tokens` `{path?}`: adopt a `garminconnect` token file.
-/// - `sign_out`: remove the tokens.
-/// - `settings`: the Settings view model.
-/// - `set_theme` `{theme}`: `system`, `light` or `dark`.
-fn account_call(cmd: &str, args_json: &str) -> Result<String, ApiError> {
+fn account_call(cmd: &str, args: &str) -> Result<String, ApiError> {
     match cmd {
         "status" => encode(&session::status()?),
         "sign_in_url" => encode(&session::sign_in_url()),
-        "redeem_ticket" => {
-            let a: Ticket = parse(args_json)?;
+        "redeem_ticket" => run(args, |a: TicketArgs| {
             session::redeem_ticket(&a.ticket)?;
-            encode(&session::status()?)
-        }
-        "import_tokens" => {
-            let a: Path = parse(args_json)?;
+            session::status()
+        }),
+        "import_tokens" => run(args, |a: ImportArgs| {
             session::import_tokens(a.path.as_deref())?;
-            encode(&session::status()?)
-        }
+            session::status()
+        }),
         "sign_out" => {
             session::sign_out()?;
             encode(&session::status()?)
         }
         "settings" => encode(&settings::settings_view()?),
-        "set_theme" => {
-            let a: Theme = parse(args_json)?;
-            encode(&settings::set_theme(a.theme)?)
-        }
+        "set_theme" => run(args, |a: ThemeArgs| settings::set_theme(a.theme)),
+        "set_nav_order" => run(args, |a: NavOrderArgs| {
+            settings::set_nav_order(a.nav_order, a.default_screen)
+        }),
+        "set_palettes" => run(args, |a: PalettesArgs| {
+            settings::set_palettes(a.theme_light, a.theme_dark)
+        }),
         other => Err(ApiError::UnknownCommand(other.to_string())),
     }
 }
@@ -253,12 +327,16 @@ mod tests {
         for cmd in ["cached_daily", "nutrition", "weight"] {
             assert!(call(cmd, r#"{"days":4294967295}"#).is_ok(), "{cmd}");
         }
+        for cmd in ["tiles_view", "extras_view", "charts_view"] {
+            let view: serde_json::Value = serde_json::from_str(&call(cmd, "").unwrap()).unwrap();
+            assert!(view.is_object(), "{cmd}");
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn days_are_clamped_to_a_sane_range() {
-        let days = |d| Days { days: d }.days_or(30);
+        let days = |d| DaysArgs { days: d }.days_or(30);
         assert_eq!(
             (days(None), days(Some(0)), days(Some(u32::MAX))),
             (30, 1, MAX_DAYS)
@@ -275,6 +353,24 @@ mod tests {
             call("cached_activities_since", "{}"),
             Err(ApiError::BadArguments(_))
         ));
+        assert!(matches!(
+            call("today", r#"{"date":"soon"}"#),
+            Err(ApiError::BadArguments(_))
+        ));
+    }
+
+    #[test]
+    fn sample_mode_returns_the_recording_and_refuses_the_cache() {
+        let today = call_with(Source::Sample, "today", "{}").unwrap();
+        assert!(today.contains("\"lede\""));
+        assert!(matches!(
+            call_with(Source::Sample, "cached_daily", "{}"),
+            Err(ApiError::BadArguments(_))
+        ));
+        assert!(matches!(
+            call_with(Source::Sample, "nope", "{}"),
+            Err(ApiError::UnknownCommand(_))
+        ));
     }
 
     #[test]
@@ -287,6 +383,10 @@ mod tests {
         ));
         assert!(matches!(
             call("redeem_ticket", "{}"),
+            Err(ApiError::BadArguments(_))
+        ));
+        assert!(matches!(
+            call("set_nav_order", "{}"),
             Err(ApiError::BadArguments(_))
         ));
     }

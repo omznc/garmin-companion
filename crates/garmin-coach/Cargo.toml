@@ -16,5 +16,11 @@ tokio = { workspace = true }
 futures-util = { version = "0.3.33", default-features = false, features = ["std"] }
 uuid = { version = "1", features = ["v4"] }
 
+ts-rs = { workspace = true, optional = true }
+
+[features]
+# Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
+ts-rs = ["dep:ts-rs", "garmin-core/ts-rs"]
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["net", "io-util"] }

@@ -3,6 +3,9 @@
 //! This crate sits on top of `garmin_core::Db`. It holds the typed read paths
 //! and the view models that the old TypeScript `derive.ts` computed. A UI calls
 //! the functions directly (desktop) or sends JSON to [`call`] (mobile bridge).
+//! [`commands::COMMANDS`] lists the JSON commands, and a test fails when a
+//! `*_view` function has no command. With the `ts-rs` feature, the types
+//! export to TypeScript (see `scripts/gen-types.sh`).
 //!
 //! Only read paths exist for now: the Today view model and the cache reads. Nothing here talks to
 //! Garmin over the network.
@@ -10,6 +13,8 @@
 pub mod activities;
 pub mod body;
 pub mod charts;
+pub mod chat;
+pub mod commands;
 mod derive;
 mod dispatch;
 mod error;
@@ -26,6 +31,7 @@ pub mod plan;
 mod profile;
 pub mod reports;
 pub mod routes;
+mod sample;
 pub mod session;
 pub mod settings;
 pub mod sleep_view;
@@ -40,7 +46,7 @@ pub use activities::{
     ActivityDetailView, ActivityRow,
 };
 pub use derive::{Fuel, Hydration, HydrationLatest, Latest, Link, Observation};
-pub use dispatch::call;
+pub use dispatch::{call, call_with, Source};
 pub use error::ApiError;
 pub use health::{health_view, HealthView};
 pub use profile::{activity_profile, ActivityProfile, FamilyStat};

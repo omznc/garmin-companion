@@ -11,6 +11,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use garmin_api::session::{SyncArgs, SyncEvent, SyncSummary};
+use garmin_api::{ApiError, Source};
+
 // The plain `release` profile sets panic = "abort". A panic in a Rust task
 // would then kill the app. Build for mobile with `--profile release-mobile`.
 #[cfg(all(any(target_os = "android", target_os = "ios"), panic = "abort"))]
@@ -24,16 +27,6 @@ mod cloud;
 mod workout;
 
 uniffi::setup_scaffolding!();
-
-const TODAY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/today.sample.json");
-
-const ACTIVITIES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activities.sample.json");
-const ACTIVITY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/activity.sample.json");
-const HEALTH_SAMPLE: &str = include_str!("../../garmin-api/fixtures/health.sample.json");
-const SLEEP_SAMPLE: &str = include_str!("../../garmin-api/fixtures/sleep.sample.json");
-const BODY_SAMPLE: &str = include_str!("../../garmin-api/fixtures/body.sample.json");
-const PLACES_SAMPLE: &str = include_str!("../../garmin-api/fixtures/places.sample.json");
-const TRAINING_SAMPLE: &str = include_str!("../../garmin-api/fixtures/training.sample.json");
 
 static FIXTURE_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -163,107 +156,39 @@ async fn dispatch(cmd: &str, args: &serde_json::Value, fixture: bool) -> Result<
         return out;
     }
     match cmd {
-        "today" if fixture => Ok(TODAY_SAMPLE.to_owned()),
-        "activities" if fixture => Ok(ACTIVITIES_SAMPLE.to_owned()),
-        "activity_detail" if fixture => Ok(fixture_detail(args)),
-        "weight_view" | "food_view" | "strength_view" if fixture => Ok(fixture_body(cmd)),
-        "health_view" if fixture => Ok(HEALTH_SAMPLE.to_owned()),
-        "sleep_view" if fixture => Ok(SLEEP_SAMPLE.to_owned()),
-        "insights_view" | "fitness_view" | "report_view" if fixture => {
-            Ok(fixture_training(cmd, args))
-        }
-        "plan_view" | "routes_view" | "gear_view" if fixture => Ok(fixture_places(cmd)),
-        // These commands open the cache, and opening it creates the file.
-        "cached_daily"
-        | "cached_activities"
-        | "cached_activities_since"
-        | "cached_activity"
-        | "nutrition"
-        | "weight"
-            if fixture =>
-        {
-            Err(FfiError::BadArgs {
-                reason: "sample mode has no cache".into(),
-            })
-        }
         "redeem_ticket" if fixture => {
-            let out = run_api(cmd.to_owned(), args.to_string()).await?;
+            let out = run_api(Source::Sample, cmd.to_owned(), args.to_string()).await?;
             leave_fixture_mode();
             Ok(out)
         }
-        "sync" if fixture => Ok(run_sync(args).await),
+        "sync" if fixture => run_sample_sync(args).await,
         "sync" => run_real_sync(args).await,
-        // Demo only: `today` for a chosen day, for a cache that is not current.
-        "today" if args.get("date").is_some() => run_today_on(args).await,
-        _ => run_api(cmd.to_owned(), args.to_string()).await,
+        _ => run_api(Source::sample(fixture), cmd.to_owned(), args.to_string()).await,
     }
 }
 
-/// The sample detail with the requested id, so the list and the detail agree.
-fn fixture_detail(args: &serde_json::Value) -> String {
-    let mut detail: serde_json::Value = serde_json::from_str(ACTIVITY_SAMPLE).unwrap_or_default();
-    if let Some(id) = args.get("activityId").filter(|v| v.is_i64()) {
-        detail["activityId"] = id.clone();
+/// `garmin_api::call_with` blocks on the database, so it runs off the async threads.
+async fn run_api(source: Source, cmd: String, args_json: String) -> Result<String, FfiError> {
+    flatten(
+        tokio::task::spawn_blocking(move || garmin_api::call_with(source, &cmd, &args_json)).await,
+    )
+}
+
+/// A bad argument stays a bad argument. Any other error keeps its `kind` and message as JSON.
+pub(crate) fn api_error(e: garmin_api::ApiError) -> FfiError {
+    match e {
+        garmin_api::ApiError::BadArguments(reason) => FfiError::BadArgs { reason },
+        e => FfiError::Command {
+            json: serde_json::to_string(&e).unwrap_or_else(|_| e.to_string()),
+        },
     }
-    detail.to_string()
-}
-
-/// One part of `body.sample.json`: `weight`, `food` or `strength`.
-fn fixture_body(cmd: &str) -> String {
-    let part = cmd.trim_end_matches("_view");
-    let body: serde_json::Value = serde_json::from_str(BODY_SAMPLE).unwrap_or_default();
-    body[part].to_string()
-}
-
-/// One part of `places.sample.json`.
-fn fixture_places(cmd: &str) -> String {
-    let all: serde_json::Value = serde_json::from_str(PLACES_SAMPLE).unwrap_or_default();
-    all[cmd.trim_end_matches("_view")].to_string()
-}
-
-/// One part of `training.sample.json`. The report picks its week by `offset`.
-fn fixture_training(cmd: &str, args: &serde_json::Value) -> String {
-    let all: serde_json::Value = serde_json::from_str(TRAINING_SAMPLE).unwrap_or_default();
-    match cmd {
-        "insights_view" => all["insights"].to_string(),
-        "fitness_view" => all["fitness"].to_string(),
-        _ => {
-            let weeks = all["reports"].as_array().map_or(0, Vec::len);
-            let offset = args["offset"].as_u64().unwrap_or(0) as usize;
-            all["reports"][offset.min(weeks.saturating_sub(1))].to_string()
-        }
-    }
-}
-
-async fn run_today_on(args: &serde_json::Value) -> Result<String, FfiError> {
-    let date = args["date"]
-        .as_str()
-        .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-        .ok_or_else(|| FfiError::BadArgs {
-            reason: "date must be YYYY-MM-DD".into(),
-        })?;
-    let joined = tokio::task::spawn_blocking(move || {
-        let db = garmin_api::open_default_db()?;
-        let view = garmin_api::today_view(&db, date)?;
-        serde_json::to_string(&view).map_err(|e| garmin_api::ApiError::Internal(e.to_string()))
-    })
-    .await;
-    flatten(joined)
-}
-
-/// `garmin_api::call` blocks on the database, so it runs off the async threads.
-async fn run_api(cmd: String, args_json: String) -> Result<String, FfiError> {
-    flatten(tokio::task::spawn_blocking(move || garmin_api::call(&cmd, &args_json)).await)
 }
 
 fn flatten(
     joined: Result<Result<String, garmin_api::ApiError>, tokio::task::JoinError>,
 ) -> Result<String, FfiError> {
     match joined {
-        Ok(Ok(json)) => Ok(json),
-        Ok(Err(e)) => Err(FfiError::Command {
-            json: serde_json::to_string(&e).unwrap_or_else(|_| e.to_string()),
-        }),
+        Ok(out) => out.map_err(api_error),
         Err(e) => Err(FfiError::Command {
             json: serde_json::json!({ "kind": "internal", "message": e.to_string() }).to_string(),
         }),
@@ -273,10 +198,11 @@ fn flatten(
 /// The real sync. It reads `{days, full}`, sends a `sync-progress` event for
 /// each step, and returns the summary. It needs a signed-in account.
 async fn run_real_sync(args: &serde_json::Value) -> Result<String, FfiError> {
-    let days = args["days"].as_u64().unwrap_or(30).clamp(1, 3650) as u32;
-    let full = args["full"].as_bool().unwrap_or(false);
+    let a = sync_args(args)?;
+    let days = a.days.unwrap_or(30).clamp(1, 3650);
+    let full = a.full.unwrap_or(false);
     let joined = tokio::task::spawn_blocking(move || {
-        let on = |e: garmin_api::session::SyncEvent| {
+        let on = |e: SyncEvent| {
             emit("sync-progress", serde_json::to_value(e).unwrap_or_default());
         };
         let summary = garmin_api::session::sync(days, full, &on)?;
@@ -287,33 +213,36 @@ async fn run_real_sync(args: &serde_json::Value) -> Result<String, FfiError> {
 }
 
 /// A stand-in for the real sync, for fixture mode. It sends progress events.
-async fn run_sync(args: &serde_json::Value) -> String {
-    let steps = args
-        .get("steps")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(4)
-        .clamp(1, 20);
+async fn run_sample_sync(args: &serde_json::Value) -> Result<String, FfiError> {
+    let steps = sync_args(args)?.steps.unwrap_or(4).clamp(1, 20);
     for step in 1..=steps {
         tokio::time::sleep(Duration::from_millis(150)).await;
+        let event = SyncEvent {
+            phase: "wellness".into(),
+            detail: String::new(),
+            done: step,
+            total: Some(steps),
+            line: format!("Reading your daily health data ({step} of {steps})"),
+        };
         emit(
             "sync-progress",
-            serde_json::json!({
-                "phase": "wellness",
-                "detail": "",
-                "done": step,
-                "total": steps,
-                "line": format!("Reading your daily health data ({step} of {steps})"),
-            }),
+            serde_json::to_value(event).unwrap_or_default(),
         );
     }
-    serde_json::json!({
-        "line": "Sample sync finished. No data was changed.",
-        "activitiesSeen": 0,
-        "activitiesWritten": 0,
-        "daysWritten": 0,
-        "warnings": [],
+    let summary = SyncSummary {
+        line: "Sample sync finished. No data was changed.".into(),
+        activities_seen: 0,
+        activities_written: 0,
+        days_written: 0,
+        warnings: Vec::new(),
+    };
+    serde_json::to_string(&summary).map_err(|e| api_error(ApiError::Internal(e.to_string())))
+}
+
+fn sync_args(args: &serde_json::Value) -> Result<SyncArgs, FfiError> {
+    serde_json::from_value(args.clone()).map_err(|e| FfiError::BadArgs {
+        reason: e.to_string(),
     })
-    .to_string()
 }
 
 #[cfg(test)]
