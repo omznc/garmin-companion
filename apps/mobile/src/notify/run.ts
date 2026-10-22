@@ -1,6 +1,7 @@
 // The steps after a sync. Each native or core part comes in as a dependency, so a test can fake it.
 import {
   type Facts,
+  NUDGES_PER_RUN,
   type NotifyPrefs,
   type NotifyState,
   type Planned,
@@ -13,9 +14,11 @@ export type NotifyDeps = {
   saveState: (state: NotifyState) => void;
   signedIn: () => Promise<boolean>;
   sample: () => boolean;
-  facts: () => Promise<Pick<Facts, "date" | "recent" | "attention">>;
+  facts: () => Promise<Pick<Facts, "date" | "hour" | "recent" | "attention">>;
   // True when the person turned notifications on and the system allows them.
   permitted: () => Promise<boolean>;
+  // True for the one caller that claims the notification of a kind for a day. The core keeps it.
+  claim: (kind: string, date: string) => Promise<boolean>;
   deliver: (planned: Planned) => Promise<void>;
 };
 
@@ -24,14 +27,50 @@ export async function notifyAfterSync(deps: NotifyDeps, history: boolean): Promi
   const prefs = deps.prefs();
   // Without the permission the notifications are off. The ids still go in the memory.
   const allowed = { ...prefs, enabled: prefs.enabled && (await deps.permitted()) };
-  const { planned, state } = planNotify(allowed, deps.state(), {
+  const facts = await deps.facts();
+  const plan = planNotify(allowed, deps.state(), {
     signedIn: true,
     sample: false,
     history,
-    ...(await deps.facts()),
+    ...facts,
   });
   // The memory comes first, so a failed delivery never sends the same notification twice.
-  deps.saveState(state);
+  deps.saveState(plan.state);
+  const planned = [...plan.activities];
+  let nudges = 0;
+  for (const n of plan.nudges) {
+    if (nudges >= NUDGES_PER_RUN) break;
+    // A claim that fails is a nudge that does not go out.
+    if (n.kind && (await deps.claim(n.kind, facts.date).catch(() => false))) {
+      planned.push(n);
+      nudges += 1;
+    }
+  }
   for (const p of planned) await deps.deliver(p);
   return planned;
+}
+
+// A notification must never fail a sync, and the background task waits for it before it ends.
+export async function notifySafely(deps: NotifyDeps, history: boolean): Promise<void> {
+  try {
+    await notifyAfterSync(deps, history);
+  } catch (e) {
+    console.warn("notification failed", e);
+  }
+}
+
+export type EnableDeps = {
+  ensureChannels: () => Promise<void>;
+  granted: () => Promise<boolean>;
+  request: () => Promise<boolean>;
+  setEnabled: (on: boolean) => void;
+};
+
+// Ask for the permission only when the person turns the master switch on.
+// Returns false when the system refuses, and then the switch stays off.
+export async function enableNotifications(d: EnableDeps): Promise<boolean> {
+  await d.ensureChannels();
+  const ok = (await d.granted()) || (await d.request());
+  d.setEnabled(ok);
+  return ok;
 }

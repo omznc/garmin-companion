@@ -2,7 +2,12 @@
 // Android 13 and later asks for the permission when the master switch goes on.
 import { Switch } from "react-native";
 import { ListRow } from "../components/MdKit";
-import { DENIED_NOTE, LOCAL_NOTE, useNotifySettings } from "../notify/useNotifySettings";
+import {
+  DENIED_NOTE,
+  LOCAL_NOTE,
+  SAMPLE_NOTE,
+  useNotifySettings,
+} from "../notify/useNotifySettings";
 import { useMd } from "../theme/md";
 import { Note, Page, Section } from "./Kit";
 
@@ -40,7 +45,7 @@ function SwitchRow({
 }
 
 export function NotificationsPage() {
-  const { prefs, denied, toggleMaster, setKind } = useNotifySettings();
+  const { prefs, denied, sample, toggleMaster, setKind } = useNotifySettings();
   return (
     <Page title="Notifications">
       <Section>
@@ -70,7 +75,7 @@ export function NotificationsPage() {
           />
         </Section>
       ) : null}
-      <Note>{denied ? DENIED_NOTE : LOCAL_NOTE}</Note>
+      <Note>{denied ? DENIED_NOTE : sample ? SAMPLE_NOTE : LOCAL_NOTE}</Note>
     </Page>
   );
 }

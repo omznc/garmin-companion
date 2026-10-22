@@ -26,7 +26,7 @@ export default function RootLayout() {
   useSystemBack();
   useNotificationTap();
   useEffect(() => {
-    registerBackgroundSync().catch(() => {});
+    registerBackgroundSync().catch((e) => console.warn("background sync not registered", e));
   }, []);
   // Refetch stale data when the app returns to the foreground. A quick sync runs if the last one is old.
   useEffect(() => {

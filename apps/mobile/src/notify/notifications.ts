@@ -4,7 +4,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { call, isSampleData } from "../data/source";
 import { getStatus } from "../data/account";
-import type { NotifyDeps } from "./run";
+import { enableNotifications, type NotifyDeps } from "./run";
 import { readPrefs, readState, setNotifyPrefs, writeState } from "./store";
 import type { Planned } from "./plan";
 
@@ -44,14 +44,13 @@ export function configureNotifications() {
 
 const allowed = async () => (await Notifications.getPermissionsAsync()).granted;
 
-// Ask for the permission only when the person turns the master switch on.
-// Returns false when the system refuses, and then the switch stays off.
-export async function turnOnNotifications(): Promise<boolean> {
-  await ensureChannels();
-  const granted = (await allowed()) || (await Notifications.requestPermissionsAsync()).granted;
-  setNotifyPrefs({ enabled: granted });
-  return granted;
-}
+export const turnOnNotifications = () =>
+  enableNotifications({
+    ensureChannels,
+    granted: allowed,
+    request: async () => (await Notifications.requestPermissionsAsync()).granted,
+    setEnabled: (enabled) => setNotifyPrefs({ enabled }),
+  });
 
 const deps: NotifyDeps = {
   prefs: readPrefs,
@@ -66,11 +65,13 @@ const deps: NotifyDeps = {
     ]);
     return {
       date: today.date,
+      hour: new Date().getHours(),
       attention: today.attention,
       recent: recent.map((a) => ({ id: a.activityId, name: a.name })),
     };
   },
   permitted: allowed,
+  claim: (kind, date) => call("claim_notification", { kind, date }),
   deliver: async (p: Planned) => {
     await ensureChannels();
     await Notifications.scheduleNotificationAsync({

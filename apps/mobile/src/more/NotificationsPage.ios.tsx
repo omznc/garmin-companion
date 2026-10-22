@@ -1,9 +1,14 @@
 // Notifications on iOS: a master switch and one switch for each kind.
-import { DENIED_NOTE, LOCAL_NOTE, useNotifySettings } from "../notify/useNotifySettings";
+import {
+  DENIED_NOTE,
+  LOCAL_NOTE,
+  SAMPLE_NOTE,
+  useNotifySettings,
+} from "../notify/useNotifySettings";
 import { Item, Note, Page, Section } from "./Kit";
 
 export function NotificationsPage() {
-  const { prefs, denied, toggleMaster, setKind } = useNotifySettings();
+  const { prefs, denied, sample, toggleMaster, setKind } = useNotifySettings();
   return (
     <Page title="Notifications">
       <Section>
@@ -23,7 +28,7 @@ export function NotificationsPage() {
           />
         </Section>
       ) : null}
-      <Note>{denied ? DENIED_NOTE : LOCAL_NOTE}</Note>
+      <Note>{denied ? DENIED_NOTE : sample ? SAMPLE_NOTE : LOCAL_NOTE}</Note>
     </Page>
   );
 }

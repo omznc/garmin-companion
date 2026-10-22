@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { notifyDeps } from "../notify/notifications";
-import { notifyAfterSync } from "../notify/run";
+import { notifySafely } from "../notify/run";
 import { committed } from "../ui/haptics";
 import {
   clearHistoryPending,
@@ -78,8 +78,8 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     .then(async (summary) => {
       markSynced();
       set({ line: summary.line });
-      // A notification must never fail a sync. The background task waits for it before it ends.
-      await notifyAfterSync(notifyDeps, args.full === true).catch(() => {});
+      // The background task waits for the notification before it ends.
+      await notifySafely(notifyDeps, args.full === true);
       return summary;
     })
     .catch((e: unknown) => {
@@ -102,21 +102,30 @@ export const startSync = createSyncQueue(runOnce, (busy) => set({ busy }));
 // return to the foreground. The pause lasts until the app restarts. The person sees no error then.
 const RETRY_PAUSE_MS = 30 * 60 * 1000;
 let failedAt: number | null = null;
+const paused = (now: number) => failedAt !== null && now - failedAt < RETRY_PAUSE_MS;
+
+// A quick sync that never throws and never leaves an error on Today. The foreground and the
+// background task both use it, so both obey the same retry pause. False means the run failed.
+export async function quickSync(): Promise<boolean> {
+  if (paused(Date.now())) return true;
+  try {
+    await startSync({ days: QUICK_DAYS });
+    failedAt = null;
+    return true;
+  } catch {
+    failedAt = Date.now();
+    set({ error: null });
+    return false;
+  }
+}
 
 export async function syncIfStale(): Promise<void> {
   if (state.busy || historyPending()) return;
   const now = Date.now();
-  if (failedAt !== null && now - failedAt < RETRY_PAUSE_MS) return;
-  if (!syncIsStale(lastSyncedAt(), now)) return;
+  if (paused(now) || !syncIsStale(lastSyncedAt(), now)) return;
   const status = await getStatus().catch(() => null);
   if (!status?.connected || isSampleData()) return;
-  try {
-    await startSync({ days: QUICK_DAYS });
-    failedAt = null;
-  } catch {
-    failedAt = Date.now();
-    set({ error: null });
-  }
+  await quickSync();
 }
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.

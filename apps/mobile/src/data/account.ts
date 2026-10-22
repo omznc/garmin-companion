@@ -1,6 +1,7 @@
 // Typed calls for sign-in, sync and Settings. The core owns the sentences.
 import { File, Paths } from "expo-file-system";
 import { Appearance } from "react-native";
+import { resetNotifyState } from "../notify/store";
 import { call, leaveSampleData } from "./source";
 import type { SettingsView, Status, SyncSummary, ThemeMode } from "./types";
 
@@ -15,9 +16,14 @@ export const redeemTicket = async (ticket: string) => {
   const status = await call("redeem_ticket", { ticket });
   clearSkipSetup();
   leaveSampleData();
+  resetNotifyState();
   return status;
 };
-export const signOut = () => call("sign_out");
+export const signOut = async () => {
+  const status = await call("sign_out");
+  resetNotifyState();
+  return status;
+};
 export const getSettings = () => call("settings");
 export const setTheme = (theme: ThemeMode) => call("set_theme", { theme });
 export const runSync = (args: { days?: number; full?: boolean }) => call("sync", args);

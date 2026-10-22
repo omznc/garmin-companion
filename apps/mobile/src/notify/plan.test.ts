@@ -15,84 +15,90 @@ const facts = (over: Partial<Facts> = {}): Facts => ({
   sample: false,
   history: false,
   date: "2026-10-22",
+  hour: 12,
   recent: [],
   attention: [],
   ...over,
 });
 const act = (id: number, name: string | null = `Run ${id}`) => ({ id, name });
-const state = (activities: number[] | null, nudges: string[] = []) => ({ activities, nudges });
+const state = (activities: number[] | null) => ({ activities });
+const note = (kind: string, text = `Note ${kind}.`, accent = true) => ({ accent, text, kind });
 
 test("the default is off", () => {
   assert.equal(DEFAULT_PREFS.enabled, false);
   const r = planNotify(DEFAULT_PREFS, state([1]), facts({ recent: [act(2), act(1)] }));
-  assert.deepEqual(r.planned, []);
+  assert.deepEqual(r.activities, []);
   // The id is still recorded, so turning the switch on later does not send old news.
   assert.deepEqual(r.state.activities, [2, 1]);
 });
 
-test("the first run records the ids and sends nothing", () => {
-  const r = planNotify(on, EMPTY_STATE, facts({ recent: [act(2), act(1)] }));
-  assert.deepEqual(r.planned, []);
+test("the first run records the ids and sends nothing, not even a nudge", () => {
+  const r = planNotify(
+    on,
+    EMPTY_STATE,
+    facts({ recent: [act(2), act(1)], attention: [note("hrv")] }),
+  );
+  assert.deepEqual([r.activities, r.nudges], [[], []]);
   assert.deepEqual(r.state.activities, [2, 1]);
 });
 
 test("one new activity gives one notification with a link to it", () => {
   const r = planNotify(on, state([1]), facts({ recent: [act(2, "Morning run"), act(1)] }));
-  assert.equal(r.planned.length, 1);
+  assert.equal(r.activities.length, 1);
   assert.deepEqual(
-    [r.planned[0]?.title, r.planned[0]?.body, r.planned[0]?.href],
+    [r.activities[0]?.title, r.activities[0]?.body, r.activities[0]?.href],
     ["New activity synced", "Morning run", "/today/activity/2"],
   );
 });
 
 test("many new activities give one summary, not one each", () => {
   const r = planNotify(on, state([1]), facts({ recent: [act(4), act(3), act(2), act(1)] }));
-  assert.equal(r.planned.length, 1);
-  assert.equal(r.planned[0]?.title, "3 new activities synced");
-  assert.equal(r.planned[0]?.body, "Run 4, Run 3");
-  assert.equal(r.planned[0]?.href, "/activities");
+  assert.equal(r.activities.length, 1);
+  assert.equal(r.activities[0]?.title, "3 new activities synced");
+  assert.equal(r.activities[0]?.body, "Run 4, Run 3");
+  assert.equal(r.activities[0]?.href, "/activities");
 });
 
 test("the same activity is never notified twice", () => {
   const first = planNotify(on, state([1]), facts({ recent: [act(2), act(1)] }));
   const second = planNotify(on, first.state, facts({ recent: [act(2), act(1)] }));
-  assert.deepEqual(second.planned, []);
+  assert.deepEqual(second.activities, []);
 });
 
-test("a nameless activity still gets a body", () => {
-  const r = planNotify(on, state([1]), facts({ recent: [act(2, null), act(1)] }));
-  assert.equal(r.planned[0]?.body, "Open it to see the details.");
+test("nameless activities still get a body", () => {
+  const one = planNotify(on, state([1]), facts({ recent: [act(2, null), act(1)] }));
+  assert.equal(one.activities[0]?.body, "Open it to see the details.");
+  const many = planNotify(on, state([1]), facts({ recent: [act(3, " "), act(2, null), act(1)] }));
+  assert.equal(many.activities[0]?.body, "Open the list to see them.");
 });
 
 test("the activities switch stops activity notifications only", () => {
-  const prefs = { ...on, activities: false };
   const r = planNotify(
-    prefs,
+    { ...on, activities: false },
     state([1]),
-    facts({
-      recent: [act(2), act(1)],
-      attention: [{ accent: true, text: "Sleep was short." }],
-    }),
+    facts({ recent: [act(2), act(1)], attention: [note("hrv")] }),
   );
-  assert.deepEqual(
-    r.planned.map((p) => p.channel),
-    ["nudges"],
-  );
+  assert.deepEqual(r.activities, []);
+  assert.equal(r.nudges.length, 1);
 });
 
-test("a full history import sends no activity notification", () => {
-  const r = planNotify(on, state([1]), facts({ history: true, recent: [act(2), act(1)] }));
-  assert.deepEqual(r.planned, []);
+test("a full history import is quiet for activities and nudges", () => {
+  const r = planNotify(
+    on,
+    state([1]),
+    facts({ history: true, recent: [act(2), act(1)], attention: [note("hrv")] }),
+  );
+  assert.deepEqual([r.activities, r.nudges], [[], []]);
   assert.deepEqual(r.state.activities, [2, 1]);
 });
 
 test("sample mode and a signed-out account change nothing", () => {
-  const before = state([1], ["x"]);
+  const before = state([1]);
   const recent = [act(2), act(1)];
-  const attention = [{ accent: true, text: "Sleep was short." }];
+  const attention = [note("hrv")];
   for (const over of [{ sample: true }, { signedIn: false }]) {
     const r = planNotify(on, before, facts({ ...over, recent, attention }));
-    assert.deepEqual(r.planned, []);
+    assert.deepEqual([r.activities, r.nudges], [[], []]);
     assert.equal(r.state, before);
   }
 });
@@ -103,44 +109,46 @@ test("only an accent note is a nudge, with the sentence of the Today screen", ()
     state([]),
     facts({
       attention: [
-        { accent: false, text: "A quiet note." },
-        { accent: true, text: "Resting heart rate is 6 above your usual." },
+        note("cadence", "A quiet note.", false),
+        note("resting-hr", "Resting heart rate is 6 above your usual."),
       ],
     }),
   );
-  assert.equal(r.planned.length, 1);
-  assert.equal(r.planned[0]?.body, "Resting heart rate is 6 above your usual.");
-  assert.equal(r.planned[0]?.href, "/today");
+  assert.equal(r.nudges.length, 1);
+  assert.equal(r.nudges[0]?.body, "Resting heart rate is 6 above your usual.");
+  assert.equal(r.nudges[0]?.href, "/today");
+  assert.equal(r.nudges[0]?.kind, "resting-hr");
 });
 
-test("the same nudge is sent once for a day and again the next day", () => {
-  const attention = [{ accent: true, text: "Sleep was short.", insight: "sleep-short" }];
-  const one = planNotify(on, state([]), facts({ attention }));
-  assert.equal(one.planned.length, 1);
-  const again = planNotify(on, one.state, facts({ attention }));
-  assert.deepEqual(again.planned, []);
-  const tomorrow = planNotify(on, again.state, facts({ attention, date: "2026-10-23" }));
-  assert.equal(tomorrow.planned.length, 1);
-  // The memory of the old day is gone.
-  assert.deepEqual(tomorrow.state.nudges, ["2026-10-23|sleep-short"]);
+test("two notes of one insight stay two nudges, and a kind is listed once", () => {
+  const r = planNotify(
+    on,
+    state([]),
+    facts({ attention: [note("resting-hr"), note("hrv"), note("hrv", "Other numbers.")] }),
+  );
+  assert.deepEqual(
+    r.nudges.map((n) => [n.id, n.kind]),
+    [
+      ["nudge-resting-hr", "resting-hr"],
+      ["nudge-hrv", "hrv"],
+    ],
+  );
 });
 
 test("a nudge waits while its switch is off", () => {
-  const attention = [{ accent: true, text: "Sleep was short." }];
-  const off = planNotify({ ...on, nudges: false }, state([]), facts({ attention }));
-  assert.deepEqual(off.planned, []);
-  assert.deepEqual(off.state.nudges, []);
+  const off = planNotify({ ...on, nudges: false }, state([]), facts({ attention: [note("hrv")] }));
+  assert.deepEqual(off.nudges, []);
 });
 
-test("at most two nudges go out in one run", () => {
-  const attention = ["a", "b", "c"].map((text) => ({ accent: true, text }));
-  const r = planNotify(on, state([]), facts({ attention }));
-  assert.equal(r.planned.length, 2);
-  const next = planNotify(on, r.state, facts({ attention }));
-  assert.deepEqual(
-    next.planned.map((p) => p.body),
-    ["c"],
-  );
+test("a nudge goes out only from 08:00 to 20:59 local time", () => {
+  const at = (hour: number) =>
+    planNotify(on, state([]), facts({ hour, attention: [note("hrv")] })).nudges.length;
+  assert.deepEqual([7, 8, 20, 21, 23, 0].map(at), [0, 1, 1, 0, 0, 0]);
+});
+
+test("the night does not stop an activity notification", () => {
+  const r = planNotify(on, state([1]), facts({ hour: 2, recent: [act(2), act(1)] }));
+  assert.equal(r.activities.length, 1);
 });
 
 test("a run that finds no activity keeps the memory", () => {

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MIN_GAP_MS, shouldRunBackground } from "./backgroundPolicy.ts";
+import {
+  type BackgroundDeps,
+  MIN_GAP_MS,
+  runBackground,
+  shouldRunBackground,
+} from "./backgroundPolicy.ts";
 
 const now = 1_000_000_000_000;
 const base = { signedIn: true, sample: false, historyPending: false, lastAt: null, now };
@@ -22,4 +27,41 @@ test("the task skips while the history import waits, or after a fresh sync", () 
 
 test("a time in the future reads as old", () => {
   assert.equal(shouldRunBackground({ ...base, lastAt: now + 1000 }), true);
+});
+
+function fakeRun(over: Partial<BackgroundDeps> = {}) {
+  const calls: string[] = [];
+  const deps: BackgroundDeps = {
+    signedIn: async () => true,
+    sample: () => false,
+    historyPending: () => false,
+    lastAt: () => null,
+    quickSync: async () => (calls.push("sync"), true),
+    ...over,
+  };
+  return { deps, calls };
+}
+
+test("a background run starts a quick sync when the policy allows it", async () => {
+  const f = fakeRun();
+  assert.equal(await runBackground(f.deps, now), true);
+  assert.deepEqual(f.calls, ["sync"]);
+});
+
+test("a background run does nothing when signed out, in sample mode, or just after a sync", async () => {
+  for (const over of [
+    { signedIn: async () => false },
+    { sample: () => true },
+    { historyPending: () => true },
+    { lastAt: () => now - 1000 },
+  ]) {
+    const f = fakeRun(over);
+    assert.equal(await runBackground(f.deps, now), true);
+    assert.deepEqual(f.calls, []);
+  }
+});
+
+test("a failed quick sync is reported to the task and does not throw", async () => {
+  const f = fakeRun({ quickSync: async () => false });
+  assert.equal(await runBackground(f.deps, now), false);
 });

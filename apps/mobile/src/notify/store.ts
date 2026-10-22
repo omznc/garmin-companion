@@ -30,6 +30,9 @@ export const readPrefs = (): NotifyPrefs => readJson(prefsFile(), DEFAULT_PREFS)
 export const readState = (): NotifyState => readJson(stateFile(), EMPTY_STATE);
 export const writeState = (state: NotifyState) => writeJson(stateFile(), state);
 
+// A sign-in or a sign-out starts the memory again. The next account must not get news of the old one.
+export const resetNotifyState = () => writeState(EMPTY_STATE);
+
 const listeners = new Set<() => void>();
 let cached: NotifyPrefs | null = null;
 

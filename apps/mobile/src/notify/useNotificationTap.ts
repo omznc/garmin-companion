@@ -11,5 +11,7 @@ export function useNotificationTap() {
     if (response?.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     const href = safeHref(response.notification.request.content.data?.href);
     if (href) router.push(href as never);
+    // Without this, a remount or a cold start would open the same screen again.
+    Notifications.clearLastNotificationResponse();
   }, [response, router]);
 }
