@@ -452,14 +452,11 @@ fn with_context(
     if let Some(screen) = screen {
         last.content = format!("{}\n\nThe user is on the {screen} screen.", last.content);
     }
-    if let Some(f) = focus {
-        last.content = format!(
-            "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
-             The tools read this period: they count days back from its last day.",
-            last.content, f.start, f.end
-        );
-    }
-    messages
+    let period = focus.map(|f| garmin_coach::Period {
+        start: f.start,
+        end: f.end,
+    });
+    garmin_coach::with_period_note(messages, period)
 }
 
 /// A call starts and then comes back, as two events with one id.

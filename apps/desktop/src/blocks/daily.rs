@@ -2,7 +2,7 @@
 //! wrapper, the line chart with a band, and the helpers for a daily series.
 
 use crate::scale::px;
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use gpui::{canvas, div, point, prelude::*, relative, ColorExt as _, Div, Pixels, SharedString};
 
 use super::{Block, Go};
@@ -113,13 +113,7 @@ pub fn window_meta(focus: Focus, default: &str) -> String {
 /// A daily series that ends on the end of the focus, as dated points. A range
 /// keeps only the days inside it. `values` is the series, oldest first.
 pub fn dated(values: &[Option<f64>], focus: Focus) -> Vec<(NaiveDate, Option<f64>)> {
-    let n = values.len() as i64;
-    values
-        .iter()
-        .enumerate()
-        .map(|(i, v)| (focus.end - Duration::days(n - 1 - i as i64), *v))
-        .filter(|(d, _)| focus.days() <= 1 || focus.contains(*d))
-        .collect()
+    focus.dated(values)
 }
 
 /// The newest `count` days of a dated series.

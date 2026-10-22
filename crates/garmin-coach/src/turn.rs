@@ -79,14 +79,41 @@ pub async fn ask(
     stop: &AtomicBool,
     drafts: bool,
 ) {
+    ask_in(history, sink, stop, drafts, None).await;
+}
+
+/// [`ask`] with a `period` that bounds what the tools read.
+pub async fn ask_in(
+    history: Vec<HistoryMessage>,
+    sink: &dyn EventSink,
+    stop: &AtomicBool,
+    drafts: bool,
+    period: Option<Period>,
+) {
     let transport = Db::open_default().and_then(|db| HttpTransport::from_config(&db));
     match transport {
         Ok(t) => {
             // The turn reports its own end to the sink.
-            let _ = run_turn(&t, sink, stop, history, &Db::open_default, drafts).await;
+            let _ = run_turn_in(&t, sink, stop, history, &Db::open_default, drafts, period).await;
         }
         Err(e) => sink.emit(Event::Error { text: chain(&e) }),
     }
+}
+
+/// The last message gets one more line that names the period, so the model
+/// answers from that period. The thread on screen does not show the line.
+pub fn with_period_note(
+    mut messages: Vec<HistoryMessage>,
+    period: Option<Period>,
+) -> Vec<HistoryMessage> {
+    if let (Some(p), Some(last)) = (period, messages.last_mut()) {
+        last.content = format!(
+            "{}\n\nFocus period: {} to {} (ISO dates). Use only data from this period unless the user asks for more. \
+             The tools read this period: they count days back from its last day.",
+            last.content, p.start, p.end
+        );
+    }
+    messages
 }
 
 /// The engine. `open_db` opens the cache for each tool call and for the
@@ -304,6 +331,25 @@ mod tests {
     use super::*;
     use crate::sse::{SseParser, StreamResult};
     use std::sync::Mutex;
+
+    #[test]
+    fn a_period_adds_its_dates_to_the_last_message_only() {
+        let day = |d| chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+        let msg = |t: &str| HistoryMessage {
+            role: "user".into(),
+            content: t.into(),
+        };
+        let period = Some(Period {
+            start: day(14),
+            end: day(20),
+        });
+        let out = with_period_note(vec![msg("a"), msg("b")], period);
+        assert_eq!(out[0].content, "a");
+        assert!(out[1]
+            .content
+            .contains("Focus period: 2026-10-14 to 2026-10-20 (ISO dates)."));
+        assert_eq!(with_period_note(vec![msg("a")], None)[0].content, "a");
+    }
 
     #[derive(Default)]
     struct Rec(Mutex<Vec<Event>>);
