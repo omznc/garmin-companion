@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { AppState, useColorScheme } from "react-native";
 import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
-import { importHistory } from "../src/data/useSync";
+import { importHistory, syncIfStale } from "../src/data/useSync";
 import { useSystemBack } from "../src/nav/useSystemBack";
 import "../src/theme/prefs";
 import { useReduceMotion } from "../src/theme/motion";
@@ -19,11 +19,13 @@ export default function RootLayout() {
   const dark = useColorScheme() === "dark";
   const reduceMotion = useReduceMotion();
   useSystemBack();
-  // Refetch Today when the app returns to the foreground.
+  // Refetch stale data when the app returns to the foreground. A quick sync runs if the last one is old.
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (status) =>
-      focusManager.setFocused(status === "active"),
-    );
+    void syncIfStale();
+    const sub = AppState.addEventListener("change", (status) => {
+      focusManager.setFocused(status === "active");
+      if (status === "active") void syncIfStale();
+    });
     return () => sub.remove();
   }, []);
 

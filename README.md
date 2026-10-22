@@ -138,24 +138,26 @@ The same app and the same data, with three things worth knowing:
 
 ## Building from source
 
-Requires Rust, Node 22+, pnpm, and on Linux `webkit2gtk-4.1`.
+The desktop app needs Rust. On Linux it also needs the development packages
+that `.github/workflows/ci.yml` installs.
+
+Build the sign-in helper first. The desktop app looks for
+`garmin-companion-login` next to its own executable.
 
 ```sh
-cd app
-pnpm install
-pnpm tauri dev
+cargo build -p garmin-companion-login && cargo run -p garmin-companion-desktop
 ```
 
+The Android and iOS app is in `apps/mobile` (Expo). It needs Node 22+ and pnpm.
 For Android, add the SDK, NDK 28, and a JDK no newer than 21, then:
 
 ```sh
 source scripts/android-env.sh
-cd app && pnpm tauri android build --apk --debug
+cd apps/mobile && pnpm install
 ```
 
-The env script explains what it sets and why — see
-[RELEASING.md](RELEASING.md#android) for the sharp edges, of which there are
-three.
+The env script explains what it sets and why. See `apps/mobile/package.json`
+for the bridge and prebuild scripts.
 
 Connect an account in Settings, or adopt tokens from an existing
 [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) install in
@@ -222,17 +224,19 @@ cargo build --release -p garmin-mcp
 |---|---|
 | `crates/garmin-core` | Garmin client, token store, SQLite cache, sync, queries |
 | `crates/garmin-mcp` | MCP server over `garmin-core` |
-| `app/src-tauri` | Tauri commands, chat and tool dispatch |
-| `app/src` | React frontend |
+| `crates/garmin-api`, `crates/garmin-coach` | Garmin API types, coach logic |
+| `apps/desktop` | The gpui desktop app and its packaging config |
+| `apps/login` | The sign-in window, a helper of the desktop app |
+| `apps/mobile` | The Expo app for Android and iOS |
 
 The two Rust binaries share `garmin-core` so they can never drift onto
 different versions of the Garmin client.
 
 ## Releases
 
-See [RELEASING.md](RELEASING.md). Tagging `v*` builds installers for macOS
-(Apple Silicon and Intel), Windows, Linux and Android, and the desktop app
-updates itself from Settings.
+See [RELEASING.md](RELEASING.md). A manual run of the release workflow builds
+installers for macOS (Apple Silicon and Intel), Windows, Linux and Android.
+The desktop app updates itself from Settings.
 
 ## Licence
 

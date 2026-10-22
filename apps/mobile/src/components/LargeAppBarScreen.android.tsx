@@ -3,7 +3,7 @@
 import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { RefreshControl, View } from "react-native";
 import Animated, {
   Extrapolation,
@@ -20,8 +20,16 @@ import { useHostTheme, useMd } from "../theme/md";
 const EXPANDED = 136;
 const COLLAPSED = 64;
 
-type Props = {
+/** Rows for a list that draws only the rows near the screen. `children` then sit above the rows. */
+type ListRows<T> = {
+  data: readonly T[];
+  renderItem: (item: T) => ReactElement;
+  keyExtractor: (item: T) => string;
+};
+
+type Props<T> = {
   title: string;
+  list?: ListRows<T>;
   back?: boolean;
   /** A small bar that does not collapse. */
   small?: boolean;
@@ -31,11 +39,12 @@ type Props = {
   onScrollOffset?: (offset: number) => void;
   /** Space below the last row, for a FAB. */
   bottomSpace?: number;
-  children: ReactNode;
+  children?: ReactNode;
 };
 
-export function LargeAppBarScreen({
+export function LargeAppBarScreen<T = never>({
   title,
+  list,
   back = false,
   small = false,
   refreshing = false,
@@ -43,7 +52,7 @@ export function LargeAppBarScreen({
   onScrollOffset,
   bottomSpace = 0,
   children,
-}: Props) {
+}: Props<T>) {
   const md = useMd();
   const insets = useSafeAreaInsets();
   const expanded = small ? COLLAPSED : EXPANDED;
@@ -74,27 +83,35 @@ export function LargeAppBarScreen({
     lineHeight: interpolate(scrollY.value, [0, range], [small ? 28 : 42, 28], Extrapolation.CLAMP),
   }));
 
+  const scrollProps = {
+    onScroll,
+    scrollEventThrottle: 16,
+    refreshControl: onRefresh ? (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        progressViewOffset={insets.top + expanded}
+      />
+    ) : undefined,
+    contentContainerStyle: {
+      paddingTop: insets.top + expanded,
+      paddingBottom: 24 + bottomSpace,
+    },
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: md.surface }}>
-      <Animated.ScrollView
-        onScroll={onScroll}
-        scrollEventThrottle={16}
-        refreshControl={
-          onRefresh ? (
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              progressViewOffset={insets.top + expanded}
-            />
-          ) : undefined
-        }
-        contentContainerStyle={{
-          paddingTop: insets.top + expanded,
-          paddingBottom: 24 + bottomSpace,
-        }}
-      >
-        {children}
-      </Animated.ScrollView>
+      {list ? (
+        <Animated.FlatList
+          {...scrollProps}
+          data={list.data}
+          keyExtractor={list.keyExtractor}
+          renderItem={({ item }) => list.renderItem(item)}
+          ListHeaderComponent={children ? <>{children}</> : undefined}
+        />
+      ) : (
+        <Animated.ScrollView {...scrollProps}>{children}</Animated.ScrollView>
+      )}
       <Animated.View style={[{ position: "absolute", top: 0, left: 0, right: 0 }, barStyle]}>
         <Animated.Text
           accessibilityRole="header"

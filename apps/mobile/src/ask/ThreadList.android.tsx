@@ -3,8 +3,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { Card, Group, ListRow, T } from "../components/MdKit";
+import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { Card, Group, GroupRow, ListRow, T } from "../components/MdKit";
 import { useMd } from "../theme/md";
 import { AppBar } from "./AppBar";
 import { RenameDialog } from "./RenameDialog";
@@ -58,6 +58,8 @@ function SkeletonRows() {
   );
 }
 
+const RowGap = () => <View style={{ height: 2 }} />;
+
 type Rows = ReturnType<typeof useThreadRows>;
 
 // The rows are not here yet, did not load, or there are none.
@@ -88,35 +90,37 @@ export function ThreadList() {
   const rename = useRenaming();
   const [now] = useState(Date.now);
   const start = () => router.push("/ask/new");
+  const showStatus = list.loading || list.error !== null || list.rows.length === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: md.surface }}>
       <AppBar title="Chats" back />
-      <ScrollView
+      <FlatList
+        data={list.rows}
+        keyExtractor={(thread) => thread.sessionId}
         refreshControl={<RefreshControl refreshing={list.refreshing} onRefresh={list.onRefresh} />}
-        contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 12 }}
-      >
-        <Status list={list} />
-        {list.rows.length > 0 ? (
-          <Group>
-            {list.rows.map((thread) => (
-              <ListRow
-                key={thread.sessionId}
-                icon="chat-bubble-outline"
-                title={thread.title}
-                supporting={thread.running ? "Working" : whenOf(thread.updatedAt, now)}
-                trailing={
-                  thread.running ? (
-                    <Spinner size={24} color={md.primary} label="Working" />
-                  ) : undefined
-                }
-                onPress={() => router.push(`/ask/${thread.sessionId}`)}
-                onLongPress={() => showThreadMenu(thread, () => rename.begin(thread))}
-              />
-            ))}
-          </Group>
-        ) : null}
-      </ScrollView>
+        contentContainerStyle={{ padding: 16, paddingBottom: 96 }}
+        ListHeaderComponent={showStatus ? <Status list={list} /> : undefined}
+        ListHeaderComponentStyle={{ marginBottom: showStatus && list.rows.length > 0 ? 12 : 0 }}
+        // The 2 px gap of a Group.
+        ItemSeparatorComponent={RowGap}
+        renderItem={({ item: thread, index }) => (
+          <GroupRow first={index === 0} last={index === list.rows.length - 1}>
+            <ListRow
+              icon="chat-bubble-outline"
+              title={thread.title}
+              supporting={thread.running ? "Working" : whenOf(thread.updatedAt, now)}
+              trailing={
+                thread.running ? (
+                  <Spinner size={24} color={md.primary} label="Working" />
+                ) : undefined
+              }
+              onPress={() => router.push(`/ask/${thread.sessionId}`)}
+              onLongPress={() => showThreadMenu(thread, () => rename.begin(thread))}
+            />
+          </GroupRow>
+        )}
+      />
       <NewChatFab onPress={start} />
       <RenameDialog
         // A new key gives each rename a fresh field.
