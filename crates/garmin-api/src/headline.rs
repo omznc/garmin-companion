@@ -23,6 +23,7 @@ const LOAD_SPIKE: f64 = 1.5;
 
 /// How hard the day should be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum HeadlineTone {
     /// Two signals or more point to strain.
@@ -38,6 +39,7 @@ pub enum HeadlineTone {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Headline {
     pub tone: HeadlineTone,

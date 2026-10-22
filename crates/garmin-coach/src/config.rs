@@ -91,6 +91,7 @@ impl Provider {
 
 /// What a settings screen needs to draw the current choice.
 #[derive(Debug, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ChatConfig {
     pub provider: Option<&'static str>,

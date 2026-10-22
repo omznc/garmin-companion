@@ -92,6 +92,9 @@ opt-level = 3
 [workspace.dependencies]
 garmin-core = { path = "crates/garmin-core" }
 
+# Generates the TypeScript types of the mobile app. Only built with the `ts-rs` feature.
+ts-rs = { version = "12.0.1", features = ["chrono-impl", "serde-json-impl", "no-serde-warnings"] }
+
 anyhow = "1.0.104"
 base64 = "0.23.1"
 # `serde` is on for the notification plan, which holds a local wall-clock time

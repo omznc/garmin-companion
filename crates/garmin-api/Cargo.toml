@@ -21,3 +21,8 @@ url = "2"
 reqwest = { workspace = true }
 pdf-writer = "0.15"
 ttf-parser = "0.25.1"
+ts-rs = { workspace = true, optional = true }
+
+[features]
+# Export the wire types to TypeScript. See scripts/gen-types.sh. Off in release builds.
+ts-rs = ["dep:ts-rs", "garmin-core/ts-rs"]

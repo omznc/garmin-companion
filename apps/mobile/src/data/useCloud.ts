@@ -2,20 +2,11 @@
 // The core builds the sentences and keeps the tokens. The screens only draw.
 // Purchase is not here: the stores come later, so the app has no checkout call.
 import { useQuery } from "@tanstack/react-query";
-import { callJson } from "./source";
+import type { AccountView } from "./generated/AccountView";
+import { call } from "./source";
 
-export type CloudAccount = {
-  premium: boolean;
-  email: string | null;
-  creditsRemaining: number;
-  /** The small line near the composer. */
-  creditsLine: string;
-  planLine: string;
-  /** No credits left: show the upgrade card. */
-  out: boolean;
-  /** Under a fifth of the daily grant: show a quiet line only. */
-  low: boolean;
-};
+// The account shape comes from the Rust core (`garmin_coach::AccountView`).
+export type CloudAccount = AccountView;
 
 export type Provider = "cloud" | "openrouter" | "ollama";
 
@@ -28,9 +19,9 @@ export function sentence(error: unknown): string {
   return text.replace(/^(internal|cloud): /, "");
 }
 
-async function plain<T>(cmd: string, args?: unknown): Promise<T> {
+async function plain<T>(run: () => Promise<T>): Promise<T> {
   try {
-    return await callJson<T>(cmd, args);
+    return await run();
   } catch (error) {
     throw new Error(sentence(error));
   }
@@ -43,22 +34,22 @@ async function plain<T>(cmd: string, args?: unknown): Promise<T> {
 export const useCloudAccount = (enabled: boolean, enrol = false) =>
   useQuery({
     queryKey: ["cloudAccount", enrol],
-    queryFn: () => plain<CloudAccount | null>("cloud_account", { enrol }),
+    queryFn: () => plain(() => call("cloud_account", { enrol })),
     enabled,
     retry: false,
     staleTime: 30_000,
   });
 
-export const sendCode = (email: string) => plain("cloud_send_code", { email });
+export const sendCode = (email: string) => plain(() => call("cloud_send_code", { email }));
 
 export const CODE_HINT = "Check the code. It has 6 digits.";
 
 export async function verifyCode(email: string, code: string): Promise<{ email: string }> {
   if (!/^\d{6}$/.test(code)) throw new Error(CODE_HINT);
-  return plain<{ email: string }>("cloud_verify", { email, code });
+  return plain(() => call("cloud_verify", { email, code }));
 }
 
-export const signOutCloud = () => plain("cloud_sign_out");
+export const signOutCloud = () => plain(() => call("cloud_sign_out"));
 
 export const chooseProvider = (provider: Exclude<Provider, "ollama">) =>
-  plain("ask_save_config", { provider });
+  plain(() => call("ask_save_config", { provider }));

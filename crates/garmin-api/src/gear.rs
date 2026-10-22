@@ -20,6 +20,7 @@ pub struct GearEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct GearRow {
     pub name: String,
@@ -35,6 +36,7 @@ pub struct GearRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct GearView {
     pub empty: Option<EmptyNote>,

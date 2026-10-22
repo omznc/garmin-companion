@@ -20,6 +20,7 @@ type NightFigures = (Option<f64>, Option<f64>);
 const DAYS: u32 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MetricTrend {
     /// `resting_hr`, `hrv`, `stress`, `body_battery`, `steps`, `spo2` or `respiration`.
@@ -36,6 +37,7 @@ pub struct MetricTrend {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthView {
     /// The day the view was built for, `YYYY-MM-DD`.

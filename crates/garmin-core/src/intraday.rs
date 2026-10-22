@@ -29,6 +29,7 @@ pub(crate) const SCHEMA: &str = r#"
 
 /// One Body Battery sample.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BatteryPoint {
     /// Minutes after local midnight, so a chart needs no time zone.
@@ -85,6 +86,7 @@ fn gmt_millis(s: &str) -> Option<i64> {
 
 /// One overnight HRV reading.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HrvReading {
     /// Local wall clock, `YYYY-MM-DDTHH:MM`.

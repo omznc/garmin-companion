@@ -1,61 +1,21 @@
 // Plan, Routes and Gear. The core builds the numbers and the sentences
 // (`garmin_api::plan`, `routes` and `gear`). This file types the JSON and turns
 // it into the blocks that `screens/Body.*` draws.
-import type { Block, BodyScreenData, EmptyNote } from "./body";
+import type { Block, BodyScreenData } from "./body";
 import { devPersona } from "./devPersona";
-import { callJson } from "./source";
+import { call } from "./source";
 
 // The condition stays inline, so Metro drops the fixtures from a release build.
 const fixtures = (__DEV__ ? require("./placesFixtures") : null) as
   | typeof import("./placesFixtures")
   | null;
 
-type Tile = { label: string; value: string };
+// The wire types come from the Rust core, through `generated/`.
+import type { GearView } from "./generated/GearView";
+import type { PlanView } from "./generated/PlanView";
+import type { RoutesView } from "./generated/RoutesView";
 
-export type PlanView = {
-  empty: EmptyNote | null;
-  windowDays: number;
-  tiles: Tile[];
-  sentence: string | null;
-  workouts: {
-    workoutId: number;
-    name: string;
-    description: string | null;
-    sport: string;
-    size: string | null;
-  }[];
-  gapNote: string;
-};
-
-export type RoutesView = {
-  empty: EmptyNote | null;
-  tiles: Tile[];
-  notes: string[];
-  total: number;
-  routes: {
-    name: string;
-    sport: string;
-    distance: string | null;
-    times: number;
-    timesLine: string;
-    trace: [number, number][];
-    outings: { activityId: number; date: string; detail: string }[];
-  }[];
-};
-
-export type GearView = {
-  empty: EmptyNote | null;
-  items: {
-    name: string;
-    kind: string | null;
-    distance: string | null;
-    status: string;
-    accent: boolean;
-    wearPct: number | null;
-    detail: string | null;
-  }[];
-  note: string;
-};
+export type { GearView, PlanView, RoutesView };
 
 export type PlacesKind = "plan" | "routes" | "gear";
 
@@ -125,16 +85,19 @@ export function presentGear(v: GearView): BodyScreenData {
   };
 }
 
-const commands = { plan: "plan_view", routes: "routes_view", gear: "gear_view" } as const;
-
 // Dev only: EXPO_PUBLIC_PERSONA shows a made-up user, as it does for Today.
-async function read<T>(kind: PlacesKind): Promise<T> {
-  const recorded = devPersona ? fixtures?.placesFixture(commands[kind], devPersona) : undefined;
-  return (recorded as T | undefined) ?? callJson<T>(commands[kind]);
-}
+const recorded = (cmd: string) =>
+  devPersona ? fixtures?.placesFixture(cmd, devPersona) : undefined;
 
 export async function fetchPlaces(kind: PlacesKind): Promise<BodyScreenData> {
-  if (kind === "plan") return presentPlan(await read<PlanView>(kind));
-  if (kind === "routes") return presentRoutes(await read<RoutesView>(kind));
-  return presentGear(await read<GearView>(kind));
+  if (kind === "plan") {
+    return presentPlan(
+      (recorded("plan_view") as PlanView | undefined) ?? (await call("plan_view")),
+    );
+  }
+  if (kind === "routes") {
+    const view = (recorded("routes_view") as RoutesView | undefined) ?? (await call("routes_view"));
+    return presentRoutes(view);
+  }
+  return presentGear((recorded("gear_view") as GearView | undefined) ?? (await call("gear_view")));
 }

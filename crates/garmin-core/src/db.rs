@@ -1925,6 +1925,7 @@ impl Db {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CachedActivity {
     pub activity_id: i64,
@@ -2059,6 +2060,7 @@ pub struct ActivityTrack {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyMetrics {
     pub date: String,
@@ -2091,6 +2093,7 @@ pub struct DailyMetrics {
     pub hrv_balanced_low: Option<f64>,
     pub hrv_balanced_upper: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     pub raw: Option<String>,
 }
 

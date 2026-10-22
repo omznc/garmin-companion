@@ -9,6 +9,7 @@ use crate::analysis::{discipline, Discipline};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Family {
     /// Continuous distance sports: run, walk, hike, ride, row, elliptical.

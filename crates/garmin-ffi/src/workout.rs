@@ -9,7 +9,7 @@ use std::future::Future;
 
 use garmin_core::workout::WorkoutDraft;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::ask::{bad, failed, mark_saved};
 use crate::chat;
@@ -22,12 +22,23 @@ const SAMPLE_WORKOUT_ID: i64 = 9_000_000_001;
 /// across the call to Garmin.
 static SAVE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+/// The arguments of `workout_create`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Create {
+pub(crate) struct WorkoutCreateArgs {
     session_id: String,
     turn_id: String,
+    /// The id of the draft in the turn.
     call_id: String,
+}
+
+/// The result of `workout_create`: the Garmin id of the saved workout.
+#[derive(serde::Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkoutCreated {
+    workout_id: i64,
 }
 
 /// Handle a `workout_*` command, or return `None` for any other command.
@@ -80,7 +91,7 @@ where
     F: FnOnce(WorkoutDraft) -> Fut,
     Fut: Future<Output = Result<i64, FfiError>>,
 {
-    let a: Create = serde_json::from_value(args.clone()).map_err(bad)?;
+    let a: WorkoutCreateArgs = serde_json::from_value(args.clone()).map_err(bad)?;
     let key = (
         a.session_id.as_str(),
         a.turn_id.as_str(),
@@ -101,13 +112,14 @@ where
             id
         }
     };
-    Ok(json!({ "workoutId": id }).to_string())
+    serde_json::to_string(&WorkoutCreated { workout_id: id }).map_err(failed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::chat::{DraftEntry, Status, Turn};
+    use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn draft() -> WorkoutDraft {

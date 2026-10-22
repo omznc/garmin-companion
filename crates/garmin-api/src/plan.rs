@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 pub const WINDOW_DAYS: u32 = 28;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkoutRow {
     pub workout_id: i64,
@@ -31,6 +32,7 @@ pub struct WorkoutRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PlanView {
     pub empty: Option<EmptyNote>,

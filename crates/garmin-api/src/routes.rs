@@ -22,6 +22,7 @@ const ROUTE_LIMIT: usize = 60;
 const SHAPE_POINTS: usize = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct OutingRow {
     pub activity_id: i64,
@@ -30,6 +31,7 @@ pub struct OutingRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RouteRow {
     pub name: String,
@@ -58,6 +60,7 @@ pub struct RouteRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BestTime {
     pub activity_id: i64,
@@ -69,6 +72,7 @@ pub struct BestTime {
 
 /// The longest route by its mean distance.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LongestRoute {
     pub name: String,
@@ -78,6 +82,7 @@ pub struct LongestRoute {
 
 /// A course that the athlete saved in Garmin Connect.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CourseRow {
     pub course_id: i64,
@@ -92,6 +97,7 @@ pub struct CourseRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct RoutesView {
     pub empty: Option<EmptyNote>,

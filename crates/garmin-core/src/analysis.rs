@@ -384,6 +384,7 @@ fn is_running(type_key: Option<&str>) -> bool {
 /// a set of squats it measures the ninety seconds between them and reports a
 /// well-executed easy run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Discipline {
     /// Running, walking, hiking: pace, cadence and zone discipline all hold.

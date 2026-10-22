@@ -21,6 +21,7 @@ pub const APP_VERSION: &str = match option_env!("APP_VERSION") {
 
 /// How the app picks light or dark.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeMode {
     #[default]
@@ -30,6 +31,7 @@ pub enum ThemeMode {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(default)]
 pub struct Prefs {
     pub theme: ThemeMode,
@@ -104,6 +106,7 @@ fn write_synced(path: &std::path::Path, data: &str) -> std::io::Result<()> {
 
 /// What the Settings screen draws.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsView {
     pub connected: bool,

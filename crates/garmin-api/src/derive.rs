@@ -82,6 +82,7 @@ pub fn comparable_resting_hr(rows: &[DailyMetrics]) -> Vec<DailyMetrics> {
 
 /// The most recent day that has a value, with its date.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 pub struct Latest {
     pub value: f64,
     pub date: String,
@@ -99,6 +100,7 @@ pub fn latest(rows: &[DailyMetrics], get: impl Fn(&DailyMetrics) -> Option<f64>)
 /* ------------------------------------------------------------------ fuel --- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Fuel {
     /// The most recent day with a food log, or `None` if the window has none.
@@ -149,6 +151,7 @@ fn hydration_ml(d: &DailyMetrics) -> Option<f64> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HydrationLatest {
     pub ml: f64,
@@ -156,6 +159,7 @@ pub struct HydrationLatest {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Hydration {
     pub logged: usize,
@@ -290,12 +294,14 @@ pub fn count_sessions(activities: &[CachedActivity], days: i64, today: NaiveDate
 /* ---------------------------------------------------------- observations --- */
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 pub struct Link {
     pub label: String,
     pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
     /// Accent items are the ones worth acting on today.

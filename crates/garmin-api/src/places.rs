@@ -16,6 +16,7 @@ use serde_json::json;
 
 /// A figure and its caption.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 pub struct Tile {
     pub label: String,
     pub value: String,

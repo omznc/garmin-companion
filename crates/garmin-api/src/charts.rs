@@ -25,6 +25,7 @@ const EASY_ABOVE_Z2_PCT: f64 = 20.0;
 const SESSION_LIMIT: u32 = 400;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FamilyKm {
     pub family: Family,
@@ -33,6 +34,7 @@ pub struct FamilyKm {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MonthDistance {
     /// `YYYY-MM`.
@@ -43,6 +45,7 @@ pub struct MonthDistance {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SportTime {
     pub family: Family,
@@ -53,6 +56,7 @@ pub struct SportTime {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekSets {
     /// The Monday of the week, `YYYY-MM-DD`.
@@ -63,6 +67,7 @@ pub struct WeekSets {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MuscleSets {
     pub group: String,
@@ -70,6 +75,7 @@ pub struct MuscleSets {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MuscleReport {
     /// Largest first. Only the groups with a set.
@@ -80,6 +86,7 @@ pub struct MuscleReport {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MonthStats {
     pub sessions: usize,
@@ -91,6 +98,7 @@ pub struct MonthStats {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct MonthCompare {
     /// The day of the month that both sides run to.
@@ -100,6 +108,7 @@ pub struct MonthCompare {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ChartsView {
     pub date: String,

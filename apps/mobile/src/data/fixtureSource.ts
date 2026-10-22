@@ -11,6 +11,7 @@ import healthOnly from "../../../../crates/garmin-api/fixtures/today.health_only
 import newUser from "../../../../crates/garmin-api/fixtures/today.new_user.json";
 import { fixtureChat } from "./chatFixtures";
 import { placesFixture } from "./placesFixtures";
+import type { Events } from "./generated/commands";
 import type { Source } from "./source";
 import { trainingFixture } from "./trainingFixtures";
 import type { BridgeEvent, SettingsView, Status, SyncSummary } from "./types";
@@ -74,7 +75,7 @@ function fixtureAccountCall(cmd: string, args: unknown): unknown {
 
 const fixtureListeners = new Set<(event: BridgeEvent) => void>();
 const emitFixture = (payload: object) =>
-  fixtureListeners.forEach((l) => l({ kind: "ask", payload }));
+  fixtureListeners.forEach((l) => l({ kind: "ask", payload: payload as Events["ask"] }));
 
 // The Expo Go coach state. It lives in memory and resets on reload.
 let fixtureProvider = "cloud";

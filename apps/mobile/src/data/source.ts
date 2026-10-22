@@ -3,6 +3,7 @@
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
+import type { Commands } from "./generated/commands";
 import { presentToday } from "./present";
 import type { BridgeEvent, Today, TodayView } from "./types";
 
@@ -33,7 +34,7 @@ function innerOf(error: unknown): Inner | undefined {
 // Keep the error kind. A message that is only a payload gets the kind in front.
 function readable(error: unknown): Error {
   const inner = innerOf(error);
-  if (inner?.reason) return new Error(inner.reason);
+  if (inner?.reason) return Object.assign(new Error(inner.reason), { kind: "bad_arguments" });
   if (inner?.json) {
     const detail = JSON.parse(inner.json) as { message?: string; kind?: string };
     const message = detail.message ?? detail.kind ?? inner.json;
@@ -67,7 +68,8 @@ function bridgeSource(): Source | null {
         }),
       subscribe: (listener) => {
         const sub = bridge.subscribe({
-          onEvent: (kind, payload) => listener({ kind, payload: JSON.parse(payload) }),
+          onEvent: (kind, payload) =>
+            listener({ kind, payload: JSON.parse(payload) } as BridgeEvent),
         });
         return () => sub.cancel();
       },
@@ -89,8 +91,18 @@ const impl: Source = bridgeImpl ?? fixtureSource ?? unavailable;
 
 export const sourceKind = bridgeImpl ? "bridge" : impl === fixtureSource ? "fixture" : "none";
 
-export async function callJson<T>(cmd: string, args: unknown = {}): Promise<T> {
-  return JSON.parse(await impl.call(cmd, args)) as T;
+// The arguments of a command. A command with no required argument takes none.
+type ArgsOf<K extends keyof Commands> = undefined extends Commands[K]["args"]
+  ? [args?: Commands[K]["args"]]
+  : [args: Commands[K]["args"]];
+
+// Run a command of the Rust core. `Commands` is generated from the core, so the
+// name, the arguments and the result are checked by the compiler.
+export async function call<K extends keyof Commands>(
+  cmd: K,
+  ...[args]: ArgsOf<K>
+): Promise<Commands[K]["result"]> {
+  return JSON.parse(await impl.call(cmd, args ?? {}));
 }
 
 export const subscribe = impl.subscribe;
@@ -113,7 +125,7 @@ const persona = __DEV__
 export async function fetchToday(): Promise<Today> {
   const view = persona
     ? (persona as TodayView)
-    : await callJson<TodayView>("today", demoDate ? { date: demoDate } : {});
+    : await call("today", demoDate ? { date: demoDate } : {});
   const today = presentToday(view);
   const sample = sampleData || impl === fixtureSource || persona !== undefined;
   return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;

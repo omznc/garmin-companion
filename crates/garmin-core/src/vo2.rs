@@ -27,6 +27,7 @@ pub(crate) const SCHEMA: &str = r#"
 "#;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Vo2Day {
     pub date: String,
@@ -34,6 +35,7 @@ pub struct Vo2Day {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FitnessAge {
     pub date: String,

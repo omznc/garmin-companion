@@ -33,6 +33,7 @@ const EASY_ABOVE_Z2_PCT: f64 = 30.0;
 const MIN_RUN_M: f64 = 3000.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct HealthTile {
     /// `resting_hr`, `hrv`, `sleep`, `body_battery` or `stress`.
@@ -60,6 +61,7 @@ pub struct HealthTile {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepDebt {
     /// Nights with both a need and a sleep time.
@@ -71,6 +73,7 @@ pub struct SleepDebt {
 
 /// The average bed and wake times of the last nights.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BedWake {
     pub nights: usize,
@@ -82,6 +85,7 @@ pub struct BedWake {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepScores {
     /// The last 14 nights, oldest first. A night with no score is `None`.
@@ -90,6 +94,7 @@ pub struct SleepScores {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PaceRun {
     pub activity_id: i64,
@@ -99,6 +104,7 @@ pub struct PaceRun {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PaceDrift {
     /// The median pace of the easy runs, in minutes per kilometre.
@@ -110,6 +116,7 @@ pub struct PaceDrift {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TilesView {
     pub date: String,
