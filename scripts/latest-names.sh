@@ -18,3 +18,4 @@ copy "garmin-companion_${v}_amd64.deb" garmin-companion_amd64.deb
 copy "garmin-companion-${v}-1.x86_64.rpm" garmin-companion.x86_64.rpm
 copy "garmin-companion_${v}_amd64.AppImage" garmin-companion_amd64.AppImage
 copy "garmin-companion_${v}.apk" garmin-companion.apk
+copy "garmin-companion_${v}_unsigned.ipa" garmin-companion_unsigned.ipa

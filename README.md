@@ -22,6 +22,7 @@ It also has an MCP server, so Claude Desktop can read the same data.
 **Mobile**
 
 [![Android .apk](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Android&logo=android&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion.apk)
+[![iOS .ipa](https://img.shields.io/github/v/release/omznc/garmin-companion?label=iOS%20%28unsigned%29&logo=apple&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_unsigned.ipa)
 
 All the files, and the older versions, are on the
 [releases page](https://github.com/omznc/garmin-companion/releases).
@@ -41,8 +42,11 @@ system shows a warning at the first install:
   run `chmod +x` on the file, then open it.
 - **Android:** Android 7 or later. Let your browser or file manager install
   apps.
+- **iOS:** The `.ipa` has no signature. Sign and install it with
+  [Sideloadly](https://sideloadly.io) or [AltStore](https://altstore.io). It
+  does not update itself.
 
-After the first install, the app updates itself. Each update has a signature
+After the first install, the desktop and Android apps update themselves. Each update has a signature
 from this project, and the app checks it.
 
 ## Screens
