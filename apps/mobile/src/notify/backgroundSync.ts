@@ -27,7 +27,8 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     return ok
       ? BackgroundTask.BackgroundTaskResult.Success
       : BackgroundTask.BackgroundTaskResult.Failed;
-  } catch {
+  } catch (e) {
+    console.warn("background sync failed", e);
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
 });

@@ -10,7 +10,7 @@ export function useNotificationTap() {
   useEffect(() => {
     if (response?.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     const href = safeHref(response.notification.request.content.data?.href);
-    if (href) router.push(href as never);
+    if (href) router.push(href as never, { withAnchor: true });
     // Without this, a remount or a cold start would open the same screen again.
     Notifications.clearLastNotificationResponse();
   }, [response, router]);

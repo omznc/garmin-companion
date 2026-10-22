@@ -17,6 +17,7 @@ export function useNotifySettings() {
     const read = () =>
       Notifications.getPermissionsAsync().then(
         (p) => setDenied(!p.granted && (prefs.enabled || p.status === "denied")),
+        // The page keeps its last state when the system does not answer.
         () => {},
       );
     void read();
@@ -28,8 +29,12 @@ export function useNotifySettings() {
     if (prefs.enabled) return setNotifyPrefs({ enabled: false });
     // Sample mode has no account, so there is nothing to notify about.
     if (sample) return;
-    const granted = await turnOnNotifications().catch(() => false);
-    setDenied(!granted);
+    const granted = await turnOnNotifications().catch((e) => {
+      console.warn("notifications not turned on", e);
+      return null;
+    });
+    // An error is not a refusal. Only a refusal shows the blocked note.
+    if (granted !== null) setDenied(!granted);
   };
   return { prefs, denied, sample, toggleMaster, setKind: setNotifyPrefs };
 }

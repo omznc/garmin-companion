@@ -81,14 +81,32 @@ test("a refused system permission sends nothing but records the ids", async () =
   assert.deepEqual(f.memory().activities, [2, 1]);
 });
 
-test("a failed delivery does not send the activity again", async () => {
-  const f = fake({
-    deliver: async () => {
-      throw new Error("no channel");
-    },
-  });
-  await assert.rejects(notifyAfterSync(f.deps, false));
-  assert.deepEqual(f.memory().activities, [2, 1]);
+test("a failed delivery does not stop the next one and does not repeat", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const sent: string[] = [];
+    const f = fake({
+      facts: async () => ({
+        date: "2026-10-22",
+        hour: 12,
+        recent: [
+          { id: 2, name: "Run" },
+          { id: 1, name: "Old" },
+        ],
+        attention: [note("hrv")],
+      }),
+      deliver: async (p) => {
+        if (p.channel === "activities") throw new Error("no channel");
+        sent.push(p.id);
+      },
+    });
+    const out = await notifyAfterSync(f.deps, false);
+    assert.deepEqual([sent, out.map((p) => p.id)], [["nudge-hrv"], ["nudge-hrv"]]);
+    assert.deepEqual(f.memory().activities, [2, 1]);
+  } finally {
+    console.warn = warn;
+  }
 });
 
 test("a nudge kind goes out once for a day, through the claim", async () => {

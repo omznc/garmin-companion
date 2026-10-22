@@ -46,8 +46,17 @@ export async function notifyAfterSync(deps: NotifyDeps, history: boolean): Promi
       nudges += 1;
     }
   }
-  for (const p of planned) await deps.deliver(p);
-  return planned;
+  // One failed delivery must not lose the notifications that the core already claimed.
+  const delivered: Planned[] = [];
+  for (const p of planned) {
+    try {
+      await deps.deliver(p);
+      delivered.push(p);
+    } catch (e) {
+      console.warn("notification not delivered", p.id, e);
+    }
+  }
+  return delivered;
 }
 
 // A notification must never fail a sync, and the background task waits for it before it ends.
