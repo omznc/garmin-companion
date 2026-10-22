@@ -67,6 +67,8 @@ function useSave(turnId: string, entry: DraftEntry): Save {
         committed();
         showSnackbar("Workout saved to Garmin");
         void queryClient.invalidateQueries({ queryKey: threadKey(sessionId) });
+        // A saved workout can show in the plan screen.
+        void queryClient.invalidateQueries({ queryKey: ["body"] });
       })
       .catch((error: Error & { kind?: string }) =>
         setFailure({ message: error.message, kind: error.kind }),

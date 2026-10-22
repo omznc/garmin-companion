@@ -19,8 +19,10 @@ import {
   type Usage,
   UNITS_PER_USD,
 } from "./models";
+import type { Cap, Taken } from "./limits";
 import { nextMidnight, type Reserved, type Snapshot } from "./wallet";
 
+export { Limits } from "./limits";
 export { Wallet } from "./wallet";
 
 const UPSTREAM = "https://openrouter.ai/api/v1/chat/completions";
@@ -31,11 +33,12 @@ const INSTALLS_PER_IP = 10;
 // must be high enough for a release day, when every upgraded app enrols again.
 const INSTALLS_PER_DAY = 5000;
 const NEW_ACCOUNTS_PER_IP = 5;
-// Each new account gets a free grant and costs one mail, so it keeps a low cap.
+// Each new account gets a free grant, so it keeps a low cap.
 const NEW_ACCOUNTS_PER_DAY = 200;
+// Code mails to addresses with no account, for each network. A bounce costs the mail sender.
+const NEW_ADDRESS_MAILS_PER_IP = 10;
 const MAX_MESSAGES = 80;
 const FREE_MAX_TOKENS = 4096;
-const SPEND_SHARDS = 8;
 const ALLOWED_FIELDS = new Set([
   "messages",
   "stream",
@@ -55,12 +58,21 @@ type Who =
   | { kind: "install"; id: string; wallet: string }
   | { kind: "user"; id: string; email: string; wallet: string; token: string };
 
+/** A thrown error becomes the JSON error shape. The log line has no request data. */
 export async function handleV2(request: Request, env: V2Env, ctx: ExecutionContext) {
+  try {
+    return await route(request, env, ctx);
+  } catch (err) {
+    console.error("v2 failed", err instanceof Error ? err.message : "unknown");
+    return fail(500, "internal_error", "the server failed");
+  }
+}
+
+async function route(request: Request, env: V2Env, ctx: ExecutionContext) {
   const path = new URL(request.url).pathname.replace(/^\/v2/, "");
-  const route = `${request.method} ${path}`;
-  switch (route) {
+  switch (`${request.method} ${path}`) {
     case "POST /install":
-      return install(request, env, ctx);
+      return install(request, env);
     case "GET /balance":
     case "GET /me":
       return withWho(request, env, (who) => balance(env, who));
@@ -152,7 +164,7 @@ async function addressBucket(request: Request, env: V2Env, day: string): Promise
   return Array.from(digest.slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function install(request: Request, env: V2Env, ctx: ExecutionContext) {
+async function install(request: Request, env: V2Env) {
   const day = today();
   const bucket = await addressBucket(request, env, day);
   const { success } = await env.ISSUE.limit({ key: `v2:${bucket}` });
@@ -160,27 +172,25 @@ async function install(request: Request, env: V2Env, ctx: ExecutionContext) {
   if (!success)
     return fail(429, "rate_limited", "too many new installs from here just now", {}, retry);
 
-  const [mine, total] = await Promise.all([
-    env.COUNTERS.get(`v2issued:${day}:${bucket}`),
-    env.COUNTERS.get(`v2issued:${day}:total`),
-  ]);
-  const midnight = { "Retry-After": String(secondsUntilMidnight()) };
-  if (Number(mine ?? 0) >= INSTALLS_PER_IP)
-    return fail(
-      429,
-      "install_limit",
-      "this network has set up its installs for today",
-      {},
-      midnight,
-    );
-  if (Number(total ?? 0) >= INSTALLS_PER_DAY)
-    return fail(429, "install_limit", "all new installs for today are taken", {}, midnight);
+  // The check and the count are one atomic step in the Limits object.
+  const taken = await callLimits<Taken>(env, {
+    op: "take",
+    caps: [
+      [`issued:${bucket}`, INSTALLS_PER_IP],
+      ["issued:total", INSTALLS_PER_DAY],
+    ] satisfies Cap[],
+  });
+  if (!taken.ok) {
+    const midnight = { "Retry-After": String(secondsUntilMidnight()) };
+    const message =
+      taken.key === "issued:total"
+        ? "all new installs for today are taken"
+        : "this network has set up its installs for today";
+    return fail(429, "install_limit", message, {}, midnight);
+  }
 
   const id = crypto.randomUUID().replace(/-/g, "");
   await env.COUNTERS.put(`v2install:${id}`, day, { expirationTtl: INSTALL_TTL });
-  ctx.waitUntil(
-    Promise.all([bump(env, `v2issued:${day}:${bucket}`, 1), bump(env, `v2issued:${day}:total`, 1)]),
-  );
   return json({ id });
 }
 
@@ -195,13 +205,18 @@ async function authSend(request: Request, env: V2Env) {
   if (!(await env.ISSUE.limit({ key: `v2mail:${bucket}` })).success) {
     return fail(429, "rate_limited", "too many codes requested", {}, { "Retry-After": "60" });
   }
-  const capped = await newAccountCap(env, email, bucket);
-  if (capped) return capped;
-  const result = await sendCode(env, email);
-  if (result === "sent") {
-    await countNewAccount(env, email, bucket);
-    return json({ ok: true });
+  if (!(await userExists(env, email))) {
+    // A look only: the account is counted when it is made.
+    if (!(await newAccountTaken(env, bucket, false)).ok) return newAccountCapped();
+    // Each mail to a new address counts, so one network cannot mail the world.
+    const mail = await callLimits<Taken>(env, {
+      op: "take",
+      caps: [[`mail:${bucket}`, NEW_ADDRESS_MAILS_PER_IP]] satisfies Cap[],
+    });
+    if (!mail.ok) return newAccountCapped();
   }
+  const result = await sendCode(env, email);
+  if (result === "sent") return json({ ok: true });
   if (result === "rate_limited")
     return fail(
       429,
@@ -217,28 +232,28 @@ async function authSend(request: Request, env: V2Env) {
 const userExists = async (env: V2Env, email: string) =>
   !!(await env.DB.prepare("SELECT 1 FROM user WHERE email = ?").bind(email).first());
 
-/** Signed-in users get a free grant too, so new accounts have install-like caps. */
-async function newAccountCap(env: V2Env, email: string, bucket: string) {
-  if (await userExists(env, email)) return null;
-  const day = today();
-  const [mine, total] = await Promise.all([
-    env.COUNTERS.get(`v2newuser:${day}:${bucket}`),
-    env.COUNTERS.get(`v2newuser:${day}:total`),
-  ]);
-  if (Number(mine ?? 0) < NEW_ACCOUNTS_PER_IP && Number(total ?? 0) < NEW_ACCOUNTS_PER_DAY)
-    return null;
-  const retry = { "Retry-After": String(secondsUntilMidnight()) };
-  return fail(429, "install_limit", "too many new accounts today", {}, retry);
-}
+/**
+ * Signed-in users get a free grant too, so new accounts have install-like caps.
+ * With `commit` true the account is counted, in the same step as the check.
+ */
+const newAccountTaken = (env: V2Env, bucket: string, commit: boolean) =>
+  callLimits<Taken>(env, {
+    op: "take",
+    commit,
+    caps: [
+      [`newuser:${bucket}`, NEW_ACCOUNTS_PER_IP],
+      ["newuser:total", NEW_ACCOUNTS_PER_DAY],
+    ] satisfies Cap[],
+  });
 
-async function countNewAccount(env: V2Env, email: string, bucket: string) {
-  if (await userExists(env, email)) return;
-  const day = today();
-  await Promise.all([
-    bump(env, `v2newuser:${day}:${bucket}`, 1),
-    bump(env, `v2newuser:${day}:total`, 1),
-  ]);
-}
+const newAccountCapped = () =>
+  fail(
+    429,
+    "install_limit",
+    "too many new accounts today",
+    {},
+    { "Retry-After": String(secondsUntilMidnight()) },
+  );
 
 async function authVerify(request: Request, env: V2Env) {
   const body = (await request.json().catch(() => null)) as {
@@ -253,7 +268,14 @@ async function authVerify(request: Request, env: V2Env) {
   if (!(await env.ISSUE.limit({ key: `v2verify:${bucket}` })).success) {
     return fail(429, "rate_limited", "too many tries", {}, { "Retry-After": "60" });
   }
-  const session = await verifyCode(env, email, code);
+  const session = await verifyCode(
+    env,
+    email,
+    code,
+    Date.now(),
+    async () => (await newAccountTaken(env, bucket, true)).ok,
+  );
+  if (session === "capped") return newAccountCapped();
   if (!session) return fail(401, "invalid_code");
   return json({ token: session.token, email });
 }
@@ -277,11 +299,24 @@ async function balance(env: V2Env, who: Who) {
 
 /* ------------------------------------------------------------------- the wallet --- */
 
-async function callWallet<T>(env: V2Env, name: string, msg: Record<string, unknown>): Promise<T> {
-  const stub = env.WALLET.get(env.WALLET.idFromName(name));
-  const r = await stub.fetch("https://wallet/", { method: "POST", body: JSON.stringify(msg) });
+/** A Durable Object call. A non-2xx answer is an error, not data. */
+async function callObject<T>(
+  ns: DurableObjectNamespace,
+  name: string,
+  msg: Record<string, unknown>,
+): Promise<T> {
+  const stub = ns.get(ns.idFromName(name));
+  const r = await stub.fetch("https://object/", { method: "POST", body: JSON.stringify(msg) });
+  if (!r.ok) throw new Error(`durable object answered ${r.status}`);
   return (await r.json()) as T;
 }
+
+const callWallet = <T>(env: V2Env, name: string, msg: Record<string, unknown>) =>
+  callObject<T>(env.WALLET, name, msg);
+
+/** One object for all the daily limits. See limits.ts. */
+const callLimits = <T>(env: V2Env, msg: Record<string, unknown>) =>
+  callObject<T>(env.LIMITS, "daily", msg);
 
 /* ------------------------------------------------------------------------ chat --- */
 
@@ -381,11 +416,10 @@ function refusal(r: Extract<Reserved, { ok: false }>): Response {
 
 async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Who) {
   const p = profileOf(env.MODEL_PROFILE);
-  const day = today();
 
   // Premium has its own budget: free installs must not pause a paying user.
   const premium = who.kind === "user" && (await entitlementOf(env, who.id)).premium;
-  if (await overBudget(env, day, premium)) {
+  if (await overBudget(env, premium)) {
     return fail(503, "coach_paused", "the cloud coach is paused");
   }
 
@@ -425,10 +459,9 @@ async function chat(request: Request, env: V2Env, ctx: ExecutionContext, who: Wh
       units,
       premium,
     });
-    await bump(
-      env,
-      `${spendKey(premium)}:${day}:${Math.floor(Math.random() * SPEND_SHARDS)}`,
-      units / UNITS_PER_USD,
+    // The charge is final here. A failed count must not fail the answer.
+    await callLimits(env, { op: "add", key: spendKey(premium), by: units / UNITS_PER_USD }).catch(
+      (err) => console.error("v2 spend count failed", err instanceof Error ? err.message : ""),
     );
     return r.snapshot;
   };
@@ -602,30 +635,22 @@ function meterStream(
 /* ------------------------------------------------------------------ the budget --- */
 
 /** Free and premium spend are counted apart, so one cannot pause the other. */
-const spendKey = (premium: boolean) => (premium ? "v2pspend" : "v2spend");
+const spendKey = (premium: boolean) => (premium ? "pspend" : "spend");
 
-async function spentToday(env: V2Env, day: string, premium: boolean): Promise<number> {
-  const shards = await Promise.all(
-    Array.from({ length: SPEND_SHARDS }, (_, i) =>
-      env.COUNTERS.get(`${spendKey(premium)}:${day}:${i}`),
-    ),
-  );
-  return shards.reduce((n, v) => n + Number(v ?? 0), 0);
-}
-
-/** The premium budget is optional: without it the wallet limits are the guard. */
-async function overBudget(env: V2Env, day: string, premium: boolean): Promise<boolean> {
+/**
+ * The daily total, in USD, that stops the coach. An unset or empty value means
+ * no total cap: only the wallet limits and the OpenRouter key limit apply. That
+ * is the case for premium, so a paid user is never paused by a budget.
+ */
+function budgetOf(env: V2Env, premium: boolean): number | null {
   const raw = premium ? env.DAILY_BUDGET_V2_PREMIUM_USD : env.DAILY_BUDGET_V2_USD;
   const budget = raw === undefined || raw === "" ? Number.NaN : Number(raw);
-  return Number.isFinite(budget) && (await spentToday(env, day, premium)) >= budget;
+  return Number.isFinite(budget) ? budget : null;
 }
 
-/** A soft counter in KV. It can lose an increment under load, like /v1's. */
-async function bump(env: V2Env, key: string, by: number): Promise<void> {
-  try {
-    const now = Number((await env.COUNTERS.get(key)) ?? 0);
-    await env.COUNTERS.put(key, String(now + by), { expirationTtl: DAY_SECONDS * 2 });
-  } catch {
-    // Bookkeeping is not worth a failed request.
-  }
+async function overBudget(env: V2Env, premium: boolean): Promise<boolean> {
+  const budget = budgetOf(env, premium);
+  if (budget === null) return false;
+  const { value } = await callLimits<{ value: number }>(env, { op: "get", key: spendKey(premium) });
+  return value >= budget;
 }

@@ -45,4 +45,6 @@ export const useCoachConfig = () =>
     queryKey: ["askConfig"],
     queryFn: () => call("ask_config"),
     retry: false,
+    // A provider change does not refetch it, so it must read fresh at each mount.
+    staleTime: 0,
   });

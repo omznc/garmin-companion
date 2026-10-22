@@ -1,8 +1,13 @@
 // The `health_view` and `sleep_view` results of the Rust core, as JSON.
 // The core owns the numbers and the sentences. The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
+import { devPersona } from "./devPersona";
 import { call } from "./source";
-import { devPersona, wellnessFixture } from "./wellnessFixtures";
+
+// The condition stays inline, so Metro drops the fixtures from a release build.
+const fixtures = (__DEV__ ? require("./wellnessFixtures") : null) as
+  | typeof import("./wellnessFixtures")
+  | null;
 
 // The wire types come from the Rust core, through `generated/`.
 import type { HealthView } from "./generated/HealthView";
@@ -16,7 +21,8 @@ export type { SleepInsight } from "./generated/SleepInsight";
 export type { SleepWindow } from "./generated/SleepWindow";
 export type { StageShare } from "./generated/StageShare";
 
-const recorded = (cmd: string) => (devPersona ? wellnessFixture(cmd, devPersona) : undefined);
+const recorded = (cmd: string) =>
+  devPersona ? fixtures?.wellnessFixture(cmd, devPersona) : undefined;
 
 export const useHealth = () =>
   useQuery({

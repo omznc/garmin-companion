@@ -78,12 +78,8 @@ unchanged. The contract for the app is in [V2.md](V2.md).
 - Attach the Anthropic key in the OpenRouter account (BYOK), and set a spend
   limit on the OpenRouter key and in the Anthropic Console.
 
-Then point the app at it. `CLOUD_BASE` in `app/src-tauri/src/chat.rs` is the
-deployed URL with `/v1` on the end, and it is overridable at build time:
-
-```sh
-GARMIN_CLOUD_BASE=http://localhost:8787/v1 pnpm tauri dev   # against wrangler dev
-```
+Then point the app at it. `CLOUD_BASE` in `crates/garmin-coach/src/cloud.rs` is
+the deployed URL with `/v2` on the end. Change it to use another worker.
 
 ## Enrolment
 

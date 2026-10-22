@@ -4,8 +4,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
     "moduleSuffixes": [".android", ".ios", ""]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/*.test.ts", "node_modules", "android", "ios", "modules/*/build"]
+  "exclude": ["node_modules", "android", "ios", "modules/*/build"]
 }

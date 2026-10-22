@@ -81,13 +81,8 @@ export async function sendCode(env: V2Env, email: string, now = Date.now()): Pro
   return (await mailer.send(email, code)) ? "sent" : "mail_failed";
 }
 
-/** A new session token for the email, or null when the code is wrong or spent. */
-export async function verifyCode(
-  env: V2Env,
-  email: string,
-  code: string,
-  now = Date.now(),
-): Promise<{ token: string; userId: string } | null> {
+/** True when a live code for the email matches. Each try counts against its code. */
+async function codeMatches(env: V2Env, email: string, code: string, now: number) {
   // Any live code for the email can match, not only the newest. Someone who
   // sends many codes to a known address then cannot lock the owner out: the
   // owner can use any of the mails. There are at most CODES_PER_HOUR live codes.
@@ -109,7 +104,26 @@ export async function verifyCode(
     if (!bumped.meta.changes) continue;
     if ((await sha256Hex(`${row.salt}:${code}`)) === row.code_hash) matched = true;
   }
-  if (!matched) return null;
+  return matched;
+}
+
+/**
+ * A new session token for the email, or null when the code is wrong or spent.
+ * `admitNew` runs only when the email has no account yet. It counts the new
+ * account against the daily cap. When it says no, the result is "capped", no
+ * account is made and the code stays valid.
+ */
+export async function verifyCode(
+  env: V2Env,
+  email: string,
+  code: string,
+  now = Date.now(),
+  admitNew: () => Promise<boolean> = async () => true,
+): Promise<{ token: string; userId: string } | null | "capped"> {
+  if (!(await codeMatches(env, email, code, now))) return null;
+
+  const known = await env.DB.prepare("SELECT 1 FROM user WHERE email = ?").bind(email).first();
+  if (!known && !(await admitNew())) return "capped";
 
   await env.DB.prepare("DELETE FROM login_code WHERE email = ?").bind(email).run();
   const userId = await upsertUser(env, email, now);

@@ -7,13 +7,13 @@ const tempo: WorkoutDraft = {
   name: "Tempo",
   sport: "running",
   steps: [
-    { type: "exec", kind: "warmup", end: { type: "time", seconds: 600 } },
+    { type: "exec", kind: "warmup", end: { type: "time", seconds: 600 }, target: { type: "none" } },
     {
       type: "repeat",
       times: 3,
       steps: [
-        { kind: "interval", end: { type: "time", seconds: 180 } },
-        { kind: "recovery", end: { type: "time", seconds: 120 } },
+        { kind: "interval", end: { type: "time", seconds: 180 }, target: { type: "none" } },
+        { kind: "recovery", end: { type: "time", seconds: 120 }, target: { type: "none" } },
       ],
     },
   ],
@@ -28,7 +28,7 @@ test("count and time expand the repeats", () => {
 test("a step that is not timed removes the duration", () => {
   const open: WorkoutDraft = {
     ...tempo,
-    steps: [{ type: "exec", kind: "interval", end: { type: "distance", metres: 800 } }],
+    steps: [{ type: "exec", kind: "interval", end: { type: "distance", metres: 800 }, target: { type: "none" } }],
   };
   assert.equal(estSeconds(open), null);
   assert.equal(subline(open), "Running · 1 step");

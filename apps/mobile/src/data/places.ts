@@ -1,10 +1,14 @@
 // Plan, Routes and Gear. The core builds the numbers and the sentences
 // (`garmin_api::plan`, `routes` and `gear`). This file types the JSON and turns
 // it into the blocks that `screens/Body.*` draws.
-import type { Block, BodyScreenData, EmptyNote } from "./body";
-import { placesFixture } from "./placesFixtures";
+import type { Block, BodyScreenData } from "./body";
+import { devPersona } from "./devPersona";
 import { call } from "./source";
-import { devPersona } from "./wellnessFixtures";
+
+// The condition stays inline, so Metro drops the fixtures from a release build.
+const fixtures = (__DEV__ ? require("./placesFixtures") : null) as
+  | typeof import("./placesFixtures")
+  | null;
 
 // The wire types come from the Rust core, through `generated/`.
 import type { GearView } from "./generated/GearView";
@@ -82,7 +86,8 @@ export function presentGear(v: GearView): BodyScreenData {
 }
 
 // Dev only: EXPO_PUBLIC_PERSONA shows a made-up user, as it does for Today.
-const recorded = (cmd: string) => (devPersona ? placesFixture(cmd, devPersona) : undefined);
+const recorded = (cmd: string) =>
+  devPersona ? fixtures?.placesFixture(cmd, devPersona) : undefined;
 
 export async function fetchPlaces(kind: PlacesKind): Promise<BodyScreenData> {
   if (kind === "plan") {

@@ -47,3 +47,25 @@ export const clearHistoryPending = () => {
   if (historyMarker().exists) historyMarker().delete();
 };
 export const historyPending = () => historyMarker().exists;
+
+// The time of the last good sync, in milliseconds. The app uses it to start a quick sync when it
+// opens. The core has the same fact, but it gives only a sentence for it.
+const syncedMarker = () => new File(Paths.document, "last-sync");
+export const markSynced = () => {
+  try {
+    const marker = syncedMarker();
+    if (!marker.exists) marker.create();
+    marker.writeSync(String(Date.now()));
+  } catch {
+    // A missing marker only means one more quick sync at the next start.
+  }
+};
+export const lastSyncedAt = (): number | null => {
+  try {
+    const marker = syncedMarker();
+    const at = marker.exists ? Number(marker.textSync()) : Number.NaN;
+    return Number.isFinite(at) ? at : null;
+  } catch {
+    return null;
+  }
+};
