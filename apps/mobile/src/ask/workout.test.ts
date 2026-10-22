@@ -28,7 +28,14 @@ test("count and time expand the repeats", () => {
 test("a step that is not timed removes the duration", () => {
   const open: WorkoutDraft = {
     ...tempo,
-    steps: [{ type: "exec", kind: "interval", end: { type: "distance", metres: 800 }, target: { type: "none" } }],
+    steps: [
+      {
+        type: "exec",
+        kind: "interval",
+        end: { type: "distance", metres: 800 },
+        target: { type: "none" },
+      },
+    ],
   };
   assert.equal(estSeconds(open), null);
   assert.equal(subline(open), "Running · 1 step");
