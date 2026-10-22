@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 import { THEMES, useSettingsActions } from "../data/useSettingsActions";
+import { useTabsEditor } from "../nav/useTabsEditor";
 import { setThemePref, useThemePrefs } from "../theme/prefs";
 import { Item, Note, Page, Section } from "./Kit";
 
@@ -79,6 +80,8 @@ export function SyncPage() {
 
 export function AppearancePage() {
   const a = useSettingsActions();
+  const router = useRouter();
+  const { start } = useTabsEditor();
   const theme = a.settings.data?.theme;
   const { noVibration } = useThemePrefs();
   return (
@@ -92,6 +95,14 @@ export function AppearancePage() {
             onPress={() => a.chooseTheme(t.value)}
           />
         ))}
+      </Section>
+      <Section title="Navigation">
+        <Item
+          title="Tabs"
+          value={`Opens on ${start.title}`}
+          chevron
+          onPress={() => router.push("/more/tabs")}
+        />
       </Section>
       <Section title="Feedback">
         <Item

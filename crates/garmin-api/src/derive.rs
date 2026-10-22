@@ -304,6 +304,9 @@ pub struct Link {
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Observation {
+    /// A stable name for the kind of note. The text holds live numbers, so
+    /// a notification de-duplicates on the kind.
+    pub kind: String,
     /// Accent items are the ones worth acting on today.
     pub accent: bool,
     pub text: String,
@@ -319,8 +322,9 @@ pub struct Observation {
     pub insight: Option<String>,
 }
 
-fn note(accent: bool, text: String) -> Observation {
+fn note(kind: &str, accent: bool, text: String) -> Observation {
     Observation {
+        kind: kind.into(),
         accent,
         text,
         spark: None,
@@ -392,7 +396,7 @@ fn resting_hr_note(daily: &[DailyMetrics]) -> Option<Observation> {
         rhr.iter().flatten().count(),
         recent.len()
     );
-    let o = with_spark(note(true, text), &rhr, "bpm");
+    let o = with_spark(note("resting-hr", true, text), &rhr, "bpm");
     Some(with_insight(
         with_link(o, "Ask about this", "/ask"),
         "recovery-drivers",
@@ -416,7 +420,7 @@ fn hrv_note(daily: &[DailyMetrics]) -> Option<Observation> {
         "HRV has averaged {recent:.0} ms over the last five nights, down from {prior:.0} ms in the fortnight before."
     );
     Some(with_insight(
-        with_spark(note(true, text), &hrv, "ms"),
+        with_spark(note("hrv", true, text), &hrv, "ms"),
         "recovery-drivers",
     ))
 }
@@ -429,7 +433,7 @@ fn zone_drift_note(runs: &[&CachedActivity]) -> Option<Observation> {
         split.hard_pct, split.counted
     );
     Some(with_insight(
-        with_link(note(true, text), "Insights", "/insights"),
+        with_link(note("zone-drift", true, text), "Insights", "/insights"),
         "hard-runs",
     ))
 }
@@ -446,6 +450,7 @@ fn cadence_note(runs: &[&CachedActivity]) -> Option<Observation> {
     let avg = mean(low)?;
     Some(with_insight(
         note(
+            "cadence",
             false,
             format!("Cadence is averaging {avg:.0} spm across your recent runs. Quicker, lighter steps nearer 170 cut joint load."),
         ),
@@ -467,13 +472,17 @@ fn fuel_note(daily: &[DailyMetrics]) -> Option<Observation> {
             "You're averaging a {:.0} kcal daily deficit{over}. That's a big gap to be active on — under-fuelling shows up as low energy, slow recovery and a resting heart rate that won't settle.",
             balance.abs()
         );
-        Some(with_link(note(true, text), "Food", "/food"))
+        Some(with_link(note("fuel-deficit", true, text), "Food", "/food"))
     } else if balance >= 700.0 {
         let text = format!(
             "You're averaging a {balance:.0} kcal daily surplus{over}. Worth knowing rather than worth fixing — at {:.0} kcal burned a day it's a choice, not a slip.",
             f.avg_burn.unwrap_or(0.0)
         );
-        Some(with_link(note(false, text), "Food", "/food"))
+        Some(with_link(
+            note("fuel-surplus", false, text),
+            "Food",
+            "/food",
+        ))
     } else {
         None
     }
@@ -492,6 +501,7 @@ fn gps_note(activities: &[CachedActivity], today: NaiveDate) -> Option<Observati
         return None;
     }
     Some(note(
+        "gps",
         false,
         "No outdoor GPS run in the last six weeks, so VO2 max still isn't calculating. One easy outdoor run starts it tracking.".into(),
     ))
@@ -640,7 +650,31 @@ mod tests {
         for (i, r) in rows.iter_mut().enumerate() {
             r.hrv_last_night = Some(if i >= 15 { 40.0 } else { 60.0 });
         }
-        assert!(hrv_note(&rows).unwrap().text.contains("40 ms"));
+        let n = hrv_note(&rows).unwrap();
+        assert!(n.text.contains("40 ms"));
+        // The HRV and the resting-rate notes share one insight but not one kind.
+        assert_eq!(
+            (n.kind.as_str(), n.insight.as_deref()),
+            ("hrv", Some("recovery-drivers"))
+        );
+    }
+
+    #[test]
+    fn each_note_has_its_own_kind() {
+        let mut rows: Vec<_> = (10..=20).map(|i| day(&format!("2026-03-{i}"))).collect();
+        for r in rows.iter_mut() {
+            r.resting_hr = Some(50.0);
+            r.hrv_last_night = Some(60.0);
+        }
+        for r in rows.iter_mut().rev().take(3) {
+            r.resting_hr = Some(56.0);
+            r.hrv_last_night = Some(30.0);
+        }
+        let kinds: Vec<String> = attention(&rows, &[], d("2026-03-21"))
+            .into_iter()
+            .map(|n| n.kind)
+            .collect();
+        assert_eq!(kinds, ["resting-hr", "hrv"]);
     }
 
     #[test]

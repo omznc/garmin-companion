@@ -25,6 +25,7 @@ const NEEDS_CACHE: &[&str] = &[
     "cached_activity",
     "nutrition",
     "weight",
+    "claim_notification",
     "tiles_view",
     "extras_view",
     "charts_view",

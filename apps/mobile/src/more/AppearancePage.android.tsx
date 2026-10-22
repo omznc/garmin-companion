@@ -2,7 +2,9 @@
 // "Material You" takes the colours of the wallpaper (Android 12 and later). The other
 // swatches are seed colours. Compose builds a full Material 3 scheme from each seed.
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
+import { useRouter } from "expo-router";
 import { Pressable, Switch, View } from "react-native";
+import { useTabsEditor } from "../nav/useTabsEditor";
 import { ListRow, SectionLabel, T } from "../components/MdKit";
 import { THEMES as SCHEMES, useSettingsActions } from "../data/useSettingsActions";
 import { isMaterialYouAvailable, useMd } from "../theme/md";
@@ -154,6 +156,20 @@ function NoVibrationRow() {
   );
 }
 
+function TabsRow() {
+  const router = useRouter();
+  const { start } = useTabsEditor();
+  return (
+    <ListRow
+      icon="tab"
+      title="Tabs"
+      supporting={`Order and start tab. Opens on ${start.title}.`}
+      chevron
+      onPress={() => router.push("/more/tabs")}
+    />
+  );
+}
+
 export function AppearancePage() {
   const a = useSettingsActions();
   const { scheme } = useThemePrefs();
@@ -173,6 +189,9 @@ export function AppearancePage() {
       <Swatches />
       <Section title="Contrast">
         <HighContrastRow />
+      </Section>
+      <Section title="Navigation">
+        <TabsRow />
       </Section>
       <Section title="Feedback">
         <NoVibrationRow />
