@@ -46,6 +46,10 @@ pub trait Stream {
     fn aborted(&self) -> bool {
         false
     }
+    /// The output ended before `finished`. A command can end with no final line.
+    fn end(&mut self) -> Vec<Event> {
+        Vec::new()
+    }
     /// What went wrong, when the command ends with no final line.
     fn failure(&self) -> Option<String> {
         None
@@ -422,7 +426,10 @@ fn watch(
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(line) => parser.feed(&line).into_iter().for_each(|e| sink.emit(e)),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                parser.end().into_iter().for_each(|e| sink.emit(e));
+                break;
+            }
         }
     }
     if parser.aborted() {

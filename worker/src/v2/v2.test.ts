@@ -397,11 +397,8 @@ describe("chat", () => {
     expect(r.status).toBe(200);
     await r.text();
     const sent = JSON.parse(h.fetchCalls[0].init.body as string);
-    expect(sent.model).toBeUndefined();
-    expect(sent.models).toEqual([
-      "minimax/minimax-m3.1-flash:free",
-      "deepseek/deepseek-v4.1-flash-1017",
-    ]);
+    expect(sent.model).toBe("deepseek/deepseek-v4.1-flash-1017");
+    expect(sent.models).toBeUndefined();
     expect(sent.provider).toMatchObject({ sort: "price" });
     expect(sent.reasoning).toEqual({ effort: "low" });
     // The bill uses the profile prices, so the cap must be the same prices.
@@ -410,7 +407,7 @@ describe("chat", () => {
   });
 
   it("charges nothing when the free model answered", () => {
-    const p = profileOf("deepseek");
+    const p = { ...profileOf("deepseek"), free: "minimax/minimax-m3.1-flash:free" };
     const usage = { prompt_tokens: 100_000, completion_tokens: 8000 };
     expect(costUnits(p, usage, "minimax/minimax-m3.1-flash:free")).toBe(0);
     expect(costUnits(p, usage, "minimax/minimax-m3.1-flash")).toBe(0);
