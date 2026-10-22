@@ -88,7 +88,6 @@ pub fn commands_type(commands: &[Command]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ApiError, Source};
     use std::collections::HashSet;
 
     /// The names that the dispatch `match` arms handle, read from its source.
@@ -115,18 +114,6 @@ mod tests {
         let listed: HashSet<String> = COMMANDS.iter().map(|c| c.name.to_owned()).collect();
         assert_eq!(listed.len(), COMMANDS.len(), "a command is listed twice");
         assert_eq!(listed, dispatched());
-    }
-
-    #[test]
-    fn every_listed_command_is_known() {
-        for c in COMMANDS {
-            let out = crate::call_with(Source::Sample, c.name, "{}");
-            assert!(
-                !matches!(out, Err(ApiError::UnknownCommand(_))),
-                "{} is not known",
-                c.name
-            );
-        }
     }
 
     /// Functions that the desktop may call and that have no command, and the

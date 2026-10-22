@@ -141,6 +141,15 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_account_with_a_bad_enrol_is_a_bad_argument() {
+        // The arguments fail to parse before any keyring or network use.
+        let out = handle("cloud_account", &json!({"enrol":"x"}), false)
+            .await
+            .unwrap();
+        assert!(matches!(out, Err(FfiError::BadArgs { .. })));
+    }
+
+    #[tokio::test]
     async fn a_verify_without_a_code_is_a_bad_argument() {
         let out = handle("cloud_verify", &json!({"email":"a@b.c"}), false)
             .await

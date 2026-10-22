@@ -2054,6 +2054,7 @@ pub struct DailyMetrics {
     pub hrv_balanced_low: Option<f64>,
     pub hrv_balanced_upper: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     pub raw: Option<String>,
 }
 

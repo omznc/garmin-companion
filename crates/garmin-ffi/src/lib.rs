@@ -286,6 +286,14 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_sample_sync_with_a_bad_days_is_a_bad_argument() {
+        let err = dispatch("sync", &serde_json::json!({ "days": "x" }), true)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FfiError::BadArgs { .. }));
+    }
+
+    #[tokio::test]
     async fn sync_sends_events_until_cancel() {
         let recorder = Arc::new(Recorder::default());
         let sub = subscribe(recorder.clone());

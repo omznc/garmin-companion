@@ -15,4 +15,4 @@ totalBurnKcal: number | null, activeKcal: number | null, bmrKcal: number | null,
  * The HRV bands of the day: the top of the "low" band and the two ends of
  * the "balanced" band, in ms. The first night of a new user has none.
  */
-hrvLowUpper: number | null, hrvBalancedLow: number | null, hrvBalancedUpper: number | null, raw: string | null, };
+hrvLowUpper: number | null, hrvBalancedLow: number | null, hrvBalancedUpper: number | null, raw?: string, };

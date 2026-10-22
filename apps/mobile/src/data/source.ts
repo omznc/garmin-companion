@@ -34,7 +34,7 @@ function innerOf(error: unknown): Inner | undefined {
 // Keep the error kind. A message that is only a payload gets the kind in front.
 function readable(error: unknown): Error {
   const inner = innerOf(error);
-  if (inner?.reason) return new Error(inner.reason);
+  if (inner?.reason) return Object.assign(new Error(inner.reason), { kind: "bad_arguments" });
   if (inner?.json) {
     const detail = JSON.parse(inner.json) as { message?: string; kind?: string };
     const message = detail.message ?? detail.kind ?? inner.json;
