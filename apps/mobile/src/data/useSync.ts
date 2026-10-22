@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
+import { SyncService } from "../../modules/sync-service";
 import { notifyDeps } from "../notify/notifications";
 import { notifySafely } from "../notify/run";
 import { committed } from "../ui/haptics";
@@ -170,10 +171,13 @@ export async function syncIfStale(): Promise<void> {
 }
 
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
+// On Android a foreground service keeps the network open when the person leaves the app. The system
+// refuses to start it in the background. Then a cut import resumes in the foreground (resumeCutImport).
 export async function importHistory() {
   set({ importing: true, importError: null, importPass: "quick" });
   inImport = true;
   importCut = false;
+  const service = AppState.currentState === "active" && SyncService?.start() === true;
   try {
     // The marker comes first, so a stop in the quick pass still resumes at the next start.
     markHistoryPending();
@@ -193,8 +197,10 @@ export async function importHistory() {
       importError: importCut ? null : e instanceof Error ? e.message : String(e),
     });
     // The failure can arrive after the return to the foreground. The pause gives the system
-    // time to open the network again.
+    // time to open the network again. The resumed import starts its own service.
     if (importCut && AppState.currentState === "active") setTimeout(resumeCutImport, 1000);
+  } finally {
+    if (service) SyncService?.stop();
   }
 }
 
