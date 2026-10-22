@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { AppState } from "react-native";
 import { notifyDeps } from "../notify/notifications";
 import { notifySafely } from "../notify/run";
 import { committed } from "../ui/haptics";
@@ -15,6 +16,7 @@ import { QUICK_DAYS } from "./importLabel";
 import { queryClient } from "./queryClient";
 import { isSampleData, subscribe } from "./source";
 import { syncIsStale } from "./staleSync";
+import { shouldRetryOffline } from "./syncRetry";
 import { createSyncQueue, type SyncArgs } from "./syncQueue";
 import type { SyncProgress, SyncSummary } from "./types";
 
@@ -70,6 +72,32 @@ const SYNC_KEYS = [
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
+const untilActive = () =>
+  new Promise<void>((resolve) => {
+    if (AppState.currentState === "active") return resolve();
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s !== "active") return;
+      sub.remove();
+      resolve();
+    });
+  });
+
+// Run the sync. If the system blocked the network in the background, wait for the foreground and run it
+// once more. The promise ends only when the sync really ended, so a caller can await it.
+async function runWithRetry(args: SyncArgs): Promise<SyncSummary> {
+  const states: string[] = [String(AppState.currentState)];
+  const sub = AppState.addEventListener("change", (s) => states.push(s));
+  try {
+    return await runSync(args);
+  } catch (e) {
+    if (!shouldRetryOffline(e, states)) throw e;
+  } finally {
+    sub.remove();
+  }
+  await untilActive();
+  return runSync(args);
+}
+
 function runOnce(args: SyncArgs): Promise<SyncSummary> {
   set({
     error: null,
@@ -85,7 +113,7 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     if (state.phase !== null && p.phase !== state.phase) refetchSyncData();
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
-  return runSync(args)
+  return runWithRetry(args)
     .then(async (summary) => {
       markSynced();
       set({ line: summary.line });
