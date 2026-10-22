@@ -32,6 +32,10 @@ function innerOf(error: unknown): Inner | undefined {
   return typeof inner === "object" && inner !== null ? (inner as Inner) : undefined;
 }
 
+// An offline message is already readable, so it gets no kind.
+const needsKind = (kind: string | undefined, message: string) =>
+  !!kind && kind !== "offline" && message !== kind;
+
 // Keep the error kind. A message that is only a payload gets the kind in front.
 function readable(error: unknown): Error {
   const inner = innerOf(error);
@@ -39,7 +43,7 @@ function readable(error: unknown): Error {
   if (inner?.json) {
     const detail = JSON.parse(inner.json) as { message?: string; kind?: string };
     const message = detail.message ?? detail.kind ?? inner.json;
-    const text = detail.kind && message !== detail.kind ? `${detail.kind}: ${message}` : message;
+    const text = needsKind(detail.kind, message) ? `${detail.kind}: ${message}` : message;
     return Object.assign(new Error(text), { kind: detail.kind });
   }
   return error instanceof Error ? error : new Error(String(error));

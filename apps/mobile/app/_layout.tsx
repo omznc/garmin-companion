@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { AppState, useColorScheme } from "react-native";
 import { getStatus, historyPending } from "../src/data/account";
 import { queryClient } from "../src/data/queryClient";
-import { importHistory, syncIfStale } from "../src/data/useSync";
+import { importHistory, resumeCutImport, syncIfStale } from "../src/data/useSync";
 import { syncTabPrefs } from "../src/nav/tabPrefs";
 import { useSystemBack } from "../src/nav/useSystemBack";
 import { registerBackgroundSync } from "../src/notify/backgroundSync";
@@ -34,7 +34,9 @@ export default function RootLayout() {
     void syncIfStale();
     const sub = AppState.addEventListener("change", (status) => {
       focusManager.setFocused(status === "active");
-      if (status === "active") void syncIfStale();
+      if (status !== "active") return;
+      resumeCutImport();
+      void syncIfStale();
     });
     return () => sub.remove();
   }, []);

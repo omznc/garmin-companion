@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { AppState } from "react-native";
 import { notifyDeps } from "../notify/notifications";
 import { notifySafely } from "../notify/run";
 import { committed } from "../ui/haptics";
@@ -15,6 +16,7 @@ import { QUICK_DAYS } from "./importLabel";
 import { queryClient } from "./queryClient";
 import { isSampleData, subscribe } from "./source";
 import { syncIsStale } from "./staleSync";
+import { shouldRetryOffline } from "./syncRetry";
 import { createSyncQueue, type SyncArgs } from "./syncQueue";
 import type { SyncProgress, SyncSummary } from "./types";
 
@@ -70,6 +72,33 @@ const SYNC_KEYS = [
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 
+// An import that the system cut off in the background shows no error and runs again in the
+// foreground. A manual sync that the system cut off shows the short offline message.
+type CutOff = { cutOff?: boolean };
+const isCutOff = (e: unknown) => (e as CutOff | null)?.cutOff === true;
+let inImport = false;
+let importCut = false;
+
+// Called when the app comes back to the foreground.
+export function resumeCutImport() {
+  if (!importCut || state.importing) return;
+  importCut = false;
+  void importHistory();
+}
+
+async function runTracked(args: SyncArgs): Promise<SyncSummary> {
+  const states: string[] = [String(AppState.currentState)];
+  const sub = AppState.addEventListener("change", (s) => states.push(s));
+  try {
+    return await runSync(args);
+  } catch (e) {
+    if (shouldRetryOffline(e, states)) Object.assign(e as object, { cutOff: true });
+    throw e;
+  } finally {
+    sub.remove();
+  }
+}
+
 function runOnce(args: SyncArgs): Promise<SyncSummary> {
   set({
     error: null,
@@ -85,7 +114,7 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
     if (state.phase !== null && p.phase !== state.phase) refetchSyncData();
     set({ line: p.line, phase: p.phase, done: p.done, total: p.total });
   });
-  return runSync(args)
+  return runTracked(args)
     .then(async (summary) => {
       markSynced();
       set({ line: summary.line });
@@ -94,7 +123,7 @@ function runOnce(args: SyncArgs): Promise<SyncSummary> {
       return summary;
     })
     .catch((e: unknown) => {
-      set({ error: e instanceof Error ? e.message : String(e) });
+      if (!(inImport && isCutOff(e))) set({ error: e instanceof Error ? e.message : String(e) });
       throw e;
     })
     .finally(() => {
@@ -123,8 +152,9 @@ export async function quickSync(): Promise<boolean> {
     await startSync({ days: QUICK_DAYS });
     failedAt = null;
     return true;
-  } catch {
-    failedAt = Date.now();
+  } catch (e) {
+    // A cut-off run is not a Garmin fault, so the next return to the foreground may sync at once.
+    if (!isCutOff(e)) failedAt = Date.now();
     set({ error: null });
     return false;
   }
@@ -142,6 +172,8 @@ export async function syncIfStale(): Promise<void> {
 // Fill Today first with the last 14 days, then take the full history. The error goes in the store.
 export async function importHistory() {
   set({ importing: true, importError: null, importPass: "quick" });
+  inImport = true;
+  importCut = false;
   try {
     // The marker comes first, so a stop in the quick pass still resumes at the next start.
     markHistoryPending();
@@ -149,14 +181,20 @@ export async function importHistory() {
     set({ importPass: "full" });
     await startSync({ full: true, days: 365 });
     clearHistoryPending();
+    inImport = false;
     set({ importing: false, importPass: null });
   } catch (e) {
+    inImport = false;
+    importCut = isCutOff(e);
     // Today offers a retry.
     set({
       importing: false,
       importPass: null,
-      importError: e instanceof Error ? e.message : String(e),
+      importError: importCut ? null : e instanceof Error ? e.message : String(e),
     });
+    // The failure can arrive after the return to the foreground. The pause gives the system
+    // time to open the network again.
+    if (importCut && AppState.currentState === "active") setTimeout(resumeCutImport, 1000);
   }
 }
 

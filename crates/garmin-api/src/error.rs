@@ -17,6 +17,9 @@ pub enum ApiError {
     /// No Garmin account is signed in.
     #[error("Not connected to Garmin yet.")]
     NotConnected,
+    /// The network to Garmin is down or blocked, for example when the app runs in the background.
+    #[error("No connection to Garmin.")]
+    Offline,
     /// The database or a query failed. The message holds the whole chain.
     #[error("{0}")]
     Internal(String),
@@ -24,6 +27,9 @@ pub enum ApiError {
 
 impl From<anyhow::Error> for ApiError {
     fn from(e: anyhow::Error) -> Self {
+        if e.chain().any(is_offline) {
+            return Self::Offline;
+        }
         Self::Internal(
             e.chain()
                 .map(|c| c.to_string())
@@ -33,12 +39,19 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
+fn is_offline(cause: &(dyn std::error::Error + 'static)) -> bool {
+    cause
+        .downcast_ref::<reqwest::Error>()
+        .is_some_and(|r| r.is_connect() || r.is_timeout())
+}
+
 impl ApiError {
     fn kind(&self) -> &'static str {
         match self {
             Self::UnknownCommand(_) => "unknown_command",
             Self::BadArguments(_) => "bad_arguments",
             Self::NotConnected => "not_connected",
+            Self::Offline => "offline",
             Self::Internal(_) => "internal",
         }
     }
@@ -64,5 +77,23 @@ mod tests {
         assert_eq!(not_connected["message"], "Not connected to Garmin yet.");
         let internal = serde_json::to_value(ApiError::Internal("disk".into())).unwrap();
         assert_eq!(internal["message"], "disk");
+        let offline = serde_json::to_value(ApiError::Offline).unwrap();
+        assert_eq!(offline["kind"], "offline");
+        assert_eq!(offline["message"], "No connection to Garmin.");
+    }
+
+    #[test]
+    fn a_connect_error_in_the_chain_is_offline() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let connect = rt
+            .block_on(reqwest::Client::new().get("http://127.0.0.1:1/").send())
+            .unwrap_err();
+        let e = anyhow::Error::new(connect).context("track 123");
+        assert!(matches!(ApiError::from(e), ApiError::Offline));
+        let other = anyhow::anyhow!("disk full");
+        assert!(matches!(ApiError::from(other), ApiError::Internal(_)));
     }
 }
