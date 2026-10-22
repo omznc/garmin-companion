@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import worker from "../index";
 import type { Mailer } from "./auth";
+import { Limits } from "./limits";
 import { Wallet } from "./wallet";
 
 type Env = Parameters<typeof worker.fetch>[1];
@@ -53,13 +54,13 @@ function d1() {
   };
 }
 
-function walletNamespace() {
-  const wallets = new Map<string, Wallet>();
+function objectNamespace(make: (state: { storage: DurableObjectStorage }) => Wallet | Limits) {
+  const wallets = new Map<string, Wallet | Limits>();
   const get = (name: string) => {
     let w = wallets.get(name);
     if (!w) {
       const mem = new Map<string, unknown>();
-      w = new Wallet({
+      w = make({
         storage: {
           get: async (k: string) => mem.get(k),
           put: async (k: string, v: unknown) => void mem.set(k, structuredClone(v)),
@@ -128,7 +129,8 @@ export function harness(vars: Record<string, unknown> = {}) {
     BURST: { limit: async () => ({ success: true }) },
     ISSUE: { limit: async () => ({ success: true }) },
     DB: db,
-    WALLET: walletNamespace(),
+    WALLET: objectNamespace((st) => new Wallet(st)),
+    LIMITS: objectNamespace((st) => new Limits(st)),
     MAILER: mailer,
     MODEL_PROFILE: "haiku",
     POLAR_TOKEN: "polar-test-token",

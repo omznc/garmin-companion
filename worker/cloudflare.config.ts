@@ -1,4 +1,4 @@
-import { bindings, defineConfig, exports } from "cf/config";
+import { bindings, defineConfig, exports, triggers } from "cf/config";
 
 // No `observability` block on purpose. Workers Logs would persist request
 // metadata for a service whose requests carry someone's resting heart rate.
@@ -8,9 +8,15 @@ export default defineConfig({
     compatibilityDate: "2025-06-01",
     entrypoint: "src/index.ts",
     // The balance of each install or user. SQLite storage.
+    // Limits: the daily install cap, the new-account cap and the spend budget.
+    // One named object, SQLite storage. A new class: `cf deploy` makes the
+    // migration from this map. Check the plan before the first deploy.
     exports: {
       Wallet: exports.durableObject({ storage: "sqlite" }),
+      Limits: exports.durableObject({ storage: "sqlite" }),
     },
+    // Deletes expired login codes and sessions, and old webhook ids. 03:17 UTC daily.
+    triggers: [triggers.scheduled({ schedule: "17 3 * * *" })],
     env: {
       // --- /v1: frozen for v0.9.1 users. Do not change. ---
       MODEL: bindings.text("inclusionai/ling-3.0-flash"),
@@ -34,6 +40,8 @@ export default defineConfig({
       FREE_REQUIRES_LOGIN: bindings.text("false"),
       // A second guard on /v2 spend. The main limit is on the OpenRouter key.
       DAILY_BUDGET_V2_USD: bindings.text("5"),
+      // Premium spend alone. Empty means no total cap: the wallet limits apply.
+      DAILY_BUDGET_V2_PREMIUM_USD: bindings.text(""),
       // Production. The sandbox is https://sandbox-api.polar.sh, product
       // 5bad678a-4124-4c12-901c-09e79ba19818.
       POLAR_API_BASE: bindings.text("https://api.polar.sh"),
@@ -45,6 +53,7 @@ export default defineConfig({
       // Schema in migrations/. Apply with `cf d1 migrations apply <id>`.
       DB: bindings.d1({ name: "garmin-coach", id: "9791e324-7a61-49a2-a513-e2d63d778bd8" }),
       WALLET: bindings.durableObject({ worker: "coach", exportName: "Wallet" }),
+      LIMITS: bindings.durableObject({ worker: "coach", exportName: "Limits" }),
       // Secrets, not in this file. Set them with `cf workers secrets update`:
       // OPENROUTER_KEY, POLAR_TOKEN, POLAR_WEBHOOK_SECRET, RESEND_KEY.
     },
