@@ -38,7 +38,8 @@ export const PROFILES: Record<string, ModelProfile> = {
     // Decart 0.09/0.18). The old 0.05/0.1 matched no endpoint, so the fallback
     // had nowhere to go when the free model failed.
     slug: "deepseek/deepseek-v4.1-flash-1017",
-    free: "minimax/minimax-m3.1-flash:free",
+    // No free model: OpenRouter removed minimax-m3.1-flash:free on 2026-10-22,
+    // and a missing id in `models` fails the whole request with 404.
     input: 0.1,
     output: 0.25,
     cacheRead: 0.01,
