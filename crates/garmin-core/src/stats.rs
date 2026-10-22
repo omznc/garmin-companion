@@ -372,7 +372,7 @@ pub fn rank_stability(columns: &[Vec<Option<f64>>], outcome: &[Option<f64>]) -> 
         .iter()
         .map(|c| {
             rows.iter()
-                .map(|&i| (c[i].unwrap(), outcome[i].unwrap()))
+                .filter_map(|&i| Some((c.get(i).copied()??, outcome.get(i).copied()??)))
                 .collect()
         })
         .collect();

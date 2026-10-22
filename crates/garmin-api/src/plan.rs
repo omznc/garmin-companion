@@ -109,7 +109,13 @@ fn follow_through(saved: &[Workout], recent: &[&CachedActivity]) -> Option<Strin
     let longest = saved
         .iter()
         .filter(|w| w.est_duration_s.unwrap_or(0.0) > 0.0)
-        .max_by(|a, b| a.est_duration_s.partial_cmp(&b.est_duration_s).unwrap())?;
+        .max_by(|a, b| {
+            let (a, b) = (
+                a.est_duration_s.unwrap_or(0.0),
+                b.est_duration_s.unwrap_or(0.0),
+            );
+            a.total_cmp(&b)
+        })?;
     let ask = longest.est_duration_s?;
     let sport = sport_label(longest.sport_type.as_deref()).to_lowercase();
     let best = recent

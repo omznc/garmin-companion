@@ -820,11 +820,11 @@ pub fn week_shape(daily: &[DailyMetrics], activities: &[CachedActivity]) -> Opti
         .iter()
         .map(|s| s.trained as f64 / s.seen as f64 * 100.0)
         .collect();
-    let best = (0..7).max_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
-    let worst = (0..7).min_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
+    let best = (0..7).max_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
+    let worst = (0..7).min_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
     let second = (0..7)
         .filter(|i| *i != worst)
-        .min_by(|a, b| rate[*a].partial_cmp(&rate[*b]).unwrap())?;
+        .min_by(|a, b| rate[*a].total_cmp(&rate[*b]))?;
     // A flat week is a fine outcome and not a finding.
     if rate[best] - rate[worst] < 20.0 {
         return None;
