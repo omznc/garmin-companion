@@ -147,6 +147,19 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.1.1" date="2026-10-22">
+      <description>
+        <p>
+          The Android app no longer stops at start, and the background sync
+          runs again. The history import continues when you leave the app, and
+          a notification shows it.
+        </p>
+        <p>
+          A sync without a network shows a short message. On iOS, More opens
+          its list, the date button shows, and Today has a readiness ring.
+        </p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-10-22">
       <description>
         <p>
