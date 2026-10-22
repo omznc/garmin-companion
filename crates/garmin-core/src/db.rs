@@ -1708,6 +1708,15 @@ impl Db {
         Ok(changed > 0)
     }
 
+    /// Claim today's notification for a Today note, by its stable kind.
+    ///
+    /// The `note:` prefix keeps these ids apart from the coach nudge ids.
+    pub fn claim_note_notification(&self, kind: &str, today: &str) -> Result<bool> {
+        let id = format!("note:{kind}");
+        self.saw_nudge(&id, today)?;
+        self.claim_nudge_notification(&id, today)
+    }
+
     /* ------------------------------------------------------------ analysis --- */
 
     /// The stored analysis for one activity, if it was computed from `key`.
@@ -2190,6 +2199,17 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         Db::open(&path).expect("scratch cache")
+    }
+
+    #[test]
+    fn a_note_notification_is_claimed_once_a_day_for_each_kind() {
+        let db = scratch("claim-note");
+        assert!(db.claim_note_notification("hrv", "2026-03-01").unwrap());
+        assert!(!db.claim_note_notification("hrv", "2026-03-01").unwrap());
+        assert!(db
+            .claim_note_notification("resting-hr", "2026-03-01")
+            .unwrap());
+        assert!(db.claim_note_notification("hrv", "2026-03-02").unwrap());
     }
 
     fn day(date: &str, resting_hr: f64) -> DailyMetrics {

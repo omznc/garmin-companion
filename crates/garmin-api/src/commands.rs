@@ -39,6 +39,7 @@ pub const COMMANDS: &[Command] = &[
         "Array<CachedActivity>",
     ),
     cmd("cached_activity", "ActivityIdArgs", "CachedActivity | null"),
+    cmd("claim_notification", "ClaimArgs", "boolean"),
     cmd("nutrition", "DaysArgs | undefined", "NutritionReport"),
     cmd("weight", "DaysArgs | undefined", "WeightReport"),
     cmd("activities", "RecentArgs | undefined", "ActivitiesView"),
