@@ -103,6 +103,19 @@ pub fn row_with(_first: bool, label: &str, below: Option<Div>, value: Div, t: &T
         .border_color(t.line2)
 }
 
+/// A row with a `note` on its own full-width line under the label and the
+/// controls. A long note wraps there and cannot push out of the row.
+pub fn row_note(
+    label: &str,
+    help_text: Option<&str>,
+    note: Option<Div>,
+    value: Div,
+    t: &Theme,
+) -> Div {
+    let help_line = help_text.map(|h| help(h.to_string(), t));
+    row_with(false, label, help_line, value, t).children(note.map(|n| n.w_full()))
+}
+
 pub fn row(first: bool, label: &str, help_text: Option<&str>, value: Div, t: &Theme) -> Div {
     row_with(
         first,
