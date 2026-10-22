@@ -508,7 +508,7 @@ async function callUpstream(env: V2Env, body: string): Promise<Response> {
     return await fetch(UPSTREAM, {
       method: "POST",
       headers: {
-        // A separate key keeps a /v2 key limit from stopping /v1 users.
+        // An optional separate key gives /v2 its own OpenRouter limit.
         Authorization: `Bearer ${env.OPENROUTER_KEY_V2 ?? env.OPENROUTER_KEY}`,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://github.com/omznc/garmin-companion",

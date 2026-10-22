@@ -4,7 +4,7 @@ export const json = (body: unknown, status = 200, headers: Record<string, string
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers },
   });
 
-/** The OpenAI error shape, like OpenAI.`type` is what the app acts on. */
+/** The OpenAI error shape, like OpenAI. `type` is what the app acts on. */
 export const fail = (
   status: number,
   type: string,

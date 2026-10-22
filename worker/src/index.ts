@@ -33,9 +33,9 @@ export default {
   },
 } satisfies ExportedHandler<V2Env>;
 
-/** The OpenAI error shape, so the old app shows the message. */
+/** The OpenAI error shape, so the old app shows the message. It has no final period: the old app adds one. */
 function gone(): Response {
-  const message = "This version of Garmin Companion is no longer supported. Update the app.";
+  const message = "This version of Garmin Companion is no longer supported. Update the app";
   return new Response(JSON.stringify({ error: { message, code: 410, type: "gone" } }), {
     status: 410,
     headers: { "Content-Type": "application/json" },
