@@ -145,6 +145,9 @@ jobs:
             -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
           rm -f "$RUNNER_TEMP/release.jks"
 
+      - name: Check the R8 keep rules
+        run: sh scripts/check-r8-keeps.sh apps/mobile/android/app/build/outputs/mapping/release/seeds.txt
+
       - name: Check the bundle
         run: |
           AAB="apps/mobile/android/app/build/outputs/bundle/release/app-release.aab"
