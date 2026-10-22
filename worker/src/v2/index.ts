@@ -536,7 +536,13 @@ function upstreamRefusal(status: number, text: string): Response {
   if (status === 402 || (status === 403 && /limit|credit|budget/i.test(text))) {
     return fail(503, "coach_paused", "the cloud coach is paused");
   }
-  return fail(502, "upstream_error", "the model provider failed", { upstream_status: status });
+  // The provider's own reason (for example "No endpoints found") makes a failed
+  // route visible from a client, because the worker has no log reader.
+  const reason = safeJson(text)?.error?.message;
+  return fail(502, "upstream_error", "the model provider failed", {
+    upstream_status: status,
+    ...(typeof reason === "string" && { upstream_message: reason.slice(0, 300) }),
+  });
 }
 
 function safeJson(text: string): Record<string, any> | undefined {

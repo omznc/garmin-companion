@@ -308,11 +308,13 @@ pub fn settings_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Div {
             .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.install_update(cx))),
         );
     }
-    let mut value = panel::stack().child(buttons);
-    if let Some(note) = status(state, t) {
-        value = value.child(note);
-    }
-    panel::row(false, "Updates", None, value, t)
+    panel::row_note(
+        "Updates",
+        None,
+        status(state, t),
+        panel::stack().child(buttons),
+        t,
+    )
 }
 
 #[cfg(test)]
