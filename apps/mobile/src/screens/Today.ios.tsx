@@ -236,13 +236,13 @@ function HeroRow({ hero }: { hero: Hero }) {
       style={{ flexDirection: "row", alignItems: "center", gap: 20, padding: 16, paddingBottom: 0 }}
     >
       {hero.pct != null ? (
-        <Host style={{ width: 96, height: 96 }}>
+        <Host style={{ width: 104, height: 104 }}>
           <Gauge
             value={hero.pct}
             min={0}
             max={100}
             currentValueLabel={<SwiftText>{hero.text}</SwiftText>}
-            modifiers={[gaugeStyle("circularCapacity"), tintStyle("#FF9500"), scaleEffect(1.6)]}
+            modifiers={[gaugeStyle("circularCapacity"), tintStyle("#FF9500"), scaleEffect(1.35)]}
           />
         </Host>
       ) : (
