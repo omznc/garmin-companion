@@ -1,7 +1,7 @@
 // Material 3 Expressive pieces of Today: a cookie shape for the key figure,
 // vital tiles with an icon, and the sport icon of the last session.
-import { useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback } from "react";
 import { Pressable, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
@@ -14,6 +14,7 @@ import Animated, {
 import { metricRoute } from "../data/present";
 import type { Metric } from "../data/types";
 import { useMd } from "../theme/md";
+import { useReduceMotion } from "../theme/motion";
 import { GAP, type IconName, IconTile, type Md, T, toneColors } from "./MdKit";
 
 /** A figure that stays on one line. A long value shrinks, it does not wrap. */
@@ -46,7 +47,7 @@ export function FitText({
 
 /**
  * A 12-point cookie, from three rounded squares turned by 30 degrees each.
- * It turns slowly. The children stay upright.
+ * It turns slowly while Today is on screen. The children stay upright.
  */
 export function Cookie({
   size,
@@ -57,11 +58,22 @@ export function Cookie({
   color: string;
   children: React.ReactNode;
 }) {
+  const reduceMotion = useReduceMotion();
   const turn = useSharedValue(0);
-  useEffect(() => {
-    turn.value = withRepeat(withTiming(360, { duration: 48000, easing: Easing.linear }), -1);
-    return () => cancelAnimation(turn);
-  }, [turn]);
+  // A tab stays mounted when another is open, and a turn left running there
+  // still sends a prop update every frame. It goes on from where it stopped.
+  useFocusEffect(
+    useCallback(() => {
+      if (reduceMotion) return;
+      const from = turn.value % 360;
+      turn.value = from;
+      turn.value = withRepeat(
+        withTiming(from + 360, { duration: 48000, easing: Easing.linear }),
+        -1,
+      );
+      return () => cancelAnimation(turn);
+    }, [turn, reduceMotion]),
+  );
   const spin = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.value}deg` }] }));
   const side = size * 0.74;
   const square = (deg: number) => (

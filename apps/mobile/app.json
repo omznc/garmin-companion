@@ -52,6 +52,7 @@
       "./plugins/self-update",
       "./plugins/data-extraction",
       "./plugins/night-mode",
+      "./plugins/top-refresh-rate",
       [
         "expo-build-properties",
         {
