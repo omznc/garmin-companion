@@ -1,6 +1,7 @@
 // The Activities list and detail view models of the Rust core (`garmin_api::activities`).
 // The core owns the figures and the sentences. The screens only draw them.
 import { useQuery } from "@tanstack/react-query";
+import { type Focus, focusArgs, focusKey, useFocus } from "./focus";
 import { call } from "./source";
 
 // The wire types come from the Rust core, through `generated/`.
@@ -17,8 +18,10 @@ const personas = (__DEV__ ? require("./activityPersonas") : null) as
   | null;
 const persona = personas?.activityPersonas[process.env.EXPO_PUBLIC_PERSONA ?? ""];
 
-export const fetchActivities = () =>
-  persona ? Promise.resolve(persona.list as ActivitiesView) : call("activities", { limit: 60 });
+export const fetchActivities = (focus: Focus = null) =>
+  persona
+    ? Promise.resolve(persona.list as ActivitiesView)
+    : call("activities", { limit: 60, ...focusArgs(focus) });
 
 // A persona has one recorded detail. Another id has none.
 export const fetchActivityDetail = (id: number) => {
@@ -28,8 +31,14 @@ export const fetchActivityDetail = (id: number) => {
     : call("activity_detail", { activityId: id });
 };
 
-export const useActivities = () =>
-  useQuery({ queryKey: ["activities"], queryFn: fetchActivities, retry: false });
+export const useActivities = () => {
+  const focus = useFocus();
+  return useQuery({
+    queryKey: ["activities", focusKey(focus)],
+    queryFn: () => fetchActivities(focus),
+    retry: false,
+  });
+};
 
 export const useActivityDetail = (id: number) =>
   useQuery({

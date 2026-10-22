@@ -3,6 +3,7 @@
 // Expo Go and the web have no native module, so they read the fixture.
 import { File, Paths } from "expo-file-system";
 import { Platform } from "react-native";
+import type { Focus } from "./focus";
 import type { Commands } from "./generated/commands";
 import { presentToday } from "./present";
 import type { BridgeEvent, Today, TodayView } from "./types";
@@ -122,10 +123,10 @@ const persona = __DEV__
   ? fixtures?.todayPersonas[process.env.EXPO_PUBLIC_PERSONA ?? ""]
   : undefined;
 
-export async function fetchToday(): Promise<Today> {
-  const view = persona
-    ? (persona as TodayView)
-    : await call("today", demoDate ? { date: demoDate } : {});
+// A focus shows its last day. The live focus keeps the dev demo date.
+export async function fetchToday(focus: Focus = null): Promise<Today> {
+  const date = focus ? focus.to : demoDate;
+  const view = persona ? (persona as TodayView) : await call("today", date ? { date } : {});
   const today = presentToday(view);
   const sample = sampleData || impl === fixtureSource || persona !== undefined;
   return sample ? { ...today, dateLabel: `${today.dateLabel}, sample data` } : today;

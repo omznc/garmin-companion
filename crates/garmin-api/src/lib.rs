@@ -21,6 +21,7 @@ mod error;
 pub mod export;
 pub mod extras;
 pub mod fitness;
+pub mod focus;
 pub mod gear;
 pub mod headline;
 pub mod health;

@@ -6,6 +6,7 @@
 //! daily rows.
 
 use crate::derive::{comparable_resting_hr, daily_series, date_key, mean};
+use crate::focus::Focus;
 use crate::text::num;
 use crate::ApiError;
 use chrono::NaiveDate;
@@ -232,6 +233,13 @@ fn trend(spec: Spec) -> Option<MetricTrend> {
 
 /// Build the Health view for `today`.
 pub fn health_view(db: &Db, today: NaiveDate) -> Result<HealthView, ApiError> {
+    health_view_in(db, Focus::day(today))
+}
+
+/// Build the Health view for a focus. A range keeps only its days, so each
+/// figure and each sentence reads the range and not the last 30 days.
+pub fn health_view_in(db: &Db, focus: Focus) -> Result<HealthView, ApiError> {
+    let today = focus.end;
     let from = date_key(today - chrono::Duration::days(DAYS as i64 - 1));
     let rows = daily_series(db.daily_since(&from)?, DAYS, today);
     let nights: HashMap<_, _> = db
@@ -241,18 +249,28 @@ pub fn health_view(db: &Db, today: NaiveDate) -> Result<HealthView, ApiError> {
         .collect();
     let metrics: Vec<MetricTrend> = specs(&rows, &nights)
         .into_iter()
+        .map(|s| Spec {
+            points: focus.tail(&s.points),
+            ..s
+        })
         .filter_map(trend)
         .collect();
     let empty = metrics.is_empty();
+    let days = focus.tail(&rows).len() as u32;
+    let scope = if focus.is_range() {
+        format!("The {days} days of the range.")
+    } else {
+        format!("The last {days} days.")
+    };
     Ok(HealthView {
         date: date_key(today),
-        days: DAYS,
+        days,
         empty,
         note: if empty {
             "No health readings are cached yet. The first sync fills this in.".into()
         } else {
             format!(
-                "The last {DAYS} days. Each chart has its own scale, so the shape matters more than the height."
+                "{scope} Each chart has its own scale, so the shape matters more than the height."
             )
         },
         metrics,
@@ -332,6 +350,26 @@ mod tests {
             trend_sentence(&series(vec![None; 30], Some(true))),
             "Nothing recorded in this window."
         );
+    }
+
+    #[test]
+    fn a_range_clips_the_series_and_the_words() {
+        use crate::personas::{sample_day, seed, Persona};
+        let db = db("range");
+        let day = sample_day();
+        seed(&db, Persona::HealthOnly, day).unwrap();
+        let live = health_view(&db, day).unwrap();
+        assert_eq!(live.days, 30);
+        assert!(live.note.starts_with("The last 30 days."));
+        let range = Focus::range(day - chrono::Duration::days(4), day);
+        let v = health_view_in(&db, range).unwrap();
+        assert_eq!(v.days, 5);
+        assert!(v.note.starts_with("The 5 days of the range."));
+        assert!(!v.metrics.is_empty());
+        for m in &v.metrics {
+            assert_eq!(m.points.len(), 5);
+            assert!(!m.caption.contains("30 days"));
+        }
     }
 
     #[test]

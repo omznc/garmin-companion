@@ -8,6 +8,7 @@ use crate::derive::{
     above_z2_pct, comparable_resting_hr, daily_series, date_key, has_zone_data, is_run, latest,
     mean,
 };
+use crate::focus::Focus;
 use crate::ApiError;
 use chrono::{Duration, NaiveDate};
 use garmin_core::sleep::SleepNight;
@@ -387,16 +388,29 @@ pub fn pace_drift(activities: &[CachedActivity]) -> Option<PaceDrift> {
 
 /// Build the series for `today`.
 pub fn tiles_view(db: &Db, today: NaiveDate) -> Result<TilesView, ApiError> {
+    tiles_view_in(db, Focus::day(today))
+}
+
+/// Build the series for a focus. A range keeps only its nights in the sleep
+/// score series, the sleep debt and the bed and wake times.
+pub fn tiles_view_in(db: &Db, focus: Focus) -> Result<TilesView, ApiError> {
+    let today = focus.end;
     let from = date_key(today - Duration::days(BASELINE_DAYS as i64 - 1));
     let rows = daily_series(db.daily_since(&from)?, BASELINE_DAYS, today);
     let nights = db.sleep_nights_since(&from)?;
     let activities = db.activities_since(&date_key(today - Duration::days(PACE_WINDOW_DAYS)))?;
-    let debt_from = date_key(today - Duration::days(SERIES_DAYS as i64 - 1));
+    let mut debt_from = date_key(today - Duration::days(SERIES_DAYS as i64 - 1));
+    if focus.is_range() {
+        debt_from = debt_from.max(date_key(focus.start));
+    }
+    let mut scores = sleep_scores(&nights, today);
+    scores.points = focus.tail(&scores.points);
+    scores.average = mean(scores.points.iter().copied());
     Ok(TilesView {
         date: date_key(today),
         tiles: health_tiles(&rows, &nights),
         sleep_debt: sleep_debt(&nights, &debt_from, &date_key(today)),
-        sleep_scores: sleep_scores(&nights, today),
+        sleep_scores: scores,
         pace_drift: pace_drift(&activities),
         bed_wake: bed_wake(&nights, &debt_from, &date_key(today)),
     })
@@ -473,6 +487,33 @@ mod tests {
             "the baseline skips empty days"
         );
         assert_eq!(tiles[2].secondary, None);
+    }
+
+    #[test]
+    fn a_range_clips_the_sleep_score_and_the_night_window() {
+        use crate::personas::{sample_day, seed, Persona};
+        use crate::sleep_view::seed_sleep;
+        let dir =
+            std::env::temp_dir().join(format!("garmin-api-tiles-range-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(&dir.join("cache.sqlite3")).unwrap();
+        let day = sample_day();
+        seed(&db, Persona::HealthOnly, day).unwrap();
+        seed_sleep(&db, Persona::HealthOnly, day).unwrap();
+        let live = tiles_view(&db, day).unwrap();
+        assert_eq!(live.sleep_scores.points.len(), 14);
+        let range = Focus::range(day - Duration::days(2), day);
+        let v = tiles_view_in(&db, range).unwrap();
+        assert_eq!(v.sleep_scores.points.len(), 3);
+        let present: Vec<f64> = v.sleep_scores.points.iter().flatten().copied().collect();
+        assert_eq!(
+            v.sleep_scores.average,
+            mean(present.iter().map(|p| Some(*p)))
+        );
+        // The seed has no sleep need, so the bed and wake times show the night window. The
+        // sleep debt reads the same start date.
+        assert_eq!(live.bed_wake.unwrap().nights, 14);
+        assert_eq!(v.bed_wake.unwrap().nights, 3);
     }
 
     #[test]

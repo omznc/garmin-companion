@@ -11,10 +11,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { FocusRow } from "../components/FocusChip";
 import { RouteTrace, WearBar } from "../components/RouteTrace";
 import { ShareButton } from "../components/ShareButton";
 import { TrendBars } from "../components/TrendBars";
 import { type Block, type BlockRow, type ScreenKind, useBody } from "../data/body";
+import { followsFocus } from "../data/focusChip";
 import { askReportShare } from "../data/share";
 
 const label = PlatformColor("label");
@@ -237,6 +239,7 @@ export function BodyScreen({ kind, title }: { kind: ScreenKind; title: string })
             ) : null,
         }}
       />
+      {followsFocus(kind) ? <FocusRow /> : null}
       {data?.blocks.map((b, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: the blocks come in a fixed order
         <BlockView key={i} b={b} onAction={onAction} />

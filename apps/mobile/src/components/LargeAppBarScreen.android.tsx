@@ -3,7 +3,7 @@
 import { Host } from "@expo/ui";
 import { Icon, IconButton } from "@expo/ui/jetpack-compose";
 import { useRouter } from "expo-router";
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useState } from "react";
 import { RefreshControl, View } from "react-native";
 import Animated, {
   Extrapolation,
@@ -37,6 +37,8 @@ type Props<T> = {
   back?: boolean;
   /** A small bar that does not collapse. */
   small?: boolean;
+  /** A control at the end of the bar, for example the date focus. */
+  actions?: ReactNode;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** Called with the scroll offset, for a FAB that collapses. */
@@ -52,6 +54,7 @@ export function LargeAppBarScreen<T = never>({
   list,
   back = false,
   small = false,
+  actions,
   refreshing = false,
   onRefresh,
   onScrollOffset,
@@ -60,6 +63,8 @@ export function LargeAppBarScreen<T = never>({
 }: Props<T>) {
   const md = useMd();
   const insets = useSafeAreaInsets();
+  const [actionsWidth, setActionsWidth] = useState(0);
+  const end = Boolean(actions || share);
   const expanded = small ? COLLAPSED : EXPANDED;
   const range = Math.max(expanded - COLLAPSED, 1);
   const scrollY = useSharedValue(0);
@@ -124,7 +129,8 @@ export function LargeAppBarScreen<T = never>({
           style={[
             {
               position: "absolute",
-              right: 72,
+              // The title ends before the actions, so a narrow phone cuts it only when it must.
+              right: end ? actionsWidth + 16 : 72,
               bottom: small ? 18 : 16,
               color: md.onSurface,
               fontWeight: "500",
@@ -135,18 +141,32 @@ export function LargeAppBarScreen<T = never>({
           {title}
         </Animated.Text>
         {back ? <BackButton top={insets.top} /> : null}
-        {share ? <ShareButton top={insets.top} {...share} /> : null}
+        {end ? (
+          <View
+            onLayout={(e) => setActionsWidth(e.nativeEvent.layout.width)}
+            style={{
+              position: "absolute",
+              top: insets.top + 8,
+              right: 8,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            {actions}
+            {share ? <ShareButton {...share} /> : null}
+          </View>
+        ) : null}
       </Animated.View>
     </View>
   );
 }
 
-// The share action of the screen, at the end of the bar. The title leaves 72 px for it.
-function ShareButton({ top, label, onPress }: { top: number } & ShareAction) {
+// The share action of the screen, last in the row at the end of the bar.
+function ShareButton({ label, onPress }: ShareAction) {
   const md = useMd();
   const host = useHostTheme();
   return (
-    <View style={{ position: "absolute", top: top + 8, right: 8, width: 48, height: 48 }}>
+    <View style={{ width: 48, height: 48 }}>
       <Host matchContents {...host}>
         <IconButton onClick={onPress}>
           <Icon

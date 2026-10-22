@@ -2,10 +2,12 @@
 // A row opens the detail route in the same stack.
 import { useRouter } from "expo-router";
 import { View } from "react-native";
+import { FocusAction } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import { Card, GAP, Group, ListRow, Loading, MARGIN, SectionLabel, T } from "../components/MdKit";
 import { FAMILY_ICON } from "../components/TodayKit";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { emptyActivitiesText, useFocus } from "../data/focus";
 import { shareActivitiesCsv } from "../data/share";
 import { useMd } from "../theme/md";
 
@@ -57,6 +59,7 @@ function DayGroup({ g, first, last }: { g: Day; first: boolean; last: boolean })
 // Loading, the error and the empty note. They sit above the days.
 function Head({ data, error }: { data: ActivitiesView | undefined; error: unknown }) {
   const md = useMd();
+  const focus = useFocus();
   return (
     <View style={{ padding: MARGIN, gap: GAP }}>
       {!data && !error ? <Loading /> : null}
@@ -68,7 +71,7 @@ function Head({ data, error }: { data: ActivitiesView | undefined; error: unknow
       {data?.empty ? (
         <Card tone="secondary">
           <T v="body" color={md.onSecondaryContainer}>
-            No sessions yet. When your watch records a session, it shows here.
+            {emptyActivitiesText(focus)}
           </T>
         </Card>
       ) : null}
@@ -84,6 +87,7 @@ export function ActivitiesScreen() {
   return (
     <LargeAppBarScreen
       title="Activities"
+      actions={<FocusAction />}
       share={{ label: "Export as CSV", onPress: () => void shareActivitiesCsv() }}
       list={{
         data: groups,

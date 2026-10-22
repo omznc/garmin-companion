@@ -4,6 +4,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { AskFab, FAB_CLEARANCE, useFabExtended } from "../components/AskFab";
+import { FocusAction } from "../components/FocusChip";
 import { LargeAppBarScreen } from "../components/LargeAppBarScreen";
 import {
   BarLabels,
@@ -322,6 +323,7 @@ export function TodayScreen() {
     <View style={{ flex: 1 }}>
       <LargeAppBarScreen
         title={data ? greeting : "Today"}
+        actions={<FocusAction />}
         refreshing={isPulling(sync)}
         onRefresh={() => sync.refresh()}
         onScrollOffset={fab.onScroll}

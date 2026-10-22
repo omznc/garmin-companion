@@ -1,9 +1,11 @@
 // Activities on iOS: native large title, grouped lists by day, system colours, Dynamic Type.
 // A row pushes the detail route onto the stack.
 import { Stack, useRouter } from "expo-router";
+import { FocusHeader } from "../components/FocusChip";
 import { ActivityIndicator, FlatList, PlatformColor, Pressable, Text, View } from "react-native";
 import { ShareButton } from "../components/ShareButton";
 import { type ActivitiesView, type ActivityCard, useActivities } from "../data/activities";
+import { emptyActivitiesText, useFocus } from "../data/focus";
 import { shareActivitiesCsv } from "../data/share";
 
 const label = PlatformColor("label");
@@ -86,6 +88,7 @@ function DayGroup({ g }: { g: Day }) {
 // One list item for each day, so a long history draws only the days near the screen.
 export function ActivitiesScreen() {
   const { data, error } = useActivities();
+  const focus = useFocus();
   return (
     <>
       <Stack.Screen
@@ -104,11 +107,10 @@ export function ActivitiesScreen() {
         renderItem={({ item }) => <DayGroup g={item} />}
         ListHeaderComponent={
           <>
+            <FocusHeader />
             {!data && !error ? <ActivityIndicator style={{ margin: 32 }} /> : null}
             {error ? <Message>{`The list could not be read. ${String(error)}`}</Message> : null}
-            {data?.empty ? (
-              <Message>No sessions yet. When your watch records a session, it shows here.</Message>
-            ) : null}
+            {data?.empty ? <Message>{emptyActivitiesText(focus)}</Message> : null}
           </>
         }
       />

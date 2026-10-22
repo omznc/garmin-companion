@@ -55,7 +55,18 @@ const watch = (l: () => void) => {
 };
 
 // The query keys that a sync can change. Threads and the cloud account do not change.
-const SYNC_KEYS = ["today", "activities", "activity", "body", "health", "sleep", "settings"];
+const SYNC_KEYS = [
+  "today",
+  "activities",
+  "activity",
+  "body",
+  "health",
+  "sleep",
+  "tiles",
+  "extras",
+  "charts",
+  "settings",
+];
 const refetchSyncData = () =>
   queryClient.invalidateQueries({ predicate: (q) => SYNC_KEYS.includes(String(q.queryKey[0])) });
 

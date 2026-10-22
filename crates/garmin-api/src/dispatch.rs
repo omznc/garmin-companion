@@ -8,6 +8,7 @@
 //! result types. The TypeScript `Commands` map is generated from that list.
 
 use crate::export::{write_export, Kind};
+use crate::focus::{clip_activities, Focus};
 use crate::settings::{self, ThemeMode};
 use crate::{
     activities_view, activity_detail_view, body, open_default_db, session, today_view, ApiError,
@@ -64,7 +65,38 @@ impl DaysArgs {
     }
 }
 
-/// The arguments of `cached_activities` and `activities`.
+/// The day or the range that a screen looks at. Both dates are `YYYY-MM-DD`.
+/// With no date, a command reads the live day.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct FocusArgs {
+    /// The first day of a range. It defaults to `to`.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    from: Option<String>,
+    /// The last day. It defaults to the real today.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    to: Option<String>,
+}
+
+impl FocusArgs {
+    fn focus(&self) -> Result<Option<Focus>, ApiError> {
+        Focus::parse(self.from.as_deref(), self.to.as_deref())
+    }
+}
+
+/// The arguments of `activities`: a focus and the most day groups to read.
+#[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub struct ActivitiesArgs {
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    limit: Option<u32>,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    from: Option<String>,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    to: Option<String>,
+}
+
+/// The arguments of `cached_activities` and `cached_activities_since`.
 #[derive(Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
@@ -137,11 +169,29 @@ fn run<A: DeserializeOwned, T: Serialize>(
     encode(&f(parse(args)?)?)
 }
 
-/// A view of the cache for one day. `args` is not read.
+/// A view of the cache. It ends on the last day of the focus in `args`, or on
+/// the real today. The read hides the rows after that day.
 fn view<T: Serialize>(
+    args: &str,
     f: impl FnOnce(&Db, chrono::NaiveDate) -> Result<T, ApiError>,
 ) -> Result<String, ApiError> {
-    encode(&f(&open_default_db()?, garmin_core::today())?)
+    let a: FocusArgs = parse(args)?;
+    let end = a.focus()?.map_or_else(garmin_core::today, |f| f.end);
+    let db = open_default_db()?;
+    encode(&garmin_core::with_as_of(end, || f(&db, end))?)
+}
+
+/// Like `view`, for a view that clips its series to a range.
+fn ranged_view<T: Serialize>(
+    args: &str,
+    f: impl FnOnce(&Db, Focus) -> Result<T, ApiError>,
+) -> Result<String, ApiError> {
+    let a: FocusArgs = parse(args)?;
+    let focus = a
+        .focus()?
+        .unwrap_or_else(|| Focus::day(garmin_core::today()));
+    let db = open_default_db()?;
+    encode(&garmin_core::with_as_of(focus.end, || f(&db, focus))?)
 }
 
 /// Run one command on live data and return its result as JSON.
@@ -264,20 +314,29 @@ fn screen_call(cmd: &str, args: &str) -> Result<String, ApiError> {
                     .map_err(|_| ApiError::BadArguments("date must be YYYY-MM-DD".into()))?,
                 None => garmin_core::today(),
             };
-            today_view(&open_default_db()?, day)
+            let db = open_default_db()?;
+            garmin_core::with_as_of(day, || today_view(&db, day))
         }),
-        "activities" => run(args, |a: RecentArgs| {
-            let today = garmin_core::today();
-            activities_view(&open_default_db()?, today, a.limit.unwrap_or(60))
+        "activities" => run(args, |a: ActivitiesArgs| {
+            let focus = Focus::parse(a.from.as_deref(), a.to.as_deref())?;
+            let today = focus.map_or_else(garmin_core::today, |f| f.end);
+            let db = open_default_db()?;
+            let mut view = garmin_core::with_as_of(today, || {
+                activities_view(&db, today, a.limit.unwrap_or(60))
+            })?;
+            if let Some(f) = focus {
+                clip_activities(&mut view, f);
+            }
+            Ok(view)
         }),
         "activity_detail" => run(args, |a: ActivityIdArgs| {
             activity_detail_view(&open_default_db()?, a.activity_id)
         }),
-        "health_view" => view(crate::health_view),
-        "sleep_view" => view(crate::sleep_view),
-        "weight_view" => view(body::weight_view),
-        "food_view" => view(body::food_view),
-        "strength_view" => view(body::strength_view),
+        "health_view" => ranged_view(args, crate::health::health_view_in),
+        "sleep_view" => ranged_view(args, crate::sleep_view::sleep_view_in),
+        "weight_view" => view(args, body::weight_view),
+        "food_view" => view(args, body::food_view),
+        "strength_view" => view(args, body::strength_view),
         other => training_call(other, args),
     }
 }
@@ -285,21 +344,21 @@ fn screen_call(cmd: &str, args: &str) -> Result<String, ApiError> {
 /// The Plan, Routes, Gear, Insights, Fitness, Report and chart screens.
 fn training_call(cmd: &str, args: &str) -> Result<String, ApiError> {
     match cmd {
-        "plan_view" => view(crate::plan::plan_view),
+        "plan_view" => view(args, crate::plan::plan_view),
         "routes_view" => run(args, |a: RoutesArgs| {
             crate::routes::routes_view(&open_default_db()?, a.sort.unwrap_or_default())
         }),
         // This one calls Garmin: the cache holds no gear. It blocks.
         "gear_view" => encode(&crate::gear::gear_view(&crate::gear::fetch_gear()?)),
-        "insights_view" => view(crate::insights::insights_view),
-        "fitness_view" => view(crate::fitness::fitness_view),
+        "insights_view" => view(args, crate::insights::insights_view),
+        "fitness_view" => view(args, crate::fitness::fitness_view),
         "report_view" => run(args, |a: OffsetArgs| {
             let today = garmin_core::today();
             crate::reports::report_view(&open_default_db()?, today, a.offset.unwrap_or(0))
         }),
-        "tiles_view" => view(crate::tiles::tiles_view),
-        "extras_view" => view(crate::extras::extras_view),
-        "charts_view" => view(crate::charts::charts_view),
+        "tiles_view" => ranged_view(args, crate::tiles::tiles_view_in),
+        "extras_view" => view(args, crate::extras::extras_view),
+        "charts_view" => view(args, crate::charts::charts_view),
         other => account_call(other, args),
     }
 }
@@ -412,10 +471,16 @@ mod tests {
         for cmd in ["cached_daily", "nutrition", "weight"] {
             assert!(call(cmd, r#"{"days":4294967295}"#).is_ok(), "{cmd}");
         }
-        for cmd in ["tiles_view", "extras_view", "charts_view"] {
-            let view: serde_json::Value = serde_json::from_str(&call(cmd, "").unwrap()).unwrap();
-            assert!(view.is_object(), "{cmd}");
+        let week = r#"{"from":"2026-03-05","to":"2026-03-11"}"#;
+        for cmd in ["tiles_view", "extras_view", "charts_view", "sleep_view"] {
+            for args in ["", week] {
+                let view: serde_json::Value =
+                    serde_json::from_str(&call(cmd, args).unwrap()).unwrap();
+                assert!(view.is_object(), "{cmd}");
+            }
         }
+        let list = call("activities", week).unwrap();
+        assert!(list.contains(r#""empty":true"#));
         // An empty cache still exports a header-only CSV and a valid PDF.
         let out = dir.join("out");
         let args = serde_json::json!({ "dir": out }).to_string();
@@ -544,6 +609,15 @@ mod tests {
             call("today", r#"{"date":"soon"}"#),
             Err(ApiError::BadArguments(_))
         ));
+        for cmd in ["health_view", "tiles_view", "activities"] {
+            assert!(
+                matches!(
+                    call(cmd, r#"{"to":"soon"}"#),
+                    Err(ApiError::BadArguments(_))
+                ),
+                "{cmd}"
+            );
+        }
     }
 
     #[test]

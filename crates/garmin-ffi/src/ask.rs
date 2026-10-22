@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use garmin_coach::{Event, EventSink, HistoryMessage};
+use garmin_coach::{with_period_note, Event, EventSink, HistoryMessage, Period};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -197,6 +197,12 @@ pub(crate) struct SendArgs {
     /// The id that the app gives to this turn. The events carry it.
     turn_id: String,
     history: Vec<HistoryRow>,
+    /// The first day of the period that the coach reads, `YYYY-MM-DD`.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    from: Option<String>,
+    /// The last day of the period. With `from` alone, `to` is the real today.
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
+    to: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -249,6 +255,33 @@ fn stop() {
     }
 }
 
+/// The question for the thread, the history for the model and the period of
+/// the focus. The last message of the history names the period.
+fn turn_input(a: &SendArgs) -> Result<(String, Vec<HistoryMessage>, Option<Period>), FfiError> {
+    let question = a
+        .history
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .ok_or_else(|| bad("history has no user message"))?;
+    let period = garmin_api::focus::Focus::parse(a.from.as_deref(), a.to.as_deref())
+        .map_err(bad)?
+        .map(|f| Period {
+            start: f.start,
+            end: f.end,
+        });
+    let history = a
+        .history
+        .iter()
+        .map(|m| HistoryMessage {
+            role: m.role.clone(),
+            content: m.content.clone(),
+        })
+        .collect();
+    Ok((question, with_period_note(history, period), period))
+}
+
 fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let a: SendArgs = serde_json::from_value(args.clone()).map_err(bad)?;
     if a.session_id.is_empty() {
@@ -257,21 +290,7 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     if a.turn_id.is_empty() {
         return Err(bad("turnId is empty"));
     }
-    let question = a
-        .history
-        .iter()
-        .rev()
-        .find(|m| m.role == "user")
-        .map(|m| m.content.clone())
-        .ok_or_else(|| bad("history has no user message"))?;
-    let history: Vec<HistoryMessage> = a
-        .history
-        .into_iter()
-        .map(|m| HistoryMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect();
+    let (question, history, period) = turn_input(&a)?;
     stop();
     let turn = chat::begin_turn(fixture, &a.session_id, &question).map_err(failed)?;
     let flag = Arc::new(AtomicBool::new(false));
@@ -289,7 +308,9 @@ fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
     let task = if fixture {
         tokio::spawn(async move { fixture_turn(&run).await })
     } else {
-        tokio::spawn(async move { garmin_coach::ask(history, &run, &run.0.flag, true).await })
+        tokio::spawn(
+            async move { garmin_coach::ask_in(history, &run, &run.0.flag, true, period).await },
+        )
     };
     tokio::spawn(report_panic(task, sink));
     Ok("{}".into())
@@ -561,6 +582,41 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(out, Err(FfiError::BadArgs { .. })));
+    }
+
+    fn send_args(extra: Value) -> SendArgs {
+        let mut args = json!({ "sessionId": "s", "turnId": "t",
+            "history": [{ "role": "user", "content": "How did I sleep?" }] });
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(args).unwrap()
+    }
+
+    #[test]
+    fn a_send_with_dates_hands_the_period_to_the_coach() {
+        let a = send_args(json!({ "from": "2026-10-14", "to": "2026-10-20" }));
+        let (question, history, period) = turn_input(&a).unwrap();
+        let period = period.unwrap();
+        assert_eq!(period.start.to_string(), "2026-10-14");
+        assert_eq!(period.end.to_string(), "2026-10-20");
+        // The thread keeps the plain question. The model gets the period note.
+        assert_eq!(question, "How did I sleep?");
+        let last = &history.last().unwrap().content;
+        assert!(last.starts_with("How did I sleep?"));
+        assert!(last.contains("Focus period: 2026-10-14 to 2026-10-20"));
+    }
+
+    #[test]
+    fn a_send_without_dates_has_no_period_and_a_bad_date_is_refused() {
+        let (_, history, period) = turn_input(&send_args(json!({}))).unwrap();
+        assert!(period.is_none());
+        assert_eq!(history.last().unwrap().content, "How did I sleep?");
+        let bad_date = send_args(json!({ "from": "soon" }));
+        assert!(matches!(
+            turn_input(&bad_date),
+            Err(FfiError::BadArgs { .. })
+        ));
     }
 
     fn thread(id: &str) -> Value {

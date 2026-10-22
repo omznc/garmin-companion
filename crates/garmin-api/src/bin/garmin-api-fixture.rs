@@ -40,6 +40,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if first == "--training" {
         return write_training();
     }
+    if first == "--views" {
+        return write_views();
+    }
     if first == "--sample" {
         let out = args.next().map_or_else(
             || fixtures_dir().join(Persona::Sample.file_name()),
@@ -76,6 +79,105 @@ fn write_body() -> Result<(), Box<dyn std::error::Error>> {
         let _ = std::fs::remove_dir_all(dir);
     }
     Ok(())
+}
+
+/// Write `views.sample.json`: the tiles, extras and charts views of the sample day.
+fn write_views() -> Result<(), Box<dyn std::error::Error>> {
+    use garmin_core::calendar::{PlanItem, RaceEvent};
+    use garmin_core::intraday::{BatteryPoint, HrvReading};
+    use garmin_core::nutrition::{Meal, NutritionGoals};
+    let day = sample_day();
+    let key = day.format("%Y-%m-%d").to_string();
+    let at = |n: i64| {
+        (day + chrono::Duration::days(n))
+            .format("%Y-%m-%d")
+            .to_string()
+    };
+    let dir = std::env::temp_dir().join(format!("garmin-api-views-{}", std::process::id()));
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let db = open_db(&dir.join("cache.sqlite3"))?;
+        seed(&db, Persona::Sample, day)?;
+        seed_sleep(&db, Persona::Sample, day)?;
+        // The sleep debt needs a sleep need, which the persona seed leaves out.
+        for mut night in db.sleep_nights_since(&at(-40))? {
+            night.need_secs = Some(28_800.0);
+            db.upsert_sleep_night(&night)?;
+        }
+        garmin_api::body::seed_body(&db, day)?;
+        let item = |n: i64, title: &str, sport: &str, race: bool| PlanItem {
+            date: at(n),
+            kind: if race { "event" } else { "workout" }.into(),
+            title: Some(title.into()),
+            sport: Some(sport.into()),
+            is_race: race,
+            item_id: Some(100 + n),
+            ..Default::default()
+        };
+        db.replace_plan_items(
+            &key,
+            &at(14),
+            &[
+                item(1, "Easy run", "running", false),
+                item(3, "Tempo intervals", "running", false),
+                item(6, "Long ride", "cycling", false),
+            ],
+        )?;
+        db.replace_race_events(
+            &key,
+            &at(365),
+            &[RaceEvent {
+                event_key: "sample-race".into(),
+                date: at(63),
+                name: Some("City Half Marathon".into()),
+                target_secs: Some(6_300.0),
+                location: Some("Sample City".into()),
+            }],
+        )?;
+        let meal = |name: &str, time: &str, kcal: f64, p: f64, c: f64, f: f64| Meal {
+            name: Some(name.into()),
+            time: Some(time.into()),
+            kcal: Some(kcal),
+            protein_g: Some(p),
+            carbs_g: Some(c),
+            fat_g: Some(f),
+        };
+        db.save_nutrition_day(
+            &key,
+            Some(&NutritionGoals {
+                calories: Some(2400.0),
+                adjusted_calories: Some(2650.0),
+                protein_g: Some(150.0),
+                carbs_g: Some(300.0),
+                fat_g: Some(80.0),
+            }),
+            &[
+                meal("Oats and berries", "07:40", 520.0, 22.0, 78.0, 12.0),
+                meal("Chicken rice bowl", "12:30", 780.0, 48.0, 90.0, 22.0),
+            ],
+        )?;
+        let readings: Vec<HrvReading> = (0..8)
+            .map(|i| HrvReading {
+                time: format!("{:02}:{:02}", 1 + i / 2, (i % 2) * 30),
+                value: 52.0 + f64::from(i % 3) * 4.0,
+            })
+            .collect();
+        db.save_hrv_readings(&key, &readings)?;
+        let battery: Vec<BatteryPoint> = (0..=16)
+            .map(|i| BatteryPoint {
+                minute: i * 60,
+                level: f64::from(if i < 7 { 40 + i * 8 } else { 96 - (i - 7) * 7 }),
+            })
+            .collect();
+        db.save_body_battery_curve(&key, &battery)?;
+        let views = serde_json::json!({
+            "tiles": garmin_api::tiles::tiles_view(&db, day)?,
+            "extras": garmin_api::extras::extras_view(&db, day)?,
+            "charts": garmin_api::charts::charts_view(&db, day)?,
+        });
+        write_view(&views, &fixtures_dir().join("views.sample.json"))
+    })();
+    let _ = std::fs::remove_dir_all(dir);
+    result
 }
 
 /// Write `training.<persona>.json` for each persona: Insights, Fitness and every Reports week.

@@ -3,6 +3,7 @@
 // it into the blocks that `screens/Body.*` draws.
 import type { Block, BodyScreenData } from "./body";
 import { devPersona } from "./devPersona";
+import { type Focus, focusArgs } from "./focus";
 import { call } from "./source";
 
 // The condition stays inline, so Metro drops the fixtures from a release build.
@@ -89,10 +90,11 @@ export function presentGear(v: GearView): BodyScreenData {
 const recorded = (cmd: string) =>
   devPersona ? fixtures?.placesFixture(cmd, devPersona) : undefined;
 
-export async function fetchPlaces(kind: PlacesKind): Promise<BodyScreenData> {
+export async function fetchPlaces(kind: PlacesKind, focus: Focus = null): Promise<BodyScreenData> {
   if (kind === "plan") {
     return presentPlan(
-      (recorded("plan_view") as PlanView | undefined) ?? (await call("plan_view")),
+      (recorded("plan_view") as PlanView | undefined) ??
+        (await call("plan_view", focusArgs(focus))),
     );
   }
   if (kind === "routes") {
