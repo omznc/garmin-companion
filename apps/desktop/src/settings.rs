@@ -81,14 +81,16 @@ fn sync_row(root: &Root, t: &Theme, cx: &mut Context<Root>) -> Item {
             panel::button("sync-full", "Full re-sync", Kind::Plain, !busy, None, t)
                 .on_click(cx.listener(|root, _: &ClickEvent, _, cx| root.start_sync(true, cx))),
         );
-    let mut value = panel::stack().child(buttons);
-    if let Some(note) = sync_note(root, t) {
-        value = value.child(note);
-    }
     let help = "Recent brings in the last days. A full re-sync reads all of your history again.";
     (
         "sync recent full re-sync history".to_string(),
-        panel::row(false, "Sync", Some(help), value, t),
+        panel::row_note(
+            "Sync",
+            Some(help),
+            sync_note(root, t),
+            panel::stack().child(buttons),
+            t,
+        ),
     )
 }
 
