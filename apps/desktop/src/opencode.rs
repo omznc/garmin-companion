@@ -18,7 +18,6 @@
 use std::ffi::OsString;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use garmin_coach::external::transcript;
@@ -97,7 +96,11 @@ impl Parser {
     /// A tool call comes once, already finished. A denied tool has the status `error`.
     fn tool(&mut self, part: &Value) -> Vec<Event> {
         let mut events = self.answer.note();
-        let call = part["callID"].as_str().unwrap_or_default();
+        // OpenCode 2 has no `callID`: the part `id` is the call id.
+        let call = part["callID"]
+            .as_str()
+            .or_else(|| part["id"].as_str())
+            .unwrap_or_default();
         let name = part["tool"].as_str().unwrap_or_default();
         let name = name.strip_prefix(TOOL_PREFIX).unwrap_or(name);
         let ok = part["state"]["status"] != "error";
@@ -111,7 +114,7 @@ impl Parser {
 
     /// A step that ends with tool calls is not the last one. Any other reason is.
     fn step_finish(&mut self, part: &Value) -> Vec<Event> {
-        if part["reason"] == "tool-calls" {
+        if matches!(part["reason"].as_str(), Some("tool-calls" | "unknown")) {
             return self.answer.note();
         }
         self.finished = true;
@@ -143,7 +146,8 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
             "timeout": MCP_TIMEOUT_MS,
         } },
         // OpenCode 2 gives the model the MCP tools only through its `execute`
-        // tool. That tool runs code with no file or network access.
+        // tool. That tool runs code with no file access, but its `fetch` can
+        // make HTTP requests. OpenCode 2 has no setting to block it.
         "permission": { "*": "deny", "garmin_*": "allow", "execute": "allow" },
         "agent": { AGENT: {
             "mode": "primary",
@@ -155,15 +159,13 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
     })
 }
 
-/// The text of `opencode run --help`. The flags differ between versions, so
-/// the app reads the list once. An empty text means the call failed.
-fn run_help(bin: &Path) -> &'static str {
-    static HELP: OnceLock<String> = OnceLock::new();
-    HELP.get_or_init(|| {
-        cli::read(bin, &CLI, &["run", "--help"], cli::PROBE_LIMIT)
-            .map(|o| o.text)
-            .unwrap_or_default()
-    })
+/// The text of `opencode run --help` on stdout. The flags differ between
+/// versions. The call is short, so each turn makes it again. An empty text
+/// means the call failed, or the version writes its help to stderr.
+fn run_help(bin: &Path) -> String {
+    cli::read(bin, &CLI, &["run", "--help"], cli::PROBE_LIMIT)
+        .map(|o| o.text)
+        .unwrap_or_default()
 }
 
 /// `--auto` would approve more than the tools of the app, so it is not here.
@@ -171,19 +173,16 @@ fn run_help(bin: &Path) -> &'static str {
 /// The question goes on stdin: `run` with no message reads it there. The work
 /// folder is the working directory of the command, so no `--dir` is needed.
 ///
-/// OpenCode 1 has `--pure`: no external plugins. OpenCode 2 has no such flag.
-/// The temporary config folder hides the plugins there. OpenCode 2 sends a run
-/// to its background service, which ignores our config folder. `--standalone`
-/// starts a private server that reads it.
+/// OpenCode 2 sends a run to its background service, which ignores our config
+/// folder. `--standalone` starts a private server that reads it. OpenCode 1
+/// has no such flag and does not need it.
 fn flags(help: &str, model: &str) -> Vec<OsString> {
     let mut args: Vec<OsString> = ["run", "--format", "json", "--agent", AGENT]
         .into_iter()
         .map(Into::into)
         .collect();
-    for flag in ["--standalone", "--pure"] {
-        if help.contains(flag) {
-            args.push(flag.into());
-        }
+    if help.contains("--standalone") {
+        args.push("--standalone".into());
     }
     if model.contains('/') {
         args.extend(["-m".into(), model.into()]);
@@ -227,7 +226,7 @@ fn turn(
     write("coach.md", setup.system.clone())?;
     write("opencode.json", config(&setup.app, db, period).to_string())?;
 
-    let args = flags(run_help(&setup.bin), model);
+    let args = flags(&run_help(&setup.bin), model);
     let run = Run {
         cli: &CLI,
         bin: setup.bin,
@@ -236,6 +235,9 @@ fn turn(
         env: vec![
             ("XDG_CONFIG_HOME", home.path().into()),
             ("OPENCODE_DISABLE_AUTOUPDATE", "1".into()),
+            // OpenCode 1: no external plugins. The same as `--pure`, which
+            // OpenCode 2 does not have.
+            ("OPENCODE_PURE", "1".into()),
         ],
         stdin: Some(transcript(history)),
         limit: None,
@@ -280,7 +282,8 @@ mod tests {
     }
 
     /// Needs an `opencode` with a model. Run with `GC_LIVE_DB=<cache copy>`,
-    /// `APPIMAGE=<binary>` and `GC_LIVE_MODEL=opencode/<free model>`.
+    /// `APPIMAGE=<binary>` and `GC_LIVE_MODEL=<provider>/<paid model>`. A free model refuses a turn with no
+    /// `read` tool.
     #[test]
     #[ignore]
     fn a_real_turn_reads_the_copy_over_mcp() {
@@ -410,11 +413,24 @@ mod tests {
                 .map(|a| a.to_string_lossy().into())
                 .collect()
         };
-        let v1 = text("  --pure   run without external plugins\n  --dir  directory");
-        assert!(v1.contains(&"--pure".into()) && !v1.contains(&"--standalone".into()));
+        let v1 = text("  --dir  directory");
+        assert!(!v1.contains(&"--standalone".into()) && !v1.contains(&"--pure".into()));
         let v2 = text("  --standalone   Run with a private server\n  --auto");
         assert!(v2.contains(&"--standalone".into()) && !v2.contains(&"--pure".into()));
         assert!(!v2.contains(&"--dir".into()) && !v2.contains(&"--auto".into()));
+    }
+
+    #[test]
+    fn opencode_2_tool_parts_and_unknown_step_reasons_work() {
+        let mut p = Parser::default();
+        let events = p.feed(
+            &json!({"type":"tool_use","part":{"id":"call_1","tool":"execute",
+            "state":{"status":"completed","input":{}}}}),
+        );
+        assert!(matches!(&events[0], Event::Tool { call_id, .. } if call_id == "call_1"));
+        p.feed(&json!({"type":"text","part":{"text":"Answer."}}));
+        p.feed(&json!({"type":"step_finish","part":{"reason":"unknown"}}));
+        assert!(!p.finished);
     }
 
     #[test]
