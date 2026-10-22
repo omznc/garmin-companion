@@ -188,25 +188,38 @@ pub(crate) fn failed(e: impl ToString) -> FfiError {
     }
 }
 
+/// The arguments of `ask_send`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Send {
+pub(crate) struct SendArgs {
     session_id: String,
+    /// The id that the app gives to this turn. The events carry it.
     turn_id: String,
     history: Vec<HistoryRow>,
 }
 
 #[derive(Deserialize)]
-struct HistoryRow {
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+pub(crate) struct HistoryRow {
+    #[cfg_attr(feature = "ts-rs", ts(type = "\"user\" | \"assistant\""))]
     role: String,
     content: String,
 }
 
+/// The arguments of `ask_save_config`.
 #[derive(Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
-struct Save {
+pub(crate) struct SaveConfigArgs {
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"cloud\" | \"openrouter\" | \"ollama\"")
+    )]
     provider: String,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     model: Option<String>,
+    #[cfg_attr(feature = "ts-rs", ts(optional))]
     key: Option<String>,
 }
 
@@ -235,7 +248,7 @@ fn stop() {
 }
 
 fn send(args: &Value, fixture: bool) -> Result<String, FfiError> {
-    let a: Send = serde_json::from_value(args.clone()).map_err(bad)?;
+    let a: SendArgs = serde_json::from_value(args.clone()).map_err(bad)?;
     if a.session_id.is_empty() {
         return Err(bad("sessionId is empty"));
     }
@@ -353,11 +366,14 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
     if fixture {
         let saved = SAMPLE_CONFIG.lock().unwrap_or_else(|e| e.into_inner());
         let (provider, model) = saved.clone().unwrap_or(("cloud".into(), String::new()));
-        return Ok(
-            json!({ "provider": provider, "model": model, "hasKey": false,
-            "ollamaReachable": false, "ollamaModels": [] })
-            .to_string(),
-        );
+        return serde_json::to_string(&garmin_coach::ChatConfig {
+            provider: garmin_coach::Provider::parse(&provider).map(garmin_coach::Provider::as_str),
+            model: Some(model),
+            has_key: false,
+            ollama_reachable: false,
+            ollama_models: Vec::new(),
+        })
+        .map_err(failed);
     }
     let (provider, model) = tokio::task::spawn_blocking(|| {
         let db = garmin_api::open_default_db().map_err(|e| e.to_string())?;
@@ -380,7 +396,7 @@ async fn config(fixture: bool) -> Result<String, FfiError> {
 }
 
 fn save(args: &Value, fixture: bool) -> Result<String, FfiError> {
-    let a: Save = serde_json::from_value(args.clone()).map_err(bad)?;
+    let a: SaveConfigArgs = serde_json::from_value(args.clone()).map_err(bad)?;
     let provider =
         garmin_coach::Provider::parse(&a.provider).ok_or_else(|| bad("unknown provider"))?;
     if fixture {

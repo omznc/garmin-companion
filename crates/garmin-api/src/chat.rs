@@ -24,7 +24,7 @@ const TITLE_MAX: usize = 80;
 pub const RENAME_MAX: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export, rename = "ChatStep"))]
 #[serde(rename_all = "camelCase")]
 pub struct Step {
     /// A row from before notes existed has no kind: it is a tool.
@@ -39,7 +39,11 @@ pub struct Step {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[cfg_attr(
+    feature = "ts-rs",
+    derive(ts_rs::TS),
+    ts(export, rename = "ChatStepKind")
+)]
 #[serde(rename_all = "lowercase")]
 pub enum StepKind {
     #[default]
@@ -56,7 +60,11 @@ fn is_tool(kind: &StepKind) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[cfg_attr(
+    feature = "ts-rs",
+    derive(ts_rs::TS),
+    ts(export, rename = "TurnStatus")
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Running,

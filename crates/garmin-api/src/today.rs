@@ -35,6 +35,7 @@ const DRIFT_RUNS: usize = 8;
 const DRIFT_TARGET_PCT: f64 = 20.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
     /// The day the view was built for, `YYYY-MM-DD`.
@@ -64,6 +65,12 @@ pub struct TodayView {
     /// Section keys in drawing order. A UI draws these and skips a key that it
     /// does not know. Keys: `health_tiles`, `attention`, `fuel`, `weight`,
     /// `last_session`, `week`, `zone_drift`.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(
+            type = "Array<\"health_tiles\" | \"attention\" | \"fuel\" | \"weight\" | \"last_session\" | \"week\" | \"zone_drift\">"
+        )
+    )]
     pub sections: Vec<String>,
     /// The verdict and the sentence under it. Built from readiness, resting
     /// heart rate, HRV, sleep and load.
@@ -72,6 +79,7 @@ pub struct TodayView {
 
 /// This morning's overnight resting HR against the 30-day mean.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RestingHr {
     pub value: f64,
@@ -82,6 +90,7 @@ pub struct RestingHr {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeightGlance {
     pub trend_kg: Option<f64>,
@@ -92,6 +101,7 @@ pub struct WeightGlance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LastSession {
     pub activity: CachedActivity,
@@ -107,6 +117,7 @@ pub struct LastSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DriftRun {
     pub activity_id: i64,
@@ -118,6 +129,7 @@ pub struct DriftRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneDrift {
     /// What the strip counts, for the heading. Always "runs" today, because
@@ -132,6 +144,7 @@ pub struct ZoneDrift {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Week {
     /// Distance in km for each of the last seven days, oldest first.

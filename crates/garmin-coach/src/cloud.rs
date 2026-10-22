@@ -324,6 +324,7 @@ pub struct Balance {
 
 /// What a screen needs to draw the cloud account. The core builds the lines.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountView {
     pub premium: bool,

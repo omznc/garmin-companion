@@ -27,6 +27,7 @@ pub struct HistoryMessage {
 /// What a turn reports to the host. The JSON form is the payload of the mobile
 /// `ask` event: `{"type":"delta","text":"..."}`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export, rename = "AskEvent"))]
 #[serde(
     tag = "type",
     rename_all = "camelCase",

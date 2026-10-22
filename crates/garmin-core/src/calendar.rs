@@ -54,6 +54,7 @@ pub(crate) const SCHEMA: &str = r#"
 
 /// A planned workout (`workout`) or a race (`event`) on one day.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlanItem {
     /// `YYYY-MM-DD`.
@@ -131,6 +132,7 @@ fn parse_plan_item(it: &Value) -> Option<PlanItem> {
 
 /// A training plan of the account.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TrainingPlan {
     pub plan_id: i64,
@@ -171,6 +173,7 @@ pub fn parse_training_plans(v: &Value) -> Vec<TrainingPlan> {
 
 /// A race that the athlete entered on the calendar.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RaceEvent {
     pub event_key: String,
@@ -221,6 +224,7 @@ fn event_target_secs(e: &Value) -> Option<f64> {
 /// One step of a workout, flattened. A step inside a repeat group has the
 /// group number and the repeat count of the group.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlanStep {
     /// Position in the flat list, from 1.
@@ -246,6 +250,7 @@ pub struct PlanStep {
 
 /// The steps of a workout, and its name and sport.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkoutSteps {
     pub workout_id: i64,

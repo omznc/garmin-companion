@@ -1886,6 +1886,7 @@ impl Db {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct CachedActivity {
     pub activity_id: i64,
@@ -2020,6 +2021,7 @@ pub struct ActivityTrack {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct DailyMetrics {
     pub date: String,

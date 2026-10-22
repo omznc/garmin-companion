@@ -22,6 +22,7 @@ const VO2_DAYS: i64 = 365;
 
 /// A planned item with the steps of its workout, if they are cached.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct PlannedItem {
     #[serde(flatten)]
@@ -30,6 +31,7 @@ pub struct PlannedItem {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NutritionToday {
     pub meals: Vec<Meal>,
@@ -40,6 +42,7 @@ pub struct NutritionToday {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ExtrasView {
     pub date: String,

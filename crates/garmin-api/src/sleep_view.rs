@@ -21,9 +21,14 @@ const WEEK: u32 = 7;
 const SHORT_NIGHT_SECS: f64 = 7.0 * 3600.0;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StageShare {
     /// `deep`, `light`, `rem` or `awake`.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")
+    )]
     pub key: String,
     pub label: String,
     pub secs: f64,
@@ -34,9 +39,14 @@ pub struct StageShare {
 
 /// One stretch of one stage, for the hypnogram.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StageSpan {
     /// `deep`, `light`, `rem` or `awake`.
+    #[cfg_attr(
+        feature = "ts-rs",
+        ts(type = "\"deep\" | \"light\" | \"rem\" | \"awake\"")
+    )]
     pub key: String,
     /// Minutes from the moment sleep began.
     pub from_mins: f64,
@@ -44,6 +54,7 @@ pub struct StageSpan {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NightView {
     pub date: String,
@@ -80,6 +91,7 @@ pub struct NightView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NightBar {
     pub date: String,
@@ -90,6 +102,7 @@ pub struct NightBar {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepWindow {
     pub days: u32,
@@ -99,6 +112,7 @@ pub struct SleepWindow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepView {
     pub date: String,

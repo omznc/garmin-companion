@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 const CHART_POINTS: usize = 120;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActivitiesView {
     /// True when the cache holds no session.
@@ -45,6 +46,7 @@ pub struct ActivitiesView {
 /// One session as a row of a table. The figures are raw, so a screen can sum
 /// them. The pace is text, because it depends on the sport.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityRow {
     pub activity_id: i64,
@@ -65,6 +67,7 @@ pub struct ActivityRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DayGroup {
     /// `YYYY-MM-DD`.
@@ -75,6 +78,7 @@ pub struct DayGroup {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityCard {
     pub activity_id: i64,
@@ -90,6 +94,7 @@ pub struct ActivityCard {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Stat {
     pub label: String,
@@ -97,6 +102,7 @@ pub struct Stat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneRow {
     /// 1 to 5.
@@ -107,6 +113,7 @@ pub struct ZoneRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneBlock {
     pub rows: Vec<ZoneRow>,
@@ -114,6 +121,7 @@ pub struct ZoneBlock {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LapRow {
     pub label: String,
@@ -124,6 +132,7 @@ pub struct LapRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SetRow {
     /// "Set 1".
@@ -142,6 +151,7 @@ pub struct SetRow {
 
 /// One movement over the session, from the watch guesses.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ExerciseSummary {
     pub name: String,
@@ -153,6 +163,7 @@ pub struct ExerciseSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct StrengthBlock {
     pub sentence: String,
@@ -166,6 +177,7 @@ pub struct StrengthBlock {
 
 /// Evenly spaced samples. A `None` is a gap in the line.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Chart {
     pub hr: Vec<Option<f64>>,
@@ -182,6 +194,7 @@ pub struct Chart {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityDetailView {
     pub activity_id: i64,

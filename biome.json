@@ -15,6 +15,7 @@
       "bracketSameLine": false
     }
   },
+  "files": { "includes": ["**", "!**/data/generated"] },
   "linter": { "enabled": false },
   "assist": { "enabled": false },
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true }

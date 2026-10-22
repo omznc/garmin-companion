@@ -35,6 +35,7 @@ const HARD_DAY_SECS: f64 = 300.0;
 const HOUR: f64 = 3600.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "FindingTone"))]
 #[serde(rename_all = "lowercase")]
 pub enum Tone {
     Good,
@@ -55,6 +56,7 @@ pub enum Section {
 /// this shape crosses a serialization boundary now. The frontend maps these
 /// back to the same formatters it always used.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub enum Unit {
     Spm,

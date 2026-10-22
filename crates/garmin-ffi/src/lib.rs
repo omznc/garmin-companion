@@ -24,6 +24,8 @@ mod ask;
 mod backup;
 mod chat;
 mod cloud;
+#[cfg(test)]
+mod contract;
 mod workout;
 
 uniffi::setup_scaffolding!();

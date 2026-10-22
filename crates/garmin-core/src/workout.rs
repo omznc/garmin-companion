@@ -36,6 +36,7 @@ const MAX_ITERATIONS: u32 = 99;
 /// and this app can describe. An unknown sport would round-trip as a valid
 /// payload and then appear on the watch as something nobody asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftSport"))]
 #[serde(rename_all = "snake_case")]
 pub enum Sport {
     Running,
@@ -65,6 +66,7 @@ impl Sport {
 /// group, which is why [`Step`] carries it rather than this enum being used for
 /// both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftKind"))]
 #[serde(rename_all = "snake_case")]
 pub enum StepKind {
     Warmup,
@@ -96,6 +98,7 @@ impl StepKind {
 /// `LapButton` is the honest option for a step whose length is "until it feels
 /// done" — better than inventing a duration the athlete will ignore.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftEnd"))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EndCondition {
     Time { seconds: f64 },
@@ -136,6 +139,7 @@ impl EndCondition {
 /// specific ceiling is the actual instruction — "keep it under 140" is a
 /// sentence about a number, not about a zone.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftTarget"))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Target {
     None,
@@ -184,6 +188,7 @@ impl Target {
 
 /// One thing the athlete does, for as long as the end condition says.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftExec"))]
 #[serde(rename_all = "camelCase")]
 pub struct ExecStep {
     pub kind: StepKind,
@@ -208,6 +213,7 @@ fn target_none() -> Target {
 /// fits in one level. Making that a type rather than a validation rule means a
 /// model cannot emit a workout that recurses.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "DraftStep"))]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Step {
     Exec(ExecStep),
@@ -216,6 +222,7 @@ pub enum Step {
 
 /// A workout as proposed, before anyone has agreed to it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkoutDraft {
     pub name: String,

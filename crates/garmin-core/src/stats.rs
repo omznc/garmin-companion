@@ -41,6 +41,7 @@ const INTERVAL_PCT: f64 = 90.0;
 
 /// A number with the uncertainty that belongs to it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Estimate {
     /// The point estimate — what the older code would have returned alone.

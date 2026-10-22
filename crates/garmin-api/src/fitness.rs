@@ -22,6 +22,7 @@ const RUN_RECORDS: std::ops::RangeInclusive<i64> = 1..=7;
 const RIDE_RECORDS: std::ops::RangeInclusive<i64> = 8..=9;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LoadBar {
     pub label: String,
@@ -35,6 +36,7 @@ pub struct LoadBar {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Balance {
     pub intro: String,
@@ -42,6 +44,7 @@ pub struct Balance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Predictions {
     pub intro: String,
@@ -49,6 +52,7 @@ pub struct Predictions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RecordRow {
     pub label: String,
@@ -58,6 +62,7 @@ pub struct RecordRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FitnessView {
     pub date: String,

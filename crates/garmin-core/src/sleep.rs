@@ -455,6 +455,7 @@ pub struct SleepAverages {
 
 /// How a note should read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(rename = "SleepTone"))]
 #[serde(rename_all = "lowercase")]
 pub enum Tone {
     Good,
@@ -464,6 +465,7 @@ pub enum Tone {
 
 /// Something this athlete's own nights say.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SleepInsight {
     pub id: String,

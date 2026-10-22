@@ -22,6 +22,7 @@ const HISTORY_DAYS: i64 = 120;
 const DAY_NAMES: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DayBar {
     pub label: String,
@@ -31,6 +32,7 @@ pub struct DayBar {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportSession {
     pub activity_id: i64,
@@ -45,6 +47,7 @@ pub struct ReportSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ReportView {
     pub date: String,
@@ -71,6 +74,7 @@ pub struct ReportView {
 /// The week against the week before, for the figures that the sessions do not
 /// hold. Each is `None` when the cache has no reading for it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct WeekExtras {
     /// The sum of Garmin's load over the sessions of the week.

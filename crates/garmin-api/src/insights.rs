@@ -32,6 +32,7 @@ const RUN_ONLY: [&str; 4] = [
 
 /// A label with a figure. The load, the report and the fitness screens use it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Figure {
     pub label: String,
@@ -40,6 +41,7 @@ pub struct Figure {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSeries {
     pub name: String,
@@ -56,6 +58,7 @@ pub struct InsightSeries {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightRow {
     pub label: String,
@@ -65,6 +68,7 @@ pub struct InsightRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightItem {
     pub id: String,
@@ -98,6 +102,7 @@ pub struct InsightItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightSection {
     pub key: String,
@@ -106,6 +111,7 @@ pub struct InsightSection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct InsightsView {
     pub date: String,

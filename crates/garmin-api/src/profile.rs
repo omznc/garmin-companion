@@ -21,6 +21,7 @@ pub const NEW_USER_DAYS: usize = 14;
 const PRIMARY_SHARE: f64 = 0.4;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FamilyStat {
     pub family: Family,
@@ -31,6 +32,7 @@ pub struct FamilyStat {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ActivityProfile {
     pub window_days: i64,

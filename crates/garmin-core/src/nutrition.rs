@@ -36,6 +36,7 @@ pub(crate) const SCHEMA: &str = r#"
 "#;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Meal {
     pub name: Option<String>,
@@ -48,6 +49,7 @@ pub struct Meal {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct NutritionGoals {
     pub calories: Option<f64>,
