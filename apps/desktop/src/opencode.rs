@@ -6,7 +6,11 @@
 //! OpenCode has no flag for a per-run MCP server. The app makes a temporary
 //! config folder and points `XDG_CONFIG_HOME` at it. That hides the user's own
 //! plugins, MCP servers and agents. The login stays, because OpenCode keeps it
-//! in its data folder.
+//! in its data folder (`auth.json` in OpenCode 1, `opencode.db` in OpenCode 2).
+//! The last used model stays too, because it is in the state folder. A model
+//! or a provider that only the user's config defines is not visible to a turn.
+//! The free OpenCode models refuse a request with no `read` tool. The app keeps
+//! `read` denied, so a turn needs a login for a paid model.
 //!
 //! `opencode run --format json` writes one JSON event per line. It sends whole
 //! text parts, not token deltas.
@@ -69,6 +73,20 @@ impl Stream for Parser {
         self.finished
     }
 
+    /// OpenCode 2 can end a turn with no `step_finish` after the last text.
+    fn end(&mut self) -> Vec<Event> {
+        if self.finished {
+            return Vec::new();
+        }
+        let events = self.answer.done(self.sources());
+        // No text means no answer: `watch` then reports the failure of the command.
+        if !matches!(events[..], [Event::Done { .. }]) {
+            return Vec::new();
+        }
+        self.finished = true;
+        events
+    }
+
     fn sources(&self) -> Vec<String> {
         self.sources.clone()
     }
@@ -78,7 +96,11 @@ impl Parser {
     /// A tool call comes once, already finished. A denied tool has the status `error`.
     fn tool(&mut self, part: &Value) -> Vec<Event> {
         let mut events = self.answer.note();
-        let call = part["callID"].as_str().unwrap_or_default();
+        // OpenCode 2 has no `callID`: the part `id` is the call id.
+        let call = part["callID"]
+            .as_str()
+            .or_else(|| part["id"].as_str())
+            .unwrap_or_default();
         let name = part["tool"].as_str().unwrap_or_default();
         let name = name.strip_prefix(TOOL_PREFIX).unwrap_or(name);
         let ok = part["state"]["status"] != "error";
@@ -92,7 +114,7 @@ impl Parser {
 
     /// A step that ends with tool calls is not the last one. Any other reason is.
     fn step_finish(&mut self, part: &Value) -> Vec<Event> {
-        if part["reason"] == "tool-calls" {
+        if matches!(part["reason"].as_str(), Some("tool-calls" | "unknown")) {
             return self.answer.note();
         }
         self.finished = true;
@@ -123,7 +145,19 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
             "enabled": true,
             "timeout": MCP_TIMEOUT_MS,
         } },
-        "permission": { "*": "deny", "garmin_*": "allow" },
+        // OpenCode 2 gives the model the MCP tools only through its `execute`
+        // tool. That tool runs code with no file access, but its `fetch` can
+        // make HTTP requests. OpenCode 2 has no setting to block it.
+        // The free models refuse a turn with no `read` tool (HTTP 403), so
+        // `read` is allowed. `external_directory` stays denied: the model
+        // can read only the empty temporary work folder.
+        "permission": {
+            "*": "deny",
+            "garmin_*": "allow",
+            "execute": "allow",
+            "read": "allow",
+            "external_directory": "deny",
+        },
         "agent": { AGENT: {
             "mode": "primary",
             "description": "Running coach",
@@ -134,15 +168,31 @@ fn config(app: &Path, db: Option<&Path>, period: Option<Period>) -> Value {
     })
 }
 
+/// The text of `opencode run --help` on stdout. The flags differ between
+/// versions. The call is short, so each turn makes it again. An empty text
+/// means the call failed, or the version writes its help to stderr.
+fn run_help(bin: &Path) -> String {
+    cli::read(bin, &CLI, &["run", "--help"], cli::PROBE_LIMIT)
+        .map(|o| o.text)
+        .unwrap_or_default()
+}
+
 /// `--auto` would approve more than the tools of the app, so it is not here.
 /// OpenCode takes a model as `provider/model`, so another form is ignored.
-/// The question goes on stdin: `run` with no message reads it there.
-fn flags(cwd: &Path, model: &str) -> Vec<OsString> {
-    let mut args: Vec<OsString> = ["run", "--format", "json", "--pure", "--agent", AGENT]
+/// The question goes on stdin: `run` with no message reads it there. The work
+/// folder is the working directory of the command, so no `--dir` is needed.
+///
+/// OpenCode 2 sends a run to its background service, which ignores our config
+/// folder. `--standalone` starts a private server that reads it. OpenCode 1
+/// has no such flag and does not need it.
+fn flags(help: &str, model: &str) -> Vec<OsString> {
+    let mut args: Vec<OsString> = ["run", "--format", "json", "--agent", AGENT]
         .into_iter()
         .map(Into::into)
         .collect();
-    args.extend(["--dir".into(), cwd.into()]);
+    if help.contains("--standalone") {
+        args.push("--standalone".into());
+    }
     if model.contains('/') {
         args.extend(["-m".into(), model.into()]);
     }
@@ -185,14 +235,18 @@ fn turn(
     write("coach.md", setup.system.clone())?;
     write("opencode.json", config(&setup.app, db, period).to_string())?;
 
+    let args = flags(&run_help(&setup.bin), model);
     let run = Run {
         cli: &CLI,
         bin: setup.bin,
-        args: flags(&setup.cwd, model),
+        args,
         cwd: setup.cwd,
         env: vec![
             ("XDG_CONFIG_HOME", home.path().into()),
             ("OPENCODE_DISABLE_AUTOUPDATE", "1".into()),
+            // OpenCode 1: no external plugins. The same as `--pure`, which
+            // OpenCode 2 does not have.
+            ("OPENCODE_PURE", "1".into()),
         ],
         stdin: Some(transcript(history)),
         limit: None,
@@ -237,7 +291,8 @@ mod tests {
     }
 
     /// Needs an `opencode` with a model. Run with `GC_LIVE_DB=<cache copy>`,
-    /// `APPIMAGE=<binary>` and `GC_LIVE_MODEL=opencode/<free model>`.
+    /// `APPIMAGE=<binary>`. Set `GC_LIVE_MODEL=<provider>/<model>` to choose
+    /// a model. With no value, the test uses the default (free) model.
     #[test]
     #[ignore]
     fn a_real_turn_reads_the_copy_over_mcp() {
@@ -326,7 +381,16 @@ mod tests {
             end: day,
         });
         let v = config(Path::new("/app"), Some(Path::new("/c.db")), period);
-        assert_eq!(v["permission"], json!({ "*": "deny", "garmin_*": "allow" }));
+        assert_eq!(
+            v["permission"],
+            json!({
+                "*": "deny",
+                "garmin_*": "allow",
+                "execute": "allow",
+                "read": "allow",
+                "external_directory": "deny",
+            })
+        );
         let server = &v["mcp"]["garmin"];
         assert_eq!(
             server["command"],
@@ -348,11 +412,48 @@ mod tests {
         let text = |args: Vec<OsString>| -> Vec<String> {
             args.iter().map(|a| a.to_string_lossy().into()).collect()
         };
-        let a = text(flags(Path::new("/w"), "sonnet"));
+        let a = text(flags("", "sonnet"));
         assert!(!a.contains(&"-m".to_string()) && !a.contains(&"--auto".to_string()));
-        let b = text(flags(Path::new("/w"), "anthropic/claude-x"));
+        let b = text(flags("", "anthropic/claude-x"));
         let at = b.iter().position(|x| x == "-m").unwrap();
         assert_eq!(b[at + 1], "anthropic/claude-x");
-        assert!(b.contains(&"--pure".to_string()));
+        assert!(!b.contains(&"--dir".to_string()));
+    }
+
+    #[test]
+    fn a_flag_goes_in_only_when_the_help_lists_it() {
+        let text = |help| -> Vec<String> {
+            flags(help, "")
+                .iter()
+                .map(|a| a.to_string_lossy().into())
+                .collect()
+        };
+        let v1 = text("  --dir  directory");
+        assert!(!v1.contains(&"--standalone".into()) && !v1.contains(&"--pure".into()));
+        let v2 = text("  --standalone   Run with a private server\n  --auto");
+        assert!(v2.contains(&"--standalone".into()) && !v2.contains(&"--pure".into()));
+        assert!(!v2.contains(&"--dir".into()) && !v2.contains(&"--auto".into()));
+    }
+
+    #[test]
+    fn opencode_2_tool_parts_and_unknown_step_reasons_work() {
+        let mut p = Parser::default();
+        let events = p.feed(
+            &json!({"type":"tool_use","part":{"id":"call_1","tool":"execute",
+            "state":{"status":"completed","input":{}}}}),
+        );
+        assert!(matches!(&events[0], Event::Tool { call_id, .. } if call_id == "call_1"));
+        p.feed(&json!({"type":"text","part":{"text":"Answer."}}));
+        p.feed(&json!({"type":"step_finish","part":{"reason":"unknown"}}));
+        assert!(!p.finished);
+    }
+
+    #[test]
+    fn a_turn_that_ends_after_the_text_with_no_step_finish_is_done() {
+        let mut p = Parser::default();
+        p.feed(&json!({"type":"text","part":{"text":"Answer."}}));
+        assert!(matches!(&p.end()[..], [Event::Done { .. }]));
+        assert!(p.finished);
+        assert!(Parser::default().end().is_empty());
     }
 }

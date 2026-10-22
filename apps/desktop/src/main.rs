@@ -463,6 +463,11 @@ fn main() -> anyhow::Result<()> {
                     if start_sync {
                         root.start_sync(false, cx);
                     }
+                    // For screenshots: `GC_SYNC_NOTE=<text>` shows a finished sync line.
+                    #[cfg(debug_assertions)]
+                    if let Ok(line) = std::env::var("GC_SYNC_NOTE") {
+                        root.account.sync = account::Sync::Done(line);
+                    }
                     root.watch_for_updates(cx);
                     root.watch_window(window, cx);
                     // For screenshots: `GC_OPEN_PALETTE=<query>` opens the palette at start.
