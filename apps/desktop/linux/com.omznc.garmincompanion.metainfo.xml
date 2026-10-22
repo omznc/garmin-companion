@@ -147,6 +147,25 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.1.0" date="2026-10-22">
+      <description>
+        <p>
+          The desktop app saves coach threads, syncs on a timer and has a high
+          contrast setting. It works with OpenCode 2, and the sync note stays
+          inside its row.
+        </p>
+        <p>
+          The mobile app syncs in the background and sends notifications. It
+          exports activities as CSV and shares the weekly report. The tabs can
+          move, and you can choose the start tab. Health, Sleep, Plan and
+          Strength show more data and follow the date focus.
+        </p>
+        <p>
+          Syncs are safer: one sync runs at a time, and a bad token or a long
+          outage stops the sync. The More icons use one colour for each group.
+        </p>
+      </description>
+    </release>
     <release version="1.0.9" date="2026-10-21">
       <description>
         <p>
