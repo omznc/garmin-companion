@@ -7,6 +7,7 @@ const pages = {
   sync: "Sync",
   notifications: "Notifications",
   appearance: "Appearance",
+  tabs: "Tabs",
   coach: "Coach",
   about: "About",
 };

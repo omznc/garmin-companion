@@ -28,6 +28,7 @@ const bodyCommands: Record<string, keyof typeof bodySample> = {
 };
 // The Expo Go account state. It lives in memory and resets on reload.
 const fixtureAccount = { connected: false, theme: "system" as SettingsView["theme"] };
+const fixtureTabs = { tab_order: [] as string[], start_tab: "" };
 const fixtureStatus = (): Status => ({
   connected: fixtureAccount.connected,
   importableTokenPath: null,
@@ -50,6 +51,17 @@ const fixtureSync: SyncSummary = {
   daysWritten: 0,
   warnings: [],
 };
+
+function fixturePrefs(): unknown {
+  return { ...fixtureTabs, theme: fixtureAccount.theme };
+}
+
+function fixtureSetTabOrder(args: unknown): unknown {
+  const a = args as { tabOrder: string[]; startTab: string };
+  fixtureTabs.tab_order = a.tabOrder;
+  fixtureTabs.start_tab = a.startTab;
+  return fixturePrefs();
+}
 
 function fixtureAccountCall(cmd: string, args: unknown): unknown {
   if (cmd === "set_theme") fixtureAccount.theme = (args as { theme: SettingsView["theme"] }).theme;
@@ -104,6 +116,8 @@ const firstFixtures: Record<string, (args: unknown) => unknown> = {
   today: () => fixture,
   activities: () => activitiesFixture,
   activity_detail: activityDetail,
+  prefs: fixturePrefs,
+  set_tab_order: fixtureSetTabOrder,
 };
 
 const lastFixtures: Record<string, (args: unknown) => unknown> = {
