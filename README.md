@@ -1,244 +1,152 @@
 # Garmin Companion
 
-A desktop app that pulls your Garmin Connect history onto your own machine and
-answers questions about it — with an emphasis on where your heart rate actually
-spent the session, which is the thing Garmin's own app buries.
+Garmin Companion copies your Garmin Connect history to your computer or phone.
+It shows the data in more detail than the Garmin app, and it answers questions
+about the data. It shows where your heart rate was during each session.
 
-Ships with an MCP server over the same data, so Claude Desktop can read it too.
+It also has an MCP server, so Claude Desktop can read the same data.
 
 ![Today](docs/screenshots/today-dark.png)
 
-## What it does
+## Download
 
-Everything is read from a local SQLite cache rather than from Garmin, so the
-screens open instantly and a tool call can't stall on a network hiccup
-mid-conversation. Sync is the only thing that talks to Garmin.
+**Desktop**
 
-- **Today** — the week against your goals as rings, anything the coach has to
-  say unprompted, recovery numbers, the last session in full with its zone
-  breakdown, and hard-effort drift across recent runs
-- **Activities / Activity** — the history, and per-lap splits and charts for
-  one session
-- **Health** — resting HR, HRV, sleep, stress, body battery over time
-- **Sleep** — last night at full resolution: the hypnogram, the stage mix
-  against Garmin's own target bands, overnight heart rate, HRV, respiration and
-  SpO2 — then bedtime consistency across the window, and what your own nights
-  say about duration, regularity and stage mix
-- **Food** — calories in against out, hydration
-- **Ask** — questions answered by a model you choose, given only the metrics
-  the question needs
-- **Strength** — lifting set by set: reps, time working, rest between sets and
-  the work:rest ratio. No load, because the watch doesn't record one
-- **Fitness** — Garmin's own verdict rather than this app's: training status,
-  acute and chronic load, the acute:chronic ratio, the monthly aerobic /
-  anaerobic balance against Garmin's target ranges, race predictions, and the
-  personal records
-- **Insights / Reports** — correlations mined from the cache, each stating its
-  sample size, and weekly summaries
-- **Plan / Routes / Gear** — saved workouts, routes grouped from GPS traces,
-  and shoe and bike mileage
-- **Export** — activities to CSV, and the weekly and monthly reports to PDF
+[![Windows](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Windows&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_x64-setup.exe)
+[![macOS Apple Silicon](https://img.shields.io/github/v/release/omznc/garmin-companion?label=macOS%20Apple%20Silicon&logo=apple&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_aarch64.dmg)
+[![macOS Intel](https://img.shields.io/github/v/release/omznc/garmin-companion?label=macOS%20Intel&logo=apple&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_x64.dmg)
+[![Linux .deb](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Linux%20.deb&logo=debian&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_amd64.deb)
+[![Linux .rpm](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Linux%20.rpm&logo=fedora&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion.x86_64.rpm)
+[![Linux AppImage](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Linux%20AppImage&logo=linux&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion_amd64.AppImage)
 
-Version 1.0.7 brings a new desktop design. The style is like Zed, with no
-entrance animations:
+**Mobile**
 
-- **Cards** — every screen is a grid of cards, and you arrange the ones on Today
-- **Date focus calendar** — a calendar in the sidebar sets a day or a range of
-  days, and every screen and the coach follow it
-- **Status bar menus** — sync, pick the coach provider and the palette, and
-  update, all from the bottom bar
-- **Detail pages** — activities, workouts and insights open with more data, and
-  breadcrumbs replace the back links
-- **Layout** — the sidebar, the coach panel and the window resize by dragging,
-  and Appearance has an interface scale
+[![Android .apk](https://img.shields.io/github/v/release/omznc/garmin-companion?label=Android&logo=android&style=for-the-badge)](https://github.com/omznc/garmin-companion/releases/latest/download/garmin-companion.apk)
 
-| A session, with its heart-rate zones | A strength session, set by set | Asked in your own words |
-|---|---|---|
-| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Strength](docs/screenshots/activity-strength-dark.png)](docs/screenshots/activity-strength-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
+All the files, and the older versions, are on the
+[releases page](https://github.com/omznc/garmin-companion/releases).
 
-| Correlations, with their sample size | Recovery over time | Routes out of the GPS traces |
-|---|---|---|
-| [![Insights](docs/screenshots/insights-light.png)](docs/screenshots/insights-light.png) | [![Health](docs/screenshots/health-light.png)](docs/screenshots/health-light.png) | [![Routes](docs/screenshots/routes-dark.png)](docs/screenshots/routes-dark.png) |
+The files do not have a signature from Apple, Microsoft or Google. Thus, each
+system shows a warning at the first install:
 
-Light and dark both, on every screen. The rest of them — and the same shots
-without the backdrop — are in [`docs/screenshots`](docs/screenshots).
-
-## Where your data goes
-
-- **Garmin credentials** live in your OS keyring, never in the database.
-- **Requests to Garmin** go straight from the app to Garmin, never through a
-  server of ours.
-- **Chat** sends your question plus whatever a tool returned for it — a handful
-  of summary rows, never the whole database and never GPS traces. Where it sends
-  that depends on which of the six providers you pick:
-  - **Built-in coach** (the default) — through a small proxy this project runs,
-    on to a hosted model. It sees the metrics a question needs and keeps none of
-    them; the code is in [`worker/`](worker) and so is what it does and doesn't
-    record. This is the one option where your data touches a server you don't
-    run, which is why it says so on the Ask screen and in Settings.
-  - **OpenRouter** with your own key — straight from the app to OpenRouter.
-  - **Ollama** on your machine — nothing leaves the computer at all.
-  - **Claude Code**, **OpenCode** or **Codex** (desktop only) — the app starts
-    the command you already use and gives it read-only tools over MCP. The
-    command sends the data on to its own model provider, under your account.
-    Not yet tested on Windows or macOS.
-- **Switching** is one click in Settings, in either direction, at any time.
-- **The cache** is a single SQLite file you can delete. Its path is printed in
-  Settings.
-
-## Installing
-
-Grab the installer for your platform from
-[Releases](https://github.com/omznc/garmin-companion/releases/latest).
-
-- **macOS** — `.dmg`, `aarch64` for Apple Silicon or `x64` for Intel. Drag the
-  app to Applications, then clear the quarantine flag once, or macOS refuses to
-  open it — right-click → Open is not enough on recent versions:
+- **macOS:** Move the app to Applications. Then run this command one time:
 
   ```sh
   xattr -dr com.apple.quarantine "/Applications/Garmin Companion.app"
   ```
 
-- **Windows** — `-setup.exe`. SmartScreen calls it an unrecognised app: **More
-  info** → **Run anyway**.
-- **Linux** — `.AppImage` (`chmod +x` it, then run) or `.deb` / `.rpm`. Needs
-  `webkit2gtk-4.1` from your package manager.
-- **Android** — `.apk`, Android 7 or newer. Not on Play, so your phone will ask
-  you to allow installing from wherever you downloaded it.
+- **Windows:** SmartScreen shows "unrecognised app". Click **More info**, then
+  **Run anyway**.
+- **Linux:** The `.deb` and `.rpm` need `webkit2gtk-4.1`. For the AppImage,
+  run `chmod +x` on the file, then open it.
+- **Android:** Android 7 or later. Let your browser or file manager install
+  apps.
 
-Nothing is signed with an OS vendor certificate, which is what both warnings are
-about. Updates are signed with the updater's own key and work either way, so
-after the first install the app updates itself from Settings.
+After the first install, the app updates itself. Each update has a signature
+from this project, and the app checks it.
 
-Android updates itself too, with one difference: replacing a package is the
-system's job there, so the app downloads the new version in the background and
-Android asks before swapping itself out. The first time, it will send you to
-turn on "Install unknown apps" for it — after that it's one tap.
+## Screens
 
-### What's different on a phone
+- **Today:** the week against your goals, the coach's brief, recovery, and the
+  last session with its heart-rate zones.
+- **Activities:** the history. One session shows laps, splits and charts.
+- **Health:** resting heart rate, HRV, sleep, stress and Body Battery.
+- **Sleep:** the stages of last night, heart rate, HRV, respiration and SpO2,
+  and the bedtime over a period.
+- **Food:** calories in and out, and hydration.
+- **Ask:** questions about your data, to a model that you select.
+- **Strength:** each set, with reps, work time and rest time.
+- **Fitness:** Garmin's training status, load, race predictions and personal
+  records.
+- **Insights and Reports:** correlations with their sample size, and weekly
+  summaries.
+- **Plan, Routes and Gear:** saved workouts, routes from your GPS tracks, and
+  shoe and bike distance.
+- **Export:** activities to CSV, and reports to PDF.
 
-The same app and the same data, with three things worth knowing:
+| A session | A strength session | Ask |
+|---|---|---|
+| [![Activity](docs/screenshots/activity-dark.png)](docs/screenshots/activity-dark.png) | [![Strength](docs/screenshots/activity-strength-dark.png)](docs/screenshots/activity-strength-dark.png) | [![Ask](docs/screenshots/ask-dark.png)](docs/screenshots/ask-dark.png) |
 
-- **Sign-in hands over to Garmin's page and comes back.** On desktop that
-  happens in a second window; a Tauri mobile app only has one, so the app itself
-  navigates there and returns once Garmin issues its token. It looks like the
-  app closed for a moment. It didn't.
-- **Credentials are kept differently.** Desktop uses the OS keyring. Android has
-  none, so the Garmin token and the OpenRouter key go into an encrypted file in
-  the app's private directory, and backups are switched off so neither can be
-  copied off the device by Google Drive or a phone-to-phone transfer. That is
-  weaker than a keyring against a rooted device — the encryption key has to live
-  beside the data, because reaching the Android Keystore needs native code this
-  build doesn't have. `crates/garmin-core/src/secrets.rs` is honest about the
-  details.
-- **The nav is a bottom bar.** It has five tabs: Today, Activities, Health,
-  Sleep and **More**. Everything else is behind More. To change the order of
-  the tabs, open More, then Appearance, then Tabs. You can also choose the tab that the app opens
-  on. More stays last. The phone keeps its own order, so the sidebar on the
-  desktop does not change. On iOS, the new order shows after you close the app
-  fully and open it again.
+| Insights | Health | Routes |
+|---|---|---|
+| [![Insights](docs/screenshots/insights-light.png)](docs/screenshots/insights-light.png) | [![Health](docs/screenshots/health-light.png)](docs/screenshots/health-light.png) | [![Routes](docs/screenshots/routes-dark.png)](docs/screenshots/routes-dark.png) |
 
-## Building from source
+More screenshots are in [`docs/screenshots`](docs/screenshots).
 
-The desktop app needs Rust. On Linux it also needs the development packages
-that `.github/workflows/ci.yml` installs.
+## Your data
 
-Build the sign-in helper first. The desktop app looks for
-`garmin-companion-login` next to its own executable.
+The app keeps your data in a local SQLite file. Only the sync connects to
+Garmin, and it connects directly, not through a server of this project.
+
+- On the desktop, your Garmin credentials are in the keyring of the system.
+- The Ask screen sends your question and the summary rows that it needs. It
+  never sends the full database or your GPS tracks. You select where it goes:
+  - **Built-in coach** (default): through a small proxy of this project, to a
+    hosted model. The proxy keeps no data. Its code is in [`worker/`](worker).
+  - **OpenRouter**, with your own key.
+  - **Ollama**, on your computer. No data leaves the computer.
+  - **Claude Code**, **OpenCode** or **Codex** (desktop only): the app starts
+    the command, and gives it read-only tools over MCP.
+- To remove all the data, delete the SQLite file. Settings shows its path.
+
+## The coach
+
+One time each day, the coach writes a short brief about your sleep, recovery,
+training and goals. Each statement shows the numbers that it comes from. The
+coach sends a notification only on days when the brief is important.
+
+The rules in `crates/garmin-core/src/coach.rs` find the facts. A model writes
+the text. If no model is available, the rules write the text.
+
+## Build from source
+
+The desktop app needs Rust. On Linux, it also needs the packages that
+`.github/workflows/ci.yml` installs.
 
 ```sh
 cargo build -p garmin-companion-login && cargo run -p garmin-companion-desktop
 ```
 
-The Android and iOS app is in `apps/mobile` (Expo). It needs Node 22+ and pnpm.
-For Android, add the SDK, NDK 28, and a JDK no newer than 21, then:
+The Android and iOS app is in `apps/mobile` (Expo). It needs Node 22 or later
+and pnpm. For Android, also install the SDK, NDK 28 and a JDK 21 or earlier:
 
 ```sh
 source scripts/android-env.sh
 cd apps/mobile && pnpm install
 ```
 
-The env script explains what it sets and why. See `apps/mobile/package.json`
-for the bridge and prebuild scripts.
-
-Connect an account in Settings, or adopt tokens from an existing
-[`garminconnect`](https://github.com/cyberjunky/python-garminconnect) install in
-one click if you have one.
-
-### The coach
-
-The one part of the app that speaks first. Once a day it writes a **brief** —
-one short piece about that day and the one before it, from your sleep, your
-recovery numbers, what you actually did, and the week against the goals you set
-in Settings. Everything it says carries the numbers behind it, one tap away.
-
-The brief also decides whether it is worth interrupting you for, and most days
-it isn't. That is the design rather than a failure: an app that notifies every
-evening is one whose notifications get switched off in a fortnight. A quiet
-brief still shows up on Today; it just doesn't knock. When it does knock, the
-notification and the block on Today are the same piece of writing, so tapping
-one opens the rest of it rather than merely opening the app.
-
-Underneath, the rules in `crates/garmin-core/src/coach.rs` still run and still
-decide what is *true* — the drift, the load ratio, the missing long run. What
-they no longer decide is which of it is worth saying tonight, or in what words.
-They arrive as evidence, and the block will show you what they noticed next to
-what the brief chose to say about it. With no model configured, or one that
-can't be reached, the rules write the block themselves and it says so — which
-is exactly how the coach worked before.
-
-On Android the notification arrives without the app running. Nothing runs in the
-background, so the brief has to be written while the app is still open and
-handed to the system in advance, rebuilt on every launch and after every sync.
-Tomorrow's copy says in its own text when it was worked out, because by then it
-is reporting the last thing the cache was told rather than something current —
-and after that the phone goes quiet until the app is opened again. Desktop has
-no way to queue a notification at all, so there it is shown at its hour by
-whatever is awake to notice, at most once a day.
-
-There's also a headless sync, useful for a cron job:
+To sync from the command line, for example from cron:
 
 ```sh
-cargo run -p garmin-core --bin sync -- 30        # last 30 days
+cargo run -p garmin-core --bin sync -- 30          # the last 30 days
 cargo run -p garmin-core --bin sync -- 365 --full
 ```
 
-## The MCP server
+## MCP server
 
-`crates/garmin-mcp` exposes the same queries as MCP tools — zone breakdowns,
-drift, cadence, recovery, nutrition, weight, tags, workouts, routes, strength
-sessions, personal records, Garmin's training status, the coach, and the full
-per-session analysis. It shares the client, token store and cache with the app,
-so an answer given in Claude Desktop and one given in the app's Ask screen come
-from identical code.
+`crates/garmin-mcp` gives the same queries as MCP tools. It uses the same
+client, token store and cache as the app. `manifest.json` describes it for
+Claude Desktop.
 
 ```sh
 cargo build --release -p garmin-mcp
-./target/release/garmin-mcp import   # adopt existing tokens, once
-./target/release/garmin-mcp coach    # what the coach would say today
+./target/release/garmin-mcp import   # use your existing tokens, one time
+./target/release/garmin-mcp coach    # the coach's brief for today
 ```
-
-`manifest.json` describes it for Claude Desktop.
 
 ## Layout
 
-| Path | What's in it |
+| Path | Contents |
 |---|---|
 | `crates/garmin-core` | Garmin client, token store, SQLite cache, sync, queries |
-| `crates/garmin-mcp` | MCP server over `garmin-core` |
+| `crates/garmin-mcp` | MCP server |
 | `crates/garmin-api`, `crates/garmin-coach` | Garmin API types, coach logic |
-| `apps/desktop` | The gpui desktop app and its packaging config |
-| `apps/login` | The sign-in window, a helper of the desktop app |
-| `apps/mobile` | The Expo app for Android and iOS |
+| `apps/desktop` | The desktop app (gpui) and its packages |
+| `apps/login` | The sign-in window of the desktop app |
+| `apps/mobile` | The Android and iOS app (Expo) |
 
-The two Rust binaries share `garmin-core` so they can never drift onto
-different versions of the Garmin client.
-
-## Releases
-
-See [RELEASING.md](RELEASING.md). A manual run of the release workflow builds
-installers for macOS (Apple Silicon and Intel), Windows, Linux and Android.
-The desktop app updates itself from Settings.
+To make a release, see [RELEASING.md](RELEASING.md).
 
 ## Licence
 
