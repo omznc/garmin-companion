@@ -13,7 +13,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine as _;
@@ -519,28 +519,6 @@ fn unpack_and_swap(gz: &[u8], stage: &Path, target: &Path, backup: &Path) -> Res
     Ok(())
 }
 
-/// Is a new check due? `last` is the time of the last good check.
-pub fn due(last: Option<SystemTime>, now: SystemTime) -> bool {
-    last.is_none_or(|t| now.duration_since(t).map_or(true, |age| age >= CHECK_EVERY))
-}
-
-/// The file whose modification time is the time of the last good check.
-fn stamp_path() -> Option<PathBuf> {
-    garmin_core::paths::base_dir()
-        .ok()
-        .map(|d| d.join("update-check"))
-}
-
-pub fn last_check() -> Option<SystemTime> {
-    fs::metadata(stamp_path()?).ok()?.modified().ok()
-}
-
-pub fn record_check() {
-    if let Some(path) = stamp_path() {
-        let _ = fs::write(path, b"");
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -748,16 +726,6 @@ mod tests {
             .decode(PUBKEY)
             .unwrap();
         PublicKey::decode(std::str::from_utf8(&raw).unwrap()).unwrap();
-    }
-
-    #[test]
-    fn a_check_is_due_after_six_hours() {
-        let now = SystemTime::now();
-        assert!(due(None, now));
-        assert!(!due(Some(now - Duration::from_secs(60)), now));
-        assert!(due(Some(now - CHECK_EVERY), now));
-        // A stamp from the future (clock moved back) does not block for ever.
-        assert!(due(Some(now + Duration::from_secs(60)), now));
     }
 
     #[test]
