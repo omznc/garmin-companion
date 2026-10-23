@@ -147,6 +147,15 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.1.2" date="2026-10-23">
+      <description>
+        <p>
+          The desktop app looks for updates at each start. On macOS, the title
+          bar does not show the app name and the logo. On Android, the tap effect on a card
+          follows the round corners.
+        </p>
+      </description>
+    </release>
     <release version="1.1.1" date="2026-10-22">
       <description>
         <p>
