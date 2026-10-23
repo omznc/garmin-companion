@@ -47,10 +47,17 @@ impl Root {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(START_DELAY).await;
             loop {
-                let result = on_thread(check_job()).await;
-                let alive = this.update(cx, |root, cx| root.on_checked(result, false, cx));
-                if alive.is_err() {
+                // A manual check or an install that runs now gives its own
+                // result. A second check would clear its state.
+                let Ok(busy) = this.update(cx, |root, _| root.account.update.busy()) else {
                     break;
+                };
+                if !busy {
+                    let result = on_thread(check_job()).await;
+                    let alive = this.update(cx, |root, cx| root.on_checked(result, false, cx));
+                    if alive.is_err() {
+                        break;
+                    }
                 }
                 cx.background_executor().timer(updater::CHECK_EVERY).await;
             }
