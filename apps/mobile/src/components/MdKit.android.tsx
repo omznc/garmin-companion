@@ -132,15 +132,18 @@ export function Card({
   };
   const inner = <View style={{ padding: 20, gap }}>{children}</View>;
   if (!onPress) return <View style={box}>{inner}</View>;
+  // A view does not clip its own ripple, so the parent View clips it to the corner.
   return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      android_ripple={{ color: md.onSurfaceVariant + "22" }}
-      style={box}
-    >
-      {inner}
-    </Pressable>
+    <View style={box}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPress}
+        android_ripple={{ color: md.onSurfaceVariant + "22" }}
+        style={{ flexGrow: 1 }}
+      >
+        {inner}
+      </Pressable>
+    </View>
   );
 }
 

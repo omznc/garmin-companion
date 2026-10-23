@@ -139,18 +139,11 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
   // The big corner leans one way and then the other, so the grid does not look stamped.
   const big = 36;
   const small = 14;
+  // A view does not clip its own ripple, so the parent View clips it to the corners.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${m.label}, ${m.unit ? `${m.value} ${m.unit}` : m.value}`}
-      onPress={() => router.push(metricRoute(m.id))}
-      android_ripple={{ color: `${c.fg}22` }}
+    <View
       style={{
         flex: 1,
-        minHeight: 132,
-        padding: 16,
-        gap: 14,
-        justifyContent: "space-between",
         overflow: "hidden",
         backgroundColor: c.bg,
         borderTopLeftRadius: lean === "left" ? big : small,
@@ -159,23 +152,37 @@ function Vital({ m, lean }: { m: Metric; lean: "left" | "right" }) {
         borderBottomLeftRadius: lean === "left" ? small : big,
       }}
     >
-      <IconTile name={VITAL_ICONS[m.id] ?? "insights"} tone={m.accent ? "tertiary" : "primary"} />
-      <View>
-        <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-          <FitText size={32} color={c.fg}>
-            {m.value}
-          </FitText>
-          {m.unit ? (
-            <T v="labelSmall" color={c.quiet}>
-              {m.unit}
-            </T>
-          ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${m.label}, ${m.unit ? `${m.value} ${m.unit}` : m.value}`}
+        onPress={() => router.push(metricRoute(m.id))}
+        android_ripple={{ color: `${c.fg}22` }}
+        style={{
+          flexGrow: 1,
+          minHeight: 132,
+          padding: 16,
+          gap: 14,
+          justifyContent: "space-between",
+        }}
+      >
+        <IconTile name={VITAL_ICONS[m.id] ?? "insights"} tone={m.accent ? "tertiary" : "primary"} />
+        <View>
+          <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+            <FitText size={32} color={c.fg}>
+              {m.value}
+            </FitText>
+            {m.unit ? (
+              <T v="labelSmall" color={c.quiet}>
+                {m.unit}
+              </T>
+            ) : null}
+          </View>
+          <T v="labelSmall" color={c.quiet}>
+            {m.label}
+          </T>
         </View>
-        <T v="labelSmall" color={c.quiet}>
-          {m.label}
-        </T>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
