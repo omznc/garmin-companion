@@ -15,9 +15,8 @@ use crate::update_ui;
 
 /// The width of the search box in the design.
 const SEARCH_W: f32 = 420.0;
-/// Room for the traffic lights that macOS draws over the left end.
-const TRAFFIC_LIGHTS: f32 = 62.0;
-
+/// On macOS the traffic lights sit over the left end, so the brand is empty
+/// there. The empty box still takes its share of the width.
 fn brand(t: &Theme) -> impl IntoElement {
     // The Horizon mark: the sun in the accent, the horizon in the text colour,
     // the lower lines faint. The three layers stack like a duotone icon.
@@ -34,16 +33,16 @@ fn brand(t: &Theme) -> impl IntoElement {
         .flex()
         .items_center()
         .gap(px(8.0))
-        .when(cfg!(target_os = "macos"), |d| d.pl(px(TRAFFIC_LIGHTS)))
-        .child(mark)
-        .child(
-            div()
-                .font_family(SANS)
-                .text_size(px(13.0))
-                .font_weight(gpui::FontWeight::MEDIUM)
-                .whitespace_nowrap()
-                .child("Garmin Companion"),
-        )
+        .when(!cfg!(target_os = "macos"), |d| {
+            d.child(mark).child(
+                div()
+                    .font_family(SANS)
+                    .text_size(px(13.0))
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .whitespace_nowrap()
+                    .child("Garmin Companion"),
+            )
+        })
 }
 
 fn search(t: &Theme, cx: &mut Context<Root>) -> impl IntoElement {
