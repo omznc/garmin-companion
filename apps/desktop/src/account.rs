@@ -56,6 +56,8 @@ pub struct Account {
     pub sign_in: SignIn,
     pub settings: Option<SettingsView>,
     pub synced_ago: Option<String>,
+    /// How old the watch data in Garmin is. `None` in a demo.
+    pub watch: Option<garmin_api::today::WatchSync>,
     pub mode: ThemeMode,
     /// Stronger text and border contrast. A demo keeps it in memory only.
     pub high_contrast: bool,
@@ -99,6 +101,7 @@ impl Account {
             sign_in,
             settings: None,
             synced_ago: if demo { None } else { settings::synced_ago() },
+            watch: if demo { None } else { settings::watch_sync() },
             mode: if demo {
                 ThemeMode::System
             } else {
@@ -358,6 +361,7 @@ impl Root {
                 list: store.list(),
                 views: crate::views::Views::load(&cache, day),
                 synced_ago: live.then(settings::synced_ago),
+                watch: live.then(settings::watch_sync),
             },
             |root, read, cx| {
                 root.apply_reload(read);
@@ -390,6 +394,9 @@ impl Root {
         self.set_activity_count(read.activities);
         if let Some(synced_ago) = read.synced_ago {
             self.account.synced_ago = synced_ago;
+        }
+        if let Some(watch) = read.watch {
+            self.account.watch = watch;
         }
     }
 
@@ -425,6 +432,7 @@ struct Reloaded {
     activities: Option<i64>,
     views: crate::views::Views,
     synced_ago: Option<Option<String>>,
+    watch: Option<Option<garmin_api::today::WatchSync>>,
 }
 
 /// Run `job` on the background executor. Then give its result to `done` on

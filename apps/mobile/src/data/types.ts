@@ -5,6 +5,7 @@
 import type { Events } from "./generated/commands";
 import type { Observation } from "./generated/Observation";
 import type { TodayView } from "./generated/TodayView";
+import type { WatchSync } from "./generated/WatchSync";
 
 export type { CachedActivity as Activity } from "./generated/CachedActivity";
 export type { Latest } from "./generated/Latest";
@@ -13,7 +14,7 @@ export type { Status } from "./generated/Status";
 export type { SyncEvent as SyncProgress } from "./generated/SyncEvent";
 export type { SyncSummary } from "./generated/SyncSummary";
 export type { ThemeMode } from "./generated/ThemeMode";
-export type { Observation, TodayView };
+export type { Observation, TodayView, WatchSync };
 
 // The keys of `TodayView.sections`, in the order that the core draws them.
 export type SectionKey = TodayView["sections"][number];
@@ -59,4 +60,6 @@ export type Today = {
   dateLabel: string;
   lede: string;
   sections: Section[];
+  // How old the watch data in Garmin is. Null when unknown and for sample data.
+  watch: WatchSync | null;
 };

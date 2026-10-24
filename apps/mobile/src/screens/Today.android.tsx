@@ -22,7 +22,7 @@ import { Cookie, FitText, sportIcon, VitalGrid, zoneTones } from "../components/
 import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { metricRoute } from "../data/present";
 import { useGreeting } from "../data/useGreeting";
-import type { Hero, LastSession, Section as TodaySection, Today } from "../data/types";
+import type { Hero, LastSession, Section as TodaySection, Today, WatchSync } from "../data/types";
 import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
 import { useMd } from "../theme/md";
@@ -313,6 +313,18 @@ function SyncLine({ line, error }: { line: string | null; error: string | null }
   );
 }
 
+function WatchLine({ watch }: { watch: WatchSync | null }) {
+  const md = useMd();
+  if (!watch) return null;
+  return (
+    <View style={{ paddingHorizontal: 20 }}>
+      <T v="labelSmall" color={md.onSurfaceVariant}>
+        {watch.hint ? `${watch.line}. ${watch.hint}` : watch.line}
+      </T>
+    </View>
+  );
+}
+
 export function TodayScreen() {
   const { data, error, refetch } = useToday();
   const sync = useSync();
@@ -334,6 +346,7 @@ export function TodayScreen() {
         ) : (
           <SyncLine line={sync.line} error={sync.error} />
         )}
+        <WatchLine watch={data?.watch ?? null} />
         {data ? (
           <TodayBody
             today={importLede(sync.importing, !!data.hero, data)}

@@ -185,5 +185,6 @@ export function presentToday(v: TodayView): Today {
     dateLabel: day.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" }),
     lede: v.empty ? "Nothing cached yet. Run a sync to pull your Garmin history." : v.lede,
     sections: v.sections.flatMap((key) => buildSection(v, key, day) ?? []),
+    watch: v.watch,
   };
 }

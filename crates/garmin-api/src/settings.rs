@@ -202,6 +202,14 @@ pub fn synced_ago() -> Option<String> {
     Some(since(last_sync()?, Utc::now()))
 }
 
+/// The age of the watch data in Garmin. `None` when the time is unknown or the
+/// cache is missing. It does not create the cache.
+pub fn watch_sync() -> Option<crate::today::WatchSync> {
+    let exists = garmin_core::db::default_path().is_some_and(|p| p.exists());
+    let db = exists.then(crate::open_default_db)?.ok()?;
+    crate::today::watch_sync_of(&db, Utc::now())
+}
+
 /// When the last good sync ended. `None` when the cache has never synced.
 pub fn last_sync() -> Option<DateTime<Utc>> {
     let when = DateTime::parse_from_rfc3339(&cache_facts().1?).ok()?;
