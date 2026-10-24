@@ -48,8 +48,9 @@ pub(crate) async fn sync_extras(
     sync_calendar(client, db, report, on).await?;
     sync_planned_workouts(client, db, report, on).await?;
     sync_nutrition(client, db, report, on).await?;
+    let last = sync_watch_upload(client, db, report).await?;
     if due(db, "extras_static", STATIC_HOURS) {
-        sync_devices(client, db, report, on).await?;
+        sync_devices(client, db, report, on, last.as_ref()).await?;
         sync_plans(client, db, report, on).await?;
         sync_vo2(client, db, report, on).await?;
         db.set_sync_state("extras_static", &Utc::now().to_rfc3339())?;
@@ -72,20 +73,48 @@ fn due(db: &Db, key: &str, hours: i64) -> bool {
     at.is_none_or(|t| Utc::now().signed_duration_since(t) >= Duration::hours(hours))
 }
 
+/// When Garmin last received the watch data. The watch data reaches Garmin
+/// through the watch's own sync, usually the Garmin Connect app. This is one
+/// small request, so it runs on every sync. The 6 hour gate would leave the
+/// age stale. It returns the reply for the devices step.
+async fn sync_watch_upload(
+    client: &GarminClient,
+    db: &Db,
+    report: &mut SyncReport,
+) -> Result<Option<serde_json::Value>> {
+    let last = optional(report, "last used device", client.last_used_device().await)?;
+    if let Some(ms) = last.as_ref().and_then(crate::devices::upload_ms) {
+        db.set_sync_state(crate::devices::WATCH_UPLOAD_KEY, &ms.to_string())?;
+        db.set_sync_state(crate::devices::WATCH_CHECKED_KEY, &Utc::now().to_rfc3339())?;
+    }
+    if let Some(last) = &last {
+        // The devices step runs only every few hours. Keep the stored rows current.
+        let stored = db.devices().and_then(|mut d| {
+            crate::devices::apply_last_used(&mut d, last);
+            db.replace_devices(&d)
+        });
+        if let Err(e) = stored {
+            report.warnings.push(format!("devices: {e}"));
+        }
+    }
+    Ok(last)
+}
+
 /// The devices, with the upload time of the last used one.
 async fn sync_devices(
     client: &GarminClient,
     db: &Db,
     report: &mut SyncReport,
     on: Progress<'_>,
+    last: Option<&serde_json::Value>,
 ) -> Result<()> {
     announce(on, "devices");
     let Some(list) = optional(report, "devices", client.devices().await)? else {
         return Ok(());
     };
     let mut devices = crate::devices::parse_devices(&list);
-    if let Some(last) = optional(report, "last used device", client.last_used_device().await)? {
-        crate::devices::apply_last_used(&mut devices, &last);
+    if let Some(last) = last {
+        crate::devices::apply_last_used(&mut devices, last);
     }
     if let Err(e) = db.replace_devices(&devices) {
         report.warnings.push(format!("devices: {e}"));

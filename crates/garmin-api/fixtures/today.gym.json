@@ -165,5 +165,6 @@
     "tone": "go",
     "verdict": "Recovered. Go ahead as planned.",
     "detail": "Your resting heart rate is at your baseline or below and you slept 7h 00m."
-  }
+  },
+  "watch": null
 }

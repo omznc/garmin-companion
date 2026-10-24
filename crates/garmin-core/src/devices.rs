@@ -49,11 +49,25 @@ pub fn parse_devices(v: &Value) -> Vec<DeviceInfo> {
         .collect()
 }
 
+/// The `sync_state` key of the upload time of the last used device.
+pub const WATCH_UPLOAD_KEY: &str = "watch_upload_ms";
+
+/// The `sync_state` key of the time (RFC 3339) when a sync read the upload time.
+pub const WATCH_CHECKED_KEY: &str = "watch_checked_at";
+
+/// The upload time of the last used device, in milliseconds since the epoch.
+/// A time of 0 or less is unknown.
+pub fn upload_ms(last: &Value) -> Option<i64> {
+    last.get("lastUsedDeviceUploadTime")
+        .and_then(Value::as_i64)
+        .filter(|&ms| ms > 0)
+}
+
 /// Put the upload time of the last used device onto its entry. The device id
 /// is the key. The name is the fallback, because the two endpoints do not name
 /// a device the same way in every reply.
 pub fn apply_last_used(devices: &mut [DeviceInfo], last: &Value) {
-    let Some(at) = last.get("lastUsedDeviceUploadTime").and_then(Value::as_i64) else {
+    let Some(at) = upload_ms(last) else {
         return;
     };
     let id = last.get("userDeviceId").and_then(Value::as_i64);
@@ -153,6 +167,8 @@ mod tests {
         let mut d = parse_devices(&listed());
         apply_last_used(&mut d, &json!({ "userDeviceId": 22 }));
         assert!(d.iter().all(|x| x.last_upload_ms.is_none()));
+
+        assert_eq!(upload_ms(&json!({ "lastUsedDeviceUploadTime": 0 })), None);
     }
 
     #[test]

@@ -155,6 +155,7 @@ pub struct Facts {
     pub demo: bool,
     pub sync: Sync,
     pub synced_ago: Option<String>,
+    pub watch: Option<garmin_api::today::WatchSync>,
     pub provider: Option<Provider>,
     pub credits: Option<u64>,
     pub dark: bool,
@@ -199,14 +200,19 @@ fn sync_entries(f: &Facts) -> Vec<Entry> {
     if busy {
         now.mark = Mark::Spinner;
     }
-    vec![
-        Entry::note(line, bad),
+    let mut rows = vec![Entry::note(line, bad)];
+    if let Some(watch) = f.watch.as_ref().filter(|_| f.connected) {
+        rows.push(Entry::note(watch.line.clone(), false));
+        rows.extend(watch.hint.clone().map(|h| Entry::note(h, false)));
+    }
+    rows.extend([
         Entry::new(Row::Rule, ""),
         now.enabled(can),
         Entry::item(Act::FullSync, "Full re-sync").enabled(can),
         Entry::new(Row::Rule, ""),
         Entry::item(Act::GarminSettings, "Open Garmin settings"),
-    ]
+    ]);
+    rows
 }
 
 fn coach_entries(f: &Facts) -> Vec<Entry> {
@@ -328,6 +334,7 @@ fn facts(root: &Root, cx: &Context<Root>) -> Facts {
         demo: account.demo,
         sync: account.sync.clone(),
         synced_ago: account.synced_ago.clone(),
+        watch: account.watch.clone(),
         provider: ask.provider(),
         credits: ask.credits_left(),
         dark,
@@ -620,6 +627,7 @@ mod tests {
             demo: false,
             sync: Sync::Idle,
             synced_ago: Some("5 min ago".into()),
+            watch: None,
             provider: Some(Provider::Cloud),
             credits: Some(24),
             dark: true,
@@ -642,6 +650,42 @@ mod tests {
             acts(&rows),
             [Act::SyncNow, Act::FullSync, Act::GarminSettings]
         );
+    }
+
+    #[test]
+    fn the_watch_line_shows_only_for_a_connected_account() {
+        let watch = Some(garmin_api::today::WatchSync {
+            line: "Watch synced 40 minutes ago".into(),
+            hint: None,
+        });
+        let has_line = |connected| {
+            let f = Facts {
+                connected,
+                watch: watch.clone(),
+                ..facts()
+            };
+            entries(MenuKind::Sync, &f)
+                .iter()
+                .any(|e| e.label == "Watch synced 40 minutes ago")
+        };
+        assert!(has_line(true));
+        assert!(!has_line(false));
+    }
+
+    #[test]
+    fn the_watch_hint_shows_as_its_own_row() {
+        let f = Facts {
+            connected: true,
+            watch: Some(garmin_api::today::WatchSync {
+                line: "Watch synced 3 hours ago".into(),
+                hint: Some("Sync your watch in Garmin Connect.".into()),
+            }),
+            ..facts()
+        };
+        let rows = entries(MenuKind::Sync, &f);
+        assert!(rows
+            .iter()
+            .any(|e| e.label == "Sync your watch in Garmin Connect."));
     }
 
     #[test]

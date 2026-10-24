@@ -7,6 +7,7 @@ import type { LastSession } from "./LastSession";
 import type { Latest } from "./Latest";
 import type { Observation } from "./Observation";
 import type { RestingHr } from "./RestingHr";
+import type { WatchSync } from "./WatchSync";
 import type { Week } from "./Week";
 import type { WeightGlance } from "./WeightGlance";
 import type { ZoneDrift } from "./ZoneDrift";
@@ -38,4 +39,8 @@ sections: Array<"health_tiles" | "attention" | "fuel" | "weight" | "last_session
  * The verdict and the sentence under it. Built from readiness, resting
  * heart rate, HRV, sleep and load.
  */
-headline: Headline, };
+headline: Headline, 
+/**
+ * The age of the watch data. `None` for sample data or an unknown time.
+ */
+watch: WatchSync | null, };

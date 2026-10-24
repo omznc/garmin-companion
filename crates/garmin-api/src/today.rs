@@ -17,7 +17,7 @@ use crate::insights::{load, runs_now};
 use crate::profile::{activity_profile, ActivityProfile, WINDOW_DAYS};
 use crate::text::{fuel_sentence, hydration_sentence, narrative, week_sentence, weight_sentence};
 use crate::ApiError;
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, Utc};
 use garmin_core::analysis::{discipline, Discipline};
 use garmin_core::sport::{family, is_exercise, shows_zone_verdict, sport_label};
 use garmin_core::{query, CachedActivity, Db, Family};
@@ -33,6 +33,50 @@ const MIN_BASELINE_DAYS: usize = 4;
 const DRIFT_RUNS: usize = 8;
 /// The 80/20 model asks for 20% of time above Z2.
 const DRIFT_TARGET_PCT: f64 = 20.0;
+
+/// How old the watch data in Garmin is. This is not the age of the last sync:
+/// the watch data reaches Garmin through the watch's own sync, usually the
+/// Garmin Connect app.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct WatchSync {
+    /// For example "Watch synced 40 minutes ago".
+    pub line: String,
+    /// Set when the upload is old. It tells the user what to do.
+    pub hint: Option<String>,
+}
+
+/// Hours after which the watch upload counts as old.
+const WATCH_OLD_HOURS: i64 = 2;
+
+/// The watch age line for an upload time in milliseconds. `None` when the
+/// time is not known or is not a valid date. The line is relative to `now`.
+/// The hint depends on the age at `checked`, when the app last read the upload
+/// time from Garmin. The age at `now` can be false, because a sync reads it.
+pub fn watch_sync(
+    upload_ms: Option<i64>,
+    checked: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Option<WatchSync> {
+    let at = DateTime::from_timestamp_millis(upload_ms?)?;
+    let old = checked.is_some_and(|s| s - at >= chrono::Duration::hours(WATCH_OLD_HOURS));
+    Some(WatchSync {
+        line: format!("Watch synced {}", crate::settings::since(at, now)),
+        hint: old.then(|| "Sync your watch in Garmin Connect.".into()),
+    })
+}
+
+/// The watch age line from the stored upload time and the time of the read.
+pub fn watch_sync_of(db: &Db, now: DateTime<Utc>) -> Option<WatchSync> {
+    let checked = db
+        .sync_state(garmin_core::devices::WATCH_CHECKED_KEY)
+        .ok()
+        .flatten()
+        .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+        .map(|t| t.with_timezone(&Utc));
+    watch_sync(watch_upload_ms(db), checked, now)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts-rs", derive(ts_rs::TS), ts(export))]
@@ -76,6 +120,8 @@ pub struct TodayView {
     /// The verdict and the sentence under it. Built from readiness, resting
     /// heart rate, HRV, sleep and load.
     pub headline: Headline,
+    /// The age of the watch data. `None` for sample data or an unknown time.
+    pub watch: Option<WatchSync>,
 }
 
 /// This morning's overnight resting HR against the 30-day mean.
@@ -226,9 +272,19 @@ pub fn today_view(db: &Db, today: NaiveDate) -> Result<TodayView, ApiError> {
             oldest_day,
             today,
         )),
+        watch: watch_sync_of(db, Utc::now()),
     };
     view.sections = sections(&view);
     Ok(view)
+}
+
+/// The stored upload time of the watch data. A read failure means unknown.
+pub fn watch_upload_ms(db: &Db) -> Option<i64> {
+    db.sync_state(garmin_core::devices::WATCH_UPLOAD_KEY)
+        .ok()
+        .flatten()?
+        .parse()
+        .ok()
 }
 
 /// A reading counts for the headline when it is from today or yesterday. An
@@ -407,6 +463,47 @@ fn week(activities: &[CachedActivity], today: NaiveDate) -> Week {
 mod tests {
     use super::*;
     use garmin_core::DailyMetrics;
+
+    #[test]
+    fn the_watch_hint_shows_only_for_an_old_upload() {
+        let now = Utc::now();
+        let ms = |m: i64| Some((now - chrono::Duration::minutes(m)).timestamp_millis());
+        let fresh = watch_sync(ms(40), Some(now), now).unwrap();
+        assert_eq!(fresh.line, "Watch synced 40 minutes ago");
+        assert_eq!(fresh.hint, None);
+        let old = watch_sync(ms(180), Some(now), now).unwrap();
+        assert_eq!(old.line, "Watch synced 3 hours ago");
+        assert_eq!(
+            old.hint.as_deref(),
+            Some("Sync your watch in Garmin Connect.")
+        );
+        assert_eq!(watch_sync(None, Some(now), now), None);
+    }
+
+    #[test]
+    fn the_watch_hint_compares_with_the_time_of_the_read() {
+        let db = db();
+        let now = Utc::now();
+        let ago = |m: i64| now - chrono::Duration::minutes(m);
+        let put = |upload: DateTime<Utc>, checked: Option<DateTime<Utc>>| {
+            let ms = upload.timestamp_millis().to_string();
+            db.set_sync_state(garmin_core::devices::WATCH_UPLOAD_KEY, &ms)
+                .unwrap();
+            if let Some(c) = checked {
+                db.set_sync_state(garmin_core::devices::WATCH_CHECKED_KEY, &c.to_rfc3339())
+                    .unwrap();
+            }
+        };
+        // No read time: no hint.
+        put(ago(300), None);
+        assert_eq!(watch_sync_of(&db, now).unwrap().hint, None);
+        // Upload 5 minutes before the read, now 3 hours later: no hint.
+        put(ago(185), Some(ago(180)));
+        assert_eq!(watch_sync_of(&db, now).unwrap().hint, None);
+        // Upload 3 hours before the read: hint.
+        put(ago(360), Some(ago(180)));
+        assert!(watch_sync_of(&db, now).unwrap().hint.is_some());
+    }
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 3, 11).unwrap()

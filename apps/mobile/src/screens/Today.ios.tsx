@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 import { metricRoute } from "../data/present";
-import type { Hero, Section, Today } from "../data/types";
+import type { Hero, Section, Today, WatchSync } from "../data/types";
 import { importLabel, importLede, isPulling } from "../data/importLabel";
 import { importHistory, type SyncState, useSync } from "../data/useSync";
 import { useToday } from "../data/useToday";
@@ -298,6 +298,15 @@ function TodayBody({ today, busy, onSync }: { today: Today; busy: boolean; onSyn
 }
 
 // The history import: the first 14 days, then the months. An error offers a retry.
+function WatchLine({ watch }: { watch: WatchSync | null }) {
+  if (!watch) return null;
+  return (
+    <Text style={{ fontSize: 13, color: secondary, marginTop: 8, marginHorizontal: 32 }}>
+      {watch.hint ? `${watch.line}. ${watch.hint}` : watch.line}
+    </Text>
+  );
+}
+
 function ImportRow({ sync }: { sync: SyncState }) {
   const failed = sync.importError !== null;
   const text = failed ? sync.importError : importLabel(sync);
@@ -342,6 +351,7 @@ export function TodayScreen() {
           {sync.error ?? sync.line}
         </Text>
       ) : null}
+      <WatchLine watch={data?.watch ?? null} />
       {data ? (
         <TodayBody
           today={importLede(sync.importing, !!data.hero, data)}

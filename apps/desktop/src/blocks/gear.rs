@@ -1,8 +1,9 @@
 //! The blocks of the Gear screen: the shoes and the devices.
 
 use crate::scale::px;
-use chrono::Local;
+use chrono::{DateTime, Utc};
 use garmin_api::gear::GearRow;
+use garmin_api::settings;
 use gpui::{div, prelude::*};
 
 use super::{Block, BlockDef, Ctx, Width};
@@ -148,23 +149,12 @@ fn all_gear(ctx: &Ctx) -> Option<Block> {
 
 /* ---------------------------------------------------------------- devices --- */
 
-/// "3 hours ago" for the time `ms` (Unix milliseconds), seen at `now_ms`.
-fn ago(ms: i64, now_ms: i64) -> String {
-    let minutes = ((now_ms - ms) / 60_000).max(0);
-    let plural = |n: i64, unit: &str| format!("{n} {unit}{} ago", if n == 1 { "" } else { "s" });
-    match minutes {
-        0..=59 => plural(minutes, "minute"),
-        60..=2879 => plural(minutes / 60, "hour"),
-        _ => plural(minutes / 1440, "day"),
-    }
-}
-
 fn devices(ctx: &Ctx) -> Option<Block> {
     let list = &ctx.extras_view?.devices;
     if list.is_empty() {
         return None;
     }
-    let now = Local::now().timestamp_millis();
+    let now = Utc::now();
     let rows = list
         .iter()
         .map(|d| ListRow {
@@ -177,24 +167,11 @@ fn devices(ctx: &Ctx) -> Option<Block> {
                 .into(),
             sub: d
                 .last_upload_ms
-                .map(|ms| format!("Last sync {}", ago(ms, now)).into()),
+                .and_then(DateTime::from_timestamp_millis)
+                .map(|at| format!("Last sync {}", settings::since(at, now)).into()),
             right: None,
             right_sub: None,
         })
         .collect();
     block(None, kit::list_rows(rows, ctx.t))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_age_of_a_sync_reads_in_the_nearest_unit() {
-        let now = 10 * 86_400_000;
-        assert_eq!(ago(now - 30 * 60_000, now), "30 minutes ago");
-        assert_eq!(ago(now - 3 * 3_600_000, now), "3 hours ago");
-        assert_eq!(ago(now - 3 * 86_400_000, now), "3 days ago");
-        assert_eq!(ago(now - 60_000, now), "1 minute ago");
-    }
 }
