@@ -147,6 +147,15 @@
        compare an installed copy against, so it has to be bumped alongside
        `version` in apps/desktop/tauri.conf.json — see RELEASING.md. -->
   <releases>
+    <release version="1.1.3" date="2026-10-24">
+      <description>
+        <p>
+          Today and the status menu show when the watch last sent its data to
+          Garmin. If the data is more than two hours old, the app tells you to
+          sync the watch in Garmin Connect.
+        </p>
+      </description>
+    </release>
     <release version="1.1.2" date="2026-10-23">
       <description>
         <p>
