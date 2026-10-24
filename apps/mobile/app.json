@@ -2,7 +2,7 @@
   "expo": {
     "name": "Garmin Companion",
     "slug": "garmin-companion",
-    "version": "1.1.2",
+    "version": "1.1.3",
     "scheme": "garmincompanion",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
