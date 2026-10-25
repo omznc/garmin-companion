@@ -21,11 +21,12 @@ pnpm -C worker exec cf deploy
 - `src/index.ts`: `/health`, `/v2/*` to `handleV2`, `/v1/*` answers 410, a
   daily cron for `purgeExpired`.
 - `src/v2/index.ts`: the routes (`/install`, `/balance`, `/me`,
-  `/chat/completions`, `/auth/email/*`, `/billing/*`, `/checkout/done`,
+  `/chat/completions`, `/auth/email/*`, `/auth/signout`, `/billing/*`,
+  `/checkout/done`,
   `/webhooks/polar`). Errors use the OpenAI shape (`http.ts` `fail()`). The
   apps act on `error.type`.
 - `wallet.ts`: one `Wallet` Durable Object for each install or user. A request
-  holds credits, settles, then releases. `X-Request-Id` stops a second charge.
+  holds credits. Then it settles the hold, or releases it. `X-Request-Id` stops a second charge.
 - `limits.ts`: the `Limits` Durable Object. The install, account, mail and
   budget caps. A check and its count are one atomic step.
 - `models.ts`: the model profiles. `MODEL_PROFILE` in `cloudflare.config.ts`

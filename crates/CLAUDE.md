@@ -19,11 +19,14 @@ rules for all areas.
     `intraday`, `nutrition`, `signal`, `sport`, `strength`, `theme`, `vo2`.
   - `src/bin/sync.rs` and `src/bin/spike.rs` are live tools. They read the real
     tokens and call Garmin.
-- `garmin-api`: the view models over `Db`, and the JSON command table. It
-  makes no network call.
-  - One module per screen (`today`, `activities`, `health`, `sleep_view`,
-    `body`, `fitness`, `insights`, `reports`, `tiles`, `charts`, `plan`,
-    `routes`, `places`, `gear`, `export`).
+- `garmin-api`: the view models over `Db`, and the JSON command table. The
+  views read only the cache. `session.rs` (the sign-in ticket and the sync)
+  and `workouts.rs` call the network. The module doc in `lib.rs` says
+  otherwise and is out of date.
+  - Screen modules include `today`, `activities`, `health`, `sleep_view`,
+    `body`, `fitness`, `insights`, `reports`, `tiles`, `extras`, `charts`,
+    `plan`, `routes`, `places`, `gear`, `focus`, `export`. Also `chat`,
+    `settings`, `profile`.
   - `commands.rs` (`COMMANDS`) + `dispatch.rs` (`call`, `Source::{Live,
     Sample}`): the one command table. Mobile reaches the views only through
     it. The desktop app calls the `*_view` functions directly.
@@ -40,7 +43,8 @@ rules for all areas.
   FFI commands and events.
 - `garmin-mcp`: a stdio MCP server that depends only on `garmin-core`.
   `garmin-mcp [import [PATH] | status | sync [DAYS] [--full] | coach]`. Every
-  tool reads SQLite, except `sync`.
+  tool reads SQLite, except `sync` and `activity_analysis` (three Garmin
+  requests).
 
 ## Rules
 

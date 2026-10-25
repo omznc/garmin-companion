@@ -7,8 +7,10 @@ keys, sample mode, or before you add a view command.
 
 - A GET has 3 tries on a transport error, a 429 or a 5xx, with a 1 s and a
   3 s pause. The client obeys `Retry-After`, to a maximum of 30 s.
-- A write is never retried. The only write is `create_workout`, and only a
-  button press starts it. A timer, a sync or the model never starts it.
+- A write is never retried on a transport error, a 429 or a 5xx. Any request
+  gets one more try after a 401 and a token refresh (`send_json`). The only
+  write is `create_workout`, and only a button press starts it. A timer, a
+  sync or the model never starts it.
 - A connect error or a timeout becomes `ApiError::Offline`. The mobile
   `QueryClient` retries only transport errors, because the core already
   retries the rest.
@@ -52,8 +54,10 @@ account. It broke about six times, always in the same way.
 
 - **Sample mode never creates or opens the cache file.** A cache file ends
   sample mode.
-- A new view command needs a sample answer in `garmin_api::sample`, and it must
-  pass the test that runs each command with no cache.
+- A new view command that reads the cache needs a sample answer in
+  `garmin_api::sample` (`call`), or a line in `NEEDS_CACHE`, which refuses it.
+  Add it to the command list in the test of `sample.rs`. A command with
+  neither goes to the live path, which opens the cache. No test catches that.
 - In `garmin-ffi`, fixture mode does nothing when tokens exist. A sign-in ends
   sample mode and deletes the `sample-mode` marker.
 - On Android, the data folder is the parent of the Expo `documents` folder

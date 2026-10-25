@@ -37,8 +37,9 @@ the coach tools, or the cloud path to the worker.
 - Each question starts the CLI headless. The CLI is stateless, so the app
   sends the trimmed history each turn.
 - The CLI gets one MCP server for that run only: the desktop binary itself
-  (`garmin-companion mcp`, `apps/desktop/src/mcp.rs`). The run may use only
-  those MCP tools. The binary path is `$APPIMAGE` or `current_exe`, with the
+  (`garmin-companion mcp`, `apps/desktop/src/mcp.rs`). Claude Code and Codex
+  may use only those MCP tools. OpenCode also allows `execute` and `read`
+  (`opencode.rs`). Its `fetch` can make HTTP requests. The binary path is `$APPIMAGE` or `current_exe`, with the
   " (deleted)" suffix removed after an update.
 - `claude_code.rs` removes the env vars of a parent Claude Code session
   (`CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT` and others) before the start.
@@ -54,5 +55,6 @@ the coach tools, or the cloud path to the worker.
 
 ## The cloud model
 
-The worker chooses the model (`MODEL_PROFILE`, `worker/src/v2/models.ts`).
+The worker chooses the model: `MODEL_PROFILE` in `worker/cloudflare.config.ts`
+picks a profile in `worker/src/v2/models.ts`.
 The rules learned in outages are in `worker/CLAUDE.md`.

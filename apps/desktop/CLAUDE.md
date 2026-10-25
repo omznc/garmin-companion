@@ -1,14 +1,14 @@
 # apps/desktop
 
 `garmin-companion-desktop`, binary `garmin-companion`: the gpui-ce desktop app
-for Linux, macOS and Windows. This file also covers `apps/login`. Read the root
-`CLAUDE.md` first.
+for Linux, macOS and Windows. This file also covers `apps/login`
+(`apps/login/CLAUDE.md` points here). Read the root `CLAUDE.md` first.
 
 ## Layout
 
 - `main.rs`: the CLI flags (`--persona`, `--db <copy>`, `--date`, `--screen`,
   `--ask`, `--focus` and others, listed at the top of the file) and the
-  subcommand `garmin-companion mcp`. A demo (`--db` or `--persona`) saves no
+  subcommand `garmin-companion mcp`. The header list is not complete. A demo (`--db` or `--persona`) saves no
   state. `instance.rs` keeps one copy per user.
 - Shell: `shell.rs` (root view), `titlebar.rs`, `sidebar.rs`, `tabs.rs` (at
   most 8 tabs), `statusbar.rs` + `statusmenu.rs`, `chrome.rs` (client-side
@@ -17,8 +17,8 @@ for Linux, macOS and Windows. This file also covers `apps/login`. Read the root
   registry. `blocks/layout.rs` + `blocks/edit.rs` are the Today layout and its
   edit mode.
 - Data loaders: `data.rs`, `views.rs`, `wellness.rs`, `body.rs`, `training.rs`,
-  `places.rs`, `activities.rs`, `insight.rs`, `calendar.rs`, `focus.rs` (the
-  date focus).
+  `places.rs`, `activities.rs`. The date focus: `focus.rs` and `calendar.rs`
+  (the picker). `insight.rs`: the insight detail.
 - UI kit: `kit.rs`, `ui.rs`, `panel.rs`, `controls.rs`, `charts.rs`,
   `icons.rs`, `markdown.rs`. gpui has no text input, so `field.rs`,
   `editor.rs` and `composer.rs` are our own.
@@ -70,8 +70,8 @@ for Linux, macOS and Windows. This file also covers `apps/login`. Read the root
 - **`percentage()` asserts 0..1 in a debug build.** Clamp the value first.
 - **Use `scale.rs` `px()` for sizes,** so the interface scale applies.
 - **A demo or a test never writes the real data folder.** For a screenshot run
-  with `--persona`, also set `XDG_DATA_HOME` to a temp folder. Before `#83`, a
-  run reset the real `window.json` of the user.
+  with `--persona`, also set `XDG_DATA_HOME` to a temp folder. A screenshot run
+  once reset the real `window.json` of the user.
 - **`mcp.rs`: nothing else prints on stdout.** The loop stays on one thread,
   because `with_as_of` is thread-local.
 - **The updater.** Download URLs are https only. After `Outcome::Installed`
@@ -99,10 +99,12 @@ for Linux, macOS and Windows. This file also covers `apps/login`. Read the root
   exit 0 with no ticket.
 - **Windows:** NSIS only. WiX refuses the "ć" in the publisher name. An update
   into a folder that the user cannot write asks for UAC.
-- **deb/rpm:** the self-update runs `dpkg -i`, which does not resolve
-  dependencies. Keep the dependency list short. Vulkan is a recommend.
+- **deb/rpm:** the self-update tries `apt-get install` or `dnf install` first,
+  and `dpkg` or `rpm` only as a fallback, which does not resolve dependencies.
+  Keep the dependency list short. Vulkan is a recommend.
 - **gpui-ce** is pinned at 0.2.2 with `gpui_ce_platform` 0.1 (`wayland`, `x11`,
   `font-kit`), the same pin as mbrd-rs.
-- **Debug-only env hooks** for screenshots: `GC_OPEN_PALETTE`,
-  `GC_OPEN_THEMES`, `GC_SCALE`, `GC_OPEN_THREAD`, `GC_OPEN_RECENTS`,
-  `GC_HIGH_CONTRAST`, `GC_SHOW_SETUP`, `GC_REDUCE_MOTION`.
+- **Env hooks** for screenshots, most of them debug only: `GC_OPEN_PALETTE`,
+  `GC_OPEN_THEMES`, `GC_SCALE`, `GC_SHOW_SETUP` and others. Run
+  `rg -n 'GC_[A-Z_]+' apps/desktop/src` for the full list.
+  `GC_REDUCE_MOTION=1` also works in a release build.

@@ -42,7 +42,7 @@ node --test scripts/release-rewrite.test.mjs
 CI (`.github/workflows/ci.yml`) runs on Linux only. It also runs a `jq` check
 on `cargo metadata` for the test sandbox (see the rules below), and a
 `git diff --exit-code` on the generated TypeScript types. Only the release
-workflow builds macOS, Windows and iOS.
+and TestFlight workflows build macOS, Windows and iOS.
 
 Biome only formats. Its linter is off (`biome.json`).
 
@@ -65,7 +65,8 @@ One Rust core, two apps, one cloud service:
   OpenRouter and holds credits, login and billing. See `worker/CLAUDE.md`.
 
 The data flow is cache-first. A sync writes Garmin data into one SQLite file.
-Every screen, coach tool and MCP tool reads that file, never Garmin. The
+Every screen and coach tool reads that file, not Garmin. The MCP tools do the
+same, except `sync` and `activity_analysis`. The
 desktop app, the mobile app and `garmin-mcp` can share one file.
 
 No Tauri app exists any more (`app/` was deleted in `f2d3f14`). The Tauri
@@ -106,7 +107,7 @@ area.**
   Do not `unwrap` a value that can fail, and use `total_cmp`, not
   `partial_cmp().unwrap()`, for an `f64` that can be NaN (`83e2549`).
 - **The only write to Garmin is `create_workout`,** and only a button press
-  starts it. A write is never retried. See `crates/garmin-core/src/client.rs`
+  starts it. A write is never retried on a transport error, a 429 or a 5xx. See `crates/garmin-core/src/client.rs`
 - **The worker never logs or stores message content.** See `worker/CLAUDE.md`
 
 ## Conventions
@@ -128,13 +129,13 @@ area.**
 - The CI of a pull request runs on the merge commit. After a fix on `master`,
   run `gh pr update-branch`. A re-run of the old check does not use the new
   `master`.
-- `gh workflow run` runs a `workflow_dispatch` workflow only from `master`.
-  `release-rewrite.yml` needs `-f version=X.Y.Z`. Without it, the `check` job
-  fails.
+- Dispatch `release-rewrite.yml` from `master` only (`RELEASING.md`). It needs
+  `-f version=X.Y.Z`. Without it, the `check` job fails.
 - Do not share one `CARGO_TARGET_DIR` between worktrees. Cargo linked a stale
   crate from a different worktree.
 - The desktop crate needs the GTK, WebKitGTK and cairo dev packages
   (the `apt-get` line in `ci.yml` lists them). `garmin-core` and `garmin-mcp`
   build without them.
-- Some comments still talk about "the Tauri app" (`paths.rs`, `dispatch.rs`).
+- Some comments still talk about "the Tauri app" (`paths.rs`, `dispatch.rs`,
+  `garmin-coach/src/lib.rs`).
   They mean the desktop app.

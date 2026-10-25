@@ -30,7 +30,7 @@ build is local Gradle or Xcode, in GitHub Actions for a release.
 
 - `index.ts` imports `src/notify/backgroundSync` before `expo-router/entry`.
   The headless background task needs it.
-- `app/`: the routes. `_layout.tsx` is the root stack, the query client, the
+- `app/`: the routes. `index.tsx` is the start redirect. `_layout.tsx` is the root stack, the query client, the
   foreground sync and the notification taps. `(tabs)/{today,activities,health,
   sleep,more}`. `ask/` is a root stack with no tab bar. `sign-in.tsx` is a
   webview of the Garmin sign-in page. `setup.tsx`.
@@ -38,7 +38,8 @@ build is local Gradle or Xcode, in GitHub Actions for a release.
   in `tsconfig.json`). Screens are in `src/screens/`, the kits in
   `src/components/`, and the rest in `src/more/`, `src/ask/`, `src/nav/`.
 - `src/data/source.ts`: the one data source. It uses the Rust bridge when the
-  native module exists, and the JSON fixtures if not.
+  native module exists. If not, it uses the JSON fixtures in a dev build or
+  with `EXPO_PUBLIC_FIXTURE=1`, and refuses each call in a release build.
 - `src/data/generated/`: types from Rust (`scripts/gen-types.sh`).
   `src/data/types.ts` re-exports them. Never copy a shape by hand.
 - `packages/garmin-bridge/`: the ubrn turbo module, built from
@@ -65,8 +66,8 @@ build is local Gradle or Xcode, in GitHub Actions for a release.
   haptic goes through the gate in `src/ui/haptics.ts`. A failed haptic never
   fails an action. No haptic on a tab switch.
 - **Notifications are off by default.** Ask for the permission only when the
-  person turns them on. Send only from 08:00 to 20:59. A notification never
-  fails a sync.
+  person turns them on. Send nudges only from 08:00 to 20:59. A notification
+  never fails a sync.
 - **No purchase in the mobile app.** No checkout call (`src/data/useCloud.ts`).
 - **No local coach provider on a phone** (no Ollama, no CLI agent).
 
